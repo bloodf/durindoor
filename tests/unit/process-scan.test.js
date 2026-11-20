@@ -74,7 +74,7 @@ describe("collectAppPids — verified candidates only", () => {
   };
 
   it("matches our processes and skips everything else", () => {
-    expect(collectAppPids({ processes: rows, readCommand: live, exclude: new Set() })).toEqual([100, 200]);
+    expect(collectAppPids({ processes: rows, readCommand: live, exclude: new Set(), ownsNextServer: () => true })).toEqual([100, 200]);
   });
 
   it("never kills a number that only looked like a pid", () => {
@@ -89,7 +89,7 @@ describe("collectAppPids — verified candidates only", () => {
   });
 
   it("skips a recycled pid that no longer matches", () => {
-    expect(collectAppPids({ processes: rows, readCommand: (pid) => (pid === 100 ? null : live(pid)), exclude: new Set() }))
+    expect(collectAppPids({ processes: rows, readCommand: (pid) => (pid === 100 ? null : live(pid)), exclude: new Set(), ownsNextServer: () => true }))
       .toEqual([200]);
   });
 
@@ -166,5 +166,16 @@ describe("isAppProcess", () => {
     ]) {
       expect(isAppProcess(command)).toBe(false);
     }
+  });
+});
+
+
+describe("Next worker ownership", () => {
+  it("leaves unrelated or unverifiable Next workers alone", () => {
+    const processes = [{ pid: 200, command: "next-server (v16)" }];
+    const options = { processes, readCommand: () => "next-server (v16)", exclude: new Set(), appDir: "/our/app" };
+    expect(collectAppPids({ ...options, ownsNextServer: () => false })).toEqual([]);
+    expect(collectAppPids({ ...options, ownsNextServer: () => true })).toEqual([200]);
+    expect(collectAppPids(options)).toEqual([]);
   });
 });

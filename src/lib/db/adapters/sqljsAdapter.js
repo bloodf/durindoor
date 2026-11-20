@@ -21,8 +21,11 @@ export async function createSqlJsAdapter(filePath) {
   // Schema is created/synced by migrate.js after adapter init
 
   let dirty = false;
+  let dirtySince = null;
   let saveTimer = null;
   const SAVE_DEBOUNCE_MS = 100;
+  // Bound the loss window even when writes continuously reset the debounce.
+  const SAVE_MAX_WAIT_MS = 1000;
 
   /**
    * Exports once, durably stages an owner-only sibling, then atomically renames
@@ -43,6 +46,7 @@ export async function createSqlJsAdapter(filePath) {
       fd = undefined;
       fs.renameSync(tmpPath, filePath);
       dirty = false;
+      dirtySince = null;
     } catch (error) {
       if (fd !== undefined) {
         try { fs.closeSync(fd); } catch { /* ignore cleanup failure */ }
@@ -54,13 +58,14 @@ export async function createSqlJsAdapter(filePath) {
 
   function scheduleSave() {
     dirty = true;
+    if (dirtySince === null) dirtySince = Date.now();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       saveTimer = null;
       if (dirty) {
         try { persist(); } catch (e) { console.error("[sqljs] save failed:", e); }
       }
-    }, SAVE_DEBOUNCE_MS);
+    }, Math.max(0, Math.min(SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS - (Date.now() - dirtySince))));
   }
 
   function paramsObj(params) {

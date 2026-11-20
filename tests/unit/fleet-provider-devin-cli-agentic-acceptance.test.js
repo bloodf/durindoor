@@ -109,7 +109,7 @@ describe("#1174 Devin CLI agentic acceptance boundary (offline partial)", () => 
     expect(sent(child)[1]).toMatchObject({ method: "session/new", params: { model: "fixture-model-not-account-proof" } });
     receive(child, { id: 2, result: { sessionId: "offline-session" } });
     expect(sent(child)[2]).toMatchObject({ method: "session/prompt", params: {
-      sessionId: "offline-session", content: [{ type: "text", text: "[System]\nBe brief.\n\n[User]\nHello" }],
+      sessionId: "offline-session", prompt: [{ type: "text", text: "[System]\nBe brief.\n\n[User]\nHello" }],
     } });
     expect(sent(child)[2].params).not.toHaveProperty("tools");
     expect(sent(child)[2].params).not.toHaveProperty("tool_choice");

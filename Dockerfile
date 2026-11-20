@@ -49,28 +49,28 @@ ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATA_DIR=/app/data
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/custom-server.js ./custom-server.js
-COPY --from=builder /app/web-login-host-boundary.cjs ./web-login-host-boundary.cjs
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/custom-server.js ./custom-server.js
+COPY --from=builder --chown=node:node /app/web-login-host-boundary.cjs ./web-login-host-boundary.cjs
 # custom-server.js requires this at its first line (OmniRoute #6828 empty-env guard).
-COPY --from=builder /app/src/shared/utils/normalizeEnv.js ./src/shared/utils/normalizeEnv.js
+COPY --from=builder --chown=node:node /app/src/shared/utils/normalizeEnv.js ./src/shared/utils/normalizeEnv.js
 # open-sse/config/runtimeConfig.js imports this ESM helper at runtime.
-COPY --from=builder /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeChecks.js
+COPY --from=builder --chown=node:node /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeChecks.js
 # custom-server.js requires this CJS helper at import time (#551).
-COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs
-COPY --from=builder /app/open-sse ./open-sse
+COPY --from=builder --chown=node:node /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs
+COPY --from=builder --chown=node:node /app/open-sse ./open-sse
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
-COPY --from=builder /app/src/mitm ./src/mitm
+COPY --from=builder --chown=node:node /app/src/mitm ./src/mitm
 # scripts/build-app.mjs materializes every runtime dependency and its closure
 # into .next/standalone above, including sql.js assets and optional native bindings.
 # Copying the isolated pnpm source tree here would replace that relocatable closure.
 
-RUN mkdir -p /app/data && chown -R node:node /app && \
-  mkdir -p /app/data-home && chown node:node /app/data-home && \
-  ln -sf /app/data-home /root/.durindoor 2>/dev/null || true
+RUN mkdir -p /app/data /app/data-home && \
+  chown node:node /app /app/data /app/data-home && \
+  (ln -sf /app/data-home /root/.durindoor 2>/dev/null || true)
 
 # ChatGPT Web's browser transport drives a headed Chromium under Xvfb.
 # Playwright's own Chromium build does not run on musl, so use Alpine's.

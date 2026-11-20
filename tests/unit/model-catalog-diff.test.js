@@ -148,6 +148,26 @@ describe("localAudit", () => {
     expect(findings.some((f) => /upstreamModelId "missing-parent" resolves to no id/.test(f))).toBe(true);
   });
 
+  it("accepts only Antigravity Hydrogen's exact XHigh wire-only upstream id", async () => {
+    const audit = (provider, id, upstreamModelId) => localAudit(
+      [{ id: provider, models: [{ id, upstreamModelId }] }],
+      FORMATS,
+      { model: {}, provider: {}, pattern: [] }
+    );
+
+    expect(await audit("antigravity", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhigh)")).toEqual([]);
+    expect(await audit("agy", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhigh)")).toEqual([]);
+    for (const [provider, id, upstreamModelId] of [
+      ["antigravity", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhig)"],
+      ["antigravity", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhigh)-typo"],
+      ["other", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhigh)"],
+      ["antigravity", "gemini-4-hydrogen-typo", "gemini-4-hydrogen-xhigh(xhigh)"],
+    ]) {
+      const findings = await audit(provider, id, upstreamModelId);
+      expect(findings.some((f) => f.includes(`upstreamModelId "${upstreamModelId}" resolves to no id`))).toBe(true);
+    }
+  });
+
   it("resolves PROVIDER_PRICING keyed by alias (not falsely orphan)", async () => {
     const registry = [{ id: "github", alias: "gh", models: [{ id: "gpt-5.3-codex" }] }];
     const pricing = { model: {}, provider: { gh: { "gpt-5.3-codex": { input: 1 } } }, pattern: [] };

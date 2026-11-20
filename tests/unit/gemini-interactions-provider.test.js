@@ -116,6 +116,40 @@ describe("stateless Gemini Interactions provider", () => {
     expect(wire).not.toHaveBeenCalled();
   });
 
+  it("rejects a valid payload labeled text/plain before dispatch", async () => {
+    const response = await send({}, {
+      "x-goog-api-key": caller.key,
+      "content-type": "text/plain",
+    });
+    expect(response.status).toBe(415);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await response.json()).toEqual({
+      error: { code: 415, message: "Content-Type must be application/json" },
+    });
+    expect(wire).not.toHaveBeenCalled();
+  });
+
+  it("accepts application/json with parameters", async () => {
+    const response = await send({}, {
+      "x-goog-api-key": caller.key,
+      "content-type": "application/json; charset=utf-8",
+    });
+    expect(response.status).toBe(200);
+    expect(wire).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the native parsing error for malformed JSON", async () => {
+    const response = await post(new Request("https://gateway.test/v1beta/interactions", {
+      method: "POST",
+      headers: { "x-goog-api-key": caller.key, "content-type": "application/json" },
+      body: "{",
+    }));
+    expect(response.status).toBe(400);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await response.json()).toEqual({ error: { code: 400, message: "Invalid JSON" } });
+    expect(wire).not.toHaveBeenCalled();
+  });
+
   it("rejects retained state, background execution and identifiers", async () => {
     for (const body of [{ store: true }, { background: true }, { previous_interaction_id: "foreign" }, { input: [{ type: "image" }] }]) {
       expect((await send(body)).status).toBe(400);

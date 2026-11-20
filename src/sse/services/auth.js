@@ -195,7 +195,7 @@ const affinityCleanup = setInterval(() => {
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 if (affinityCleanup.unref) affinityCleanup.unref();
 
-const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode", "devin-cli-agentic"]);
 // Keyless self-hosted servers whose connection row carries what the request
 // needs: Local Whisper's server URL, self-hosted Firecrawl's optional key and
 // headers (its host prefers the Profile setting, see resolveFirecrawlBaseUrl).

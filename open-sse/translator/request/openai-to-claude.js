@@ -420,12 +420,13 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       for (const tc of msg.tool_calls) {
         if (tc.type === OPENAI_BLOCK.FUNCTION) {
           // Apply prefix to tool name
-          const toolName = CLAUDE_OAUTH_TOOL_PREFIX + tc.function.name;
+          const name = tc.function?.name;
+          const toolName = isString(name) ? CLAUDE_OAUTH_TOOL_PREFIX + name : name;
           blocks.push({
             type: CLAUDE_BLOCK.TOOL_USE,
             id: tc.id,
             name: toolName,
-            input: safeParseJSON(tc.function.arguments, tc.function.arguments)
+            input: safeParseJSON(tc.function?.arguments, tc.function?.arguments)
           });
         }
       }

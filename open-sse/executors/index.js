@@ -1,3 +1,4 @@
+import { AdaptaWebExecutor } from "./adapta-web.js";
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
@@ -62,6 +63,8 @@ import { resolveProviderAlias } from "../services/model.js";
 const chatGptWebExecutor = new ChatGptWebExecutor();
 
 const executors = {
+  "adapta-web": new AdaptaWebExecutor(),
+  "adp-web": new AdaptaWebExecutor(),
   antigravity: new AntigravityExecutor(),
   agy: new AntigravityExecutor("agy"),
   auggie: new AuggieExecutor(),

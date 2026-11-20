@@ -4,7 +4,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta } from "../providers/shared.js";
+import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -588,6 +588,21 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider === "claude" && !credentials.apiKey && credentials.accessToken) {
       const betaKey = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
       headers[betaKey] = buildClaudeOAuthAnthropicBeta(headers[betaKey]);
+    }
+
+    // The plain `anthropic` provider is an API-key provider: it does not use
+    // the Claude Code wire protocol and is not an OAuth session, so the request
+    // must not claim the Claude Code identity. Anthropic's Max and Team plans
+    // include monthly API credits that do not cover Claude Code usage, and a
+    // key funded only by those credits is mislabelled at best and rejected at
+    // worst (OmniRoute #15968). The functional API betas stay.
+    if (this.provider === "anthropic" && credentials.apiKey && !credentials.accessToken) {
+      for (const betaKey of ["anthropic-beta", "Anthropic-Beta"]) {
+        if (!headers[betaKey]) continue;
+        const filtered = withoutClaudeCodeIdentityBetas(headers[betaKey]);
+        if (filtered) headers[betaKey] = filtered;
+        else delete headers[betaKey];
+      }
     }
 
     /** Emit only client-provided session identity, never generated fallback affinity. */

@@ -140,6 +140,41 @@ const ANTHROPIC_BETA_BASE = [
 const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
 
 /**
+ * Beta flags that identify a request as Claude Code traffic.
+ *
+ * A plain Anthropic API key does not use the Claude Code wire protocol and is
+ * not an OAuth session, so a request authenticated with one must not claim the
+ * Claude Code identity: Anthropic's Max and Team plans include monthly API
+ * credits that do not cover Claude Code usage, and a key funded only by those
+ * credits is mislabelled at best and rejected at worst (OmniRoute #15968).
+ *
+ * The functional API betas stay; only the identity betas are dropped. The
+ * Claude Code provider keeps its identity on both the OAuth and the API-key
+ * path, and an anthropic-compatible node that configures its own
+ * `Anthropic-Beta` keeps that value verbatim.
+ */
+export const CLAUDE_CODE_IDENTITY_BETAS = Object.freeze([
+  "claude-code-20250219",
+  "oauth-2025-04-20"
+]);
+
+/**
+ * Drop the Claude Code identity betas from an Anthropic-Beta header value.
+ *
+ * @param {unknown} header - the current header value
+ * @returns {string|null} the filtered value, or null when nothing is left
+ */
+export function withoutClaudeCodeIdentityBetas(header) {
+  if (!isString(header)) return null;
+  const flags = header
+    .split(",")
+    .map((flag) => flag.trim())
+    .filter(Boolean)
+    .filter((flag) => !CLAUDE_CODE_IDENTITY_BETAS.includes(flag));
+  return flags.length > 0 ? flags.join(",") : null;
+}
+
+/**
  * Select the Anthropic-Beta header value for a model id on anthropic-compatible-*
  * nodes. First-party-gated flags are dropped unless `firstParty` (the node's
  * base URL is api.anthropic.com); heavy-agent betas are gated to opus/sonnet.

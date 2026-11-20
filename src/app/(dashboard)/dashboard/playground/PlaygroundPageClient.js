@@ -319,11 +319,11 @@ export default function PlaygroundPageClient() {
           providerName: group.providerName
         };
         map.set(model.id, entry);
-        // A selection saved before the configured prefix was published still
-        // carries the node id. Keep that label resolvable so an upgrade never
-        // silently drops the operator's chosen model.
-        if (model.legacyId && model.legacyId !== model.id && !map.has(model.legacyId)) {
-          map.set(model.legacyId, entry);
+        // The row is addressed by the node id; the configured prefix is the
+        // published label. A selection saved under either form resolves to the
+        // same row.
+        if (model.displayModel && model.displayModel !== model.id && !map.has(model.displayModel)) {
+          map.set(model.displayModel, entry);
         }
       }
     }
@@ -726,7 +726,7 @@ export default function PlaygroundPageClient() {
   };
 
   const modelLabel = activeModel ? `${activeModel.name}` : "Select model";
-  const modelSubLabel = activeModel ? activeModel.requestModel : "Choose from connected providers";
+  const modelSubLabel = activeModel ? activeModel.displayModel || activeModel.requestModel : "Choose from connected providers";
   const activeConnectionOptions = useMemo(() => getConnectionOptions(activeProviderGroup), [activeProviderGroup]);
 
   const connectionValue = activeConnectionOptions.some((opt) => opt.value === activeConnectionId) ?
@@ -808,7 +808,7 @@ export default function PlaygroundPageClient() {
                   <div role="listbox" id={modelListboxId} tabIndex={0} onKeyDown={handleModelListKeyDown} aria-label="Available models" className="max-h-[60vh] space-y-2 overflow-y-auto p-2">
                     {providerGroups.map((group) => <div key={group.providerId} role="group" aria-label={group.providerName} className="rounded-dd border border-dd-border-subtle bg-dd-bg p-2">
                       <div className="flex items-center justify-between px-1.5 py-1.5"><div className="flex min-w-0 items-center gap-2"><ProviderLogo provider={group.providerId} size={20} /><p className="truncate text-[13px] font-semibold text-dd-text">{group.providerName}</p></div><Badge size="sm">{group.models.length}</Badge></div>
-                      <div className="grid gap-1.5 sm:grid-cols-2">{group.models.map((model) => { const optIndex = modelOptions.indexOf(model); const isSelected = model.id === activeModelId; const isActiveOption = optIndex === activeModelIndex; return <button key={model.id} id={`${modelListboxId}-opt-${optIndex}`} type="button" role="option" tabIndex={-1} onClick={() => { handleSelectModel(model.id); modelTriggerRef.current?.focus(); }} onMouseEnter={() => setActiveModelIndex(optIndex)} aria-selected={isSelected} className={isActiveOption ? "rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : isSelected ? "rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : "rounded-dd border border-transparent px-3 py-2.5 text-left outline-none transition-colors hover:border-dd-border hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="block truncate text-[13px] font-medium text-dd-text">{model.name}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{model.id}</span></button>; })}</div>
+                      <div className="grid gap-1.5 sm:grid-cols-2">{group.models.map((model) => { const optIndex = modelOptions.indexOf(model); const isSelected = model.id === activeModelId; const isActiveOption = optIndex === activeModelIndex; return <button key={model.id} id={`${modelListboxId}-opt-${optIndex}`} type="button" role="option" tabIndex={-1} onClick={() => { handleSelectModel(model.id); modelTriggerRef.current?.focus(); }} onMouseEnter={() => setActiveModelIndex(optIndex)} aria-selected={isSelected} className={isActiveOption ? "rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : isSelected ? "rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : "rounded-dd border border-transparent px-3 py-2.5 text-left outline-none transition-colors hover:border-dd-border hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="block truncate text-[13px] font-medium text-dd-text">{model.name}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{model.displayModel || model.id}</span></button>; })}</div>
                     </div>)}
                   </div>
                 </Card> : null}

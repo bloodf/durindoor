@@ -1,0 +1,5 @@
+# Qoder sign-in evidence for #2034
+
+The local device sign-in entry points are `requestDeviceCode` and `pollForToken` in `src/lib/oauth/providers.js`. They instantiate `src/lib/oauth/services/qoder.js` with the selected region's OAuth configuration. The regional registry entries are `open-sse/providers/registry/qoder.js` and `qoder-cn.js`. `tests/unit/qoder-signin-parity.test.js` exercises simultaneous regional logins using fake credentials and a closed fetch mock, including the nonce, verifier, profile bearer token and machine ID association. Existing regional tests cover catalog and request routing.
+
+This is partial evidence, not a completed upstream parity comparison. The pinned upstream source checkouts were not available locally; the inventories in `provider-parity-cliproxyapi.md`, `provider-parity-easycliproxyapi.md` and `provider-parity-omniroute.md` do not establish the full Qoder sign-in, refresh, discovery and streaming contracts. No live provider validation was performed. Refresh behavior, billing isolation and end-to-end streaming parity remain to be compared and verified. No behavior change is claimed here.

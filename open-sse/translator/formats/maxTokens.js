@@ -1,4 +1,5 @@
 import { DEFAULT_MAX_TOKENS, DEFAULT_MIN_TOKENS } from "../../config/runtimeConfig.js";
+import { isNumber } from "../../../src/shared/utils/typeChecks.js";
 
 /**
  * Adjust max_tokens based on request context
@@ -13,7 +14,7 @@ export function adjustMaxTokens(body, ceiling = DEFAULT_MAX_TOKENS, honorExplici
   let maxTokens = body.max_tokens || DEFAULT_MAX_TOKENS;
 
   // Auto-increase for tool calling to prevent truncated arguments (min never above max)
-  if (!(honorExplicitCap && typeof body.max_tokens === "number" && body.max_tokens > 0) && body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
+  if (!(honorExplicitCap && isNumber(body.max_tokens) && body.max_tokens > 0) && body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
     if (maxTokens < DEFAULT_MIN_TOKENS) {
       maxTokens = DEFAULT_MIN_TOKENS;
     }

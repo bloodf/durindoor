@@ -96,7 +96,10 @@ describe("Antigravity Gemini 3.6-3.8 Flash tiers floor minimal to low (#1552, up
   it("resolves the ag alias to the same tier rules", () => {
     expect(run("ag", "gemini-3.7-flash-low", { mode: "level", level: "minimal" }).thinkingLevel).toBe("low");
   });
-  it.each(["gemini", "openrouter", "cheaperinference"])("%s gemini-3.7-flash gets no minimal clamp", (provider) => {
+  // Resellers keep their own contracts. The direct Google lane is floored by the
+  // upstream #5354 port (tiered Gemini 3.6/3.7 Flash) and is covered by
+  // unit/model-capability-5354.test.js.
+  it.each(["openrouter", "cheaperinference"])("%s gemini-3.7-flash gets no minimal clamp", (provider) => {
     expect(getCapabilitiesForModel(provider, "gemini-3.7-flash").thinkingEfforts ?? null).toBeNull();
   });
   it("direct gemini keeps its documented 3.8 Flash row", () => {

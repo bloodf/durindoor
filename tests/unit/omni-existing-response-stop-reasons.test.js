@@ -27,7 +27,7 @@ describe("existing Responses and Claude stop reasons", () => {
     for (const [reason, expected] of [["stop", "end_turn"], ["length", "max_tokens"], ["tool_calls", "tool_use"], ["refusal", "refusal"], ["content_filter", "end_turn"]]) {
       const completion = { choices: [{ message: { content: "partial" }, finish_reason: reason }] };
       expect(projectCompletionToClientFormat(completion, FORMATS.CLAUDE).stop_reason).toBe(expected);
-      const events = openaiToClaudeResponse({ choices: [{ delta: {}, finish_reason: reason }] }, {});
+      const events = openaiToClaudeResponse({ choices: [{ delta: {}, finish_reason: reason }] }, { toolCalls: new Map() });
       expect(events.find((event) => event.type === "message_delta").delta.stop_reason).toBe(expected);
     }
   });
@@ -35,7 +35,7 @@ describe("existing Responses and Claude stop reasons", () => {
   it("emits a filtered stream finish and keeps errors as errors", () => {
     const chunk = openaiResponsesToOpenAIResponse({ type: "response.incomplete", response: response("incomplete", "content_filter") }, {});
     expect(chunk.choices[0].finish_reason).toBe("content_filter");
-    const events = openaiToClaudeResponse({ choices: [{ delta: {}, finish_reason: "error" }] }, {});
+    const events = openaiToClaudeResponse({ choices: [{ delta: {}, finish_reason: "error" }] }, { toolCalls: new Map() });
     expect(events.some((event) => event.type === "error")).toBe(true);
     expect(events.some((event) => event.type === "message_delta")).toBe(false);
   });

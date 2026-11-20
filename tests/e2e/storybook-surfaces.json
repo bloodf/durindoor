@@ -24678,7 +24678,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "1f5be6e3ab8c95f8ebc567da4abe33ecfdc0374eed7027b49df869db7c9b0252",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26020,7 +26020,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26033,7 +26033,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26046,7 +26046,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26059,7 +26059,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -26097,7 +26097,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26120,7 +26120,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26142,7 +26142,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26164,7 +26164,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26336,7 +26336,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26368,7 +26368,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -26483,7 +26483,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26571,7 +26571,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "338c331c48ae916007de16187be0ad3a1dea0e8769ce2dc4b8a27df9e1ac3a6f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ea2538299e6694f613b5f97dc73153f52ea6350463f25f11a7a9b5e980c4d3cd",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ecee5d496b258fa4c93f9a75db69e33ae83a1ed739b55bfdf9bb3990de71dc2a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"

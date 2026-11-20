@@ -556,12 +556,14 @@ describe("mcp-control tools", () => {
     // but its userinfo is a live credential and the MCP surface authenticates
     // with an application API key, never an operator session.
     mocks.getSettings.mockResolvedValue({
+      comboPrompts: { outer: "private instruction" },
       outboundProxyEnabled: true,
       outboundProxyUrl: "http://proxyuser:s3cret@proxy.internal:8080",
     });
 
     const result = await callTool("get_settings", {});
 
+    expect(result.settings).not.toHaveProperty("comboPrompts");
     expect(result.settings.outboundProxyUrl).not.toContain("s3cret");
     expect(result.settings.outboundProxyUrl).not.toContain("proxyuser");
     expect(result.settings.outboundProxyUrl).toContain("proxy.internal:8080");
@@ -574,6 +576,7 @@ describe("mcp-control tools", () => {
     await callTool("update_settings", {
       settings: {
         hidePaidModels: true,
+        comboPrompts: { outer: "untrusted" },
         requireApiKey: false,
         requireLogin: false,
         password: "pwned",

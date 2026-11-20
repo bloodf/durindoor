@@ -321,7 +321,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -948,10 +948,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
-  // Custom prompt: user-authored instruction, independent of the savers above.
-  // Still honors the per-request token-saver bypass header.
-  if (tokenSaverEnabled && customPromptEnabled && injectCustomPrompt(translatedBody, finalFormat, customPrompt)) {
-    xf.push(`CUSTOMPROMPT:${customPrompt.trim().length}c`);
+  // Kiro stores instructions as a prefix in user content. Inject the global
+  // and combo instructions together there to retain outer-to-inner order.
+  const globalPrompt = tokenSaverEnabled && customPromptEnabled && isString(customPrompt) && customPrompt.trim() ? customPrompt : "";
+  const kiroCombined = (finalFormat === FORMATS.KIRO || isString(translatedBody.conversationState?.currentMessage?.userInputMessage?.content)) && globalPrompt && comboPrompts.length;
+  if (globalPrompt && !kiroCombined && injectCustomPrompt(translatedBody, finalFormat, globalPrompt)) {
+    xf.push(`CUSTOMPROMPT:${globalPrompt.trim().length}c`);
+  }
+  // Configured combo instructions are routing policy, independent of savers.
+  if (comboPrompts.length) {
+    injectCustomPrompt(translatedBody, finalFormat, [...(kiroCombined ? [globalPrompt] : []), ...comboPrompts].join("\n\n"));
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch

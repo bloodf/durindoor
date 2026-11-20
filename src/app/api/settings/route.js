@@ -70,7 +70,10 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
   }
   // Operator-authored prompt text; unprivileged readers only learn the enabled flag.
-  if (!privileged) delete safeSettings.customPrompt;
+  if (!privileged) {
+    delete safeSettings.customPrompt;
+    delete safeSettings.comboPrompts;
+  }
   return { safeSettings, password };
 }
 
@@ -314,6 +317,17 @@ export async function PATCH(request) {
         }
         if (Object.prototype.hasOwnProperty.call(cr, "preferLargeContext") && !isBoolean(cr.preferLargeContext)) return bad();
         if (Object.prototype.hasOwnProperty.call(cr, "contextFilterMode") && cr.contextFilterMode !== "strict" && cr.contextFilterMode !== "lenient") return bad();
+      }
+    }
+
+    // Separate from legacy strategy keys: only an authenticated operator may
+    // configure these instructions, and existing combo settings stay inert.
+    if (Object.prototype.hasOwnProperty.call(body, "comboPrompts")) {
+      const prompts = body.comboPrompts;
+      if (!prompts || !isObject(prompts) || Array.isArray(prompts) ||
+          Object.entries(prompts).some(([name, prompt]) => !name.trim() ||
+            !isString(prompt) || prompt.length > MAX_CUSTOM_PROMPT_CHARS)) {
+        return NextResponse.json({ error: "Invalid comboPrompts" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }
 

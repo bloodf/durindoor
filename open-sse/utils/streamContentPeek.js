@@ -11,6 +11,7 @@
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
+import { isSafetyStopPayload } from "./safetyStopFrame.js";
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
@@ -134,6 +135,9 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  *
  * outcome:
  * - "content": a frame carried text, reasoning, or a tool call
+ * - "safety_stop": an explicit provider safety/refusal stop arrived before any
+ *   content. It is the provider's terminal answer, so it counts as a response:
+ *   never an empty stream, never a reason for a sibling model or account
  * - "limit": the peek budget filled up without a verdict (treated as content)
  * - "empty": the stream closed before any content
  * - "error": the stream errored before any content
@@ -163,15 +167,22 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
     timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
   });
   const result = (outcome, replay = {}) => ({
-    hasContent: outcome === "content" || outcome === "limit",
+    hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop",
     outcome,
     body: replayStream(reader, chunks, replay),
     streamError
   });
-  // True when the line carries output; records the first error envelope.
+  let safetyStop = false;
+  // True when the line carries output or an explicit safety stop; records the
+  // first error envelope otherwise.
   const inspect = (line) => {
     if (frameCarriesContent(line)) return true;
-    if (!streamError) streamError = extractStreamErrorPayload(parseDataLine(line));
+    const parsed = parseDataLine(line);
+    if (isSafetyStopPayload(parsed)) {
+      safetyStop = true;
+      return true;
+    }
+    if (!streamError) streamError = extractStreamErrorPayload(parsed);
     return false;
   };
 
@@ -183,7 +194,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       if (next.done) {
         pending += decoder.decode();
         const tail = pending.trim();
-        if (tail && inspect(tail)) return result("content", { done: true });
+        if (tail && inspect(tail)) return result(safetyStop ? "safety_stop" : "content", { done: true });
         return result("empty", { done: true });
       }
 
@@ -194,7 +205,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       while ((newline = pending.indexOf("\n")) !== -1) {
         const line = pending.slice(0, newline).trim();
         pending = pending.slice(newline + 1);
-        if (inspect(line)) return result("content");
+        if (inspect(line)) return result(safetyStop ? "safety_stop" : "content");
       }
     }
     return result("limit");

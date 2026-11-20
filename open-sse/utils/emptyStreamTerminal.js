@@ -2,6 +2,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
 import { hasResponsesContentItem } from "./responsesContent.js";
+import { isSafetyStopPayload } from "./safetyStopFrame.js";
 
 const encoder = new TextEncoder();
 const GRACE_MS = 1000;
@@ -56,7 +57,10 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     if (error) { sawError = true; held = ""; clear(); send(controller, frame); return; }
     // Native Claude and Responses passthrough content is not accumulated by
     // the OpenAI-oriented accounting snapshot, so observe client output too.
-    if (format === FORMATS.OPENAI_RESPONSES && hasResponsesSnapshotOutput(payload) ||
+    // An explicit provider safety/refusal stop is the provider's answer, not an
+    // empty completion: keep its terminal instead of replacing it with an error.
+    if (isSafetyStopPayload(payload) ||
+        format === FORMATS.OPENAI_RESPONSES && hasResponsesSnapshotOutput(payload) ||
         event === "content_block_delta" && (payload?.delta?.text?.trim?.() || payload?.delta?.thinking?.trim?.()) ||
         event === "content_block_start" && payload?.content_block?.type === "tool_use" ||
         ["response.output_text.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta"].includes(event) && payload?.delta?.trim?.() ||

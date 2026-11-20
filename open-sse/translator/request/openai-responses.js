@@ -311,6 +311,10 @@ function responsesContentToOpenAI(c) {
     const url = responsesImageUrl(c);
     return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
   }
+  if (c?.type === RESPONSES_ITEM.INPUT_FILE) {
+    const { file_data, file_id, file_url, filename } = c;
+    return { type: OPENAI_BLOCK.FILE, file: Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
+  }
   return c;
 }
 
@@ -751,6 +755,10 @@ function extractInstructionsText(content) {
  */
 function chatPartToResponses(c, contentType) {
   if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
+  if (c.type === OPENAI_BLOCK.FILE && c.file && isObject(c.file)) {
+    const { file_data, file_id, file_url, filename } = c.file;
+    return { type: RESPONSES_ITEM.INPUT_FILE, ...Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
+  }
   if (c.type === OPENAI_BLOCK.IMAGE_URL) {
     const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
     // No usable URL: fall through to the text serialization below.

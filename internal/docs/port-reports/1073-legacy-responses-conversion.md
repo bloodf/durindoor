@@ -1,0 +1,19 @@
+# OmniRoute #747: Responses and Chat conversion
+
+Compared [OmniRoute #747](https://github.com/cheaper-inference/OmniRoute/pull/747), head `fdaeccf1e52ed36361331aa55260506b4719efef`, merge `e464a95c5abe2388d28f32c2b7ebf6a0b1ffe1b8`, with this integration. The comparison covers the PR diff, not only the final head commit. No provider calls were used.
+
+| Pinned change | Current disposition and evidence |
+| --- | --- |
+| Both Chat-to-Responses stream implementations collect output and usage in completion | Already implemented with ordered snapshots and normalized usage, including trailing usage after finish. See `responses-snapshot-source-order.test.js`, `responses-usage-trailing-6965.test.js`, `responses-transform-stream.test.js`, and the focused synthetic test. The older completion construction would lose later ordering and terminal semantics. |
+| Responses reasoning summary delta becomes Chat reasoning | Already implemented, including reasoning text deltas; focused test and `responses-api-reasoning-port.test.js`. |
+| Delegate the alternate Responses request helper to the canonical translator; skip orphan outputs and nameless calls | No same-path helper exists here. The canonical translator handles history and call identity, with repair and ordering beyond the old patch; see `responses-history-tool-identity-15974.test.js`, `responses-historical-tool-pairing.test.js`, and the focused call test. |
+| Text and image conversion in both directions, including detail | Already supported. Missing image detail defaults to `auto` here, whereas the patch omits it. Focused test and `chat-responses-tool-output-media-1332.test.js`. |
+| File parts in both directions | Residual implemented: `input_file` and Chat `file` preserve the four fields carried by the patch. Focused test covers all fields, absent optional fields and adjacent text/image. |
+| Serialize non-string call arguments | Already handled by `coerceResponsesArguments`; focused test. Existing normalization also handles malformed and custom-tool arguments. |
+| Translate forced tool choice in both directions | Already handled, including name normalization and extended choices; focused test and `responses-chat-tool-name-clamp-1345.test.js`. |
+| Reject non-function hosted tools and unsupported tool choices | Deliberate difference: current conversion filters/normalizes unsupported declarations and choices rather than adopting the older broad throw. Existing native and custom tool handling must remain intact; see `v5-conformance-tool-choice-responses.test.js` and `responses-custom-tool-history-1387.test.js`. |
+| Convert text array tool output to an array | Current implementation keeps text-only output as a string and retains media arrays and error markers; `chat-responses-tool-output-media-1332.test.js`. This preserves the later contract. |
+| Convert deprecated assistant `function_call` and `function` role | Exact remaining difference: current Chat-to-Responses loop does not convert these legacy fields. The patch synthesizes `call_<name>`, which aliases repeated calls of the same name and conflicts with current identity and pairing rules. No safe identity-preserving port is established by this patch. |
+| Replace every opening `<think>` marker in a chunk | Exact remaining difference: both current implementations remove only the first opening marker and split at the first close. The patch's `replaceAll` still does not parse multiple reasoning spans correctly (it leaves later closing markers and classifies the remainder as text), so it is not adopted as a complete fix. `omni-responses-mixed-reasoning.test.js` covers the ordinary mixed reasoning/tool case. |
+
+Disposition: port only the file-part residual. Preserve the later event ordering, error terminals, usage, identity and media contracts; #19006 and #19599 remain independently queued and are not implemented here. Focused verification does not claim coverage of the full suite or all provider behavior.

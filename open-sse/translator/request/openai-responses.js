@@ -189,8 +189,6 @@ function convertChatToolChoiceToResponses(choice) {
     return name ? { type: OPENAI_BLOCK.FUNCTION, name } : undefined;
   }
 
-  if (choice.type === OPENAI_BLOCK.WEB_SEARCH) return { type: OPENAI_BLOCK.WEB_SEARCH };
-
   if (choice.type === "custom") {
     const name = normalizeResponsesToolName(choice.custom?.name ?? choice.name);
     return name ? { type: "custom", name } : undefined;
@@ -917,7 +915,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }).filter(Boolean);
   }
 
-  if (body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH)) result.include = ["web_search_call.action.sources"];
+  // Only the Claude native-search pivot may force a hosted search choice.
+  const claudeSearch = body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH);
+  if (claudeSearch) result.include = ["web_search_call.action.sources"];
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;
@@ -926,7 +926,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Allowlist converter drops invalid shapes; also omit when no declarations
   // survived filtering (OpenAI rejects a forced choice with no tools).
   if (Array.isArray(result.tools) && result.tools.length > 0) {
-    const converted = convertChatToolChoiceToResponses(body.tool_choice);
+    const converted = claudeSearch && body.tool_choice?.type === OPENAI_BLOCK.WEB_SEARCH ?
+      { type: OPENAI_BLOCK.WEB_SEARCH } : convertChatToolChoiceToResponses(body.tool_choice);
     if (converted !== undefined) result.tool_choice = converted;
   }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;

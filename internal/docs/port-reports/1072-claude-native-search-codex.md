@@ -4,7 +4,8 @@ Claude Messages requests declaring `web_search_20250305` can use Codex hosted
 search. The declaration is converted in place to a Responses `web_search` tool,
 with `web_search_call.action.sources` included alongside encrypted reasoning.
 Only explicit declarations enable search. Client-supplied `include` fields are not
-forwarded by this conversion.
+forwarded by this conversion. A forced hosted search choice is accepted only
+for the Claude native-search conversion; ordinary Chat choice validation is unchanged.
 
 Hosted search actions become Claude `server_tool_use` and
 `web_search_tool_result` blocks. Source URLs come from the search action or,

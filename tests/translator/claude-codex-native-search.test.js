@@ -26,6 +26,13 @@ describe("Claude native search over Codex", () => {
     const chat = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "upstream", { messages: [{ role: "user", content: "hi" }], tools: [{ type: "web_search" }], include: ["arbitrary"] }, true, null, "codex");
     expect(chat.include).toBeUndefined();
   });
+  it("preserves a forced Claude search without widening Chat tool choices", () => {
+    const body = { ...request(), tool_choice: { type: "tool", name: "web_search" } };
+    const converted = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES, "upstream", body, true, null, "codex");
+    expect(converted.tool_choice).toEqual({ type: "web_search" });
+    const chat = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "upstream", { messages: [{ role: "user", content: "hi" }], tools: [{ type: "web_search" }], tool_choice: { type: "web_search" } }, true, null, "codex");
+    expect(chat.tool_choice).toBeUndefined();
+  });
   it("keeps ordinary response translation", () => {
     const state = initState(FORMATS.CLAUDE);
     const output = [{ type: "response.output_text.delta", delta: "ordinary" }, { type: "response.completed", response: { status: "completed", usage: { input_tokens: 2, output_tokens: 1 } } }].flatMap(event => translateResponse(FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE, event, state));

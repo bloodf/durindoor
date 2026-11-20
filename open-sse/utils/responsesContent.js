@@ -33,3 +33,17 @@ export function hasResponsesContentItem(item) {
 export function isResponsesReceipt(response) {
   return response?.object === "response" && isString(response.id) && response.id.trim().length > 0 && ["queued", "in_progress"].includes(response.status);
 }
+
+/**
+ * A native Responses envelope: the provider's own `object: "response"` body
+ * carrying its native `output` items.
+ *
+ * Such an envelope may also carry the request's text CONFIGURATION next to
+ * that output (`text: {format: {type: "json_schema"}}`). That field is
+ * metadata about how the answer was requested, not assistant content, so a
+ * classifier must judge the envelope by its output items and status instead
+ * of by the presence of a `text` key.
+ */
+export function isResponsesEnvelope(response) {
+  return isObject(response) && response.object === "response" && Array.isArray(response.output);
+}

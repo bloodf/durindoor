@@ -98,6 +98,8 @@ Scope DurinDoor client keys to the intended saved connection. CLIProxyAPI client
 
 For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.
 
+Buffered responses are decoded the same way before they are projected into the format the client asked for, so a JSON reply to Chat Completions, Claude Messages, Gemini or Responses requests carries the tool call instead of the raw frame. The same reply still arrives as a single JSON body.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:

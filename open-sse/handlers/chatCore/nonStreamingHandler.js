@@ -1,3 +1,4 @@
+import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
@@ -276,6 +277,7 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
  * handles non-streaming JSON bodies.
  */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, options = {}) {
+  if (targetFormat === FORMATS.OPENAI) normalizeDsmlCompletion(responseBody, options.effectiveModel || options.model, options.provider);
   /** Upstream PR #3373: request translators emit arrays; projection uses Set membership. */
   const customToolNames = options.customToolNames instanceof Set ?
   options.customToolNames :
@@ -620,7 +622,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       responseBody,
       targetFormat,
       sourceFormat,
-      { claudeCompat, model, customToolNames, toolNameMap, requestBody: body }
+      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
     );
 
     /**

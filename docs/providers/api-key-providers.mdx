@@ -92,6 +92,10 @@ For hosted Devin, use the exact model ID discovered from CLIProxyAPI, including 
 
 Scope DurinDoor client keys to the intended saved connection. CLIProxyAPI client keys on one instance share its upstream pool. For an isolated upstream account or relay, use a dedicated CLIProxyAPI instance and an independently configured OpenAI-compatible connection with its own base URL and key. Keep the instance reachable only from the clients and app that you authorize.
 
+## DeepSeek DSML tool calls
+
+For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:

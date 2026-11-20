@@ -1,3 +1,4 @@
+import { hasResponsesContentItem, isResponsesReceipt } from "../utils/responsesContent.js";
 import { withRouteResponseHeaders } from "../utils/routeResponseHeaders.js";
 import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 /**
@@ -1382,8 +1383,9 @@ async function isBodyEmpty(response) {
   if (Object.prototype.hasOwnProperty.call(payload, "text")) return !hasText(payload.text);
   if (Array.isArray(payload.candidates)) return !payload.candidates.some((candidate) =>
     Array.isArray(candidate?.content?.parts) && candidate.content.parts.some((part) => hasText(part?.text) || part?.functionCall || part?.inlineData?.data || part?.inline_data?.data || part?.fileData || part?.file_data));
+  if (isResponsesReceipt(payload)) return false;
   if (Array.isArray(payload.output)) return !payload.output.some((item) =>
-    hasBlock(item) || (Array.isArray(item?.content) && item.content.some(hasBlock)) || (Array.isArray(item?.summary) && item.summary.some(hasBlock)));
+    hasResponsesContentItem(item) || hasBlock(item) || (Array.isArray(item?.content) && item.content.some(hasBlock)) || (Array.isArray(item?.summary) && item.summary.some(hasBlock)));
   return false;
 }
 

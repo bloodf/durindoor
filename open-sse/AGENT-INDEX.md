@@ -239,6 +239,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `inner-ai` | openai | apikey | `https://chatapi.innerai.com/chat` |
 | `internlm` | openai | apikey | `https://chat.intern-ai.org.cn/api/v1/chat/completions` |
 | `inworld` |  | apikey | `` |
+| `jembatanai` |  | apikey | `https://freeai.jembatanai.com/v1/chat/completions` |
 | `jina-ai` |  | apikey | `` |
 | `jina-reader` |  | apikey | `` |
 | `kenari` |  | apikey | `https://kenari.id/v1/chat/completions` |
@@ -387,6 +388,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `triton` | openai | apikey | `http://localhost:8000/v1` |
 | `typesafe` |  | apikey | `` |
 | `typhoon` | openai | apikey | `https://api.opentyphoon.ai/v1/chat/completions` |
+| `uberllm` |  | apikey | `https://api.uberllm.dev/v1/chat/completions` |
 | `uc-direct` |  | apikey | `https://api.uncensored.com/api/v1/chat/completions` |
 | `udio` | openai | webCookie | `https://www.udio.com/api/generate-proxy` |
 | `uncloseai` |  | freeTier | `https://hermes.ai.unturf.com/v1/chat/completions` |

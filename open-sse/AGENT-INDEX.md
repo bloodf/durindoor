@@ -105,6 +105,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |
 | `apmix` |  | apikey | `https://api.apmix.ai/v1/chat/completions` |
 | `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
+| `arcee-platform` |  | apikey | `https://api.arcee.ai/api/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
 | `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |

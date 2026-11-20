@@ -172,6 +172,16 @@ function resolveSelection(model, body) {
   if (normalized === "gpt-5-6-luna-free-thinking") {
     return { kind: "free", thinkEnabled: true };
   }
+  // OmniRoute fbd3396, open-sse/utils/chatgptWebExecutorAdapter.ts.
+  if (normalized === "gpt-6-pro") {
+    return { kind: "picker", modelLabel: "GPT-6 Sol", effortIndex: 4 };
+  }
+  if (normalized === "gpt-6-instant" || normalized === "gpt-6") {
+    return { kind: "picker", modelLabel: "GPT-6 Sol", effortIndex: 0 };
+  }
+  if (["gpt-6-thinking", "gpt-6-sol"].includes(normalized)) {
+    return { kind: "picker", modelLabel: "GPT-6 Sol", effortIndex: effortIndex(reasoningEffort(body)) };
+  }
   if (normalized === "gpt-5-6-pro") {
     return { kind: "picker", modelLabel: "GPT-5.6 Sol", effortIndex: 4 };
   }

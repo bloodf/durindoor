@@ -22,8 +22,8 @@ function chunkMeta(state) {
 function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   // Repeated full snapshots with the same provider ID are not new calls.
   const upstreamId = functionCall.id;
-  if (typeof upstreamId === "string" && upstreamId && state.emittedGeminiCallIds?.has(upstreamId)) return null;
-  if (typeof upstreamId === "string" && upstreamId) {
+  if (isString(upstreamId) && upstreamId && state.emittedGeminiCallIds?.has(upstreamId)) return null;
+  if (isString(upstreamId) && upstreamId) {
     (state.emittedGeminiCallIds ??= new Set()).add(upstreamId);
   }
   const rawName = functionCall.name;

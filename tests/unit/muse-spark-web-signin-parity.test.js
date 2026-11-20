@@ -49,4 +49,10 @@ describe("Muse Spark web boundaries", () => {
     expect(parseMetaAiResponseText(frame("Hello") + frame("Hello world"), false)).toMatchObject({ status: 200, content: "Hello world", deltas: ["Hello", " world"] });
     expect(parseMetaAiResponseText(frame("Authentication required to send messages"), false)).toMatchObject({ status: 401 });
   });
+  it("classifies assistant error states and security blocks", () => {
+    const response = (content) => JSON.stringify({ data: { sendMessageStream: { __typename: "AssistantMessage", streamingState: "ERROR", content } } });
+    expect(parseMetaAiResponseText(response("Unexpected provider failure"), false)).toMatchObject({ status: 502, errorMessage: "Meta AI returned an error: Unexpected provider failure" });
+    expect(parseMetaAiResponseText(response("Blocked by our security system"), false)).toMatchObject({ status: 403 });
+  });
+
 });

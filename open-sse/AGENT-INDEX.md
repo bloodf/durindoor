@@ -114,9 +114,11 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `apmix` |  | apikey | `https://api.apmix.ai/v1/chat/completions` |
 | `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
+| `atlascloud` |  | apikey | `https://api.atlascloud.ai/v1/chat/completions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
 | `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |
 | `auto` |  | system | `` |
+| `avalai` | openai | apikey | `https://api.avalai.ir/v1/chat/completions` |
 | `aws-polly` |  | apikey | `` |
 | `azure` |  | apikey | `` |
 | `azure-ai` |  | apikey | `https://example-resource.services.ai.azure.com/openai/v1/chat/completions` |
@@ -248,6 +250,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `inner-ai` | openai | apikey | `https://chatapi.innerai.com/chat` |
 | `internlm` | openai | apikey | `https://chat.intern-ai.org.cn/api/v1/chat/completions` |
 | `inworld` |  | apikey | `` |
+| `jembatanai` |  | apikey | `https://freeai.jembatanai.com/v1/chat/completions` |
 | `jina-ai` |  | apikey | `` |
 | `jina-reader` |  | apikey | `` |
 | `kenari` |  | apikey | `https://kenari.id/v1/chat/completions` |
@@ -299,6 +302,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `muse-code` | openai-responses | oauth | `https://api.meta.ai/v1/responses` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `naga-ac` |  | apikey | `https://api.naga.ac/v1/chat/completions` |
+| `nan` |  | apikey | `https://api.nan.builders/v1/chat/completions` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |
 | `nara` |  | apikey | `https://router.bynara.id/v1/chat/completions` |
@@ -329,6 +333,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opper` |  | apikey | `https://api.opper.ai/v3/compat/chat/completions` |
 | `orcarouter` | openai | oauth | `https://api.orcarouter.ai/v1/chat/completions` |
 | `ovhcloud` | openai | apikey | `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions` |
+| `parallel` |  | apikey | `` |
+| `paraloncloud` |  | apikey | `https://paraloncloud.com/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
 | `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
 | `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
@@ -372,6 +378,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `speka` |  | apikey | `https://speka.me/v1/chat/completions` |
 | `stability-ai` |  | apikey | `` |
 | `stepfun` |  | freeTier | `https://api.stepfun.com/v1/chat/completions` |
+| `subq` |  | apikey | `` |
 | `sumopod` |  | apikey | `https://ai.sumopod.com/v1/chat/completions` |
 | `suno` | openai | webCookie | `https://studio-api.suno.ai/api/generate/v2/` |
 | `synthetic` |  | apikey | `https://api.synthetic.new/openai/v1/chat/completions` |
@@ -392,6 +399,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `triton` | openai | apikey | `http://localhost:8000/v1` |
 | `typesafe` |  | apikey | `` |
 | `typhoon` | openai | apikey | `https://api.opentyphoon.ai/v1/chat/completions` |
+| `uberllm` |  | apikey | `https://api.uberllm.dev/v1/chat/completions` |
 | `uc-direct` |  | apikey | `https://api.uncensored.com/api/v1/chat/completions` |
 | `udio` | openai | webCookie | `https://www.udio.com/api/generate-proxy` |
 | `uncloseai` |  | freeTier | `https://hermes.ai.unturf.com/v1/chat/completions` |

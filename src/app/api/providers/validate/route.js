@@ -116,8 +116,10 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
     body = JSON.stringify({ query: "ping", q: "ping", url: "https://example.com" });
   }
 
-  const res = await fetchValidationProbe(url, { method: cfg.method, headers, body });
-  return res.ok;
+  const options = { method: cfg.method, headers, body };
+  if (cfg.preventRedirects) options.redirect = "error";
+  const res = await fetchValidationProbe(url, options);
+  return res.ok || provider === "parallel" && res.status === 422;
 }
 
 // Probe a media provider (tts/embedding/stt/image/video) using *Config.
@@ -675,6 +677,8 @@ export async function POST(request) {
         case "novita":
         case "siliconflow":
         case "hyperbolic":
+        case "nan":
+        case "paraloncloud":
         case "ollama":
         case "ollama-local":
         case "assemblyai":

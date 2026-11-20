@@ -506,6 +506,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
 
   const isCompactRequest = requestContext?.compact === true;
+  const streamWasOmitted = body.stream === undefined;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
   const providerRequiresStreaming = !isCompactRequest &&
   (PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
@@ -1074,7 +1075,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   Object.defineProperty(preflightCaps, "customKeys", { value: new Set(operatorKeys), enumerable: false });
   // Dispatch/clamping and preflight consume the same resolved ceiling, while
   // BaseExecutor separately reserves explicit output or a documented default.
-  requestContext = Object.freeze({ ...requestContext, modelCapabilities: preflightCaps });
+  // Capture translation provenance once so OAuth retries reuse the same
+  // frozen dispatch context, including the resolved limits.
+  requestContext = Object.freeze({
+    ...requestContext,
+    modelCapabilities: preflightCaps,
+    translatedToCodex: provider === "codex" && !passthrough && sourceFormat !== targetFormat,
+  });
   const knownContext = preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0;
   const maxInput = Number.isFinite(preflightCaps.maxInput) && preflightCaps.maxInput > 0 ? preflightCaps.maxInput : null;
   if (knownContext || maxInput !== null) {
@@ -1395,15 +1402,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finishActiveDashboardSession("error");
     const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });
     const wasClientAbort = terminalReason === "abort";
+    const antigravityPreResponseTimeout = provider === "antigravity" && error?.antigravityPreResponseTimeout === true;
+    const failureStatus = antigravityPreResponseTimeout ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
     await settleQuota(false, terminalReason);
-    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => {});
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : failureStatus}` }).catch(() => {});
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: translatedBody || null,
-      response: { error: sanitizeErrorMessage(error.message || String(error)), status: wasClientAbort ? 499 : 502, thinking: null },
+      response: { error: sanitizeErrorMessage(error.message || String(error)), status: wasClientAbort ? 499 : failureStatus, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => { });
@@ -1412,7 +1421,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       streamController.handleError(error);
       return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
-    const errMsg = formatProviderError(error, provider, requestedModel, HTTP_STATUS.BAD_GATEWAY);
+    const errMsg = formatProviderError(error, provider, requestedModel, failureStatus);
     if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
       log?.warn?.("CHAT", `classifier upstream unavailable, default-allowing: ${errMsg}`);
       streamController.handleComplete();
@@ -1420,10 +1429,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return buildDefaultAllowClaudeMessage(detectClassifierFormat(body));
     }
     if (log?.errorLine) {
-      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
+      log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
     finishTimeline("error", "error", errMsg);
-    return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg), attemptStartedAt: latestProviderAttemptStartedAt };
+    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   const parseAndRestateError = async (response) => {
@@ -1823,6 +1832,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     try {
       const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
+      // Compatible chat clients that omit stream expect JSON, even if a
+      // stream-only provider unexpectedly answered with a JSON completion.
+      // Keep explicit flags and other endpoint contracts on their existing paths.
+      const path = String(clientRawRequest?.endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
+      if (sourceFormat === FORMATS.OPENAI && path.endsWith("/v1/chat/completions") &&
+          streamWasOmitted && (providerResponse.headers.get("content-type") || "").toLowerCase().includes("application/json")) {
+        stream = false;
+      }
     } catch (error) {
       return failPostResponseHandling(error);
     }
@@ -1834,7 +1851,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
     try {
-      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
+      const result = await handleNonStreamingResponse({ ...sharedCtx, stream, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
       return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);

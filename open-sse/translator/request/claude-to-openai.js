@@ -118,8 +118,12 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
     if (body.tool_choice.disable_parallel_tool_use === true && result.tools?.length) result.parallel_tool_calls = false;
   }
 
-  if (body.output_config?.effort !== undefined) {
-    result.reasoning_effort = body.output_config.effort;
+  // A later system directive represents the current turn, overriding cached defaults.
+  const directiveEffort = body.messages?.findLast((message) =>
+    message?.role === ROLE.SYSTEM && isString(message.output_config?.effort) && message.output_config.effort.trim()
+  )?.output_config.effort.trim().toLowerCase();
+  if (directiveEffort || body.output_config?.effort !== undefined) {
+    result.reasoning_effort = directiveEffort || body.output_config.effort;
   } else if (body.reasoning_effort !== undefined) {
     result.reasoning_effort = body.reasoning_effort;
   } else if (body.reasoning?.effort !== undefined) {

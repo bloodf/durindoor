@@ -347,11 +347,55 @@ function convertConstToEnum(obj) {
   }
 }
 
+// Gemini's Schema.enum is only valid for Type.STRING (ai.google.dev/api/caching#Schema).
+// String enums are kept and stringified. Numeric/boolean enums keep their declared type
+// and numeric constraints (minimum/maximum); only the unsupported enum list is lifted
+// into the description so the model still sees the allowed values. Client-side
+// validation of the original tool schema is untouched.
+const NON_STRING_ENUM_TYPES = new Set(["integer", "number", "boolean"]);
+
+function enumNodeType(obj) {
+  const types = (Array.isArray(obj.type) ? obj.type : [obj.type]).filter((t) => isString(t) && t !== "null");
+  return types.length === 1 ? types[0] : undefined;
+}
+
+function inferEnumValueType(values) {
+  const present = values.filter((v) => v !== null);
+  if (present.length === 0) return undefined;
+  if (present.every((v) => typeof v === "boolean")) return "boolean";
+  if (present.every((v) => typeof v === "number" && Number.isFinite(v))) {
+    return present.every(Number.isInteger) ? "integer" : "number";
+  }
+  return undefined;
+}
+
+// Lift a numeric/boolean enum off one schema node. Returns true when the node was handled.
+function liftNonStringEnum(obj) {
+  const type = enumNodeType(obj) || (obj.type === undefined ? inferEnumValueType(obj.enum) : undefined);
+  if (!NON_STRING_ENUM_TYPES.has(type)) return false;
+  if (obj.type === undefined) obj.type = type;
+  const hint = `Allowed values: ${obj.enum.filter((v) => v !== null).map((v) => JSON.stringify(v)).join(", ")}.`;
+  obj.description = isString(obj.description) && obj.description ? `${obj.description} ${hint}` : hint;
+  delete obj.enum;
+  return true;
+}
+
+// Apply the numeric/boolean enum contract in place to a schema that is not otherwise
+// cleaned (the direct Claude -> Gemini route). String enums and everything else are untouched.
+export function liftGeminiNonStringEnums(schema) {
+  if (!schema || !isObject(schema)) return schema;
+  if (Array.isArray(schema.enum)) liftNonStringEnum(schema);
+  for (const value of Object.values(schema)) {
+    if (value && isObject(value)) liftGeminiNonStringEnums(value);
+  }
+  return schema;
+}
+
 // Convert enum values to strings (Gemini requires string enum values + explicit type:"string")
 function convertEnumValuesToStrings(obj) {
   if (!obj || !isObject(obj)) return;
 
-  if (obj.enum && Array.isArray(obj.enum)) {
+  if (obj.enum && Array.isArray(obj.enum) && !liftNonStringEnum(obj)) {
     obj.enum = obj.enum.map((v) => String(v));
     // Gemini API requires type:"string" when enum is present — without it returns 400
     if (!obj.type) {

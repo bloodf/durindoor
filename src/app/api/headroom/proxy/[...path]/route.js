@@ -67,9 +67,9 @@ export function rewriteHeadroomHtml(html, prefix = DASHBOARD_PREFIX) {
       (match, attr, quote, url) =>
         isAllowedPath(url, prefix) ? `${attr}=${quote}${prefix}${url}${quote}` : match,
     )
-    .replace(/fetch\s*\(\s*(['"`])(\/[^'"`]*?)\1/g, (match, quote, url) => {
+    .replace(/\b(fetch|fetchJson)\s*\(\s*(['"`])(\/[^'"`]*?)\2/g, (match, fn, quote, url) => {
       if (url.includes("\\") || url.includes("${") || !isAllowedPath(url, prefix)) return match;
-      return `fetch(${quote}${prefix}${url}${quote}`;
+      return `${fn}(${quote}${prefix}${url}${quote}`;
     });
 }
 

@@ -7,7 +7,8 @@ import { BaseExecutor } from "./base.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildErrorBody, readBoundedResponseText, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
+import { runQuotaBearingProviderRequest, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 export const NLP_CLOUD_BASE = "https://api.nlpcloud.io/v1/gpu";
 const MAX_JSON_BYTES = 4 * 1024 * 1024;
@@ -99,6 +100,13 @@ export class NlpCloudExecutor extends BaseExecutor {
     let payload;
     const url = this.buildUrl(model || "");
     const result = (response, headers = {}, transformedBody = body) => ({ response, url, headers, transformedBody });
+    // The physical upstream Response owns the quota dispatch ticket. Every
+    // returned response below replaces it, so the ticket has to follow the
+    // replacement; otherwise the reservation is orphaned and never settled.
+    const carryTicket = (upstream, returned) => {
+      transferProviderAttemptDispatch(upstream, returned);
+      return returned;
+    };
     if (!credentials?.apiKey && !credentials?.accessToken) return result(fail(401, "NLP Cloud API key is missing"));
     if (!isString(model) || !model || model.includes("/") || model === "." || model === "..") return result(fail(400, "Invalid NLP Cloud model"));
     try { payload = chatbotRequest(body, stream); } catch (error) { return result(fail(400, error.message)); }
@@ -107,6 +115,10 @@ export class NlpCloudExecutor extends BaseExecutor {
     try {
       response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(payload), signal }, proxyOptions));
     } catch (error) {
+      // A local quota denial is a gateway capacity decision, not a provider
+      // failure. Keep its type so chatCore reports local quota unavailability
+      // instead of an upstream 502; the request never reached the provider.
+      if (isQuotaDispatchUnavailable(error)) throw error;
       if (error?.name === "AbortError" || signal?.aborted) throw error;
       return result(fail(502, "NLP Cloud request failed"), headers, payload);
     }
@@ -117,20 +129,20 @@ export class NlpCloudExecutor extends BaseExecutor {
       let message = `NLP Cloud API failed with status ${response.status}`;
       try { const data = JSON.parse(text); if (isString(data.detail)) message = data.detail; } catch { /* fixed fallback */ }
       const status = response.status >= 400 ? response.status : 502;
-      return result(fail(status, sanitizeErrorMessageWithSecrets(message, [credentials.apiKey, credentials.accessToken].filter(Boolean))), headers, payload);
+      return result(carryTicket(response, fail(status, sanitizeErrorMessageWithSecrets(message, [credentials.apiKey, credentials.accessToken].filter(Boolean)))), headers, payload);
     }
     const id = `chatcmpl-nlpcloud-${randomUUID()}`, created = Math.floor(Date.now() / 1000);
     if (stream) {
-      if (!response.body) return result(fail(502, "NLP Cloud returned an empty stream"), headers, payload);
-      return result(new Response(translateNlpCloudStream(response.body, model, id, created), { headers: { "Content-Type": "text/event-stream" } }), headers, payload);
+      if (!response.body) return result(carryTicket(response, fail(502, "NLP Cloud returned an empty stream")), headers, payload);
+      return result(carryTicket(response, new Response(translateNlpCloudStream(response.body, model, id, created), { headers: { "Content-Type": "text/event-stream" } })), headers, payload);
     }
     let data;
     try { data = JSON.parse(await readBoundedResponseText(response, { signal, maxBytes: MAX_JSON_BYTES, timeoutMs: 30000, throwOnTimeout: true })); }
     catch (error) {
       if (error?.name === "AbortError" || signal?.aborted) throw error;
-      return result(fail(502, "NLP Cloud returned an unreadable response"), headers, payload);
+      return result(carryTicket(response, fail(502, "NLP Cloud returned an unreadable response")), headers, payload);
     }
-    if (!isString(data?.response)) return result(fail(502, "NLP Cloud returned an invalid response"), headers, payload);
-    return result(jsonResponse(200, { id, object: "chat.completion", created, model, choices: [{ index: 0, message: { role: ROLE.ASSISTANT, content: data.response }, finish_reason: "stop" }] }), headers, payload);
+    if (!isString(data?.response)) return result(carryTicket(response, fail(502, "NLP Cloud returned an invalid response")), headers, payload);
+    return result(carryTicket(response, jsonResponse(200, { id, object: "chat.completion", created, model, choices: [{ index: 0, message: { role: ROLE.ASSISTANT, content: data.response }, finish_reason: "stop" }] })), headers, payload);
   }
 }

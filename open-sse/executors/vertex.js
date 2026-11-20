@@ -1,4 +1,5 @@
 import { BaseExecutor } from "./base.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelMeta } from "../config/providerModels.js";
 import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken, classifyVertexCredential, VERTEX_CREDENTIAL } from "../services/tokenRefresh.js";
@@ -44,7 +45,7 @@ async function resolveProjectId(apiKey, proxyOptions, signal) {
     }, proxyOptions);
     const json = await res.json().catch(() => null);
     const msg = json?.[0]?.error?.message || json?.error?.message || "";
-    const match = typeof msg === "string" ? msg.slice(0, 4096).match(/projects\/([a-z][a-z0-9-]{4,28}[a-z0-9])\//) : null;
+    const match = isString(msg) ? msg.slice(0, 4096).match(/projects\/([a-z][a-z0-9-]{4,28}[a-z0-9])\//) : null;
     projectId = match?.[1] || null;
   } catch {
     if (signal?.aborted) throw signal.reason;

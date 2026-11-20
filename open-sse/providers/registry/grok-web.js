@@ -25,7 +25,11 @@ export default {
   },
   transport: {
     baseUrl: "https://grok.com/rest/app-chat/conversations/new",
-    format: "grok-web",
+    // The executor returns OpenAI Chat Completions JSON and SSE. A bespoke
+    // format name sent chat streams down the translate path, which drops the
+    // upstream [DONE] sentinel. Dispatch stays on the grok-web executor by id.
+    format: "openai",
+    executor: "grok-web",
     authType: "cookie",
   },
   models: [

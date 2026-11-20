@@ -232,8 +232,13 @@ const REFRESH_GRANTS = Object.fromEntries(
     const tokenUrl = o.tokenUrl;
     const encoding = o.refresh.encoding;
     const extraParams = o.refresh.scope ? { scope: o.refresh.scope } : {};
+    // Provider-declared refresh headers (e.g. the OAuth-only Anthropic beta
+    // the Claude grant needs). Kept in the registry so the dedicated refresher
+    // and this generic grant send the same wire contract.
+    const extraHeaders = o.refresh.headers || null;
     return [id, {
       encoding,
+      headers: extraHeaders,
       url: () => tokenUrl,
       params: (ex) => id === "gemini" ?
       { client_id: ex.config.clientId, client_secret: ex.config.clientSecret, ...extraParams } :
@@ -683,8 +688,8 @@ export class DefaultExecutor extends BaseExecutor {
     const grant = REFRESH_GRANTS[this.provider];
     const params = { grant_type: "refresh_token", refresh_token: credentials.refreshToken, ...grant.params(this) };
     return grant.encoding === "json" ?
-    this.refreshWithJSON(grant.url(), params, proxyOptions) :
-    this.refreshWithForm(grant.url(), params, proxyOptions);
+    this.refreshWithJSON(grant.url(), params, proxyOptions, grant.headers) :
+    this.refreshWithForm(grant.url(), params, proxyOptions, grant.headers);
   }
 
   async refreshCredentials(credentials, log, proxyOptions = null) {
@@ -718,10 +723,10 @@ export class DefaultExecutor extends BaseExecutor {
     }
   }
 
-  async refreshWithJSON(url, body, proxyOptions = null) {
+  async refreshWithJSON(url, body, proxyOptions = null, extraHeaders = null) {
     const response = await proxyAwareFetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", ...(extraHeaders || {}) },
       body: JSON.stringify(body)
     }, proxyOptions);
     if (!response.ok) return null;
@@ -729,10 +734,10 @@ export class DefaultExecutor extends BaseExecutor {
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || body.refresh_token, expiresIn: tokens.expires_in };
   }
 
-  async refreshWithForm(url, params, proxyOptions = null) {
+  async refreshWithForm(url, params, proxyOptions = null, extraHeaders = null) {
     const response = await proxyAwareFetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", ...(extraHeaders || {}) },
       body: new URLSearchParams(params)
     }, proxyOptions);
     if (!response.ok) return null;

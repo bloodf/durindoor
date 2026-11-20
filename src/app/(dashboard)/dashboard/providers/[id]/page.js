@@ -1,5 +1,7 @@
 "use client";
 
+import ProviderRpmControl from "./ProviderRpmControl.jsx";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -27,6 +29,7 @@ import VisibleModelsModal from "./VisibleModelsModal";
 import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
+import NetworkNodeStatus from "./NetworkNodeStatus";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import ProviderErrorRulesModal from "./ProviderErrorRulesModal";
@@ -1463,6 +1466,15 @@ function ProviderDetail({ providerId }) {
                 onReconnect={() => handleReconnect(conn)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
+              {(isCompatible || providerId === "ollama-local") && (
+                <NetworkNodeStatus
+                  connection={conn}
+                  onRemoved={(removedId) => {
+                    setConnections((prev) => prev.filter((c) => c.id !== removedId));
+                    setSelectedConnectionIds((prev) => prev.filter((selectedId) => selectedId !== removedId));
+                  }}
+                />
+              )}
             </div>
           </div>
     )}
@@ -1833,18 +1845,7 @@ function ProviderDetail({ providerId }) {
           </div>
           {/* Keep controls below the identity when a row cannot fit both. */}
           <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
-            <label htmlFor="provider-rpm-limit" className="hidden text-xs text-dd-muted sm:inline">RPM / account</label>
-            <input
-              id="provider-rpm-limit"
-              type="number"
-              min="0"
-              max={MAX_PROVIDER_RPM}
-              value={rpmLimit}
-              placeholder={String(DEFAULT_PROVIDER_RPM[providerId] || 0)}
-              onChange={(event) => setRpmLimit(event.target.value)}
-              onBlur={(event) => saveRpmLimit(event.target.value)}
-              title="Maximum requests per minute per account. Blank uses provider default; 0 is unlimited."
-              className="min-h-11 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+            <ProviderRpmControl value={rpmLimit} placeholder={String(DEFAULT_PROVIDER_RPM[providerId] || 0)} max={MAX_PROVIDER_RPM} onChange={setRpmLimit} onSave={saveRpmLimit} />
             <span className="hidden text-xs text-dd-muted sm:inline">Retry delay</span>
             <div className="w-44"><Select options={RETRY_DELAY_OPTIONS.map(([value, label]) => ({ value, label }))} value={retryDelay} onChange={(value) => handleRetryDelayChange(value)} title="Static cooldown when the provider reports no reset deadline" size="sm" aria-label="Retry delay" /></div>
           </div>

@@ -25,6 +25,20 @@ describe("canonicalizeUsage", () => {
     expect(out.cache_creation_input_tokens).toBe(30);
   });
 
+  it("does not fold Claude cache twice after translation to OpenAI usage", () => {
+    const out = canonicalizeUsage({
+      prompt_tokens: 330,
+      input_tokens: 100,
+      completion_tokens: 50,
+      cache_read_input_tokens: 200,
+      cache_creation_input_tokens: 30,
+    });
+    expect(out.prompt_tokens).toBe(330);
+    expect(out.total_tokens).toBe(380);
+    expect(out.cached_tokens).toBe(200);
+    expect(out.cache_creation_input_tokens).toBe(30);
+  });
+
   it("passes through OpenAI inclusive prompt unchanged", () => {
     // OpenAI: prompt_tokens already includes cached_tokens (a subset)
     const out = canonicalizeUsage({

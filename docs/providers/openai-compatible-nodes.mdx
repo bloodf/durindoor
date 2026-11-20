@@ -17,14 +17,14 @@ Click Add OpenAI Compatible. Name and prefix are required. Prefix is the client-
 Pick Chat Completions or Responses API. Default base URL is `https://api.openai.com/v1`. Point it at your gateway, including the `/v1` suffix the upstream expects.
 </Step>
 <Step>
-Save, then open the node and add an API key connection. The connection form requires a key even if the upstream ignores it. For a local server that does not check auth, paste a placeholder such as `local-dev-key`.
+Save, then open the node and add a connection. The API key is optional. Leave it empty when the upstream does not check auth, and save one when it does. DurinDoor sends no `Authorization` header when no key is saved.
 </Step>
 <Step>
 Add model names, or enable passthrough if the node should forward unknown ids. An empty saved model list exposes no models for that node. Use Import on the node page to discover `/v1/models` from the upstream, then save the rows you want.
 </Step>
 </Steps>
 
-`GET /v1/models` on DurinDoor is the list clients should trust. Discovery against the node needs both `providerSpecificData.baseUrl` and a token.
+`GET /v1/models` on DurinDoor is the list clients should trust. Discovery against the node needs `providerSpecificData.baseUrl`; a token is optional.
 
 ## Anthropic-compatible
 
@@ -78,7 +78,7 @@ coding-default
 
 `coding-default` is a combo or a model alias, not a node prefix. Model aliases map a short client name to an existing model ID. They do not create an additional top-level catalog row for that short name. Combos are a fallback chain; see [Combos](../features/combos.mdx).
 
-Dedicated local registry ids (`ollama-local`, `lm-studio`, `vllm`) are usually a better fit than a generic node when one exists. Those ids omit `Authorization` when no key is saved. Compatible nodes still require the key field. See [Local router providers](./local-router-providers.mdx) and [Free and local](./free-and-local.mdx).
+Dedicated local registry ids (`ollama-local`, `lm-studio`, `vllm`) are usually a better fit than a generic node when one exists. Those ids omit `Authorization` when no key is saved. Compatible nodes omit it too when no key is saved. See [Local router providers](./local-router-providers.mdx), [Free and local](./free-and-local.mdx), and [Network LLM servers](./network-llm-servers.mdx).
 
 If DurinDoor runs in Docker, `localhost` inside the container is the container. Use a compose service name or the host gateway for a server that runs on the machine.
 

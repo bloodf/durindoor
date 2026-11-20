@@ -33,6 +33,10 @@ describe("network Ollama hosts #2022", () => {
     expect(resolveOllamaLocalHost({ providerSpecificData: { baseUrl: "https://ollama.test/api" } })).toBe("https://ollama.test");
     expect(() => resolveOllamaLocalHost({ providerSpecificData: { baseUrl: "file:///tmp/ollama" } })).toThrow("must use http or https");
     expect(() => resolveOllamaLocalHost({ providerSpecificData: { baseUrl: "not a URL" } })).toThrow("valid http(s) URL");
+    expect(() => new OllamaLocalExecutor().buildUrl("model", false, 0, {
+      providerSpecificData: { baseUrl: "not a URL" },
+      runtimeTransport: { baseUrl: "http://localhost:11434/v1/messages" },
+    })).toThrow("valid http(s) URL");
   });
 
   it("discovers each connection from its own /api/tags host", async () => {

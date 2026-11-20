@@ -18,7 +18,17 @@ Auto-update is **on by default** for OpenAI, Anthropic (API key), Claude (OAuth)
 | Codex | the ChatGPT Codex models endpoint, filtered by `minimal_client_version` |
 | GitHub Copilot | `GET https://api.githubcopilot.com/models` (chat models only) |
 
-The sync uses the provider's first active connection, its proxy route, and the same request the provider page's model import uses. An expiring OAuth token is refreshed first.
+The sync uses the provider's first active connection (MLX and OpenCode Server sync every connection; see below), its proxy route, and the same request the provider page's model import uses. An expiring OAuth token is refreshed first.
+
+## MLX and OpenCode Server: per-connection catalogs
+
+MLX and OpenCode Server connections each point at their own server, so their model lists are **never shared across connections**. Turn auto-update on from the provider page (it is off by default for these two) and **Sync now** fetches every active connection and stores each list under that connection and the endpoint it was fetched from.
+
+- `/v1/models`, `/v1/models/{kind}` and `/v1/models/{provider}/{model}` list the models of one connection per provider, as they always have: the first active connection by priority. An API key limited to provider accounts uses the first of its own connections instead, and sees none of the provider when it holds none. A key never sees a model ID that only another connection's server reported.
+- A connection whose endpoint changed since its last sync, or that has not synced yet, is listed from live discovery of its own server, as without auto-update. The next sync replaces the stale list.
+- Provider-wide lists stored by earlier versions cannot be tied to a connection, so they are ignored and replaced on the next sync. Until then these providers fall back to live discovery.
+- `GET /api/models/auto-sync` reports `connectionScoped: true` for these providers: the provider-level `models` is `null` and `connections` carries each connection's sync time, error and list.
+- Other providers keep one provider-wide list, synced with their first active connection.
 
 ## What gets published
 

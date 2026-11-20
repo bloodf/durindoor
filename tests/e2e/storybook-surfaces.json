@@ -6178,7 +6178,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389"
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
           "expectedConsoleErrors": [],
@@ -6448,7 +6448,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6468,7 +6468,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6579,7 +6579,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboFormModal",
-      "sourceSha256": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6606,7 +6606,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6621,7 +6621,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6641,7 +6641,7 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6657,7 +6657,7 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6860,7 +6860,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6889,7 +6889,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6907,7 +6907,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6925,7 +6925,7 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6948,7 +6948,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6967,7 +6967,7 @@
             "asserted modal unmount"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -6986,7 +6986,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -7002,7 +7002,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -7018,7 +7018,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           }
@@ -7033,7 +7033,7 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacing play opens live Create Combo dialog and proves footer controls plus model row geometry.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -7049,7 +7049,7 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacingMobile executes same live dialog and geometry assertions at mobile viewport.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -7490,7 +7490,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ModelItem",
-      "sourceSha256": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7510,7 +7510,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "cf119e6ed42b4627726fc6a2505065c9e4489484ea593f25f57ac728d7ccc389",
+            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
@@ -92248,7 +92248,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "3699121fb7398088db57d5e131b188207c0bea2e7aa673be53f77679d3755688",
-    "sourceCensusSha256": "88a0924faa41bff41fb88227748225242acab7eb7f17958a8dc144ced086a73c",
+    "sourceCensusSha256": "8d39a5d086c2607525202f71b0984526d4d46690601ad47dede71b47949fbdd6",
     "pendingRows": 340,
     "retainedApprovedRows": 273,
     "pendingReferences": 1273,

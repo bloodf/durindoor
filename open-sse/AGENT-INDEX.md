@@ -330,6 +330,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode` |  | free | `https://opencode.ai` |
 | `opencode-go` |  | apikey | `https://opencode.ai/inference/go/openai/v1/chat/completions` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
+| `openference` | openai | oauth | `https://api.openference.com/v1/chat/completions` |
 | `openference-api` |  | apikey | `https://api.openference.com/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
 | `openvecta` |  | apikey | `https://api.openvecta.com/v1/chat/completions` |

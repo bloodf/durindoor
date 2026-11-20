@@ -1,3 +1,4 @@
+import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
@@ -278,6 +279,30 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  openference: {
+    customResolver: async (connection, proxyOptions) => {
+      if (!connection.accessToken) return { error: "No valid token found", status: 401 };
+      const fetchModels = (token) => proxyAwareFetch("https://api.openference.com/v1/models", {
+        headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000)
+      }, proxyOptions);
+      try {
+        let response = await fetchModels(connection.accessToken);
+        if (response.status === 401 && connection.refreshToken) {
+          const refreshed = await refreshOpenferenceToken(connection, null, proxyOptions);
+          if (refreshed?.accessToken) {
+            await updateProviderCredentials(connection.id, refreshed);
+            response = await fetchModels(refreshed.accessToken);
+          }
+        }
+        if (!response.ok) return { error: `Openference models request failed: ${response.status}`, status: response.status };
+        const data = await response.json();
+        if (!Array.isArray(data?.data)) return { error: "Invalid Openference models response", status: 502 };
+        return { models: data.data };
+      } catch {
+        return { error: "Openference models request failed", status: 502 };
+      }
+    }
+  },
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },

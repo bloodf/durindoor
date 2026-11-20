@@ -265,6 +265,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `jembatanai` |  | apikey | `https://freeai.jembatanai.com/v1/chat/completions` |
 | `jina-ai` |  | apikey | `` |
 | `jina-reader` |  | apikey | `` |
+| `keenable` |  | freeTier | `` |
 | `kenari` |  | apikey | `https://kenari.id/v1/chat/completions` |
 | `kie` |  | apikey | `https://api.kie.ai/v1/chat/completions` |
 | `kilo-gateway` |  | apikey | `https://api.kilo.ai/api/gateway/chat/completions` |

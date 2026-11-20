@@ -1,0 +1,6 @@
+# 1073: Responses and Claude stop reasons
+
+- [OmniRoute #16507](https://github.com/cheaper-inference/OmniRoute/pull/16507), merge SHA `4d0e8797199f60e8d26c98d4006b3191ec57a468`: **port** known incomplete reasons in `responsesApiToOpenAICompletion` and content-filter streaming in `openaiResponsesToOpenAIResponse`. The direct non-stream converter already maps these in `openai-responses-nonstream.js`. Completed text and tool calls retain their reasons; other non-completed statuses pass through, including failures with tool output.
+- [OmniRoute #16501](https://github.com/cheaper-inference/OmniRoute/pull/16501), merge SHA `8d26e9fa1faf3fe6bd3a59c22c761bfe99a4dd89`: **already covered** for length and literal refusal: `fromOpenAIFinish` is shared by the non-stream projector and streaming Claude translator, while the direct Responses converter recognizes refusal and output limits. **Inapplicable** for mapping generic OpenAI content filters and Gemini safety to Claude refusal: the local `finishReason.js` deliberately distinguishes provider moderation from a model refusal. Preserve that existing policy and its streaming behavior. Streaming Chat errors already emit Claude error events.
+
+Focused evidence: `tests/unit/omni-existing-response-stop-reasons.test.js`. This port does not change terminal snapshot classification or replay sequencing.

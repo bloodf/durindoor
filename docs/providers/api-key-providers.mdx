@@ -33,6 +33,10 @@ Save, then send a request using one of the connection's models. A duplicate prov
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
+## DemonRoute
+
+Add a DemonRoute API key in Providers, then discover models for that connection. Its `/v1/models` catalog is account-specific; the bundled model list is only an offline starting point. Use the exact, case-sensitive model ID returned by DemonRoute, including its vendor prefix. Model availability and pricing may change. See the [DemonRoute documentation](https://demonroute.com/docs).
+
 ## Gisoo
 
 Gisoo ([gisoo.pro](https://gisoo.pro)) is a prepaid, OpenAI-compatible relay. DurinDoor sends chat requests to `https://gisoo.pro/api/v1/chat/completions` with `Authorization: Bearer <key>`; one key covers the whole catalog.

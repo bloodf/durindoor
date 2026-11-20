@@ -33,7 +33,8 @@ export const MODEL_AUTO_SYNC_FETCH_TIMEOUT_MS = 30_000;
 // OrcaRouter's catalog is capability-scoped; neither is a plain list to sync.
 // ollama-local is a local server that /v1/models already reads live.
 // Token Harbor catalogs belong to individual keys, not a provider-wide snapshot.
-const NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor"]);
+// DemonRoute's catalog is account-scoped for the same reason.
+const NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor", "demonroute"]);
 
 /** Providers with a list-models path the sync service can call. */
 export function isModelAutoSyncEligible(providerId) {

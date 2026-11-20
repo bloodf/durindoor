@@ -24,7 +24,8 @@ const mapped = (effort, selectedModel = model, selectedProvider = provider) => {
 describe("Hydrogen Interactions effort", () => {
   it("pins the route's levels without changing other capabilities or aliases", () => {
     expect(getThinkingLevels(provider, model)).toEqual(["low", "medium", "high", "xhigh"]);
-    expect(getThinkingLevels("antigravity", model)).toEqual(["low", "medium", "high"]);
+    // Antigravity registers its own Hydrogen xhigh row (#1072); the Interactions route stays separate.
+    expect(getThinkingLevels("antigravity", model)).toEqual(["low", "medium", "high", "xhigh"]);
     expect(getModelUpstreamId("ag", model)).toBe("gemini-4-hydrogen-medium");
     expect(getCapabilitiesForModel(provider, model).maxOutput).toBe(65536);
   });

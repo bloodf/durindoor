@@ -506,6 +506,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
 
   const isCompactRequest = requestContext?.compact === true;
+  const streamWasOmitted = body.stream === undefined;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
   const providerRequiresStreaming = !isCompactRequest &&
   (PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
@@ -1823,6 +1824,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     try {
       const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
+      // Compatible chat clients that omit stream expect JSON, even if a
+      // stream-only provider unexpectedly answered with a JSON completion.
+      // Keep explicit flags and other endpoint contracts on their existing paths.
+      const path = String(clientRawRequest?.endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
+      if (sourceFormat === FORMATS.OPENAI && path.endsWith("/v1/chat/completions") &&
+          streamWasOmitted && (providerResponse.headers.get("content-type") || "").toLowerCase().includes("application/json")) {
+        stream = false;
+      }
     } catch (error) {
       return failPostResponseHandling(error);
     }
@@ -1834,7 +1843,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
     try {
-      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
+      const result = await handleNonStreamingResponse({ ...sharedCtx, stream, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
       return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);

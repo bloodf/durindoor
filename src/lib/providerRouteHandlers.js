@@ -75,6 +75,7 @@ function sanitizeProviderConnection(connection) {
 // never more permissive than what each resolver actually consumes.
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
+  if (provider === "t3-web") return true; // Curated local catalog.
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
     // Compatible servers may expose their catalog without credentials.
@@ -119,6 +120,8 @@ export function canDiscoverModels(connection) {
         return false;
     }
   }
+
+  if (config.apiKeyOnly) return Boolean(connection.apiKey);
 
   // route.js:153-156 — plain config path requires a resolvable token.
   return Boolean(connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey);

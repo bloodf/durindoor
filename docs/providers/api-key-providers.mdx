@@ -67,6 +67,35 @@ Temporary AWS keys beginning with `ASIA` require a session token. A missing toke
 
 When editing, leave the session-token field blank to keep the saved token. Changing or clearing the Access Key ID also clears it. Entering a new API key clears the saved profile after validation. For an expired SSO session, run `aws sso login --profile <name>` again.
 
+## AI Studio Build and hosted Devin via CLIProxyAPI
+
+Run an operator-controlled CLIProxyAPI instance on loopback port 8317. Configure a CLIProxyAPI client key under `access.api-keys`, then add a **CLIProxyAPI** API-key connection under **Providers** using that key. Keep Google and Cognition sign-in within your authorized upstream runtime. The saved connection gives DurinDoor access to the sidecar's OpenAI-compatible models and chat endpoints.
+
+For AI Studio Build, use an app you are authorized to operate and follow the [CLIProxyAPI relay setup](https://github.com/router-for-me/CLIProxyAPIDocs/blob/a9f717ebab81222ad6e947b2b8a16a06aedfddf5/docs/en/configuration/provider/ai-studio.md). On the verified CLIProxyAPI version, keep `oauth.providers.aistudio.ws-auth: true` and configure the app to authenticate to `/v1/ws` with a sidecar client key. Use WSS if the app connects across a network. Keep the app private and protect the relay key and any logs containing its upgrade URL. The relay is available in standalone CLIProxyAPI mode.
+
+Use a unique alias under the `aistudio` channel of CLIProxyAPI's `oauth.model-alias` configuration to select the relay even when another backend serves the same base model. Set `name` to a model that CLIProxyAPI lists while the app is connected and choose an `alias` unused by other upstreams.
+
+```yaml
+oauth:
+  providers:
+    aistudio:
+      ws-auth: true
+  model-alias:
+    aistudio:
+      - name: "<model-id>"
+        alias: "office-build"
+```
+
+In DurinDoor, fetch the connection's models and call `cpa/<alias>` through Chat Completions. DurinDoor reads the sidecar's OpenAI JSON and SSE usage fields through its standard accounting path. After the app disconnects, re-fetch the models. Cached catalogs can retain the last list until refresh.
+
+For hosted Devin, use the exact model ID discovered from CLIProxyAPI, including its `devin/` namespace when present, for example `cpa/devin/<model>`. DurinDoor's Gemini CLI, Devin cloud-agent and Devin CLI connections serve their own transports.
+
+Scope DurinDoor client keys to the intended saved connection. CLIProxyAPI client keys on one instance share its upstream pool. For an isolated upstream account or relay, use a dedicated CLIProxyAPI instance and an independently configured OpenAI-compatible connection with its own base URL and key. Keep the instance reachable only from the clients and app that you authorize.
+
+## DeepSeek DSML tool calls
+
+For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:
@@ -138,6 +167,18 @@ Pioneer is now Fastino: `api.pioneer.ai` is retired and the API lives at `https:
 - No live call was made. Whether `/v1/chat/completions` serves the listed decoder model IDs without a `schema`, and the contents of the authenticated `/v1/models`, are unconfirmed.
 - Model IDs and context windows come from `docs.fastino.ai` only.
 
-### DeepSeek DSML tool calls
+## Gemini Interactions
 
-For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.
+In **Dashboard → Providers → Gemini Interactions**, choose **Add API Key** and paste a Google AI Studio API key. Connection validation and model discovery use Google's model list. Discovery shows the supported text subset available to that key.
+
+Send a single text turn to `POST /v1beta/interactions` with your **DurinDoor** key in `x-goog-api-key`. For example:
+
+```json
+{"model":"gemini-interactions/gemini-4-hydrogen","input":"Explain how a sundial works.","store":false,"stream":true}
+```
+
+Omit `stream` or set it to `false` for JSON. In SSE, read text from `step.delta` and token usage from `interaction.completed`. A provider failure after the stream opens arrives as an `error` event. DurinDoor chooses an eligible Gemini Interactions connection and sends its stored Google key upstream.
+
+The same provider-qualified model works on `POST /v1/chat/completions` with one text-only user message. DurinDoor always sends `store: false`. Interaction IDs identify the current response only. This integration supports foreground creation with text input and output. The existing **Gemini** connection still serves GenerateContent and the Gemini media endpoints.
+
+See the [Google Interactions overview](https://aistudio.google.com/docs/interactions-overview) and [streaming guide](https://aistudio.google.com/docs/streaming).

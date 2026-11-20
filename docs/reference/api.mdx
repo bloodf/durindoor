@@ -29,6 +29,8 @@ JSON errors also put that id on the body: `error.request_id` for OpenAI-shaped `
 
 **Expose combos only** (Profile, Model catalog) makes `GET /v1/models` return configured combo names with `owned_by: "combo"`. Default is off. Web combos keep `kind` so search and fetch stay distinct. `HEAD /v1/models` returns 200 with an empty body so SDK probes do not wait for the full list.
 
+Ordinary model-list entries include their resolved `kind`, including provider models and combos; combos without a stored kind default to `llm`.
+
 Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, `rerank`, `video`, `music`, `realtime`, `moderation`, `audio`, `realtime-translation`, `realtime-transcription`, `live`, `systemone`, and `document-parsing`. `web` includes search and fetch. A single unknown segment still returns `Unknown model kind`. A provider-prefixed id (`GET /v1/models/cc/claude-sonnet-5`) returns that model object or HTTP 404 `error.code: "model_not_found"`. `HEAD` on those paths is a route probe: known kinds and provider-prefixed paths return 200 without proving the model exists.
 
 Rows keep callable `id` and `owned_by`. Presentation may add `name`, `provider_name`, `provider_alias`, `gateway_provider`, and `lifecycle`. `lifecycle` is `"legacy"` or `"deprecated"` for Anthropic models that Anthropic no longer lists as active; the model stays listed and callable, and active models omit the field. `capabilities.defaultEffort` is the effort a model applies when the request names none, set only where Anthropic documents it (currently `claude-haiku-5-5`: `medium`); custom capability overrides accept `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` or `null`. The Anthropic-shaped `/v1/models` list does not carry either field. Send `id` in requests. `GET /v1/models/info?id={alias}/{modelId}` keeps the registry `name` and only attaches those extra fields. Optional `kind` disambiguates duplicate ids. Missing `id`: 400. Unknown id: 404.
@@ -55,6 +57,8 @@ fetch images or validate their decoded bytes; the target provider validates
 image data. This applies to both streaming and non-streaming requests.
 
 Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
+
+For ordinary Chat Completions requests, omitting `stream` requests JSON. Providers that require streaming still receive a streaming request; DurinDoor converts their SSE response to JSON, and also accepts a JSON completion if the provider returns one. Send `stream: true` to request SSE. Claude CLI warmup and naming bypasses retain their existing response behavior.
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \

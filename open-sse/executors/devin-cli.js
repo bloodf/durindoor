@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { BaseExecutor } from "./base.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -179,9 +180,10 @@ export class DevinCliExecutor extends BaseExecutor {
           roleEmitted = true;
         };
 
+        const stdoutDecoder = new StringDecoder("utf8");
         let buffer = "";
         child.stdout.on("data", (chunk) => {
-          buffer += chunk.toString("utf8");
+          buffer += stdoutDecoder.write(chunk);
           let newline;
           while ((newline = buffer.indexOf("\n")) !== -1) {
             const line = buffer.slice(0, newline).trim();

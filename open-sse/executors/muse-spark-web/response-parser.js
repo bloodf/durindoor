@@ -131,6 +131,11 @@ export function parseMetaAiResponseText(text, isThinkingModel) {
       errorCode = isString(stream.error.code) ? stream.error.code : errorCode;
       errorMessage = isString(stream.error.message) ? stream.error.message.trim() : errorMessage;
     }
+    if (!isString(stream.error?.message) && isString(stream.streamingState) && stream.streamingState.toUpperCase() === "ERROR" && isString(stream.content) && stream.content.trim()) {
+      // OmniRoute open-sse/executors/muse-spark-web/response-parser.ts: an
+      // error-state message is a failure, not a successful assistant answer.
+      errorMessage = stream.content.trim();
+    }
   }
   const combined = `${errorMessage || ""}\n${lastContent}`.trim();
   if (/authentication required to send messages|login is required|sign in/i.test(combined)) {
@@ -138,6 +143,9 @@ export function parseMetaAiResponseText(text, isThinkingModel) {
   }
   if (/limit exceeded|rate limit|too many requests/i.test(combined)) {
     return { content: lastContent, deltas, reasoningContent: lastReasoning, reasoningDeltas, errorCode, errorMessage: "Meta AI rate limited the session. Wait and retry.", status: 429 };
+  }
+  if (/blocked by our security system|security system/i.test(combined)) {
+    return { content: lastContent, deltas, reasoningContent: lastReasoning, reasoningDeltas, errorCode, errorMessage: "Meta AI blocked the request through its web security checks.", status: 403 };
   }
   if (errorMessage) return { content: lastContent, deltas, reasoningContent: lastReasoning, reasoningDeltas, errorCode, errorMessage: `Meta AI returned an error: ${errorMessage}`, status: 502 };
   if (!lastContent) return { content: "", deltas: [], reasoningContent: lastReasoning, reasoningDeltas, errorCode: null, errorMessage: "Meta AI returned no assistant content", status: 502 };

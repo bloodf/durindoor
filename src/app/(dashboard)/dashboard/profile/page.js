@@ -20,6 +20,7 @@ import { LOCALE_FLAGS } from "@/shared/constants/locales";
 import { isBrowser, isUndefined, isObject } from "../../../../shared/utils/typeChecks.js";
 import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
+import useSettingsStore from "@/store/settingsStore";
 
 const DATA_RETENTION_PRESETS = [7, 15, 30, 60, 90];
 const MODEL_AUTO_SYNC_INTERVALS = [
@@ -69,6 +70,8 @@ export default function ProfilePage() {
   // Keep OIDC disclosure unavailable until saved settings settle its layout and draft.
   const [loading, setLoading] = useState(true);
   const [settingsError, setSettingsError] = useState("");
+  const [notificationSaving, setNotificationSaving] = useState(false);
+  const [notificationError, setNotificationError] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
   const settingsRequest = useRef(0);
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
@@ -853,6 +856,15 @@ export default function ProfilePage() {
     if (mode === "import") await runImportDatabase(password);
   };
 
+  const updateNotificationPreference = async (enabled) => {
+    setNotificationSaving(true);
+    setNotificationError("");
+    const updated = await useSettingsStore.getState().patchSettings({ showUpdateNotifications: enabled });
+    if (updated) setSettings((prev) => ({ ...prev, showUpdateNotifications: enabled }));
+    else setNotificationError("Failed to save update notification preference. Please try again.");
+    setNotificationSaving(false);
+  };
+
   const observabilityEnabled = settings.enableObservability === true;
   const proxyTimelineEnabled = settings.enableProxyTimeline === true;
   const proxyTimelineRetentionDays = [1, 3, 7].includes(settings.proxyTimelineRetentionDays)
@@ -912,6 +924,8 @@ export default function ProfilePage() {
       <section role="tabpanel" aria-label="General settings" hidden={activeTab !== "general"} className="flex flex-col gap-5">
 
       <Card padding={false}><CardHeader icon="palette" title="Appearance" subtitle="Dashboard display preferences" /><CardContent><Field group label="Theme" hint="Choose how DurinDoor looks on this device."><SegmentedControl aria-label="Theme" options={[{value:"light",label:"Light"},{value:"dark",label:"Dark"},{value:"system",label:"System"}]} value={theme} onChange={setTheme} /></Field></CardContent></Card>
+
+      <Card padding={false}><CardHeader icon="notifications" title="Update notifications" subtitle="Dashboard update preferences" /><CardContent><Toggle label="Show update notifications" description="Check for new versions and show update prompts in the sidebar." checked={settings.showUpdateNotifications !== false} disabled={loading || notificationSaving} onChange={updateNotificationPreference} />{notificationError ? <p role="alert" className="mt-2 text-xs text-dd-danger">{notificationError}</p> : null}</CardContent></Card>
 
       <Card padding={false}><CardHeader icon="language" title="Language" subtitle="Regional display preferences" /><CardContent><button type="button" onClick={() => setLangOpen(true)} data-i18n-skip="true" className="flex min-h-11 w-full items-center justify-between rounded-dd border border-dd-border bg-dd-surface-2 px-3 text-left text-[13px] text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span>Display language</span><span role="img" aria-label={locale} className="text-xl">{LOCALE_FLAGS[locale] || "🌐"}</span></button></CardContent></Card>
 

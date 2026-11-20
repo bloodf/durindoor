@@ -40,6 +40,7 @@ import { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
+import { CodeBuddyIntlExecutor } from "./codebuddy-intl.js";
 import { XaiExecutor } from "./xai.js";
 import { NlpCloudExecutor } from "./nlpcloud.js";
 import { OneMinAiExecutor } from "./oneminai.js";
@@ -49,6 +50,7 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { DevinCliAgenticExecutor } from "./devin-cli-agentic.js";
 import { WindsurfExecutor } from "./windsurf.js";
+import { CerebriumExecutor } from "./cerebrium.js";
 import { DefaultExecutor } from "./default.js";
 import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
@@ -81,6 +83,7 @@ const executors = {
   "azure-openai": new AzureOpenAIExecutor(),
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
+  cerebrium: new CerebriumExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   "gemini-interactions": new GeminiInteractionsExecutor(),
   github: new GithubExecutor(),
@@ -127,6 +130,7 @@ const executors = {
   mcode: new MimocodeExecutor(), // Alias for mimocode
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
+  "codebuddy-intl": new CodeBuddyIntlExecutor(),
   xai: new XaiExecutor(),
   oneminai: new OneMinAiExecutor(),
   nlpcloud: new NlpCloudExecutor(),

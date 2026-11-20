@@ -17,8 +17,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `azure` | AzureExecutor | `./azure.js` |
 | `azure-openai` | AzureOpenAIExecutor | `./azure-openai.js` |
 | `bedrock` | BedrockExecutor | `./bedrock.js` |
+| `cerebrium` | CerebriumExecutor | `./cerebrium.js` |
 | `chipotle` | ChipotleExecutor | `./chipotle.js` |
 | `codebuddy-cn` | CodeBuddyExecutor | `./codebuddy-cn.js` |
+| `codebuddy-intl` | CodeBuddyIntlExecutor | `./codebuddy-intl.js` |
 | `codex` | CodexExecutor | `./codex.js` |
 | `codex-app-server` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `command-code` | CommandCodeExecutor | `./commandcode.js` |
@@ -145,6 +147,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cablyai` |  | apikey | `https://api.cablyai.com/v1/chat/completions` |
 | `cartesia` |  | apikey | `` |
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
+| `cerebrium` | openai | apikey | `` |
 | `charm-hyper` |  | apikey | `https://hyper.charm.land/v1/chat/completions` |
 | `chatanywhere` |  | apikey | `https://api.chatanywhere.org/v1/chat/completions` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
@@ -161,6 +164,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cloudflare-ai` |  | freeTier | `https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/chat/completions` |
 | `clova-studio` | openai | apikey | `https://clovastudio.stream.ntruss.com/v1/openai/chat/completions` |
 | `codebuddy-cn` |  | oauth | `https://copilot.tencent.com/v2/chat/completions` |
+| `codebuddy-intl` |  | apikey | `https://www.codebuddy.ai/v2/chat/completions` |
 | `codestral` |  | apikey | `https://codestral.mistral.ai/v1/chat/completions` |
 | `codex` | openai-responses | oauth | `https://chatgpt.com/backend-api/codex/responses` |
 | `codex-app-server` | openai | free | `codex-app-server://cli/websocket` |

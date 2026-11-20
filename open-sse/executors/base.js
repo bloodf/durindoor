@@ -544,10 +544,7 @@ export class BaseExecutor {
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              method: "POST",
-              headers,
-              body: bodyStr,
-              signal: mergedSignal
+              ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
         }

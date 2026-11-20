@@ -188,6 +188,40 @@ export function normalizeUsage(usage) {
 }
 
 /**
+ * Is the reasoning slice counted INSIDE the output count?
+ *
+ * OpenAI chat completions and the Responses API report reasoning_tokens as a
+ * SUBSET of completion/output tokens. A few OpenAI-compatible upstreams (xAI)
+ * report it on top instead, and Gemini's thoughtsTokenCount is separate from
+ * candidatesTokenCount. The reported total tells the two apart: an additive
+ * report has total_tokens === prompt + completion + reasoning.
+ *
+ * @param {object} usage raw upstream usage object
+ * @returns {boolean} true when reasoning is a subset of the output count
+ */
+export function reasoningIsSubsetOfOutput(usage) {
+  const reasoning = Number(
+    usage?.completion_tokens_details?.reasoning_tokens ?? usage?.output_tokens_details?.reasoning_tokens
+  ) || 0;
+  const total = Number(usage?.total_tokens);
+  if (reasoning <= 0 || !Number.isFinite(total)) return true;
+  const prompt = Number(usage?.prompt_tokens ?? usage?.input_tokens) || 0;
+  const completion = Number(usage?.completion_tokens ?? usage?.output_tokens) || 0;
+  return total !== prompt + completion + reasoning;
+}
+
+// Mark a usage object whose reasoning slice is counted ON TOP of the output
+// count. DurinDoor bills reasoning as a subset of the output count by default
+// (calculateCostBreakdown), so only the additive families carry this marker —
+// 1 means "reasoning is inside the output count", 0 means "counted on top".
+function markReasoningAdditive(usage) {
+  if (usage && isObject(usage) && usage.reasoning_tokens > 0) {
+    usage.reasoning_included_in_output = 0;
+  }
+  return usage;
+}
+
+/**
  * Canonicalize usage into ONE storage/cost convention so token counts and cost
  * are consistent across providers:
  *   prompt_tokens               = total input INCLUDING cache read + cache creation
@@ -251,6 +285,9 @@ export function canonicalizeUsage(usage) {
   if (isUsdReceipt(usage.cost_in_usd)) result.cost_in_usd = usage.cost_in_usd;
   if (isUsdReceipt(usage.cost_in_usd_ticks)) result.cost_in_usd_ticks = usage.cost_in_usd_ticks;
   if (reasoning > 0) result.reasoning_tokens = reasoning;
+  // Carry the additive-reasoning marker through canonicalization so cost
+  // pricing knows the reasoning slice is NOT already inside completion_tokens.
+  if (usage.reasoning_included_in_output === 0) result.reasoning_included_in_output = 0;
   const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined ?
   Number(usage.kiro_credits) : NaN;
   if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
@@ -410,7 +447,7 @@ export function extractUsage(chunk) {
   if (chunk.usage && isObject(chunk.usage) && (
   chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
-    return normalizeUsage({
+    const normalized = normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
       completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
@@ -426,19 +463,28 @@ export function extractUsage(chunk) {
       kiro_credit_unit: chunk.usage.kiro_credit_unit,
       estimated: chunk.usage.estimated
     });
+    // OpenAI chat reports reasoning_tokens INSIDE completion_tokens, but a few
+    // OpenAI-compatible upstreams (xAI) report it on top instead. Charge each
+    // token once either way.
+    if (!reasoningIsSubsetOfOutput(chunk.usage)) {
+      return markReasoningAdditive(normalized);
+    }
+    return normalized;
   }
 
   // Gemini format (Antigravity)
   // Antigravity wraps usageMetadata inside response: { response: { usageMetadata: {...} } }
   const usageMeta = chunk.usageMetadata || chunk.response?.usageMetadata;
   if (usageMeta && isObject(usageMeta)) {
-    return normalizeUsage({
+    // thoughtsTokenCount is NOT part of candidatesTokenCount: the reasoning is
+    // counted on top of the output count, so it is billed separately.
+    return markReasoningAdditive(normalizeUsage({
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
       cached_tokens: usageMeta.cachedContentTokenCount,
       reasoning_tokens: usageMeta.thoughtsTokenCount
-    });
+    }));
   }
 
   // Ollama NDJSON format (raw from provider, before translation).

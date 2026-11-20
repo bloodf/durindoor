@@ -57,11 +57,22 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "grok-cli",
 "ghe-copilot",
 "amazon-q",
-"muse-code"]
+"muse-code",
+// Codex device flow: auth.openai.com issues the PKCE pair together with the
+// device authorization code, so the client never sends a challenge of its own.
+// Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
+// at 6faa8d20b2673404cff70a2f2d9537ae0d0e684d.
+"codex"]
 );
 
 // Device providers whose poll needs the private extraData stored with the flow.
-const EXTRA_DATA_POLL_PROVIDERS = new Set(["kiro", "amazon-q", "ghe-copilot"]);
+const EXTRA_DATA_POLL_PROVIDERS = new Set([
+"kiro",
+"amazon-q",
+"ghe-copilot",
+// The Codex device poll needs the user code next to the device handle.
+"codex"
+]);
 
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
@@ -220,6 +231,19 @@ async function withFixedProxyOperation(provider, operation) {
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object || {}, key);
 }
+
+/**
+ * Whether a provider exposes a device-code sign-in path.
+ *
+ * A provider is device-only (`flowType: "device_code"`) or dual: its primary
+ * flow is something else and the device handlers live under `deviceFlow`
+ * (Codex keeps browser PKCE as its primary flow and adds the device flow
+ * alongside it).
+ */
+function providerSupportsDeviceCode(providerData) {
+  return providerData?.flowType === "device_code" || Boolean(providerData?.deviceFlow);
+}
+
 function proxySelectionInput(source) {
   const selection = {};
   if (hasOwn(source, "proxyMode")) selection.proxyMode = source.proxyMode;
@@ -323,7 +347,7 @@ async function beginAuthorization(provider, input) {
 
 async function beginDeviceCode(provider, input) {
   const providerData = requireOAuthProvider(provider);
-  if (providerData.flowType !== "device_code") {
+  if (!providerSupportsDeviceCode(providerData)) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
       "Provider does not support device code flow"
@@ -489,6 +513,15 @@ async function pollDeviceCode(provider, input) {
     }
 
     if (result.success) {
+      // The device path saves through saveOAuthConnection directly, so the
+      // Codex fingerprint mode chosen at device start has to be stamped here
+      // the way the browser path stamps it in exchangeAndSaveAuthorizationCode.
+      if (provider === "codex" && claim.payload?.codexFingerprintMode) {
+        result.tokens.providerSpecificData = {
+          ...(result.tokens.providerSpecificData || {}),
+          codexFingerprintMode: claim.payload.codexFingerprintMode
+        };
+      }
       const connection = await saveOAuthConnection(
         provider,
         result.tokens,

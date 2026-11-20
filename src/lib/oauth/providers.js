@@ -34,7 +34,8 @@ import {
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
   GROK_CLI_CONFIG,
-  getOAuthClientMetadata } from
+  getOAuthClientMetadata,
+  OAUTH_TIMEOUT } from
 "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
 import {
@@ -46,7 +47,7 @@ import {
   claudeProfileFields,
   fetchKiroProfileArn } from
 "./providerHelpers";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import museCode from "./museCodeProvider.js";
@@ -227,6 +228,33 @@ function antigravityOnboardRetryDelayMs() {
   return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS", 5000, 0);
 }
 
+// Codex device flow (headless sign-in).
+// Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
+// at 6faa8d20b2673404cff70a2f2d9537ae0d0e684d — `codexDeviceTimeout` is 15
+// minutes and `codexDeviceDefaultPollIntervalSeconds` is 5.
+//
+// The OAuth flow store caps every flow at OAUTH_TIMEOUT, and the client polls
+// for as long as the advertised window. Advertising the full upstream window
+// would have the client poll a session the server already expired, so the
+// advertised window is capped with the flow.
+const CODEX_DEVICE_FLOW_TTL_SECONDS = Math.min(
+  15 * 60,
+  Math.floor(OAUTH_TIMEOUT / 1000)
+);
+const CODEX_DEVICE_POLL_INTERVAL_SECONDS = 5;
+
+/**
+ * The Codex device endpoint returns `interval` as either a number of seconds or
+ * a numeric string. Anything else falls back to the upstream default.
+ */
+function parseCodexDevicePollInterval(raw) {
+  const seconds = isString(raw) ? Number(raw.trim()) : raw;
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.floor(seconds);
+  }
+  return CODEX_DEVICE_POLL_INTERVAL_SECONDS;
+}
+
 // Provider configurations
 const PROVIDERS = {
   claude: {
@@ -378,6 +406,156 @@ const PROVIDERS = {
         };
       }
       return mapped;
+    },
+    // Headless sign-in: the Codex device flow.
+    //
+    // Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
+    // at 6faa8d20b2673404cff70a2f2d9537ae0d0e684d (`loginWithDeviceFlow`). It is
+    // NOT the RFC 8628 device-code grant: auth.openai.com issues a user code,
+    // then hands back an authorization code together with the server-side PKCE
+    // pair, and that code is exchanged like any other authorization code. The
+    // flow lives under `deviceFlow` (not `flowType: "device_code"`) because the
+    // browser PKCE path stays this provider's primary flow.
+    deviceFlow: {
+      requestDeviceCode: async (config, _codeChallenge, _options, proxyOptions) => {
+        const response = await fetch(config.deviceCodeUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ client_id: config.clientId }),
+          proxyOptions
+        });
+
+        const text = await response.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = {};
+        }
+        if (!response.ok) {
+          throw new Error(
+            `Codex device code request failed: ${text || response.statusText}`
+          );
+        }
+
+        const deviceAuthId = isString(data.device_auth_id) ?
+          data.device_auth_id.trim() :
+          "";
+        const userCode = (isString(data.user_code) ? data.user_code : "") ||
+          (isString(data.usercode) ? data.usercode : "");
+        if (!deviceAuthId || !userCode) {
+          throw new Error("Codex device code response is missing required fields");
+        }
+
+        const verificationUrl = config.deviceVerificationUrl;
+        return {
+          // The device handle the flow store keeps server-side.
+          device_code: deviceAuthId,
+          user_code: userCode,
+          verification_uri: verificationUrl,
+          verification_uri_complete: verificationUrl ?
+            `${verificationUrl}?user_code=${encodeURIComponent(userCode)}` :
+            undefined,
+          expires_in: CODEX_DEVICE_FLOW_TTL_SECONDS,
+          interval: parseCodexDevicePollInterval(data.interval),
+          // Private: the poll needs the user code next to the device handle.
+          _userCode: userCode
+        };
+      },
+      pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
+        const userCode = isString(extraData?._userCode) ?
+          extraData._userCode :
+          "";
+        const response = await fetch(config.deviceTokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({
+            device_auth_id: deviceCode,
+            user_code: userCode
+          }),
+          proxyOptions
+        });
+
+        const text = await response.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = {};
+        }
+
+        // Upstream treats 403 and 404 as "still waiting for the user".
+        if (!response.ok) {
+          if (response.status === 403 || response.status === 404) {
+            return { ok: true, data: { error: "authorization_pending" } };
+          }
+          return {
+            ok: false,
+            data: {
+              error: data.error || "device_token_failed",
+              error_description: data.error_description || text || response.statusText
+            }
+          };
+        }
+
+        const authorizationCode = isString(data.authorization_code) ?
+          data.authorization_code.trim() :
+          "";
+        const codeVerifier = isString(data.code_verifier) ?
+          data.code_verifier.trim() :
+          "";
+        if (!authorizationCode || !codeVerifier) {
+          return {
+            ok: false,
+            data: {
+              error: "invalid_device_response",
+              error_description: "Codex device token response is missing required fields"
+            }
+          };
+        }
+
+        // Exchange the device authorization code. The redirect URI is the one the
+        // device flow was minted for, not the loopback callback.
+        const tokenResponse = await fetch(config.tokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json"
+          },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            client_id: config.clientId,
+            code: authorizationCode,
+            redirect_uri: config.deviceRedirectUri,
+            code_verifier: codeVerifier
+          }).toString(),
+          proxyOptions
+        });
+
+        const tokenText = await tokenResponse.text();
+        let tokens = {};
+        try {
+          tokens = tokenText ? JSON.parse(tokenText) : {};
+        } catch {
+          tokens = {};
+        }
+        if (!tokenResponse.ok || !tokens.access_token) {
+          return {
+            ok: false,
+            data: {
+              error: tokens.error || "code_exchange_failed",
+              error_description: tokens.error_description || tokenText || tokenResponse.statusText
+            }
+          };
+        }
+        return { ok: true, data: tokens };
+      }
     }
   },
 
@@ -1824,14 +2002,28 @@ export async function exchangeTokens(providerName, code, redirectUri, codeVerifi
 }
 
 /**
+ * Resolve the device-flow handler set for a provider.
+ *
+ * A provider is device-only (`flowType: "device_code"`, handlers on the
+ * provider record) or dual: its primary flow is something else (Codex keeps
+ * browser PKCE) and the device handlers live under `deviceFlow`.
+ */
+function resolveDeviceFlow(provider) {
+  if (!provider) return null;
+  if (provider.flowType === "device_code") return provider;
+  return provider.deviceFlow || null;
+}
+
+/**
  * Request device code (for device_code flow)
  */
 export async function requestDeviceCode(providerName, codeChallenge, options, proxyOptions = null) {
   const provider = getProvider(providerName);
-  if (provider.flowType !== "device_code") {
+  const device = resolveDeviceFlow(provider);
+  if (!device || !isFunction(device.requestDeviceCode)) {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
-  return await provider.requestDeviceCode(provider.config, codeChallenge, options || {}, proxyOptions);
+  return await device.requestDeviceCode(provider.config, codeChallenge, options || {}, proxyOptions);
 }
 
 /**
@@ -1843,11 +2035,12 @@ export async function requestDeviceCode(providerName, codeChallenge, options, pr
  */
 export async function pollForToken(providerName, deviceCode, codeVerifier, extraData, proxyOptions = null) {
   const provider = getProvider(providerName);
-  if (provider.flowType !== "device_code") {
+  const device = resolveDeviceFlow(provider);
+  if (!device || !isFunction(device.pollToken)) {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
 
-  const result = await provider.pollToken(provider.config, deviceCode, codeVerifier, extraData, proxyOptions);
+  const result = await device.pollToken(provider.config, deviceCode, codeVerifier, extraData, proxyOptions);
 
   if (result.ok) {
     // For device code flows, success is only when we have an access token

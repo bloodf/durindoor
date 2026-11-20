@@ -45,12 +45,19 @@ export function SttExampleCard({ providerId }) {
     then((r) => r.json()).
     then((d) => {if (d.publicUrl) setTunnelEndpoint(d.publicUrl);}).
     catch(() => {});
+    let requestGeneration = 0;
     const loadCustom = () => {
+      const generation = ++requestGeneration;
       fetch("/api/models/custom", { cache: "no-store" }).
       then((r) => r.json()).
       then((d) => {
+        // A newer refresh or cleanup owns the catalog after this request is superseded.
+        if (generation !== requestGeneration) return;
         const list = (d.models || []).filter((m) => getModelKind(m) === "stt" && m.providerAlias === providerAlias);
         setCustomSttModels(list);
+        /** Keep refreshed STT choices and multipart IDs aligned without rewriting vendor IDs. */
+        const available = [...builtinSttModels, ...list];
+        if (available.length) setSelectedModel((current) => available.some((model) => model.id === current) ? current : available[0].id);
       }).
       catch(() => {});
     };
@@ -58,6 +65,7 @@ export function SttExampleCard({ providerId }) {
     window.addEventListener("focus", loadCustom);
     window.addEventListener("customModelChanged", loadCustom);
     return () => {
+      requestGeneration++;
       window.removeEventListener("focus", loadCustom);
       window.removeEventListener("customModelChanged", loadCustom);
     };

@@ -13,6 +13,7 @@ const API_TYPE_OPTIONS = [
   { value: "responses", label: "Responses API" },
 ];
 
+/** Keep edits visible until save settles; pending dismissal could hide a failed update. */
 export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose, isAnthropic }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -88,7 +89,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   if (!node) return null;
 
   return (
-    <Modal open={isOpen} title={`Edit ${isAnthropic ? "Anthropic" : "OpenAI"} Compatible`} onClose={onClose}>
+    <Modal open={isOpen} title={`Edit ${isAnthropic ? "Anthropic" : "OpenAI"} Compatible`} onClose={onClose} pending={saving}>
       <div className="flex flex-col gap-4">
         <Input
           label="Name"
@@ -162,7 +163,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button onClick={onClose} variant="ghost" className="w-full">
+          <Button onClick={onClose} variant="ghost" className="w-full" disabled={saving}>
             Cancel
           </Button>
         </div>

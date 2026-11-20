@@ -280,8 +280,10 @@ describe("Playground model ids", () => {
       { providerId: NODE_ID, providerName: "MiraiAPI", models: [rowA, solo] },
       { providerId: OTHER_NODE_ID, providerName: "MiraiAPI", models: [rowB] }
     ]);
-    // A canonical id always resolves to its own row.
-    expect(resolveSavedModel(index, rowA.id, OTHER_NODE_ID).providerId).toBe(NODE_ID);
+    // A canonical id resolves to its own row, and only for the provider that saved it.
+    expect(resolveSavedModel(index, rowA.id, NODE_ID).providerId).toBe(NODE_ID);
+    expect(resolveSavedModel(index, rowA.id, OTHER_NODE_ID)).toBeNull();
+    expect(resolveSavedModel(index, rowA.id).providerId).toBe(NODE_ID);
     // A raw namespaced id saved before node binding resolves by provider identity.
     expect(resolveSavedModel(index, "vendor/some-model", NODE_ID).requestModel).toBe(rowA.requestModel);
     expect(resolveSavedModel(index, "vendor/some-model", OTHER_NODE_ID).requestModel).toBe(rowB.requestModel);
@@ -293,6 +295,83 @@ describe("Playground model ids", () => {
     // An alias held by exactly one row resolves.
     expect(resolveSavedModel(index, "solo/model").requestModel).toBe(solo.requestModel);
     expect(resolveSavedModel(index, "")).toBeNull();
+  });
+
+  describe("saved selections stay bound to their provider", () => {
+    const builtIn = { id: "conn-gw", provider: "openrouter", name: "Gateway", isActive: true, providerSpecificData: {} };
+    const second = { id: "conn-gw-2", provider: "togetherai", name: "Together", isActive: true, providerSpecificData: {} };
+
+    function indexFor(...groups) {
+      return buildModelIndex(groups.map(({ connection: c, models }) => ({
+        providerId: c.provider,
+        providerName: c.name,
+        models
+      })));
+    }
+
+    it("never resolves a canonical id to another provider's row", () => {
+      const own = normalizeLiveModel({ id: "shared-model" }, builtIn);
+      const other = normalizeLiveModel({ id: "shared-model" }, second);
+      const index = indexFor({ connection: builtIn, models: [own] }, { connection: second, models: [other] });
+      expect(resolveSavedModel(index, "shared-model", "openrouter").providerId).toBe("openrouter");
+      expect(resolveSavedModel(index, "shared-model", "togetherai").providerId).toBe("togetherai");
+      // No provider identity and two owners: not resolved.
+      expect(resolveSavedModel(index, "shared-model")).toBeNull();
+      // A provider that lists no such model: not resolved.
+      expect(resolveSavedModel(index, "shared-model", "unknown-node")).toBeNull();
+    });
+
+    it("keeps a legacy raw id on its node when the text is another provider's canonical id", () => {
+      const gateway = normalizeLiveModel({ id: "vendor/some-model" }, builtIn);
+      const compatible = normalizeLiveModel({ id: "vendor/some-model" }, connection());
+      expect(gateway.id).toBe("vendor/some-model");
+      expect(compatible.aliases).toContain("vendor/some-model");
+      const index = indexFor({ connection: builtIn, models: [gateway] }, { connection: connection(), models: [compatible] });
+      // Saved before node binding, with the node as provider: stays on the node.
+      expect(resolveSavedModel(index, "vendor/some-model", NODE_ID).providerId).toBe(NODE_ID);
+      expect(resolveSavedModel(index, "vendor/some-model", NODE_ID).requestModel).toBe(compatible.requestModel);
+      // The gateway's own saved selection stays on the gateway.
+      expect(resolveSavedModel(index, "vendor/some-model", "openrouter").providerId).toBe("openrouter");
+      // The node's canonical id and prefix label resolve for the node only.
+      expect(resolveSavedModel(index, compatible.id, NODE_ID).providerId).toBe(NODE_ID);
+      expect(resolveSavedModel(index, compatible.id, "openrouter")).toBeNull();
+      expect(resolveSavedModel(index, `${PREFIX}/vendor/some-model`, NODE_ID).providerId).toBe(NODE_ID);
+      expect(resolveSavedModel(index, `${PREFIX}/vendor/some-model`, "openrouter")).toBeNull();
+    });
+
+    it("leaves a missing, removed or ambiguous saved selection unresolved", () => {
+      const row = normalizeLiveModel({ id: "vendor/some-model" }, connection());
+      const twin = normalizeLiveModel({ id: "vendor/some-model" }, connection({ provider: OTHER_NODE_ID }));
+      const index = indexFor(
+        { connection: connection(), models: [row] },
+        { connection: connection({ provider: OTHER_NODE_ID }), models: [twin] }
+      );
+      expect(resolveSavedModel(index, "", NODE_ID)).toBeNull();
+      expect(resolveSavedModel(index, undefined, NODE_ID)).toBeNull();
+      expect(resolveSavedModel(index, "removed/model", NODE_ID)).toBeNull();
+      expect(resolveSavedModel(index, "removed/model")).toBeNull();
+      expect(resolveSavedModel(index, "vendor/some-model")).toBeNull();
+      expect(resolveSavedModel(buildModelIndex([]), row.id, NODE_ID)).toBeNull();
+    });
+
+    it("keeps new-session defaults and ordinary compatible-node identities recognised", () => {
+      for (const id of [NODE_ID, ANTHROPIC_NODE_ID, "custom-embedding-abc", "systemone-compatible-abc"]) {
+        expect(isCustomProviderId(id)).toBe(true);
+      }
+      const rows = [
+        normalizeLiveModel({ id: MODEL }, connection()),
+        normalizeLiveModel({ id: MODEL }, { id: "c-a", provider: ANTHROPIC_NODE_ID, name: "Claude Gateway", providerSpecificData: { prefix: "cg" } })
+      ];
+      expect(rows.map((r) => r.requestModel)).toEqual([`${NODE_ID}/${MODEL}`, `${ANTHROPIC_NODE_ID}/${MODEL}`]);
+      const index = buildModelIndex([
+        { providerId: NODE_ID, providerName: "MiraiAPI", models: [rows[0]] },
+        { providerId: ANTHROPIC_NODE_ID, providerName: "Claude Gateway", models: [rows[1]] }
+      ]);
+      // A first selection (no saved provider) and an explicit switch resolve their own rows.
+      expect(resolveSavedModel(index, rows[0].id).providerId).toBe(NODE_ID);
+      expect(resolveSavedModel(index, rows[1].id, ANTHROPIC_NODE_ID).providerId).toBe(ANTHROPIC_NODE_ID);
+      expect(resolveSavedModel(index, `${PREFIX}/${MODEL}`, NODE_ID).providerId).toBe(NODE_ID);
+    });
   });
 
   it("keeps the group and ordering contract under the request id", () => {

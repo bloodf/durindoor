@@ -207,36 +207,47 @@ export function normalizeLiveModel(model, connection) {
  * every legacy alias (the display label, or a raw upstream id saved before a
  * compatible node was bound by node id) separately.
  *
+ * Both maps hold arrays: the same id can be listed by two providers (a live id
+ * kept verbatim on two built-in providers), and a raw upstream id saved by a
+ * compatible node can also be the canonical id of another provider's row. An
+ * alias is indexed even when it equals another row's canonical id, so a saved
+ * selection can still be matched to the provider that saved it.
+ *
  * @param {Array<{models:Array}>} providerGroups
- * @returns {{byId: Map<string, object>, byAlias: Map<string, object[]>}}
+ * @returns {{byId: Map<string, object[]>, byAlias: Map<string, object[]>}}
  */
 export function buildModelIndex(providerGroups = []) {
   const byId = new Map();
   const byAlias = new Map();
+  const push = (map, key, entry) => {
+    const list = map.get(key);
+    if (!list) map.set(key, [entry]);
+    else if (!list.includes(entry)) list.push(entry);
+  };
   for (const group of providerGroups) {
     for (const model of group.models || []) {
       const entry = { ...model, providerId: group.providerId, providerName: group.providerName };
-      byId.set(model.id, entry);
-    }
-  }
-  for (const entry of byId.values()) {
-    for (const alias of entry.aliases || []) {
-      if (byId.has(alias)) continue;
-      if (!byAlias.has(alias)) byAlias.set(alias, []);
-      byAlias.get(alias).push(entry);
+      push(byId, model.id, entry);
+      for (const alias of entry.aliases || []) {
+        if (alias !== model.id) push(byAlias, alias, entry);
+      }
     }
   }
   return { byId, byAlias };
 }
 
 /**
- * Resolve a saved model selection to one row.
+ * Resolve a saved model selection to one row, or `null` when it cannot be
+ * resolved. An unresolved selection must be chosen explicitly again; it is
+ * never replaced by a default.
  *
- * A canonical request id always wins. A legacy alias resolves only when it
- * identifies exactly one row: when the saved provider id is known it must match
- * the row's provider, and an alias shared by several providers (two nodes with
- * the same prefix, or the same upstream id on two nodes) with no matching
- * provider identity is left unresolved rather than guessed.
+ * A saved provider identity binds the selection: the result always belongs to
+ * that provider. A canonical request id owned by that provider wins. When the
+ * id is canonical only for another provider, it is not that provider's model;
+ * the id may still be a legacy alias (a raw upstream id or display label) of
+ * the saved provider's own rows, and resolves only if exactly one of them owns
+ * it. Without a provider identity, an id or alias resolves only when exactly
+ * one row owns it, so an ambiguous selection is never guessed.
  *
  * @param {{byId: Map, byAlias: Map}} index
  * @param {string} savedId
@@ -245,9 +256,15 @@ export function buildModelIndex(providerGroups = []) {
  */
 export function resolveSavedModel(index, savedId, savedProviderId = "") {
   if (!savedId) return null;
-  if (index.byId.has(savedId)) return index.byId.get(savedId);
-  const candidates = index.byAlias.get(savedId) || [];
-  const scoped = savedProviderId ? candidates.filter((entry) => entry.providerId === savedProviderId) : candidates;
+  const direct = index.byId.get(savedId) || [];
+  const aliased = index.byAlias.get(savedId) || [];
+  if (!savedProviderId) {
+    const candidates = direct.length > 0 ? direct : aliased;
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+  const own = direct.find((entry) => entry.providerId === savedProviderId);
+  if (own) return own;
+  const scoped = aliased.filter((entry) => entry.providerId === savedProviderId);
   return scoped.length === 1 ? scoped[0] : null;
 }
 

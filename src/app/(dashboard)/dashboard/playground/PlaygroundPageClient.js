@@ -311,10 +311,9 @@ export default function PlaygroundPageClient() {
 
   // Rows are addressed by the node id; the configured prefix (and a raw
   // upstream id saved before node binding) are legacy aliases. A saved
-  // selection resolves through its provider identity and never through an
-  // ambiguous alias.
+  // selection resolves only to a row of its own provider and never through an
+  // ambiguous alias; an unresolved one has to be selected again.
   const modelLookup = useMemo(() => buildModelIndex(providerGroups), [providerGroups]);
-  const modelIndex = modelLookup.byId;
   const findSavedModel = (savedId, savedProviderId) => resolveSavedModel(modelLookup, savedId, savedProviderId);
 
   const activeProviderGroup = useMemo(() => {
@@ -322,13 +321,12 @@ export default function PlaygroundPageClient() {
   }, [providerGroups, activeProviderId]);
 
   const activeModel = useMemo(() => {
+    // A saved session is bound to the model it was saved with. When that model
+    // can no longer be resolved there is no active model until one is chosen.
+    const session = activeSessionId ? sessions.find((item) => item.id === activeSessionId) : null;
+    if (session) return findSavedModel(session.modelId, session.providerId);
     const active = findSavedModel(activeModelId, activeProviderId);
     if (active) return active;
-    if (activeSessionId) {
-      const session = sessions.find((item) => item.id === activeSessionId);
-      const saved = findSavedModel(session?.modelId, session?.providerId);
-      if (saved) return saved;
-    }
     return activeProviderGroup?.models?.[0] || null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeModelId, activeProviderId, modelLookup, activeProviderGroup, sessions, activeSessionId]);
@@ -386,11 +384,17 @@ export default function PlaygroundPageClient() {
 
     if (sessions.length > 0) {
       const session = sessions.find((item) => item.id === activeSessionId) || sessions[0];
-      const sessionModel = findSavedModel(session?.modelId, session?.providerId) || savedModel;
+      const sessionModel = findSavedModel(session?.modelId, session?.providerId);
       initializedRef.current = true;
       setActiveSessionId(session.id);
-      setActiveProviderId(sessionModel?.providerId || savedProvider.providerId);
-      setActiveModelId(sessionModel?.id || savedModel.id);
+      if (sessionModel) {
+        setActiveProviderId(sessionModel.providerId);
+        setActiveModelId(sessionModel.id);
+      } else {
+        // The saved model cannot be resolved: leave it unselected so the
+        // history is not sent to a different model.
+        setActiveModelId("");
+      }
       return;
     }
 
@@ -452,7 +456,7 @@ export default function PlaygroundPageClient() {
     if (!session) return;
     setActiveSessionId(sessionId);
     setActiveProviderId(session.providerId || activeProviderId);
-    setActiveModelId(session.modelId || activeModelId);
+    setActiveModelId(session.modelId || "");
     setHistoryOpen(false);
   };
 
@@ -472,13 +476,17 @@ export default function PlaygroundPageClient() {
     }
   };
 
-  const handleSelectModel = (modelId) => {
-    const model = modelIndex.get(modelId);
+  const handleSelectModel = (modelId, providerId) => {
+    const model = resolveSavedModel(modelLookup, modelId, providerId);
     if (!model) return;
     setActiveConnectionId("auto");
 
     const current = sessions.find((session) => session.id === activeSessionId);
-    if (current && current.messages.length > 0) {
+    // A session whose saved model cannot be resolved is rebound in place by an
+    // explicit selection; a resolved one keeps its history under its model and
+    // the switch starts a new chat.
+    const currentModelResolved = !!current && !!findSavedModel(current.modelId, current.providerId);
+    if (current && current.messages.length > 0 && currentModelResolved) {
       const session = ensureSessionForModel(model);
       if (!session) return;
       setSessions((prev) => [session, ...prev]);
@@ -544,7 +552,7 @@ export default function PlaygroundPageClient() {
   };
 
   const sendMessage = async () => {
-    const model = activeModel || activeProviderGroup?.models?.[0] || null;
+    const model = activeModel;
     if (!model) return;
 
     const userText = draft.trim();
@@ -720,7 +728,7 @@ export default function PlaygroundPageClient() {
   activeConnectionId :
   "auto";
   const modelOptions = useMemo(() => providerGroups.flatMap((group) => group.models), [providerGroups]);
-  const selectedModelIndex = Math.max(0, modelOptions.findIndex((model) => model.id === activeModel?.id));
+  const selectedModelIndex = Math.max(0, modelOptions.findIndex((model) => model.id === activeModel?.id && model.providerId === activeModel?.providerId));
   const openModelMenu = () => {
     setActiveModelIndex(selectedModelIndex);
     setModelMenuOpen(true);
@@ -743,7 +751,7 @@ export default function PlaygroundPageClient() {
     else if (event.key === "End") nextIndex = modelOptions.length - 1;
     else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      handleSelectModel(modelOptions[nextIndex].id);
+      handleSelectModel(modelOptions[nextIndex].id, modelOptions[nextIndex].providerId);
       modelTriggerRef.current?.focus();
       return;
     } else return;
@@ -795,7 +803,7 @@ export default function PlaygroundPageClient() {
                   <div role="listbox" id={modelListboxId} tabIndex={0} onKeyDown={handleModelListKeyDown} aria-label="Available models" className="max-h-[60vh] space-y-2 overflow-y-auto p-2">
                     {providerGroups.map((group) => <div key={group.providerId} role="group" aria-label={group.providerName} className="rounded-dd border border-dd-border-subtle bg-dd-bg p-2">
                       <div className="flex items-center justify-between px-1.5 py-1.5"><div className="flex min-w-0 items-center gap-2"><ProviderLogo provider={group.providerId} size={20} /><p className="truncate text-[13px] font-semibold text-dd-text">{group.providerName}</p></div><Badge size="sm">{group.models.length}</Badge></div>
-                      <div className="grid gap-1.5 sm:grid-cols-2">{group.models.map((model) => { const optIndex = modelOptions.indexOf(model); const isSelected = model.id === activeModelId; const isActiveOption = optIndex === activeModelIndex; return <button key={model.id} id={`${modelListboxId}-opt-${optIndex}`} type="button" role="option" tabIndex={-1} onClick={() => { handleSelectModel(model.id); modelTriggerRef.current?.focus(); }} onMouseEnter={() => setActiveModelIndex(optIndex)} aria-selected={isSelected} className={isActiveOption ? "rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : isSelected ? "rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : "rounded-dd border border-transparent px-3 py-2.5 text-left outline-none transition-colors hover:border-dd-border hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="block truncate text-[13px] font-medium text-dd-text">{model.name}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{model.displayModel || model.id}</span></button>; })}</div>
+                      <div className="grid gap-1.5 sm:grid-cols-2">{group.models.map((model) => { const optIndex = modelOptions.indexOf(model); const isSelected = model.id === activeModel?.id && model.providerId === activeModel?.providerId; const isActiveOption = optIndex === activeModelIndex; return <button key={`${model.providerId}/${model.id}`} id={`${modelListboxId}-opt-${optIndex}`} type="button" role="option" tabIndex={-1} onClick={() => { handleSelectModel(model.id, model.providerId); modelTriggerRef.current?.focus(); }} onMouseEnter={() => setActiveModelIndex(optIndex)} aria-selected={isSelected} className={isActiveOption ? "rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : isSelected ? "rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : "rounded-dd border border-transparent px-3 py-2.5 text-left outline-none transition-colors hover:border-dd-border hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="block truncate text-[13px] font-medium text-dd-text">{model.name}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{model.displayModel || model.id}</span></button>; })}</div>
                     </div>)}
                   </div>
                 </Card> : null}
@@ -819,7 +827,7 @@ export default function PlaygroundPageClient() {
           </div>}
           <div className="shrink-0 border-t border-dd-border-subtle bg-dd-bg-alt/95 px-3 py-3 backdrop-blur sm:px-4 lg:px-6">
             {attachments.length > 0 ? <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap gap-2">{attachments.map((attachment) => <div key={attachment.id} className="flex items-center gap-2 rounded-full border border-dd-border-subtle bg-dd-surface py-1 ps-2 pe-1"><img src={attachment.dataUrl} alt={attachment.name} className="size-7 rounded-full object-cover" /><span className="max-w-40 truncate text-xs text-dd-text">{attachment.name}</span><IconButton icon="close" label={`Remove ${attachment.name}`} size="sm" onClick={() => removeAttachment(attachment.id)} /></div>)}</div> : null}
-            <div className="mx-auto w-full max-w-3xl rounded-dd-lg border border-dd-border bg-dd-surface p-2 transition-colors focus-within:border-dd-accent focus-within:shadow-dd-focus"><Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={`Message ${activeModel?.name || "model"}`} rows={1} aria-label="Message input" className="max-h-[25vh] min-h-11 resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-6 shadow-none hover:border-0 focus:border-0 focus:shadow-none" /><div className="flex items-center justify-between gap-3 pt-1"><div className="flex min-w-0 items-center gap-1"><IconButton icon="attach_file" label="Attach image" disabled={!activeModel || loadingData} onClick={() => fileInputRef.current?.click()} /><input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} /><span className="truncate ps-1 text-xs font-medium text-dd-subtle">{activeModel ? activeModel.name : "No model"}</span></div><div className="flex shrink-0 items-center gap-2">{isSending ? <Button variant="secondary" size="sm" icon="stop" onClick={handleStop}>Stop</Button> : null}{mode === "chat" ? <Button variant="primary" size="sm" icon="arrow_upward" onClick={sendMessage} disabled={!canSend} aria-label="Send message" className="min-w-11">Send</Button> : null}</div></div></div>
+            <div className="mx-auto w-full max-w-3xl rounded-dd-lg border border-dd-border bg-dd-surface p-2 transition-colors focus-within:border-dd-accent focus-within:shadow-dd-focus"><Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={activeModel ? `Message ${activeModel.name}` : currentSession && providerGroups.length > 0 ? "Select a model to continue this chat" : "Message model"} rows={1} aria-label="Message input" className="max-h-[25vh] min-h-11 resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-6 shadow-none hover:border-0 focus:border-0 focus:shadow-none" /><div className="flex items-center justify-between gap-3 pt-1"><div className="flex min-w-0 items-center gap-1"><IconButton icon="attach_file" label="Attach image" disabled={!activeModel || loadingData} onClick={() => fileInputRef.current?.click()} /><input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} /><span className="truncate ps-1 text-xs font-medium text-dd-subtle">{activeModel ? activeModel.name : "No model"}</span></div><div className="flex shrink-0 items-center gap-2">{isSending ? <Button variant="secondary" size="sm" icon="stop" onClick={handleStop}>Stop</Button> : null}{mode === "chat" ? <Button variant="primary" size="sm" icon="arrow_upward" onClick={sendMessage} disabled={!canSend} aria-label="Send message" className="min-w-11">Send</Button> : null}</div></div></div>
             <p className="mt-2 px-1 text-center text-[11px] text-dd-subtle">{mode === "chat" ? "Enter to send · Shift+Enter for newline · Model list is filtered from connected providers." : "Compare uses this prompt and its images · Run each column or Run all above."}</p>
           </div>
         </div>

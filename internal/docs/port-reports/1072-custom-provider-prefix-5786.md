@@ -76,11 +76,21 @@ The gate also found a stale Storybook source census. `tests/e2e/storybook-surfac
 
 The first repair still passed a live model id that contained a slash through unchanged, on the assumption that it was already a gateway address. On a compatible node it is not: it is the upstream's own model name, and sending it bare lets the gateway read its first segment as a provider rather than as part of the model. This repair binds every live model of an ordinary OpenAI- or Anthropic-compatible node to that node, `<node id>/<upstream id>`, and keeps the whole upstream id, namespace included. The server parser already splits only at the first slash and accepts the node id there, so no server code changed. Built-in providers and combos are untouched: a live id on those paths is still sent as returned.
 
-Legacy saved selections are handled by provider identity. A canonical id wins. A saved display label or raw upstream id resolves only when exactly one row owns it, and, when the saved provider is known, only a row of that provider. Otherwise the selection falls back to the provider's first model instead of being guessed. Canonical saved ids, built-in provider precedence and explicit account pins are unchanged.
+Legacy saved selections are handled by provider identity. A canonical id wins. A saved display label or raw upstream id resolves only when exactly one row owns it, and, when the saved provider is known, only a row of that provider. Otherwise the selection is left unresolved instead of being guessed (see the next section for what the Playground then does). Canonical saved ids, built-in provider precedence and explicit account pins are unchanged.
 
 Verification is a pure offline adapter fixture of ordinary namespaced compatible-provider ids, plus a separate check that the prefix label stays a display field. No request was sent to any provider.
 
 The Storybook inventory was refreshed after a static `storybook:build` with `scripts/sync-storybook-inventory.mjs --write`. Only the source hashes of the two touched tracked Playground sources changed; the rows were already pending, so no new approval was archived and the earlier historical approvals are preserved. Source review and runtime qualification remain pending.
+
+## Repair of saved-selection provider binding
+
+A saved Playground selection that names a provider now resolves only to that provider. The provider is checked first, even for a direct canonical match: an id that is canonical for another provider is not that provider's model. A raw upstream id saved before node binding still resolves for its own node when its text also equals another provider's canonical id, because the legacy aliases are now indexed alongside canonical ids. The same id listed by two providers resolves to the saved provider's row, and with no provider identity it is left unresolved rather than guessed.
+
+A saved chat whose model can no longer be resolved no longer falls back to the first model. The picker shows "Select model", the input says to select a model, and Send stays disabled until the user picks one. An explicit selection rebinds that chat in place, so its history goes only to the model chosen. New-chat defaults, normal model switches, canonical node addressing and account pins are unchanged, and the ordinary compatible-node ids are still recognised. The server namespace normalisation is untouched.
+
+Verification is a pure offline fixture of ordinary model/provider rows. It asserts that the provider is preserved and that a missing, removed or ambiguous saved selection is unresolved. No request was sent to any provider.
+
+The Storybook inventory was refreshed after a static `storybook:build` with `scripts/sync-storybook-inventory.mjs --write`. Only the source hashes of the two touched Playground sources changed (the census hash follows). The rows were already pending, so no new approval was archived and the earlier historical approvals are preserved. Source review and runtime qualification remain pending.
 
 ## Preserved contracts
 

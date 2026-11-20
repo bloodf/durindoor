@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { NextResponse } from "next/server";
 import { isValidGitHubCreditLimit } from "open-sse/services/githubCreditLimit.js";
@@ -392,6 +393,14 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: proxyPoolResult.error }, { status: 400 });
     }
 
+    if (existing.provider === "cerebrium" && providerSpecificData && Object.hasOwn(providerSpecificData, "baseUrl")) {
+      const next = cerebriumBaseUrl(providerSpecificData.baseUrl);
+      if (!next) return NextResponse.json({ error: "Invalid Cerebrium deployment /run URL" }, { status: 400 });
+      if (next !== cerebriumBaseUrl(existing.providerSpecificData?.baseUrl)) {
+        if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Changing a Cerebrium deployment requires an operator" }, { status: 403 });
+        if (!isString(apiKey) || !apiKey.trim()) return NextResponse.json({ error: "Supply the project API key when changing deployment" }, { status: 400 });
+      }
+    }
     const updateData = {};
     if (existing.provider === "xai" && isString(body.managementApiKey)) updateData.managementApiKey = body.managementApiKey.trim();
     if (name !== undefined) updateData.name = name;

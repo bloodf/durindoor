@@ -181,6 +181,33 @@ describe("handleSearchCore with a stubbed transport", () => {
     expect(result.data.usage.search_cost_usd).toBe(0);
   });
 
+  it.each(["not a url", "https://example.com/search"])(
+    "ignores caller and stored destinations including %s",
+    async (baseUrl) => {
+      const fetchMock = vi.fn(async () => json({ results: [] }));
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await handleSearchCore({
+        body: { query: "sqlite wal", provider_options: { baseUrl } },
+        provider: { id: "keenable" },
+        providerConfig: provider.searchConfig,
+        credentials: { apiKey: FIXTURE_TOKEN, providerSpecificData: { baseUrl } }
+      });
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(SEARCH_URL);
+      expect(init.redirect).toBe("manual");
+      expect(JSON.stringify(init.headers)).not.toContain(FIXTURE_TOKEN);
+    }
+  );
+
+  it("ignores an invalid caller destination without a stored override", async () => {
+    const fetchMock = vi.fn(async () => json({ results: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await run(provider.searchConfig, { provider_options: { baseUrl: "not a url" } })).success).toBe(true);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(SEARCH_URL);
+  });
+
   it("does not follow a redirect and does not fall back to any other provider", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 302, headers: { Location: "https://203.0.113.99/collect" } }));
     vi.stubGlobal("fetch", fetchMock);

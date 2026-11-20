@@ -19,6 +19,7 @@ export default {
   noAuth: true,
   searchConfig: {
     baseUrl: "https://api.keenable.ai/v1/search/public",
+    fixedBaseUrl: true,
     method: "POST",
     authType: "none",
     authHeader: "none",

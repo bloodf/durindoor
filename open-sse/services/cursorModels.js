@@ -250,6 +250,10 @@ export async function resolveCursorModels(credentials, options = {}) {
     return null;
   }
 
+  // A proxy-bound lookup must use the static catalog, even if this account has
+  // a cached direct result, and must not poison later direct lookups.
+  if (shouldUseProxyAwareTransport(getCursorModelsUrl(), options.proxyOptions)) return null;
+
   const key = cacheKey(credentials);
   const now = Date.now();
   if (!options.forceRefresh) {

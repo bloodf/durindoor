@@ -1027,6 +1027,23 @@ export default function ProviderLimits() {
     [fetchConnections, page]
   );
 
+  const handleUltrafast = useCallback(async (conn) => {
+    setTogglingId(conn.id);
+    try {
+      const enabled = conn.providerSpecificData?.codexUltrafastMode !== true;
+      const response = await fetch(`/api/providers/${conn.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerSpecificData: { codexUltrafastMode: enabled } })
+      });
+      if (!response.ok) throw new Error("Could not save Ultrafast setting");
+      await reconcileConnectionsPage(fetchConnections, page);
+    } catch (error) {
+      setConnectionsError(error.message || "Could not save Ultrafast setting");
+    } finally {
+      setTogglingId(null);
+    }
+  }, [fetchConnections, page]);
+
   const handleUpdateConnection = useCallback(
     async (formData) => {
       if (!selectedConnection?.id) return;
@@ -1508,6 +1525,7 @@ export default function ProviderLimits() {
                     <Tooltip content={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"}><IconButton label={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"} icon="schedule" onClick={() => isCodex ? handleViewCodexResetCredits(conn) : handleViewClaudeResets(conn, claudeReset)} disabled={isLoading || rowBusy} /></Tooltip>
                   </> : null}
                   {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && !isInactive ? <Tooltip content={AUTO_PING_TOOLTIPS[conn.provider]}><IconButton label="Toggle auto-ping" icon="bolt" onClick={() => toggleAutoPing(conn.id, conn.provider, autoPingMaps[conn.provider]?.[conn.id] !== true)} className={autoPingMaps[conn.provider]?.[conn.id] === true ? "text-dd-accent" : ""} /></Tooltip> : null}
+                  {isCodex ? <Tooltip content="Ultrafast applies to GPT 6.2 Sol and uses 6× included usage"><Button variant="secondary" size="sm" disabled={rowBusy} aria-pressed={conn.providerSpecificData?.codexUltrafastMode === true} onClick={() => handleUltrafast(conn)}>Ultrafast {conn.providerSpecificData?.codexUltrafastMode === true ? "on" : "off"}</Button></Tooltip> : null}
                   <Tooltip content="Refresh (bypass cache)"><IconButton label="Refresh quota" title="Refresh (bypass cache)" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
                   <Tooltip content="Edit connection"><IconButton label="Edit connection" icon="edit" onClick={() => { setSelectedConnection(conn); setShowEditModal(true); }} disabled={rowBusy} /></Tooltip>
                   <Tooltip content="Delete connection"><IconButton label="Delete connection" icon="delete" onClick={() => setDeleteConfirmState(conn)} disabled={rowBusy} className="text-dd-danger hover:text-dd-danger" /></Tooltip>

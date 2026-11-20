@@ -43,6 +43,19 @@ export function TtsExampleCard({ providerId }) {
     }
     return "";
   });
+  const [liveModels, setLiveModels] = useState(null);
+
+  useEffect(() => {
+    if (!config.modelsEndpoint) return;
+    let cancelled = false;
+    fetch(config.modelsEndpoint).then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (cancelled || !Array.isArray(data?.models) || !data.models.length) return;
+        setLiveModels(data.models);
+        setSelectedModel((current) => data.models.some((model) => model.id === current) ? current : data.models[0].id);
+      }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [config.modelsEndpoint]);
 
   // Form state
   const [input, setInput]               = useState("Hello, this is a text to speech test.");
@@ -248,7 +261,7 @@ export function TtsExampleCard({ providerId }) {
 
           {config.hasModelSelector && (config.modelKey || getModelsByProviderId(providerId).some((m) => getModelKind(m) === "tts")) && (() => {
             const ttsModels = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "tts");
-            const list = ttsModels.length ? ttsModels : getModelsByProviderId(config.modelKey) || [];
+            const list = liveModels || (ttsModels.length ? ttsModels : getModelsByProviderId(config.modelKey) || []);
             return <Row label="Model"><Select aria-label="Model" value={selectedModel} onChange={setSelectedModel} options={list.map((m) => ({ value: m.id, label: m.name || m.id }))} /></Row>;
           })()}
 

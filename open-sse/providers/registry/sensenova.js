@@ -66,7 +66,8 @@ export default {
     website: "https://platform.sensenova.cn",
     notice: {
       text: "SenseNova registration appears to require a Chinese (+86) phone number for SMS verification; international users may be unable to obtain an API key.",
-      signupUrl: "https://platform.sensenova.cn/console"
+      signupUrl: "https://platform.sensenova.cn/console",
+      apiKeyUrl: "https://platform.sensenova.cn/console/keys"
     }
   },
   category: "freeTier",

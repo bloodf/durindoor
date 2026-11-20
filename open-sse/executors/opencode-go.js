@@ -144,8 +144,11 @@ export function normalizeResponsesTools(body) {
   });
   if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
     if (body.tool_choice.type === "function") {
-      const n = isString(body.tool_choice.name) ? body.tool_choice.name.trim() : "";
+      // Native Responses passthrough may still carry a Chat-shaped forced choice.
+      const rawName = body.tool_choice.name ?? body.tool_choice.function?.name;
+      const n = isString(rawName) ? rawName.trim().slice(0, MAX_TOOL_NAME_LEN) : "";
       if (!n || !validNames.has(n)) delete body.tool_choice;
+      else if (!isString(body.tool_choice.name)) body.tool_choice = { type: "function", name: n };
     }
   }
 }

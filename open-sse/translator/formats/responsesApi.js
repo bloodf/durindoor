@@ -419,7 +419,7 @@ export function convertResponsesApiFormat(body) {
   delete result.instructions;
   delete result.include;
   delete result.store;
-  delete result.reasoning;
+  // Preserve reasoning intent for target-format thinking normalization.
 
   return result;
 }

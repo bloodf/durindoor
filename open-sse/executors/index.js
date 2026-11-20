@@ -46,6 +46,7 @@ import { GrokCliExecutor } from "./grok-cli.js";
 import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
+import { DevinCliAgenticExecutor } from "./devin-cli-agentic.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 import { T3ChatWebExecutor } from "./t3-chat-web.js";
@@ -128,6 +129,7 @@ const executors = {
   "gitlab-duo": new GitlabExecutor("gitlab-duo"),
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
+  "devin-cli-agentic": new DevinCliAgenticExecutor(),
   windsurf: new WindsurfExecutor(),
   "t3-web": new T3ChatWebExecutor(),
   t3chat: new T3ChatWebExecutor(),

@@ -1,11 +1,3 @@
-/**
- * #1174 offline scope: installed devin-cli is the native ACP summarizer, not
- * devin-cli-agentic/dva. Upstream registry metadata declares a distinct Claude
- * agentic executor with CLI-owned auth; metadata does not prove runtime support.
- * Mocked child processes and fetch prove local wiring only, never account/model
- * availability. No g4f, web, or app-server transport qualifies as native Devin.
- * Live verification is unavailable; agentic tools/vision/reasoning remain unproven.
- */
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -69,17 +61,14 @@ function offlineFetch() {
   return fetcher;
 }
 
-describe("#1174 Devin CLI agentic acceptance boundary (offline partial)", () => {
-  it("does not validate the unsupported candidate or discover a fabricated account catalog", async () => {
+describe("#1174 existing Devin routes (offline)", () => {
+  it("keeps the native summarizer separate from the new agentic identity", async () => {
     const fetcher = offlineFetch();
     expect(hasSpecializedExecutor("devin-cli")).toBe(true);
-    for (const provider of ["devin-cli-agentic", "dva"]) {
-      expect(PROVIDERS[provider]).toBeUndefined();
-      expect(hasSpecializedExecutor(provider)).toBe(false);
-      expect(await probeRegistryProvider(provider, "fixture-only-token", fetcher)).toBeNull();
-      expect(await fetchConnectionModels({ id: "offline", provider, apiKey: "fixture-only-token" }))
-        .toEqual({ error: `Provider ${provider} does not support models listing`, status: 400 });
-    }
+    expect(PROVIDERS["devin-cli-agentic"]).toMatchObject({ format: "claude" });
+    expect(getExecutor("dva")).toBe(getExecutor("devin-cli-agentic"));
+    expect(getExecutor("dva")).not.toBe(getExecutor("devin-cli"));
+    expect(await probeRegistryProvider("devin-cli", "fixture-only-token", fetcher)).toMatchObject({ blocked: true, valid: false });
     expect(await fetchConnectionModels({ id: "offline", provider: "devin-cli", apiKey: "fixture-only-token" }))
       .toEqual({ error: "Provider devin-cli does not support models listing", status: 400 });
     expect(fetcher).not.toHaveBeenCalled();
@@ -142,21 +131,4 @@ describe("#1174 Devin CLI agentic acceptance boundary (offline partial)", () => 
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported agentic identity rather than dispatching credentials to OpenAI (security regression)", async () => {
-    const fetcher = offlineFetch();
-    const executor = getExecutor("devin-cli-agentic");
-    const buildHeaders = vi.spyOn(executor, "buildHeaders");
-    const dispatch = async () => executor.execute({
-      model: "fixture-model", body: { messages: [{ role: "user", content: "Hello" }] },
-      stream: false, credentials: { apiKey: "fixture-only-candidate-token" },
-    });
-    // Require a caller-facing unsupported-provider error, not an unrelated TypeError.
-    await expect.soft(dispatch()).rejects.toMatchObject({
-      name: "Error",
-      message: 'Unknown provider "devin-cli-agentic": no supported transport endpoint',
-      status: 400,
-    });
-    expect(buildHeaders, "Unsupported Devin candidate must reject before credential headers are built").not.toHaveBeenCalled();
-    expect(fetcher, "Unsupported Devin candidate must not dispatch to any HTTP provider").not.toHaveBeenCalled();
-  });
 });

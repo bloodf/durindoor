@@ -270,6 +270,7 @@ export const KIMI_CODING_RESPONSES_URL = "https://api.kimi.com/coding/v1/respons
 export const KIMI_CODING_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
 export const KIMI_CODING_MODELS_URL = "https://api.kimi.com/coding/v1/models";
 export const KIMI_PLATFORM_CHAT_URL = "https://api.moonshot.ai/v1/chat/completions";
+export const KIMI_PLATFORM_MODELS_URL = "https://api.moonshot.ai/v1/models";
 export const KIMI_PLANS = Object.freeze({
   Andante: "Andante",
   LEVEL_BASIC: "Moderato",

@@ -606,10 +606,17 @@ export async function POST(request) {
           isValid = openrouterRes.ok;
           break;
 
+        case "kimi": {
+            const res = await fetchValidationProbe(providerInfo.modelsFetcher.url, {
+              method: "GET",
+              headers: { Authorization: `Bearer ${apiKey}` },
+            });
+            isValid = res.ok;
+            break;
+          }
         case "glm":
         case "glm-cn":
         case "bigmodel":
-        case "kimi":
         case "minimax":
         case "minimax-cn":
         case "alicode-intl":

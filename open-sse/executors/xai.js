@@ -26,11 +26,15 @@ export class XaiExecutor extends BaseExecutor {
     return super.buildUrl(model, stream, urlIndex, credentials);
   }
 
-  transformRequest(model, body) {
+  transformRequest(model, body, stream, credentials) {
     const DENY_REASONING = ["grok-build", "grok-composer-2.5-fast", "non-reasoning"];
     const ALLOW_REASONING = ["grok-4", "grok-4.3", "grok-3"];
 
     let out = { ...body };
+    // CLIProxyAPI xai_executor_request.go: Responses does not support stop.
+    if (credentials?.runtimeTransport?.format === "openai-responses-oauth") {
+      delete out.stop;
+    }
     const modelId = (out.model || model || "").toLowerCase();
 
     const effortLevels = ["none", "low", "medium", "high", "xhigh"];

@@ -26,3 +26,5 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.
 
 The site compiles MDX only from `docs/`. Moving a page here removes its public route and search entry. Do not add links to this directory from public docs or copy internal Markdown into `website/public/`.
+
+Vertex rejects malformed JSON-like credentials before dispatch or dashboard probing. Service-account token reuse is scoped to the complete credential and egress route. Partner API-key project discovery uses the selected transport and validates the derived project ID.

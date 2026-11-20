@@ -413,3 +413,85 @@ describe("Vertex connections through the protected gateway route", () => {
     expect(calls.some((call) => call.url === TOKEN_URL)).toBe(true);
   });
 });
+
+describe("Vertex isolation", () => {
+  it("rejects malformed credentials at both entry points without dispatch", async () => {
+    const { POST } = await import("../../src/app/api/providers/validate/route.js");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      for (const apiKey of ['{"type":"authorized_user","client_secret":"fixture-secret"', '{"type":"authorized_user"}', '[{"secret":"fixture-secret"}]']) {
+        for (const provider of ["vertex", "vertex-partner"]) {
+          await expect(new VertexExecutor(provider).execute({ model: GEMINI, body: {}, credentials: { apiKey } })).rejects.toThrow();
+          const response = await POST(new Request("http://localhost/api/providers/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey }) }));
+          const result = await response.text();
+          expect(result).not.toContain("fixture-secret");
+          expect(JSON.parse(result).valid).toBe(false);
+        }
+      }
+      expect(wire).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { fetchSpy.mockRestore(); }
+  });
+
+  it("isolates rotated keys and routes while reusing a valid token", async () => {
+    const first = newServiceAccount("rotate").json;
+    const second = { ...first, private_key: newServiceAccount("rotated").json.private_key };
+    const calls = closedTransport();
+    const executor = new VertexExecutor("vertex");
+    const run = (account, proxyOptions) => executor.execute({ model: GEMINI, body: {}, credentials: { apiKey: JSON.stringify(account) }, proxyOptions });
+    const direct = { disableEnvProxy: true };
+    await run(first, direct); await run(first, direct); await run(second, direct);
+    await run(first, { strictProxy: true, enabled: true, url: "http://proxy.test" });
+    expect(calls.filter((call) => call.url === TOKEN_URL)).toHaveLength(3);
+    expect(calls.filter((call) => call.url !== TOKEN_URL).map((call) => headerOf(call.init, "authorization"))).toEqual(["Bearer ya29.synthetic-1", "Bearer ya29.synthetic-1", "Bearer ya29.synthetic-2", "Bearer ya29.synthetic-3"]);
+  });
+
+  it("routes discovery and chat through the selected transport with an encoded key", async () => {
+    const route = { enabled: true, strictProxy: true, url: "http://proxy.test" };
+    const signal = new AbortController().signal;
+    const calls = [];
+    wire.mockImplementation(async (url, init, proxy) => {
+      calls.push({ url: String(url), init, proxy });
+      return calls.length === 1 ? Response.json({ error: { message: "projects/partner-project/locations/global" } }, { status: 404 }) : Response.json({});
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      await new VertexExecutor("vertex-partner").execute({ model: "partner-model", body: {}, credentials: { apiKey: "opaque+key&fixture" }, proxyOptions: route, signal });
+      expect(calls).toHaveLength(2);
+      for (const call of calls) {
+        expect(call.proxy).toBe(route); expect(call.init.signal).toBe(signal);
+        expect(new URL(call.url).searchParams.get("key")).toBe("opaque+key&fixture");
+      }
+      expect(calls[1].url).toContain("/projects/partner-project/");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { fetchSpy.mockRestore(); }
+  });
+
+  it("refreshes a near-expiry token and discovers over a direct route", async () => {
+    const account = newServiceAccount("expiry").json;
+    let mints = 0;
+    wire.mockImplementation(async (url) => {
+      if (String(url) === TOKEN_URL) return Response.json({ access_token: `short-${++mints}`, expires_in: 60 });
+      if (String(url).includes("__probe__")) return Response.json({ error: { message: "projects/direct-project/locations/global" } });
+      return Response.json({});
+    });
+    const direct = { disableEnvProxy: true };
+    const executor = new VertexExecutor("vertex");
+    const args = { model: GEMINI, body: {}, credentials: { apiKey: JSON.stringify(account) }, proxyOptions: direct };
+    await executor.execute(args);
+    await executor.execute(args);
+    expect(mints).toBe(2);
+    await new VertexExecutor("vertex-partner").execute({ model: "partner", body: {}, credentials: { apiKey: "direct-fixture-key" }, proxyOptions: direct });
+    expect(wire.mock.calls.slice(-2).every((call) => call[2] === direct)).toBe(true);
+  });
+
+  it("fails closed on discovery errors and invalid project metadata", async () => {
+    const executor = new VertexExecutor("vertex-partner");
+    const run = (apiKey) => executor.execute({ model: "partner-model", body: {}, credentials: { apiKey }, proxyOptions: { strictProxy: true } });
+    wire.mockRejectedValueOnce(new Error("fixture-secret in URL"));
+    await expect(run("fixture-secret")).rejects.toThrow("Vertex: project discovery request failed");
+    wire.mockResolvedValueOnce(Response.json({ error: { message: "projects/../../evil/" } }));
+    await expect(run("other-fixture-key")).rejects.toThrow("could not resolve project_id");
+    expect(wire).toHaveBeenCalledTimes(2);
+  });
+});

@@ -6,6 +6,7 @@
     "index",
     "connecting-accounts",
     "api-key-providers",
+    "arcee-platform",
     "web-cookie",
     "openai-compatible-nodes",
     "network-llm-servers",

@@ -1,0 +1,5 @@
+# Token Harbor
+
+Add a Token Harbor connection using a [Universal Key](https://tokenharbor.ai/docs/getting-started/universal-key). DurinDoor discovers models with that connection's key from Token Harbor's authenticated `/v1/models` endpoint. Model availability can change; use the exact returned ID, including any slash or suffix, after the `tokenharbor/` prefix. No static catalog is bundled. Provider-wide model auto-sync is disabled because it cannot retain separate catalogs for different keys.
+
+Chat requests use Token Harbor's OpenAI-compatible `/v1/chat/completions` endpoint. Usage and errors are handled by the standard OpenAI-compatible gateway path. See [Token Harbor's API documentation](https://tokenharbor.ai/docs) for billing and key limits.

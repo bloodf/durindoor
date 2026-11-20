@@ -373,6 +373,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `tinyfish` |  | apikey | `` |
 | `together` |  | apikey | `https://api.together.xyz/v1/chat/completions` |
 | `token-kiosk` |  | apikey | `https://agent-router.gaib.ai/v1/chat/completions` |
+| `tokenharbor` | openai | apikey | `https://tokenharbor.ai/v1/chat/completions` |
 | `tokenmarket` |  | apikey | `https://api.tokensmarket.ai/v1/chat/completions` |
 | `tokenreply` |  | apikey | `https://api.tokenreply.com/v1/chat/completions` |
 | `tokenrouter` |  | freeTier | `https://api.tokenrouter.com/v1/chat/completions` |

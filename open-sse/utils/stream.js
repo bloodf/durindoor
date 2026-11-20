@@ -695,10 +695,11 @@ export function createSSEStream(options = {}) {
    * finalizers use this when flush cannot run, preferring provider usage and
    * otherwise estimating from content already received.
    */
+  // Replicate predictions do not consistently report token counts; leave them unknown.
   const getStreamSnapshot = () => {
     const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
-    totalContentLength > 0 ?
+    provider !== "replicate" && totalContentLength > 0 ?
     estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
     null;
     return {
@@ -720,7 +721,7 @@ export function createSSEStream(options = {}) {
     clearCompletionFlushTimer();
     if (translatedStreamFinalized) return;
     translatedStreamFinalized = true;
-    if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
+    if (provider !== "replicate" && !hasValidUsage(state?.usage) && totalContentLength > 0) {
       state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
     }
     if (hasValidUsage(state?.usage)) {
@@ -1083,9 +1084,9 @@ export function createSSEStream(options = {}) {
               parsed.response?.candidates?.[0]?.finishReason;
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               const lateUsage = pendingUsageEstimate && hasValidUsage(parsed.usage);
-              if (isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
+              if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
                 pendingUsageEstimate = true;
-              } else if (isFinishChunk && !hasValidUsage(usage)) {
+              } else if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
@@ -1110,7 +1111,7 @@ export function createSSEStream(options = {}) {
               parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) ||
               targetFormat == null && parsed.candidates?.some?.((candidate) => candidate?.finishReason);
               if (immediateGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
-                if (!hasValidUsage(usage) && totalContentLength > 0) {
+                if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
                   usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
                 }
                 onStreamCompleteFired = true;
@@ -1350,7 +1351,7 @@ export function createSSEStream(options = {}) {
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
-            if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
+            if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
@@ -1489,7 +1490,7 @@ export function createSSEStream(options = {}) {
           }
 
           emitPendingUsageEstimate(controller);
-          if (!hasValidUsage(usage) && totalContentLength > 0) {
+          if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
           }
 

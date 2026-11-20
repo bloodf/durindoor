@@ -278,6 +278,14 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  replicate: {
+    url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    redirect: "manual",
+    parseResponse: (data) => data?.owner === "meta" && data?.name === "meta-llama-3-70b-instruct"
+      ? [{ id: "meta/meta-llama-3-70b-instruct", name: "Llama 3 70B Instruct" }] : [],
+  },
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },

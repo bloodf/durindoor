@@ -330,6 +330,10 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    if (existing.provider === "devin-cli-agentic" && apiKey) {
+      return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+    }
+
     // A compatible node owns its identity. A connection whose stored endpoint
     // disagrees with its node would send the stored API key to a different
     // host than the operator configured, so the node's endpoint always wins

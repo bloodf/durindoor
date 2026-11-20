@@ -79,6 +79,8 @@ function providerPricingFor(provider, model) {
 function registryFreeSignal(providerId, modelId) {
   const entry = registryEntry(providerId);
   if (!entry) return null;
+  // ACP uses an out-of-band Devin account whose plan can charge for use.
+  if (entry.id === "devin-cli-agentic") return null;
   if (entry.noAuth === true || entry.category === "free") return true;
   const m = registryModel(entry, modelId);
   if (!m) return null;

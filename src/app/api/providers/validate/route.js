@@ -216,6 +216,10 @@ export async function POST(request) {
 
     const providerInfo = AI_PROVIDERS[provider] || {};
     const isNoAuth = providerInfo.noAuth === true;
+    if (provider === "devin-cli-agentic") {
+      if (apiKey) return NextResponse.json({ valid: false, error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+      return NextResponse.json({ valid: false, skipped: true, error: "Verify the local Devin CLI with a model request" });
+    }
     if (providerInfo.credentialForm === "aws") {
       // Validating a profile makes the AWS SDK resolve it as the server user, which can run a
       // credential_process. Same operator-only gate as creating one.

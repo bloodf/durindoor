@@ -3,6 +3,7 @@ import { OPTIONS, POST as chat } from "../../v1/chat/completions/route.js";
 import { copyClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 import geminiInteractions from "open-sse/providers/registry/gemini-interactions.js";
 import { ROLE, OPENAI_FINISH } from "open-sse/translator/schema/index.js";
+import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { interactionEvent, mapInteractionEvents } from "open-sse/utils/interactionEvents.js";
 import { SSE_DONE, SSE_HEADERS_CORS } from "open-sse/utils/sseConstants.js";
 
@@ -35,6 +36,13 @@ function interactionStatus(reason) {
 }
 
 async function createInteraction(request) {
+  // Apply the gateway JSON policy before parsing or rewriting the client's Content-Type.
+  const rejection = requireJsonContentType(request);
+  if (rejection) {
+    const { error } = await rejection.json();
+    return errorResponse(rejection.status, error.message);
+  }
+
   let body;
   try { body = await request.json(); } catch { return errorResponse(400, "Invalid JSON"); }
   const model = isString(body?.model)

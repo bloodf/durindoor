@@ -1,14 +1,28 @@
 // Adapted from OmniRoute open-sse/executors/adapta-web.ts at fbd3396 (PR #51).
-import { createHash } from "node:crypto";
-import { BaseExecutor } from "./base.js";
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
+import { runQuotaBearingProviderRequest, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
+import { digestMemoryKey } from "../utils/memoryKey.js";
+import { proxyAwareFetch, resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { BaseExecutor } from "./base.js";
 
 const APP = "https://agent.adapta.one";
 const CLERK = "https://clerk.agent.adapta.one";
 const URL = `${APP}/api/chat/stream/v1`;
 const cache = new Map();
-const keyOf = (cookie) => createHash("sha256").update(cookie).digest("hex");
+// Clerk and chat can have different NO_PROXY results. Cache only deterministic
+// routes, since a non-strict proxy can fall back to direct at any hop.
+function sessionCacheKey(cookie, proxyOptions) {
+  const strict = proxyOptions?.strictProxy === true;
+  const relay = proxyOptions?.vercelRelayUrl;
+  if (isString(relay) && relay.trim()) return digestMemoryKey("adapta-session-relay", cookie, relay.trim(), strict);
+  const clerk = resolveProxyForRequest(CLERK, proxyOptions);
+  const chat = resolveProxyForRequest(URL, proxyOptions);
+  if (strict && (!clerk.proxyUrl || !chat.proxyUrl)) return null;
+  if (!strict && (clerk.proxyUrl || chat.proxyUrl)) return null;
+  return digestMemoryKey("adapta-session", cookie, strict, clerk.source, clerk.proxyUrl, chat.source, chat.proxyUrl);
+}
 const error = (status, message) => new Response(JSON.stringify({ error: { message, type: "upstream_error", code: `HTTP_${status}` } }), { status, headers: { "Content-Type": "application/json" } });
 const result = (response, body) => ({ response, url: URL, headers: {}, transformedBody: body });
 function cookieValue(raw) {
@@ -19,25 +33,31 @@ function cookieValue(raw) {
 function expiry(token) {
   try { const exp = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).exp; return isNumber(exp) && Number.isFinite(exp) ? exp * 1000 : 0; } catch { return 0; }
 }
-async function session(cookie, signal) {
-  const key = keyOf(cookie);
+async function session(cookie, key, signal, proxyOptions) {
   const saved = cache.get(key);
   if (saved && Date.now() < saved.exp - 30000) return saved.token;
   cache.delete(key);
   const headers = { Cookie: `__client=${cookie}`, Origin: APP };
-  const client = await fetch(`${CLERK}/v1/client`, { headers, signal });
-  if (!client.ok) throw new Error("Unable to validate Adapta session");
+  const client = await proxyAwareFetch(`${CLERK}/v1/client`, { headers, signal }, proxyOptions);
+  if (!client.ok) {
+    void client.body?.cancel().catch(() => {});
+    throw new Error("Unable to validate Adapta session");
+  }
   const data = await client.json();
   const id = data?.response?.sessions?.find((s) => s.status === "active")?.id;
   if (!isString(id) || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("No active Adapta session");
-  const response = await fetch(`${CLERK}/v1/client/sessions/${id}/tokens`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, signal });
-  if (!response.ok) throw new Error("Unable to refresh Adapta session");
+  signal?.throwIfAborted();
+  const response = await proxyAwareFetch(`${CLERK}/v1/client/sessions/${id}/tokens`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, signal }, proxyOptions);
+  if (!response.ok) {
+    void response.body?.cancel().catch(() => {});
+    throw new Error("Unable to refresh Adapta session");
+  }
   const { jwt } = await response.json();
+  signal?.throwIfAborted();
   if (!isString(jwt) || !jwt.startsWith("eyJ")) throw new Error("Invalid Adapta session token");
   const exp = expiry(jwt);
   if (exp && exp <= Date.now()) throw new Error("Expired Adapta session token");
-  // Unknown or expired expiries may be used for this request but are never cached.
-  if (exp > Date.now() + 30000) {
+  if (key && exp > Date.now() + 30000) {
     if (cache.size >= 100) cache.delete(cache.keys().next().value);
     cache.set(key, { token: jwt, exp });
   }
@@ -82,23 +102,42 @@ export class AdaptaWebExecutor extends BaseExecutor {
   constructor() { super("adapta-web", { baseUrl: URL }); }
   // This executor performs authentication internally; callers must never obtain credentials from metadata.
   buildHeaders() { return {}; }
-  async execute({ model, body = {}, stream, credentials = {}, signal }) {
+  async execute({ model, body = {}, stream, credentials = {}, signal, proxyOptions }) {
     const cookie = cookieValue(credentials.apiKey);
     if (!cookie || /[\r\n;]/.test(cookie)) return result(error(401, "Missing or invalid Adapta credentials"), body);
     const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(body, Array.isArray(body.messages) ? body.messages : []);
     const payload = { messages: messagesFor(effectiveMessages), aiModelId: 14 };
     if (!payload.messages.length) return result(error(400, "No messages provided"), payload);
+    const cacheKey = sessionCacheKey(cookie, proxyOptions);
+    const canceled = () => result(error(499, "Adapta request canceled"), payload);
     let token;
-    try { token = await session(cookie, signal); } catch { return result(error(401, "Adapta authentication failed"), payload); }
+    try {
+      signal?.throwIfAborted();
+      token = await session(cookie, cacheKey, signal, proxyOptions);
+    } catch {
+      if (signal?.aborted) return canceled();
+      return result(error(401, "Adapta authentication failed"), payload);
+    }
     let upstream;
     try {
-      upstream = await fetch(URL, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream", Origin: APP, Referer: `${APP}/agentic-chat` }, body: JSON.stringify(payload), signal });
-    } catch { return result(error(502, "Adapta request failed"), payload); }
-    if (!upstream.ok) {
-      if (upstream.status === 401 || upstream.status === 403) cache.delete(keyOf(cookie));
-      return result(error(upstream.status, upstream.status === 429 ? "Adapta rate limited" : "Adapta request failed"), payload);
+      signal?.throwIfAborted();
+      // Only chat consumes quota. Clerk calls still use the gateway transport.
+      upstream = await runQuotaBearingProviderRequest(() => proxyAwareFetch(URL, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream", Origin: APP, Referer: `${APP}/agentic-chat` }, body: JSON.stringify(payload), signal }, proxyOptions));
+    } catch (cause) {
+      if (isQuotaDispatchUnavailable(cause)) throw cause;
+      if (signal?.aborted) return canceled();
+      return result(error(502, "Adapta request failed"), payload);
     }
-    if (!upstream.body) return result(error(502, "Adapta returned an empty response"), payload);
+    function chatResult(response) {
+      transferProviderAttemptDispatch(upstream, response);
+      return result(response, payload);
+    }
+    if (!upstream.ok) {
+      if ((upstream.status === 401 || upstream.status === 403) && cache.get(cacheKey)?.token === token) cache.delete(cacheKey);
+      void upstream.body?.cancel().catch(() => {});
+      return chatResult(error(upstream.status, upstream.status === 429 ? "Adapta rate limited" : "Adapta request failed"));
+    }
+    if (!upstream.body) return chatResult(error(502, "Adapta returned an empty response"));
     const id = `chatcmpl-adp-${Date.now()}`; const created = Math.floor(Date.now() / 1000);
     if (stream !== false) {
       const encoder = new TextEncoder();
@@ -112,16 +151,16 @@ export class AdaptaWebExecutor extends BaseExecutor {
         } } catch { emit({ content: "\n\n[Erro: Adapta upstream error]" }); }
         emit({}, "stop"); controller.enqueue(encoder.encode("data: [DONE]\n\n")); controller.close();
       } });
-      return result(new Response(out, { headers: { "Content-Type": "text/event-stream" } }), payload);
+      return chatResult(new Response(out, { headers: { "Content-Type": "text/event-stream" } }));
     }
     let content = "";
     try { for await (const event of events(upstream.body)) {
-      if (event.type === "error") return result(error(502, "Adapta upstream error"), payload);
+      if (event.type === "error") return chatResult(error(502, "Adapta upstream error"));
       if (event.type === "text-delta" && event.id !== "quick-response" && isString(event.delta)) content += event.delta;
       if (event.type === "done" || event.type === "end") break;
-    } } catch { return result(error(502, "Adapta upstream error"), payload); }
+    } } catch { return chatResult(error(502, "Adapta upstream error")); }
     const parsed = hasTools ? buildToolAwareResult(content, requestedTools, "adp") : { content, finishReason: "stop" };
     const message = parsed.toolCalls ? { role: "assistant", content: null, tool_calls: parsed.toolCalls } : { role: "assistant", content: parsed.content };
-    return result(Response.json({ id, object: "chat.completion", created, model, choices: [{ index: 0, message, finish_reason: parsed.finishReason }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), payload);
+    return chatResult(Response.json({ id, object: "chat.completion", created, model, choices: [{ index: 0, message, finish_reason: parsed.finishReason }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }));
   }
 }

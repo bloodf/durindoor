@@ -30,7 +30,8 @@ const ownRecord = (table, key) => isRecord(table) && Object.hasOwn(table, key) &
  */
 export function isModelAutoSyncEnabled(providerId, settings) {
   // Token Harbor discovery is credential-scoped; provider-wide snapshots can leak a different key's roster.
-  if (providerId === "tokenharbor") return false;
+  // DemonRoute's catalog is account-scoped for the same reason.
+  if (providerId === "tokenharbor" || providerId === "demonroute") return false;
   const overrides = isRecord(settings?.modelAutoSyncProviders) ? settings.modelAutoSyncProviders : {};
   if (isBoolean(overrides[providerId])) return overrides[providerId];
   return MODEL_AUTO_SYNC_DEFAULT_PROVIDERS.includes(providerId);

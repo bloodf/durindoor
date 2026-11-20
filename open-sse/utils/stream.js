@@ -1285,7 +1285,10 @@ export function createSSEStream(options = {}) {
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
-              const buffered = addBufferToUsage(state.usage);
+              // Preserve the translated Claude cache details for OpenAI clients.
+              const translatedUsage = targetFormat === FORMATS.CLAUDE && sourceFormat === FORMATS.OPENAI
+                && item.usage?.prompt_tokens !== undefined ? item.usage : state.usage;
+              const buffered = addBufferToUsage(translatedUsage);
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), sourceFormat);
             }
 

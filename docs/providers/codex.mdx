@@ -14,6 +14,9 @@ The provider page shows a risk notice: this is a subscription session that was n
 Open **Providers**, then **OpenAI Codex**, then Connect.
 </Step>
 <Step>
+Pick a sign-in method. **Browser** is the default.
+</Step>
+<Step>
 Pick a fingerprint mode. **Session** is the default and the recommended one.
 </Step>
 <Step>
@@ -21,11 +24,19 @@ Sign in at auth.openai.com. OpenAI only redirects to `http://localhost:1455/auth
 </Step>
 </Steps>
 
+### Browser sign-in
+
 On a loopback dashboard, DurinDoor binds port 1455 on the server for the duration of the login and polls for the result. If something else holds that port, often a running Codex CLI login, you get `Port 1455 is in use`. Stop the other process and try again.
 
 From a remote dashboard the browser cannot reach the server's port 1455. The modal opens the login in a new tab and asks you to paste the callback URL. The page at `localhost:1455` will fail to load in your browser; copy the URL from the address bar anyway.
 
-DurinDoor reads your email, ChatGPT account id, and plan from the id token.
+### Device code sign-in
+
+Pick **Device code** to sign in without the callback port. DurinDoor asks auth.openai.com for a code, shows the verification link and the code, and polls until you approve the login. Use this on a headless server or when port 1455 is taken: the browser only has to reach auth.openai.com, not your server.
+
+The device code stays on the server. The browser receives the verification link and the code to type, nothing else.
+
+DurinDoor reads your email, ChatGPT account id, and plan from the id token in both sign-in methods.
 
 ### Fingerprint mode
 
@@ -60,7 +71,7 @@ Model discovery for a Codex connection asks for the catalog with the pinned vers
 
 ## Models
 
-Send `cx/<model>`, for example `cx/gpt-6.1-sol`. The registry lists chat models, `*-review` models that draw from a separate review quota, and image models such as `cx/gpt-6-sol-image`. `GET /v1/models` is the live list. Codex retired `gpt-5.5` for ChatGPT sign-in on 2026-10-14; saved `cx/gpt-5.5` and `cx/gpt-5.5-review` configs now get HTTP 410 with `cx/gpt-6.1-sol` as the replacement, and `cx/gpt-5.5-image` gets 410 with `cx/gpt-6-sol-image`. Image generation needs a paid ChatGPT plan: DurinDoor rejects it with 403 before sending when the connection's plan is `free`, so a combo moves on to the next member.
+Send `cx/<model>`, for example `cx/gpt-6.1-sol`. The registry lists chat models, `*-review` models that draw from a separate review quota, and image models such as `cx/gpt-6-sol-image`. `GET /v1/models` is the live list. The live list is fetched with the connection's account binding, so a connection that only carries an imported id token still sees its own account's catalog. Codex retired `gpt-5.5` for ChatGPT sign-in on 2026-10-14; saved `cx/gpt-5.5` and `cx/gpt-5.5-review` configs now get HTTP 410 with `cx/gpt-6.1-sol` as the replacement, and `cx/gpt-5.5-image` gets 410 with `cx/gpt-6-sol-image`. Image generation needs a paid ChatGPT plan: DurinDoor rejects it with 403 before sending when the connection's plan is `free`, so a combo moves on to the next member.
 
 ## Speech to text
 

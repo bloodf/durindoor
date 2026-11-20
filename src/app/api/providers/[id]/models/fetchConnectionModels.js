@@ -123,7 +123,17 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     headers[config.authHeader] = (config.authPrefix || "") + token;
   }
   if (connection.provider === "codex") {
-    applyCodexAccountHeader(headers, connection.providerSpecificData);
+    // Account-scoped catalog: the id_token is the fallback source for the
+    // ChatGPT account binding, exactly like the executor and the usage client.
+    // Upstream provenance: router-for-me/CLIProxyAPI
+    // `cmd/fetch_codex_models/main.go` at
+    // 6faa8d20b2673404cff70a2f2d9537ae0d0e684d (`fetchModels`).
+    applyCodexAccountHeader(
+      headers,
+      connection.providerSpecificData,
+      "ChatGPT-Account-ID",
+      connection.idToken
+    );
   }
 
   const fetchOptions = { method: config.method || "GET", headers, cache: "no-store" };

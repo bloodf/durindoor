@@ -24,7 +24,7 @@ import {
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
-import { CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
+import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
 import { withCodexReviewModels } from "open-sse/providers/models/helpers.js";
 
@@ -346,7 +346,17 @@ export const PROVIDER_MODELS_CONFIG = {
   codex: {
     url: `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLI_VERSION}`,
     method: "GET",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      // The catalog request carries the same CLI identity the Codex backend
+      // sees on chat requests.
+      // Upstream provenance: router-for-me/CLIProxyAPI
+      // `cmd/fetch_codex_models/main.go` at
+      // 6faa8d20b2673404cff70a2f2d9537ae0d0e684d (`fetchModels`).
+      originator: "codex_cli_rs",
+      "User-Agent": CODEX_CLI_USER_AGENT
+    },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     parseResponse: parseCodexModels

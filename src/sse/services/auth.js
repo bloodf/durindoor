@@ -1523,6 +1523,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     context?.headers ?? null,
     context?.errorBody ?? null
   );
+  // A request-scoped OpenRouter 404 must not inherit a reset hint and lock a
+  // healthy model for later requests.
+  if (Number(status) === 404 && fallbackResult.requestScoped) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its

@@ -125,6 +125,23 @@ describe("Kimi platform Chat Completions", () => {
     expect(failed.response.status).toBe(401);
   });
 
+  it.each([
+    ["openai", {}, "max_completion_tokens", 131072],
+    ["openai", { max_tokens: 64 }, "max_completion_tokens", 64],
+    ["openai", { max_completion_tokens: 96 }, "max_completion_tokens", 96],
+    ["claude", {}, "max_tokens", 131072],
+    ["claude", { max_tokens: 64 }, "max_tokens", 64],
+  ])("sends the %s output limit in its native wire format", async (format, limit, field, expected) => {
+    proxyAwareFetch.mockImplementation(async () => format === "claude"
+      ? Response.json({ id: "msg_fixture", type: "message", role: "assistant", model: "kimi-k3", content: [{ type: "text", text: "hello" }], stop_reason: "end_turn", usage: { input_tokens: 3, output_tokens: 2 } })
+      : Response.json({ ...completion, model: "kimi-k3" }));
+    const result = await chat({ model: "kimi-k3", stream: false, messages: [{ role: "user", content: "hello" }], ...limit }, format);
+    expect(result.success).toBe(true);
+    const wire = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(wire[field]).toBe(expected);
+    expect(wire[field === "max_tokens" ? "max_completion_tokens" : "max_tokens"]).toBeUndefined();
+  });
+
   it("keeps native Messages on the platform endpoint with the same key", async () => {
     const response = { id: "msg_fixture", type: "message", role: "assistant", model: "kimi-k3.1-pro", content: [{ type: "text", text: "hello" }], stop_reason: "end_turn", usage: { input_tokens: 3, output_tokens: 2 } };
     proxyAwareFetch.mockImplementation(async () => Response.json(response));

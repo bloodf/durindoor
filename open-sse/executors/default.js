@@ -446,7 +446,16 @@ export class DefaultExecutor extends BaseExecutor {
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
       // Messages always uses max_tokens, independently of OpenAI model-name rules.
-      if (transportFormat === FORMATS.CLAUDE) {
+      if (this.provider === "kimi" && transportFormat === FORMATS.OPENAI) {
+        // Moonshot Chat uses max_completion_tokens and fixed sampling on these models.
+        if (transformed.max_tokens !== undefined) {
+          transformed.max_completion_tokens ??= transformed.max_tokens;
+          delete transformed.max_tokens;
+        }
+        if (/^kimi-k(?:2\.6|2\.7-code(?:-highspeed)?|3(?:\.1-pro(?:-highspeed)?)?)$/i.test(model)) {
+          for (const param of ["temperature", "top_p", "frequency_penalty", "presence_penalty", "n"]) delete transformed[param];
+        }
+      } else if (transportFormat === FORMATS.CLAUDE) {
         if (transformed.max_completion_tokens !== undefined) {
           transformed.max_tokens ??= transformed.max_completion_tokens;
           delete transformed.max_completion_tokens;

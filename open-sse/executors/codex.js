@@ -1037,7 +1037,7 @@ export class CodexExecutor extends BaseExecutor {
     // Include reasoning encrypted content (required by Codex backend for reasoning models);
     // compact requests omit the include field entirely.
     if (!isCompact && body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
-      body.include = ["reasoning.encrypted_content"];
+      body.include = ["reasoning.encrypted_content", ...(body.include?.includes("web_search_call.action.sources") && body.tools?.some(tool => tool.type === "web_search") ? ["web_search_call.action.sources"] : [])];
     } else if (isCompact) {
       delete body.include;
     }

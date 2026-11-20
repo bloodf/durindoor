@@ -1,3 +1,4 @@
+import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
@@ -588,6 +589,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  const searchError = validateSearchRoute(body, sourceFormat, targetFormat, provider);
+  if (searchError) {
+    finishTimeline("error", "error", searchError);
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, searchError);
+  }
 
   // Validate before generic modality stripping can discard unsupported inputs.
   if (provider === "nlpcloud" && (hasMediaBlocks(body) || body?.tools?.length || body?.functions?.length)) {

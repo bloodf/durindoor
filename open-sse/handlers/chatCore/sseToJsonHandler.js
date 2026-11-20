@@ -1,3 +1,5 @@
+import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
+import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
@@ -483,7 +485,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           toolNameMap
         });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-        const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        let finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        if (provider === "codex" && sourceFormat === FORMATS.CLAUDE && hasClaudeSearch(body)) {
+          finalResp = responsesSearchToClaudeMessage(jsonResponse, finalResp, true);
+        }
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
         if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);

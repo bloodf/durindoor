@@ -1,3 +1,5 @@
+import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
+import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
@@ -347,7 +349,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // including a usage object (some clients validate `usage.input_tokens`).
   if (targetFormat === FORMATS.OPENAI_RESPONSES) {
     if (sourceFormat === FORMATS.CLAUDE) {
-      const claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      let claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      if (options.provider === "codex" && hasClaudeSearch(options.requestBody)) claudeMsg = responsesSearchToClaudeMessage(responseBody, claudeMsg, true);
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
     if (sourceFormat === FORMATS.OPENAI) {

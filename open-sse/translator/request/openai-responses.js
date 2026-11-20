@@ -17,7 +17,7 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { fixMissingToolResponses } from "../concerns/toolCall.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
@@ -188,6 +188,8 @@ function convertChatToolChoiceToResponses(choice) {
     const name = normalizeResponsesToolName(choice.function?.name ?? choice.name);
     return name ? { type: OPENAI_BLOCK.FUNCTION, name } : undefined;
   }
+
+  if (choice.type === OPENAI_BLOCK.WEB_SEARCH) return { type: OPENAI_BLOCK.WEB_SEARCH };
 
   if (choice.type === "custom") {
     const name = normalizeResponsesToolName(choice.custom?.name ?? choice.name);
@@ -915,6 +917,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }).filter(Boolean);
   }
 
+  if (body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH)) result.include = ["web_search_call.action.sources"];
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;

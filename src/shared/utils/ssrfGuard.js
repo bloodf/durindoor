@@ -146,7 +146,8 @@ function normalizeHost(hostname) {
   return hostname.toLowerCase().replace(/\.+$/, "");
 }
 
-function isBlockedHost(host) {
+export function isBlockedHost(host) {
+  host = normalizeHost(host);
   if (BLOCKED_HOSTNAMES.has(host)) return true;
   if (BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) return true;
   if (isBlockedIpv4(host)) return true;

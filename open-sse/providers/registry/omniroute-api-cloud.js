@@ -158,6 +158,7 @@ openAiProvider({
     headers: {},
     auth: bearerAuth
   },
+  modelsFetcher: { url: "http://127.0.0.1:8317/v1/models", type: "openai" },
   models: [],
   passthroughModels: true
 },

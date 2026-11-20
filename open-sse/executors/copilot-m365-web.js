@@ -12,6 +12,7 @@ import {
   accumulateBotContent,
   buildChatInvocation,
   encodeFrame,
+  extractBotText,
   extractFinalResultMessage,
   handshakeError,
   handshakeFrame,
@@ -82,8 +83,9 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           if (settled) return;
           settled = true;
           cleanup();
-          if (!previousText && finalResultMessage) {
-            controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: finalResultMessage })));
+          const finalText = previousText || finalResultMessage;
+          if ((!input.stream || !previousText) && finalText) {
+            controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: finalText })));
           }
           controller.enqueue(encoder.encode(makeSseChunk(input.model, {}, "stop")));
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -152,11 +154,16 @@ export class CopilotM365WebExecutor extends BaseExecutor {
                 continue;
               }
 
+              const snapshot = extractBotText(frame);
+              if (input.stream && snapshot && previousText && !snapshot.startsWith(previousText)) {
+                abort("Microsoft 365 Copilot rewrote streamed content; retry without streaming.");
+                return;
+              }
               const { delta, next } = accumulateBotContent(previousText, frame);
               previousText = next;
               if (delta) {
                 resetStallTimer();
-                controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: delta })));
+                if (input.stream) controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: delta })));
               }
 
               const finalMessage = extractFinalResultMessage(frame);
@@ -221,7 +228,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     }
 
     const wsUrl = buildWsUrl(connectionParams);
-    const wsStream = await this.wsChat({ wsUrl, prompt, model, signal: input.signal });
+    const wsStream = await this.wsChat({ wsUrl, prompt, model, signal: input.signal, stream });
 
     if (stream) {
       return {

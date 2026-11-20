@@ -4,6 +4,13 @@ import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboun
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
 
+class ProbeFailure extends Error {
+  constructor(cause) {
+    super(cause.message, { cause });
+    this.probeCause = cause;
+  }
+}
+
 /**
  * Guard every provider-node probe against SSRF and bound it to ten seconds,
  * while retaining cancellation supplied by a caller.
@@ -13,7 +20,13 @@ const guardedFetch = (url, options = {}, timeout = 10000) => {
   const signal = options.signal
     ? AbortSignal.any([options.signal, timeoutSignal])
     : timeoutSignal;
-  return guardedProbeFetch(url, { ...options, signal });
+  return guardedProbeFetch(url, { ...options, signal }).catch((error) => {
+    if (error instanceof OutboundUrlGuardError) throw error;
+    if (error?.name === "TimeoutError" || error?.message === "fetch failed" || error?.cause?.code) {
+      throw new ProbeFailure(error);
+    }
+    throw error;
+  });
 };
 
 /**
@@ -323,7 +336,8 @@ export async function POST(request) {
 
     return NextResponse.json({ valid: false, error: getModelsErrorMessage(res.status), status: res.status });
   } catch (error) {
-    const errorMessage = getErrorMessage(error);
+    const probeError = error instanceof ProbeFailure ? error.probeCause : error;
+    const errorMessage = getErrorMessage(probeError);
     console.error("Error validating provider node:", {
       message: error.message,
       cause: error.cause,
@@ -333,6 +347,6 @@ export async function POST(request) {
     return NextResponse.json({
       valid: false,
       error: errorMessage
-    }, { status: 500 });
+    }, { status: error instanceof ProbeFailure ? 200 : 500 });
   }
 }

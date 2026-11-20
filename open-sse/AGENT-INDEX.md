@@ -7,6 +7,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 
 | id | executor | source file |
 |---|---|---|
+| `adapta-web` | AdaptaWebExecutor | `./adapta-web.js` |
+| `adp-web` | AdaptaWebExecutor | `./adapta-web.js` |
 | `agy` | AntigravityExecutor | `./antigravity.js` |
 | `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
@@ -32,6 +34,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `dify` | DifyExecutor | `./dify.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
+| `gemini-interactions` | GeminiInteractionsExecutor | `./gemini-interactions.js` |
 | `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
@@ -61,6 +64,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
+| `t3-web` | T3ChatWebExecutor | `./t3-chat-web.js` |
+| `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
@@ -71,6 +76,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xai` | XaiExecutor | `./xai.js` |
 | `xiaomi-mimo` | XiaomiMimoExecutor | `./xiaomi-mimo.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
+| `ybw` | YuanbaoWebExecutor | `./yuanbao-web.js` |
+| `yuanbao-web` | YuanbaoWebExecutor | `./yuanbao-web.js` |
 | `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 | `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 
@@ -203,6 +210,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
+| `gemini-interactions` | openai | apikey | `https://generativelanguage.googleapis.com/v1beta/interactions` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
@@ -246,6 +254,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kilocode` |  | oauth | `https://api.kilo.ai/api/openrouter/chat/completions` |
 | `kimchi` | openai | oauth | `https://llm.kimchi.dev/openai/v1/chat/completions` |
 | `kimi` | claude | apikey | `https://api.moonshot.ai/anthropic/v1/messages` |
+| `kimi-ai` | openai | oauth | `https://api.kimi.ai/coding/v1/chat/completions` |
 | `kimi-coding` | claude | oauth | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding-apikey` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-web` | openai | webCookie | `https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat` |

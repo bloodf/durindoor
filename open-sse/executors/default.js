@@ -4,8 +4,8 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta } from "../providers/shared.js";
-import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
+import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
+import { OAUTH_ENDPOINTS, buildKimiHeaders, buildKimiDeviceHeaders, NOUS_ATTRIBUTION, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -15,10 +15,58 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshOpenferenceToken } from "../services/openferenceAuth.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
+import { refreshKimiToken } from "../services/tokenRefresh/providers.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
+import { CLAUDE_BLOCK } from "../translator/schema/index.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+// Official API keys must not identify as Claude Code; OAuth and gateways retain their own identity.
+function isOfficialAnthropicApiKey(provider, credentials) {
+  if (provider !== "anthropic" && !provider?.startsWith("anthropic-compatible-")) return false;
+  if (!isString(credentials?.apiKey) || !credentials.apiKey || credentials.accessToken || credentials.apiKey.startsWith("sk-ant-oat")) return false;
+  const url = credentials.runtimeTransport?.baseUrl || (provider === "anthropic" ? ANTHROPIC_COMPAT_BASE : credentials.providerSpecificData?.baseUrl || ANTHROPIC_COMPAT_BASE);
+  return isOfficialAnthropicBaseUrl(url);
+}
+
+function stripClaudeIdentity(body) {
+  const strip = (text) => {
+    const lines = text.match(/[^\n]*\n|[^\n]+$/g) || [];
+    const prefix = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].replace(/\r?\n$/, "");
+      if (line === CLAUDE_SYSTEM_PROMPT) continue;
+      if (/^x-anthropic-billing-header:/i.test(line)) prefix.push(lines[i]);
+      else return prefix.join("") + lines.slice(i).join("");
+    }
+    return prefix.join("");
+  };
+  let system = body?.system;
+  if (isString(system)) system = strip(system);
+  else if (Array.isArray(system)) {
+    const parts = [];
+    let leading = true;
+    for (const block of system) {
+      if (!leading || block?.type !== CLAUDE_BLOCK.TEXT || !isString(block.text) || !block.text) {
+        parts.push(block);
+        leading = false;
+        continue;
+      }
+      const text = strip(block.text);
+      if (!text) continue;
+      parts.push(text === block.text ? block : { ...block, text });
+      leading = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)?$/i.test(text);
+    }
+    if (parts.length === system.length && parts.every((block, index) => block === system[index])) return body;
+    system = parts;
+  } else return body;
+  if (system === body.system) return body;
+  const result = { ...body };
+  if (system === "" || (Array.isArray(system) && !system.length)) delete result.system;
+  else result.system = system;
+  return result;
+}
+
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
@@ -197,7 +245,14 @@ const HEADER_HOOKS = {
     h["X-Conversation-Request-ID"] = requestId;
     h["X-Conversation-Message-ID"] = requestId;
   },
-  kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
+  kimiHeaders: (h, c) => {
+    const deviceId = c.providerSpecificData?.deviceId;
+    Object.assign(h, deviceId ? buildKimiDeviceHeaders(deviceId) : buildKimiHeaders());
+  },
+  kimiDeviceHeaders: (h, c) => {
+    const deviceId = c.providerSpecificData?.deviceId;
+    if (deviceId) Object.assign(h, buildKimiDeviceHeaders(deviceId));
+  },
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
   kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},
   claudeOverlay: (h) => {
@@ -324,6 +379,8 @@ export class DefaultExecutor extends BaseExecutor {
     if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
     let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
+
+    if (isOfficialAnthropicApiKey(this.provider, credentials)) transformed = stripClaudeIdentity(transformed);
 
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({
@@ -458,7 +515,8 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   applyNousAttribution(model, body, stream, credentials) {
-    if (!this.provider?.startsWith?.("openai-compatible-") || !credentials?.apiKey
+    // The built-in Nous provider uses the same attribution-protected endpoint.
+    if (!(this.provider === "nous-research" || this.provider?.startsWith?.("openai-compatible-")) || !credentials?.apiKey
       || !isObject(body) || Array.isArray(body)
       || (body.tags != null && !Array.isArray(body.tags))) return body;
 
@@ -600,6 +658,21 @@ export class DefaultExecutor extends BaseExecutor {
       headers[betaKey] = buildClaudeOAuthAnthropicBeta(headers[betaKey]);
     }
 
+    // The plain `anthropic` provider is an API-key provider: it does not use
+    // the Claude Code wire protocol and is not an OAuth session, so the request
+    // must not claim the Claude Code identity. Anthropic's Max and Team plans
+    // include monthly API credits that do not cover Claude Code usage, and a
+    // key funded only by those credits is mislabelled at best and rejected at
+    // worst (OmniRoute #15968). The functional API betas stay.
+    if (this.provider === "anthropic" && credentials.apiKey && !credentials.accessToken) {
+      for (const betaKey of ["anthropic-beta", "Anthropic-Beta"]) {
+        if (!headers[betaKey]) continue;
+        const filtered = withoutClaudeCodeIdentityBetas(headers[betaKey]);
+        if (filtered) headers[betaKey] = filtered;
+        else delete headers[betaKey];
+      }
+    }
+
     /** Emit only client-provided session identity, never generated fallback affinity. */
     if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
       delete headers["x-claude-code-session-id"];
@@ -624,19 +697,23 @@ export class DefaultExecutor extends BaseExecutor {
     // claudeOverlay live-header merge — so this block only covers
     // anthropic-compatible-* nodes.)
     const isClaudeModel = isString(model) && /^claude-/.test(model);
-    const compatBaseUrl = credentials?.providerSpecificData?.baseUrl || "";
+    const compatBaseUrl = credentials?.runtimeTransport?.baseUrl || credentials?.providerSpecificData?.baseUrl || "";
     // `claude` always targets api.anthropic.com; compat nodes only when their host is official.
     const firstPartyHost = this.provider === "claude" || compatBaseUrl === "" || isOfficialAnthropicBaseUrl(compatBaseUrl);
-    if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
-      headers["Anthropic-Beta"] = selectAnthropicBeta(model, { firstParty: firstPartyHost });
+    const officialApiKey = isOfficialAnthropicApiKey(this.provider, credentials);
+    const compatibleClaudeModel = this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel;
+    if (compatibleClaudeModel) {
+      const modelBeta = selectAnthropicBeta(model, { firstParty: firstPartyHost });
+      const runtimeBeta = officialApiKey && rt?.headers ? new Headers(rt.headers).get("anthropic-beta") : null;
+      headers["Anthropic-Beta"] = [modelBeta, runtimeBeta].filter(Boolean).join(",");
     }
-    if (this.provider === "claude" || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel)) {
+    if (this.provider === "claude" || (this.provider === "anthropic" && officialApiKey) || compatibleClaudeModel) {
       mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
-      const baseUrl = credentials?.providerSpecificData?.baseUrl || "";
+      const baseUrl = compatBaseUrl;
       /**
        * Exact-host check (CodeQL js/incomplete-url-substring-sanitization): a substring
        * `.includes("api.anthropic.com")` would accept look-alike upstreams such as
@@ -675,6 +752,18 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
+    if (officialApiKey) {
+      const betas = [];
+      for (const key of Object.keys(headers)) {
+        const lower = key.toLowerCase();
+        if (lower === "anthropic-beta") {
+          betas.push(headers[key]);
+          delete headers[key];
+        } else if (lower === "x-app" || lower === "anthropic-dangerous-direct-browser-access") delete headers[key];
+      }
+      const filtered = withoutClaudeCodeIdentityBetas(betas.join(","));
+      if (filtered) headers["Anthropic-Beta"] = [...new Set(filtered.split(","))].join(",");
+    }
     if (stream) headers["Accept"] = "text/event-stream";
     return headers;
   }
@@ -703,7 +792,8 @@ export class DefaultExecutor extends BaseExecutor {
       "codebuddy-cn": () => refreshCodebuddyToken(credentials.refreshToken, log, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
-      "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
+      "kimi-coding": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
+      "kimi-ai": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
       kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
     };
 
@@ -781,22 +871,6 @@ export class DefaultExecutor extends BaseExecutor {
       accessToken = `workos:${accessToken}`;
     }
     return { accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
-  }
-
-  async refreshKimiCoding(refreshToken, proxyOptions = null) {
-    const kimiHeaders = buildKimiHeaders();
-    const response = await proxyAwareFetch(PROVIDERS["kimi-coding"].refreshUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        ...kimiHeaders
-      },
-      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: PROVIDERS["kimi-coding"].clientId })
-    }, proxyOptions);
-    if (!response.ok) return null;
-    const tokens = await response.json();
-    return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };
   }
 
   async refreshKilocode(refreshToken, proxyOptions = null) {

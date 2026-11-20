@@ -23,7 +23,7 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
+const portedProviders = ["adapta-web", "chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "t3-web", "veoaifree-web", "yuanbao-web"];
 const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
@@ -43,7 +43,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("ports completed web-session providers to real executors", async () => {
-    for (const provider of ["copilot-web", "copilot-m365-web", "duckduckgo-web"]) {
+    for (const provider of ["copilot-web", "copilot-m365-web", "duckduckgo-web", "t3-web"]) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});
@@ -89,7 +89,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("preserves structured provider_port_pending error body through the upstream error parser", async () => {
-    const executor = getExecutor("adapta-web");
+    const executor = getExecutor("huggingchat");
     const { response } = await executor.execute({});
     const parsed = await parseUpstreamError(response, executor);
     expect(parsed.statusCode).toBe(501);
@@ -97,7 +97,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(parsed.errorBody).toMatchObject({
       error: {
         type: "provider_port_pending",
-        provider: "adapta-web",
+        provider: "huggingchat",
         sourceFiles: expect.any(Array),
       },
     });
@@ -106,6 +106,15 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(body).toEqual(parsed.errorBody);
     expect(body.error.type).toBe("provider_port_pending");
     expect(body.error.sourceFiles).toEqual(expect.any(Array));
+  });
+
+  it("routes Adapta through its executor and rejects missing credentials without exposing a pending error", async () => {
+    for (const provider of ["adapta-web", "adp-web"]) {
+      expect(hasSpecializedExecutor(provider)).toBe(true);
+      const { response } = await getExecutor(provider).execute({});
+      expect(response.status).toBe(401);
+      expect((await response.json()).error.type).not.toBe("provider_port_pending");
+    }
   });
 
   it("does not trigger account fallback for provider_port_pending errors", () => {

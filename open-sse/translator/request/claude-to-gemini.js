@@ -1,6 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { applyGemini4RequestRules, DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult } from "../formats/gemini.js";
+import { applyGemini4RequestRules, DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult, normalizeGeminiParameterRoot } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -47,6 +47,8 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
 
   const toolUseNames = {};
   const signatures = new Map();
+  const blockSignatures = new Map();
+  const occurrences = new Map();
   for (const message of body.messages || []) {
     if (message.role !== ROLE.ASSISTANT || !Array.isArray(message.content)) continue;
     for (const block of message.content) {
@@ -55,7 +57,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
       const clientSignature = isString(block.thoughtSignature) && block.thoughtSignature ||
       isString(block.thought_signature) && block.thought_signature;
       const signature = resolveGeminiThoughtSignature(buildGeminiThoughtSignatureKey(signatureNamespace, block.id), clientSignature);
-      if (signature) signatures.set(block.id, signature);
+      if (signature) { signatures.set(block.id, signature); blockSignatures.set(block, signature); }
     }
   }
 
@@ -74,7 +76,13 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
         if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });else
         if (urlImagePart(block)) parts.push(urlImagePart(block));else
         if (block.type === CLAUDE_BLOCK.TOOL_USE) {
-          const signature = signatures.get(block.id);
+          const signature = blockSignatures.get(block);
+          // IDs may recur across turns; pair each result with the oldest pending call.
+          if (block.id) {
+            const queue = occurrences.get(block.id) || [];
+            queue.push({ name: sanitize(block.name), signed: !!signature });
+            occurrences.set(block.id, queue);
+          }
           parts.push({ ...(signature ? { thoughtSignature: signature } : null), functionCall: { ...(stripFunctionCallId ? null : { id: block.id }), name: sanitize(block.name), args: block.input || {} } });
         } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
           let content = block.content;
@@ -84,8 +92,9 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
           if (Array.isArray(content)) content = content.filter((entry) => !urlImagePart(entry)).map((entry) => entry.type === CLAUDE_BLOCK.TEXT ? entry.text : JSON.stringify(entry)).join("\n");
           // Keep failures explicit in both native responses and historical text.
           if (block.is_error === true) content = `[Tool error]\n${content ?? ""}`;
-          const name = toolUseNames[block.tool_use_id] || "unknown";
-          if (!signatures.has(block.tool_use_id)) {
+          const paired = occurrences.get(block.tool_use_id)?.shift();
+          const name = paired?.name || toolUseNames[block.tool_use_id] || "unknown";
+          if (!(paired ? paired.signed : signatures.has(block.tool_use_id))) {
             parts.push({ text: historicalToolResult(name, content) }, ...imageParts);
             continue;
           }
@@ -98,7 +107,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     if (parts.length) result.contents.push({ role: message.role === ROLE.ASSISTANT ? GEMINI_ROLE.MODEL : GEMINI_ROLE.USER, parts });
   }
 
-  const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: normalizeToolSchema(tool.input_schema, tool.name) }] : []);
+  const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: normalizeGeminiParameterRoot(normalizeToolSchema(tool.input_schema, tool.name)) }] : []);
   if (declarations.length) result.tools = [{ functionDeclarations: declarations }];
   const choice = body.tool_choice;
   if (declarations.length && choice) {

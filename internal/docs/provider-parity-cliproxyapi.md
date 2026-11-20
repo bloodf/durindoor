@@ -9,6 +9,8 @@ Scope is provider contracts only: registration, sign-in, dispatch and model
 discovery. This document does not propose code changes, does not call provider
 APIs, and contains no credential values.
 
+[The AI Studio Build and hosted Devin follow-up](./aistudio-relay-parity-2034.md) records the verified delegation and model discovery on the merged DurinDoor base.
+
 ## Revisions
 
 | Side | Revision | Note |

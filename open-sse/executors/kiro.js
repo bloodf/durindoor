@@ -1,4 +1,5 @@
 import { BaseExecutor } from "./base.js";
+import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   KIRO_MAX_TOOL_CALL_WRAPPER_BYTES,
@@ -404,6 +405,7 @@ export class KiroExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       ...this.config.headers,
+      ...buildKiroIdentityHeaders(credentials),
       "Amz-Sdk-Request": "attempt=1; max=3",
       "Amz-Sdk-Invocation-Id": uuidv4()
     };

@@ -7,6 +7,7 @@
 import "open-sse/index.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
+import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
 
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
@@ -23,6 +24,7 @@ import {
   assertValidAwsRegion,
   CURSOR_CONFIG,
   KIMI_CODING_CONFIG,
+  KIMI_AI_CONFIG,
   KILOCODE_CONFIG,
   CLINE_CONFIG,
   CLINEPASS_CONFIG,
@@ -47,7 +49,7 @@ import {
   claudeProfileFields,
   fetchKiroProfileArn } from
 "./providerHelpers";
-import { isFunction, isString } from "../../shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import museCode from "./museCodeProvider.js";
@@ -227,6 +229,82 @@ function antigravityOnboardMaxAttempts() {
 /** Delay between two `onboardUser` polls, in milliseconds. */
 function antigravityOnboardRetryDelayMs() {
   return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS", 5000, 0);
+}
+
+function kimiDeviceProvider(config, fallbackVerificationUrl) {
+  return {
+    config,
+    flowType: "device_code",
+    requestDeviceCode: async (config, _codeChallenge, _options, proxyOptions) => {
+      const deviceId = crypto.randomUUID();
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...buildKimiDeviceHeaders(deviceId) },
+        body: new URLSearchParams({ client_id: config.clientId }),
+        redirect: "error",
+        proxyOptions
+      });
+      if (!response.ok) {
+        throw new Error(`Kimi device authorization request failed (HTTP ${response.status})`);
+      }
+      const data = await response.json();
+      if (!data?.user_code) throw new Error("Invalid Kimi device authorization response");
+      const verificationUri = data.verification_uri || fallbackVerificationUrl;
+      const verificationUriComplete = data.verification_uri_complete ||
+        (fallbackVerificationUrl && `${fallbackVerificationUrl}?user_code=${encodeURIComponent(data.user_code)}`);
+      if (!verificationUriComplete) {
+        throw new Error("Invalid Kimi device authorization response");
+      }
+      return {
+        _deviceId: deviceId,
+        device_code: data.device_code,
+        user_code: data.user_code,
+        verification_uri: verificationUri,
+        verification_uri_complete: verificationUriComplete,
+        expires_in: data.expires_in,
+        interval: data.interval || 5
+      };
+    },
+    pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
+      const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
+      const deviceId = extraData?._deviceId;
+      if (deviceId) Object.assign(headers, buildKimiDeviceHeaders(deviceId));
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers,
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: config.clientId,
+          device_code: deviceCode
+        }),
+        redirect: "error",
+        proxyOptions
+      });
+      const data = await response.json().catch(() => null);
+      if (!data || !isObject(data) || Array.isArray(data)) {
+        return { ok: false, data: { error: "invalid_response", error_description: "Invalid Kimi token response" } };
+      }
+      if (!response.ok) return { ok: false, data };
+      if (data.error) {
+        return { ok: false, data: { ...data, error_description: data.error_description || data.message } };
+      }
+
+      const { access_token, refresh_token } = data;
+      if (!isString(access_token) || !access_token.trim() ||
+          (Object.hasOwn(data, "refresh_token") && (!isString(refresh_token) || !refresh_token.trim()))) {
+        return { ok: false, data: { error: "invalid_response", error_description: "Invalid Kimi token response" } };
+      }
+      return { ok: true, data };
+    },
+    // The pending flow owns this ID. Carry it into the connection only on success.
+    postExchange: (_tokens, _proxyOptions, extraData) => extraData,
+    mapTokens: (tokens, extraData) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+      providerSpecificData: extraData?._deviceId ? { deviceId: extraData._deviceId } : undefined
+    })
+  };
 }
 
 // Codex device flow (headless sign-in).
@@ -660,7 +738,30 @@ const PROVIDERS = {
         throw new Error(`Grok CLI device code request failed: ${error}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      // OmniRoute #7358 validates device authorization data before presenting links.
+      if (!isString(data?.device_code) || !isString(data?.user_code) ||
+          !isString(data?.verification_uri)) {
+        throw new Error("Grok device authorization response is incomplete");
+      }
+      if (!/^[A-Za-z0-9-]+$/.test(data.user_code)) {
+        throw new Error("Grok returned an invalid device code");
+      }
+      for (const value of [data.verification_uri, data.verification_uri_complete]) {
+        if (value === undefined) continue;
+        if (!isString(value) || /[\x00-\x1f\x7f]/.test(value)) {
+          throw new Error("Grok returned an invalid verification URL");
+        }
+        let url;
+        try { url = new URL(value); } catch {
+          throw new Error("Grok returned an invalid verification URL");
+        }
+        if (url.protocol !== "https:" && !(url.protocol === "http:" &&
+            (url.hostname === "localhost" || url.hostname === "127.0.0.1"))) {
+          throw new Error("Grok returned an unsupported verification URL");
+        }
+      }
+      return data;
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
@@ -1370,58 +1471,8 @@ const PROVIDERS = {
     })
   },
 
-  "kimi-coding": {
-    config: KIMI_CODING_CONFIG,
-    flowType: "device_code",
-    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
-      const response = await fetch(config.deviceCodeUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: new URLSearchParams({ client_id: config.clientId }),
-        proxyOptions
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Device code request failed: ${error}`);
-      }
-      const data = await response.json();
-      return {
-        device_code: data.device_code,
-        user_code: data.user_code,
-        verification_uri: data.verification_uri || "https://www.kimi.com/code/authorize_device",
-        verification_uri_complete:
-        data.verification_uri_complete ||
-        `https://www.kimi.com/code/authorize_device?user_code=${data.user_code}`,
-        expires_in: data.expires_in,
-        interval: data.interval || 5
-      };
-    },
-    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: new URLSearchParams({
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-          client_id: config.clientId,
-          device_code: deviceCode
-        }),
-        proxyOptions
-      });
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        const text = await response.text();
-        data = { error: "invalid_response", error_description: text };
-      }
-      return { ok: response.ok, data };
-    },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in
-    })
-  },
+  "kimi-coding": kimiDeviceProvider(KIMI_CODING_CONFIG, "https://www.kimi.com/code/authorize_device"),
+  "kimi-ai": kimiDeviceProvider(KIMI_AI_CONFIG),
 
   kilocode: {
     config: KILOCODE_CONFIG,
@@ -1728,23 +1779,63 @@ const PROVIDERS = {
     })
   },
 
+  // Trae SOLO uses a user-approved session import. The token cannot be refreshed.
   trae: {
     config: TRAE_CONFIG,
     flowType: "import_token",
     buildAuthUrl: () => null,
-    mapTokens: (tokens) => ({
-      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
-      refreshToken: null,
-      expiresIn: tokens.expiresIn || TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
-      providerSpecificData: {
-        webId: tokens.webId || tokens.web_id || "",
-        bizUserId: tokens.bizUserId || tokens.biz_user_id || "",
-        userUniqueId: tokens.userUniqueId || tokens.user_unique_id || "",
-        scope: tokens.scope || "marscode-us",
-        tenant: tokens.tenant || "marscode",
-        region: tokens.region || "US-East"
-      }
-    })
+    mapTokens: (tokens, extra) => {
+      // `isObject` accepts null and arrays in this tree, so shape the two
+      // sources explicitly: only a plain object carries named fields.
+      const credential = tokens && isObject(tokens) && !Array.isArray(tokens) ? tokens : {};
+      const request = extra && isObject(extra) && !Array.isArray(extra) ? extra : {};
+      const pick = (...names) => {
+        for (const name of names) {
+          const value = credential[name] ?? request[name];
+          if (value === undefined || value === null || value === "") continue;
+          // The import route has no per-provider schema, so the value arrives
+          // as whatever the client sent. Keep the stored shape a string.
+          return isString(value) ? value.trim() : String(value);
+        }
+        return "";
+      };
+      const region = pick("region") || "US-East";
+      const userTimezone = pick("userTimezone", "user_timezone");
+      return {
+        accessToken:
+        credential.accessToken ||
+        credential.access_token ||
+        credential.token ||
+        request.accessToken ||
+        request.access_token ||
+        request.token ||
+        (isString(tokens) ? tokens : ""),
+        refreshToken: null,
+        expiresIn:
+        Number(credential.expiresIn) ||
+        Number(request.expiresIn) ||
+        TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
+        providerSpecificData: {
+          webId: pick("webId", "web_id"),
+          bizUserId: pick("bizUserId", "biz_user_id"),
+          userUniqueId: pick("userUniqueId", "user_unique_id"),
+          scope: pick("scope") || "marscode-us",
+          tenant: pick("tenant") || "marscode",
+          region,
+          aiRegion: pick("aiRegion", "ai_region") || region,
+          appLanguage: pick("appLanguage", "app_language") || "en",
+          appVersion: pick("appVersion", "app_version") || "1.0.0.1229",
+          // "US" stays the best-effort default so imports that omit the region
+          // keep behaving as before; a real account region (e.g. "SG") has to
+          // be supplied — it is not a universal replacement default
+          // (cheaper-inference/OmniRoute #12190, PR #13255).
+          userRegion: pick("userRegion", "user_region") || "US",
+          ...(userTimezone ? { userTimezone } : null),
+          userIdentity: pick("userIdentity", "user_identity") || "Free",
+          authMethod: "imported"
+        }
+      };
+    }
   },
 
   "devin-cli": {
@@ -1791,17 +1882,18 @@ const PROVIDERS = {
           "X-No-User-Id": "true",
           "X-Product": "SaaS"
         },
-        body: "{}",
+        body: JSON.stringify({ platform: config.platform }),
         proxyOptions
       });
       if (!response.ok) throw new Error(`CodeBuddy state request failed: ${await response.text()}`);
       const data = await response.json();
-      if (data.code !== 0 || !data.data?.state || !data.data?.authUrl) {
+      const authUrl = data.data?.authUrl || data.data?.url;
+      if (data.code !== 0 || !data.data?.state || !authUrl) {
         throw new Error(`CodeBuddy state error: ${data.msg || "missing state/authUrl"}`);
       }
       return {
         device_code: data.data.state,
-        verification_uri: data.data.authUrl,
+        verification_uri: authUrl,
         user_code: "",
         interval: config.pollInterval / 1000,
         _isCodeBuddy: true

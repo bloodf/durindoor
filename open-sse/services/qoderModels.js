@@ -37,14 +37,13 @@ const catalogCache = new Map();
 const inflight = new Map();
 
 /**
- * Stable cache key per credential+region (so different login sessions for the
- * same account share an entry, and the same account on both sites doesn't
- * collide on one cached catalog).
+ * Stable cache key per access credential and region. Account IDs alone do not
+ * establish that two connections have the same entitlements or billing context.
  */
 function cacheKey(credentials, region) {
   const psd = credentials?.providerSpecificData || {};
-  const seed = psd.userId || credentials?.refreshToken || credentials?.accessToken || "anonymous";
-  return createHash("sha256").update(`qoder:${region}:${seed}`).digest("hex");
+  const seed = JSON.stringify([region, psd.userId || "", credentials?.accessToken || ""]);
+  return createHash("sha256").update(`qoder:${seed}`).digest("hex");
 }
 
 /**

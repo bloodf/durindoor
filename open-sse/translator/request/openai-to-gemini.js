@@ -19,6 +19,7 @@ import {
   generateSessionId,
   generateProjectId,
   cleanJSONSchemaForAntigravity,
+  normalizeGeminiParameterRoot,
   applyGemini4RequestRules } from
 "../formats/gemini.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -338,7 +339,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     for (const t of body.tools) {
       // Check if already in Anthropic/Claude format (no type field, direct name/description/input_schema)
       if (t.name && t.input_schema) {
-        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeToolSchema(t.input_schema, t.name) || { type: "object", properties: {} }));
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(t.input_schema, t.name)) || { type: "object", properties: {} }));
         functionDeclarations.push({
           name: sanitizeToolName(t.name),
           description: t.description || "",
@@ -348,7 +349,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       // OpenAI format
       else if (t.type === OPENAI_BLOCK.FUNCTION && t.function) {
         const fn = t.function;
-        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeToolSchema(fn.parameters, fn.name) || { type: "object", properties: {} }));
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(fn.parameters, fn.name)) || { type: "object", properties: {} }));
         functionDeclarations.push({
           name: sanitizeToolName(fn.name),
           description: fn.description || "",

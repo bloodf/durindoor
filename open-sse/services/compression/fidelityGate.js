@@ -213,9 +213,11 @@ function countNegations(text) {
  */
 export function checkFidelity(inputText, outputText, cfg = {}) {
   try {
+    const blocks = extractPreservedBlocks(inputText).blocks;
+    // A generated placeholder can itself match a token pattern. Only enforce
+    // tokens present in the original text, never preservation bookkeeping.
     const tokens = uniq(
-      extractPreservedBlocks(inputText).
-      blocks.filter((b) => CRITICAL_KINDS.has(b.kind)).
+      blocks.filter((b) => CRITICAL_KINDS.has(b.kind) && inputText.includes(b.content)).
       map((b) => b.content.trim()).
       filter((c) => c.length > 0)
     );

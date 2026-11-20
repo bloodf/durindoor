@@ -29,6 +29,17 @@ describe("ElevenLabs TTS options", () => {
     });
   });
 
+  it("loads only account-enabled text-to-speech models", async () => {
+    global.fetch.mockResolvedValueOnce(new Response(JSON.stringify([
+      { model_id: "eleven_v4", name: "Eleven v4", can_do_text_to_speech: true },
+      { model_id: "voice", name: "Voice", can_do_text_to_speech: false },
+      { model_id: "alpha", can_do_text_to_speech: true, requires_alpha_access: true },
+    ])));
+    await expect((await import("../../open-sse/handlers/ttsProviders/elevenlabs.js")).fetchElevenLabsModels("models-key"))
+      .resolves.toEqual([{ id: "eleven_v4", name: "Eleven v4", type: "tts" }]);
+  });
+
+
   it.each([["opus", "opus_48000_128", "opus"], ["wav", "wav_24000", "wav"], ["pcm", "pcm_24000", "pcm"]])(
     "maps %s to the matching provider output format", async (requested, upstream, returned) => {
       const result = await elevenLabsTts.synthesize("Hello", "voice123", { apiKey: "test" }, requested);

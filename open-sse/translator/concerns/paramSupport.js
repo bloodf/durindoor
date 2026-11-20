@@ -50,6 +50,8 @@ const STRIP_RULES = [
 // upstream 2026-10-13: 12/12 structured calls 400, 4/4 without the field 200
 // (decolua/9router 468aa7d9).
 { provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
+// OpenCode Go GPT Responses rejects temperature.
+{ provider: "opencode-go", match: /^gpt-/i, drop: ["temperature"] },
 
 // 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
 {

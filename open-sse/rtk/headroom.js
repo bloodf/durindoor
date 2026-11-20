@@ -1,3 +1,4 @@
+import { TOOL_OUTPUT_MAX_DEPTH } from "./constants.js";
 import { MAX_COMPRESS_BODY_BYTES } from "../config/runtimeConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK, COMMANDCODE_BLOCK, RESPONSES_ITEM } from "../translator/schema/index.js";
@@ -16,7 +17,6 @@ import {
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const HEADROOM_TOOL_OUTPUT_MAX_DEPTH = 8; // bound native tool-output traversal
 
 const OPENAI_MESSAGE_ORDER_KEY = "__durindoor_headroom_order_7f3b2a91d6e84c05__";
 
@@ -368,7 +368,7 @@ function collectToolOutputText(body, format) {
   const messages = [];
   const targets = [];
   const visit = (object, key, depth = 0) => {
-    if (depth > HEADROOM_TOOL_OUTPUT_MAX_DEPTH) return;
+    if (depth > TOOL_OUTPUT_MAX_DEPTH) return;
     const value = object?.[key];
     if (isString(value)) {
       if (!value.trim()) return;

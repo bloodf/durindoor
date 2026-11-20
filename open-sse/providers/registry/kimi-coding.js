@@ -5,6 +5,7 @@ export default {
   hidden: true,
   priority: 120,
   alias: "kmc",
+  aliases: ["kimi.com"],
   display: {
     name: "Kimi Coding",
     icon: "psychology",
@@ -54,6 +55,9 @@ export default {
   models: [
     /** `k3[1m]` is documented only as a Claude Code inbound spelling; emit canonical `k3`. */
     { id: "k3", name: "Kimi K3", aliases: ["k3[1m]"] },
+    // Kimi Code K3.1 identifiers use a 1M context window.
+    { id: "k3.1-pro", name: "Kimi K3.1 Pro", contextLength: 1048576 },
+    { id: "k3.1-pro-highspeed", name: "Kimi K3.1 Pro Highspeed", contextLength: 1048576 },
     { id: "k3-256k", name: "Kimi K3 256K" },
     { id: "kimi-for-coding", name: "Kimi K2.8 Preview" },
     { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed" },

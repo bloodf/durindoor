@@ -1,9 +1,11 @@
+import { AdaptaWebExecutor } from "./adapta-web.js";
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
 import { AzureOpenAIExecutor } from "./azure-openai.js";
 import { BedrockExecutor } from "./bedrock.js";
 import { ChipotleExecutor } from "./chipotle.js";
+import { GeminiInteractionsExecutor } from "./gemini-interactions.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { GheCopilotExecutor } from "./ghe-copilot.js";
@@ -45,9 +47,11 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
 import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+import { YuanbaoWebExecutor } from "./yuanbao-web.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
@@ -60,6 +64,8 @@ import { resolveProviderAlias } from "../services/model.js";
 const chatGptWebExecutor = new ChatGptWebExecutor();
 
 const executors = {
+  "adapta-web": new AdaptaWebExecutor(),
+  "adp-web": new AdaptaWebExecutor(),
   antigravity: new AntigravityExecutor(),
   agy: new AntigravityExecutor("agy"),
   auggie: new AuggieExecutor(),
@@ -71,6 +77,7 @@ const executors = {
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
+  "gemini-interactions": new GeminiInteractionsExecutor(),
   github: new GithubExecutor(),
   "ghe-copilot": new GheCopilotExecutor(),
   "muse-code": new MuseCodeExecutor(),
@@ -120,12 +127,16 @@ const executors = {
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
   windsurf: new WindsurfExecutor(),
+  "t3-web": new T3ChatWebExecutor(),
+  t3chat: new T3ChatWebExecutor(),
   "copilot-web": new CopilotWebExecutor(),
   copilot: new CopilotWebExecutor(),
   "copilot-m365-web": new CopilotM365WebExecutor(),
   m365copilot: new CopilotM365WebExecutor(),
   "veoaifree-web": new VeoAIFreeWebExecutor(),
   "veo-free": new VeoAIFreeWebExecutor(),
+  "yuanbao-web": new YuanbaoWebExecutor(),
+  ybw: new YuanbaoWebExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
   zmf: new ZenmuxFreeExecutor(),
   ...Object.fromEntries(

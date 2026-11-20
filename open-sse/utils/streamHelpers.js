@@ -121,8 +121,20 @@ export function ensureStreamToolCallIds(chunk, seen) {
   if (!Array.isArray(chunk?.choices)) return false;
   let changed = false;
   for (const [choicePosition, choice] of chunk.choices.entries()) {
-    const calls = choice?.delta?.tool_calls;
+    let calls = choice?.delta?.tool_calls;
     if (!Array.isArray(calls)) continue;
+    const nonEmpty = calls.filter(call => {
+      if (!isObject(call) || call === null) return true;
+      if (call.type && call.type !== "function") return true;
+      if (Object.keys(call).some(key => !["index", "id", "type", "function"].includes(key))
+        || Object.keys(call.function || {}).some(key => !["name", "arguments"].includes(key))) return true;
+      return [call.id, call.function?.name, call.function?.arguments].some(value => value != null && value !== "");
+    });
+    if (nonEmpty.length !== calls.length) {
+      changed = true;
+      if (nonEmpty.length === 0) { delete choice.delta.tool_calls; continue; }
+      choice.delta.tool_calls = calls = nonEmpty;
+    }
     for (const [position, call] of calls.entries()) {
       if (!isObject(call) || call === null) continue;
       const choiceIndex = choice.index ?? choicePosition;

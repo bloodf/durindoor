@@ -7,6 +7,7 @@
 import "open-sse/index.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
+import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
 
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
@@ -23,6 +24,7 @@ import {
   assertValidAwsRegion,
   CURSOR_CONFIG,
   KIMI_CODING_CONFIG,
+  KIMI_AI_CONFIG,
   KILOCODE_CONFIG,
   CLINE_CONFIG,
   CLINEPASS_CONFIG,
@@ -46,7 +48,7 @@ import {
   claudeProfileFields,
   fetchKiroProfileArn } from
 "./providerHelpers";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import museCode from "./museCodeProvider.js";
@@ -225,6 +227,69 @@ function antigravityOnboardMaxAttempts() {
 /** Delay between two `onboardUser` polls, in milliseconds. */
 function antigravityOnboardRetryDelayMs() {
   return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS", 5000, 0);
+}
+
+function kimiDeviceProvider(config, fallbackVerificationUrl) {
+  return {
+    config,
+    flowType: "device_code",
+    requestDeviceCode: async (config, _codeChallenge, _options, proxyOptions) => {
+      const deviceId = crypto.randomUUID();
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...buildKimiDeviceHeaders(deviceId) },
+        body: new URLSearchParams({ client_id: config.clientId }),
+        redirect: "error",
+        proxyOptions
+      });
+      if (!response.ok) {
+        throw new Error(`Kimi device authorization request failed (HTTP ${response.status})`);
+      }
+      const data = await response.json();
+      if (!data?.user_code) throw new Error("Invalid Kimi device authorization response");
+      const verificationUri = data.verification_uri || fallbackVerificationUrl;
+      const verificationUriComplete = data.verification_uri_complete ||
+        (fallbackVerificationUrl && `${fallbackVerificationUrl}?user_code=${encodeURIComponent(data.user_code)}`);
+      if (!verificationUriComplete) {
+        throw new Error("Invalid Kimi device authorization response");
+      }
+      return {
+        _deviceId: deviceId,
+        device_code: data.device_code,
+        user_code: data.user_code,
+        verification_uri: verificationUri,
+        verification_uri_complete: verificationUriComplete,
+        expires_in: data.expires_in,
+        interval: data.interval || 5
+      };
+    },
+    pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...(extraData?._deviceId ? buildKimiDeviceHeaders(extraData._deviceId) : {}) },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: config.clientId,
+          device_code: deviceCode
+        }),
+        redirect: "error",
+        proxyOptions
+      });
+      const data = await response.json().catch(() => null);
+      if (!data || !isObject(data) || Array.isArray(data)) {
+        return { ok: false, data: { error: "invalid_response", error_description: "Invalid Kimi token response" } };
+      }
+      return { ok: response.ok, data };
+    },
+    // The pending flow owns this ID. Carry it into the connection only on success.
+    postExchange: (_tokens, _proxyOptions, extraData) => extraData,
+    mapTokens: (tokens, extraData) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+      providerSpecificData: extraData?._deviceId ? { deviceId: extraData._deviceId } : undefined
+    })
+  };
 }
 
 // Provider configurations
@@ -1175,58 +1240,8 @@ const PROVIDERS = {
     })
   },
 
-  "kimi-coding": {
-    config: KIMI_CODING_CONFIG,
-    flowType: "device_code",
-    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
-      const response = await fetch(config.deviceCodeUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: new URLSearchParams({ client_id: config.clientId }),
-        proxyOptions
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Device code request failed: ${error}`);
-      }
-      const data = await response.json();
-      return {
-        device_code: data.device_code,
-        user_code: data.user_code,
-        verification_uri: data.verification_uri || "https://www.kimi.com/code/authorize_device",
-        verification_uri_complete:
-        data.verification_uri_complete ||
-        `https://www.kimi.com/code/authorize_device?user_code=${data.user_code}`,
-        expires_in: data.expires_in,
-        interval: data.interval || 5
-      };
-    },
-    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: new URLSearchParams({
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-          client_id: config.clientId,
-          device_code: deviceCode
-        }),
-        proxyOptions
-      });
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        const text = await response.text();
-        data = { error: "invalid_response", error_description: text };
-      }
-      return { ok: response.ok, data };
-    },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in
-    })
-  },
+  "kimi-coding": kimiDeviceProvider(KIMI_CODING_CONFIG, "https://www.kimi.com/code/authorize_device"),
+  "kimi-ai": kimiDeviceProvider(KIMI_AI_CONFIG),
 
   kilocode: {
     config: KILOCODE_CONFIG,

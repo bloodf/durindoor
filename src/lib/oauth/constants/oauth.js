@@ -2,8 +2,9 @@
  * OAuth Configuration Constants — static data lives in registry, re-exported here for consumers.
  */
 import { platform, arch } from "os";
+import { getKimiOAuthClientId } from "open-sse/config/appConstants.js";
 import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "open-sse/providers/shared.js";
-import { PROVIDER_OAUTH, PROVIDERS as REGISTRY_PROVIDERS } from "open-sse/providers/index.js";
+import { PROVIDER_OAUTH } from "open-sse/providers/index.js";
 
 /**
  * Get the platform enum value based on the current OS.
@@ -97,7 +98,12 @@ export const CURSOR_CONFIG = {
 // clientId uses env override — dynamic, not stored in registry
 export const KIMI_CODING_CONFIG = {
   ...PROVIDER_OAUTH["kimi-coding"],
-  clientId: process.env.KIMI_CODING_OAUTH_CLIENT_ID || REGISTRY_PROVIDERS["kimi-coding"]?.clientId
+  get clientId() { return getKimiOAuthClientId("kimi-coding"); }
+};
+
+export const KIMI_AI_CONFIG = {
+  ...PROVIDER_OAUTH["kimi-ai"],
+  get clientId() { return getKimiOAuthClientId("kimi-ai"); }
 };
 
 // KiloCode OAuth Configuration (Custom Device Auth Flow)

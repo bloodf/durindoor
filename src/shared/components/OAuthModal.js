@@ -19,6 +19,7 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "qwen",
 "kiro",
 "kimi-coding",
+"kimi-ai",
 "kilocode",
 "codebuddy-cn",
 "qoder",

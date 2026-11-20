@@ -13,6 +13,7 @@ import {
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
+  refreshKimiToken,
   refreshGitLabDuoToken,
   refreshClineToken,
   classifyOAuthRefreshError } from
@@ -172,6 +173,8 @@ const REFRESH_HANDLERS = {
   "amazon-q": (c, log, p) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log, p),
   xai: (c, log, p) => refreshXaiToken(c.refreshToken, log, p),
   "grok-cli": (c, log, p) => refreshXaiToken(c.refreshToken, log, p),
+  "kimi-coding": (c, log, p) => refreshKimiToken("kimi-coding", c, log, p),
+  "kimi-ai": (c, log, p) => refreshKimiToken("kimi-ai", c, log, p),
   "codebuddy-cn": (c, log, p) => refreshCodebuddyToken(c.refreshToken, log, p),
   "gitlab-duo": (c, log, p) => refreshGitLabDuoToken(c.refreshToken, c, log, p),
   // Cline and ClinePass share the same WorkOS-backed refresh endpoint. Without

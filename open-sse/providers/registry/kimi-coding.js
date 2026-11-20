@@ -5,6 +5,7 @@ export default {
   hidden: true,
   priority: 120,
   alias: "kmc",
+  aliases: ["kimi.com"],
   display: {
     name: "Kimi Coding",
     icon: "psychology",

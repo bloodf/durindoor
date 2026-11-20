@@ -1,4 +1,5 @@
 import { platform, arch } from "os";
+import pkg from "../../package.json" with { type: "json" };
 import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
@@ -212,5 +213,21 @@ export function buildKimiHeaders(deviceId) {
     "X-Msh-Version": "2.1.2",
     "X-Msh-Device-Model": !isUndefined(globalThis.process) ? `${process.platform} ${process.arch}` : "unknown",
     "X-Msh-Device-Id": deviceId || `kimi-${Date.now()}`
+  };
+}
+
+export function getKimiOAuthClientId(provider) {
+  if (provider === "kimi-coding" && process.env.KIMI_CODING_OAUTH_CLIENT_ID) {
+    return process.env.KIMI_CODING_OAUTH_CLIENT_ID;
+  }
+  return PROVIDERS[provider].clientId;
+}
+
+export function buildKimiDeviceHeaders(deviceId) {
+  return {
+    "X-Msh-Platform": "DurinDoor",
+    "X-Msh-Version": pkg.version,
+    "X-Msh-Device-Model": `${platform()} ${arch()}`,
+    "X-Msh-Device-Id": deviceId
   };
 }

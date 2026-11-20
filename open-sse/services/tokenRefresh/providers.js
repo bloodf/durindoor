@@ -1,5 +1,5 @@
 import { PROVIDERS, PROVIDER_OAUTH } from "../../config/providers.js";
-import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../../config/appConstants.js";
+import { OAUTH_ENDPOINTS, GITHUB_COPILOT, buildKimiDeviceHeaders, buildKimiHeaders, getKimiOAuthClientId } from "../../config/appConstants.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { buildKiroOidcEndpoint, KIRO_DEFAULT_REGION } from "../../config/kiroRegions.js";
 import { dedupRefresh } from "./dedup.js";
@@ -100,6 +100,43 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
       log?.error?.("TOKEN_REFRESH", `Error refreshing token for ${safeRefreshError(provider)}`, {
         error: safeRefreshError(error)
       });
+      return null;
+    }
+  }, log, proxyOptions);
+}
+
+export async function refreshKimiToken(provider, credentials, log, proxyOptions = null) {
+  const { refreshToken, providerSpecificData } = credentials;
+  if (!refreshToken) return null;
+
+  return dedupRefresh(provider, refreshToken, async () => {
+    try {
+      const deviceId = providerSpecificData?.deviceId;
+      const response = await proxyAwareFetch(PROVIDERS[provider].refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          ...(deviceId ? buildKimiDeviceHeaders(deviceId) : buildKimiHeaders())
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          client_id: getKimiOAuthClientId(provider)
+        }),
+        redirect: "error"
+      }, proxyOptions);
+      if (!response.ok) return null;
+
+      const tokens = await response.json();
+      if (!tokens?.access_token) return null;
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || refreshToken,
+        expiresIn: tokens.expires_in
+      };
+    } catch (error) {
+      log?.warn?.("TOKEN_REFRESH", `Kimi refresh failed: ${safeRefreshError(error)}`);
       return null;
     }
   }, log, proxyOptions);

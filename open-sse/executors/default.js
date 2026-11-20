@@ -5,7 +5,7 @@ import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/provi
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta } from "../providers/shared.js";
-import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, buildKimiHeaders, buildKimiDeviceHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -14,6 +14,7 @@ import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reason
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
+import { refreshKimiToken } from "../services/tokenRefresh/providers.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
@@ -196,7 +197,14 @@ const HEADER_HOOKS = {
     h["X-Conversation-Request-ID"] = requestId;
     h["X-Conversation-Message-ID"] = requestId;
   },
-  kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
+  kimiHeaders: (h, c) => {
+    const deviceId = c.providerSpecificData?.deviceId;
+    Object.assign(h, deviceId ? buildKimiDeviceHeaders(deviceId) : buildKimiHeaders());
+  },
+  kimiDeviceHeaders: (h, c) => {
+    const deviceId = c.providerSpecificData?.deviceId;
+    if (deviceId) Object.assign(h, buildKimiDeviceHeaders(deviceId));
+  },
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
   kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},
   claudeOverlay: (h) => {
@@ -692,7 +700,8 @@ export class DefaultExecutor extends BaseExecutor {
       "codebuddy-cn": () => refreshCodebuddyToken(credentials.refreshToken, log, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
-      "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
+      "kimi-coding": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
+      "kimi-ai": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
       kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
     };
 
@@ -770,22 +779,6 @@ export class DefaultExecutor extends BaseExecutor {
       accessToken = `workos:${accessToken}`;
     }
     return { accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
-  }
-
-  async refreshKimiCoding(refreshToken, proxyOptions = null) {
-    const kimiHeaders = buildKimiHeaders();
-    const response = await proxyAwareFetch(PROVIDERS["kimi-coding"].refreshUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        ...kimiHeaders
-      },
-      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: PROVIDERS["kimi-coding"].clientId })
-    }, proxyOptions);
-    if (!response.ok) return null;
-    const tokens = await response.json();
-    return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };
   }
 
   async refreshKilocode(refreshToken, proxyOptions = null) {

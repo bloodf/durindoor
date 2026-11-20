@@ -49,6 +49,7 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "github",
 "kiro",
 "kimi-coding",
+"kimi-ai",
 "kilocode",
 "codebuddy-cn",
 "qoder",
@@ -60,12 +61,11 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 );
 
 // Device providers whose poll needs the private extraData stored with the flow.
-const EXTRA_DATA_POLL_PROVIDERS = new Set(["kiro", "amazon-q", "ghe-copilot"]);
+const EXTRA_DATA_POLL_PROVIDERS = new Set(["kiro", "amazon-q", "ghe-copilot", "kimi-coding", "kimi-ai"]);
 
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
 "muse-code",
-"kimi-coding",
 "kilocode",
 "codebuddy-cn"]
 );

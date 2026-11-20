@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/nvidia-catalog-5780.json";
 import nvidia from "../../open-sse/providers/registry/nvidia.js";
-import { getDefaultModel, getProviderModels } from "../../open-sse/config/providerModels.js";
+import { getProviderModels } from "../../open-sse/config/providerModels.js";
+import { getDefaultModel } from "../../open-sse/config/providerModels.js";
 import { PROVIDER_MODELS_CONFIG } from "../../src/app/api/providers/[id]/models/modelsConfig.js";
 import { buildRegistryProviderProbe } from "../../src/app/api/providers/providerProbe.js";
 

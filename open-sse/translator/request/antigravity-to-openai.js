@@ -87,10 +87,10 @@ export function antigravityToOpenAIRequest(model, body, stream) {
 
 /**
  * Recursively normalize an Antigravity/Gemini tool-parameter schema for the
- * OpenAI-shaped tool surface: lowercase `type` keywords (OBJECT -> object), strip
- * unsupported fields (e.g. `enumDescriptions`), recurse into `properties`,
- * `items`, and `additionalProperties`, and add a placeholder `properties` map to
- * bare `type: "object"` nodes (Gemini rejects object schemas with no properties).
+ * OpenAI-shaped tool surface: lowercase `type` keywords (OBJECT -> object), convert
+ * safe ProtoJSON int64 schema constraints to numbers, strip unsupported fields
+ * (e.g. `enumDescriptions`), recurse through nested values, and add a placeholder
+ * `properties` map to bare object nodes (Gemini rejects those without properties).
  *
  * @param {object} schema - Antigravity tool parameter schema.
  * @returns {object} Normalized schema (a shallow-cloned tree).

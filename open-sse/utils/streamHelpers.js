@@ -112,7 +112,8 @@ export function hasValuableContent(chunk, format) {
  * (choice, tool-call index) without one. Strict OpenAI-compatible clients
  * (@ai-sdk/openai-compatible) abort the turn on "Expected 'id' to be a string"
  * (upstream 9router 95c9d03e, #4992). Continuation fragments of an index
- * already seen are left as-is, per the OpenAI streaming contract.
+ * already seen are left as-is, per the OpenAI streaming contract. Known empty
+ * function placeholders are removed first so they cannot create phantom ids.
  * @param {object} chunk - parsed chat.completion.chunk, mutated in place
  * @param {Set<string>} seen - per-stream keys of indices already opened
  * @returns {boolean} true when an id was added

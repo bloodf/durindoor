@@ -13,7 +13,13 @@ import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
 import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 
-const LOCAL_USAGE_COOKIE_PROVIDERS = { "grok-web": "Grok Web", "chatgpt-web": "ChatGPT Web" };
+const LOCAL_USAGE_COOKIE_PROVIDERS = {
+  "grok-web": "Grok Web",
+  "chatgpt-web": "ChatGPT Web",
+  "zenmux-free": "ZenMux Free",
+  suno: "Suno",
+  udio: "Udio",
+};
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];

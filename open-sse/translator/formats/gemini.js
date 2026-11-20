@@ -688,6 +688,20 @@ function enforceTypeConstraints(obj) {
   }
 }
 
+// Wrap typeless bare tool parameter maps before sending them to Gemini. Preserve
+// object-valued schema keywords and extensions at the root.
+export function normalizeGeminiParameterRoot(raw) {
+  if (!raw || !isObject(raw) || Array.isArray(raw) || raw.type || (raw.properties && isObject(raw.properties) && !Array.isArray(raw.properties))) return raw;
+  const keywords = new Set(["$defs", "additionalItems", "additionalProperties", "contains", "contentSchema", "default", "definitions", "dependencies", "dependentRequired", "dependentSchemas", "discriminator", "else", "example", "externalDocs", "if", "items", "not", "patternProperties", "propertyNames", "then", "unevaluatedItems", "unevaluatedProperties", "xml"]);
+  const schema = {};
+  const properties = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value && isObject(value) && !Array.isArray(value) && !keywords.has(key) && !key.startsWith("x-")) properties[key] = value;
+    else schema[key] = value;
+  }
+  return { ...schema, type: "object", properties };
+}
+
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
 export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false } = {}) {
   if (!schema || !isObject(schema)) return schema;

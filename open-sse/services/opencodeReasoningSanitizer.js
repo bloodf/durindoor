@@ -35,3 +35,30 @@ export function stripBooleanReasoning(body) {
   if (isBoolean(body.reasoning)) delete body.reasoning;
   return body;
 }
+
+// Only catalogued MiMo routes share the OpenCode gateway's low-to-high contract.
+const MIMO_MODELS = {
+  "opencode-go": new Set(["mimo-v2.5", "mimo-v2.5-pro"]),
+  "opencode-zen": new Set(["mimo-v2.5-free", "mimo-v2.6-flash-free"]),
+  opencode: new Set(["mimo-v2.5-free", "mimo-v2.6-flash-free"]),
+};
+
+/** Normalize present effort carriers without changing their shape or precedence. */
+export function normalizeOpencodeMimoEffort(body, provider, model) {
+  if (!body || !MIMO_MODELS[provider]?.has(model)) return body;
+  const normalize = (value) => ["xhigh", "max", "ultra"].includes(value) ? "high" : value === "minimal" ? "low" : value;
+  if (Object.hasOwn(body, "reasoning_effort")) body.reasoning_effort = normalize(body.reasoning_effort);
+  for (const key of ["reasoning", "output_config"]) {
+    if (isObject(body[key]) && Object.hasOwn(body[key], "effort")) body[key].effort = normalize(body[key].effort);
+  }
+  return body;
+}
+
+/** Restore explicitly supplied carriers on same-format MiMo requests. */
+export function restoreOpencodeMimoEffort(body, original, provider, model) {
+  if (!MIMO_MODELS[provider]?.has(model)) return body;
+  for (const key of ["reasoning_effort", "reasoning", "output_config"]) {
+    if (Object.hasOwn(original, key)) body[key] = original[key];
+  }
+  return body;
+}

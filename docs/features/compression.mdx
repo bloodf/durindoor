@@ -35,6 +35,8 @@ RTK runs at most once per request. If the RTK toggle is on, or the stack include
 
 Headroom processes the source-format chat body before translation. RTK normally processes the translated body; Cursor needs RTK before its translator rewrites tool results. The compression stack follows those steps, then the separate Caveman, Ponytail, and PXPIPE toggles apply. Enabling overlapping options can apply more than one transform, so compare results before using a stack on important traffic.
 
+A settings write that carries `compressionEngines` is a partial patch. Engines the write does not mention keep their stored entry, and an engine it does mention is merged field by field, so a write that only flips `enabled` keeps the stored `level` and the stored per-engine options.
+
 ## Fidelity gate
 
 Every compression-stack step is checked before its output is kept. If a step changes any of these, the stack discards that step's output and continues with its input:

@@ -88,6 +88,10 @@ const PATTERN_THINKING = [
   // above).
   { provider: "commandcode", pattern: "*deepseek-v4.*", levels: FORMAT_LEVELS.commandcode },
   { provider: "cmc", pattern: "*deepseek-v4.*", levels: FORMAT_LEVELS.commandcode },
+  // OmniRoute #20465: Go's two Flash IDs accept only these efforts.
+  ...["opencode-go", "ocg"].flatMap((provider) =>
+    ["deepseek-v4.1-flash", "deepseek-flash"].map((pattern) =>
+      ({ provider, pattern, levels: ["low", "high", "max"] }))),
   // DeepSeek v4.* dotted releases (Alibaba MaaS, probed live): effort
   // low|medium|high|xhigh|max all 200 via output_config.effort; "none" is a 400
   // on the anthropic route (disable thinking instead). none kept for the picker

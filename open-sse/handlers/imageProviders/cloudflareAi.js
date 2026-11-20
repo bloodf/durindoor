@@ -1,4 +1,4 @@
-import { nowSec, urlToBase64 } from "./_base.js";
+import { imageFetchOptions, nowSec, urlToBase64 } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { isString, isUndefined } from "../../../src/shared/utils/typeChecks.js";
 import { fetchImageAsBase64, parseDataUri } from "../../translator/concerns/image.js";
@@ -37,7 +37,7 @@ function getDimensions(body) {
   };
 }
 
-async function resolveImageInput(value) {
+async function resolveImageInput(value, options) {
   if (Array.isArray(value)) {
     return { bytes: value, b64: Buffer.from(value).toString("base64") };
   }
@@ -45,7 +45,7 @@ async function resolveImageInput(value) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) {
-    const b64 = await urlToBase64(trimmed);
+    const b64 = await urlToBase64(trimmed, options);
     return { bytes: base64ToBytes(b64), b64 };
   }
   const match = /^data:image\/[^;]+;base64,(.+)$/i.exec(trimmed);
@@ -70,7 +70,7 @@ function addOptionalFields(target, body, append) {
 }
 
 // FLUX.1 Schnell rejects dimensions in its closed input schema.
-async function buildJsonBody(model, body) {
+async function buildJsonBody(model, body, options) {
   const req = { prompt: body.prompt };
   if (model !== "@cf/black-forest-labs/flux-1-schnell") Object.assign(req, getDimensions(body));
 
@@ -78,13 +78,13 @@ async function buildJsonBody(model, body) {
     target[key] = value;
   });
 
-  const imageData = await resolveImageInput(body.image);
+  const imageData = await resolveImageInput(body.image, options);
   if (imageData) {
     req.image_b64 = imageData.b64;
     req.image = imageData.bytes;
   }
 
-  const maskData = await resolveImageInput(body.mask_image || body.maskImage || body.mask);
+  const maskData = await resolveImageInput(body.mask_image || body.maskImage || body.mask, options);
   if (maskData) {
     req.mask_b64 = maskData.b64;
     req.mask = maskData.bytes;
@@ -109,7 +109,7 @@ function invalidReference(message) {
  * remote URL is fetched through the guarded image fetcher so a private or
  * disguised payload can never be pulled in.
  */
-async function buildMultipartBody(body) {
+async function buildMultipartBody(body, options) {
   if (body.images != null && (!Array.isArray(body.images) || body.images.length > 0)) {
     throw invalidReference("FLUX.2 expects a single reference in image; images is not supported");
   }
@@ -136,7 +136,8 @@ async function buildMultipartBody(body) {
       }
     }
     if (isString(image) && /^https?:\/\//i.test(image)) {
-      const fetched = await fetchImageAsBase64(image);
+      const fetched = await fetchImageAsBase64(image, imageFetchOptions(options));
+      if (options?.signal?.aborted) throw options.signal.reason;
       if (!fetched) throw invalidReference("Unable to fetch reference image safely");
       image = fetched.url;
     }
@@ -199,10 +200,10 @@ export default {
     return headers;
   },
 
-  buildBody: async (model, body) =>
+  buildBody: async (model, body, options) =>
   MULTIPART_MODELS.has(model) ?
-  await buildMultipartBody(body) :
-  await buildJsonBody(model, body),
+  await buildMultipartBody(body, options) :
+  await buildJsonBody(model, body, options),
 
 
   async parseResponse(response) {

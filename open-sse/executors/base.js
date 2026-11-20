@@ -293,6 +293,7 @@ export class BaseExecutor {
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
+    const dispatchesByUrl = {};
     // Keep explicit 400 downgrades across rebuilt attempts in this execution.
     const strippedFields = new Set();
     let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
@@ -327,26 +328,14 @@ export class BaseExecutor {
     // Header/connect timeout: per-request policy override → provider config → global default.
     const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
-    // Transport-attempt budget for ONE base URL. `maxTransportAttempts` counts
-    // the FIRST try, so a URL may carry at most (maxTransportAttempts - 1)
-    // additional dispatches. The generic status/network retry path spends that
-    // budget through `retryAttemptsByUrl`; a specialized recovery that
-    // re-dispatches on the SAME url (the Cohere 422 suggestion) is an extra
-    // transport attempt and must spend the SAME budget instead of dispatching
-    // past the ceiling. Without a policy (maxTransportAttempts == null) there is
-    // no ceiling and the implicit pre-port behavior is preserved.
+    // Count actual sends separately from status retries: every recovery spends
+    // the per-URL ceiling, without changing status-specific retry allowances.
     const transportBudgetLeft = (urlIndex) => {
-      if (maxTransportAttempts == null) return true;
-      const cap = Math.max(0, maxTransportAttempts - 1);
-      return (retryAttemptsByUrl[urlIndex] ?? 0) < cap;
+      return maxTransportAttempts == null || (dispatchesByUrl[urlIndex] ?? 0) < maxTransportAttempts;
     };
 
-    // Spend one slot of the per-URL transport budget. Only a CONFIGURED ceiling
-    // tracks the recovery: without a policy the implicit retry counters stay
-    // exactly as they were before the recovery existed.
-    const spendTransportBudget = (urlIndex) => {
-      if (maxTransportAttempts == null) return;
-      retryAttemptsByUrl[urlIndex] = (retryAttemptsByUrl[urlIndex] ?? 0) + 1;
+    const chargeDispatch = (urlIndex) => {
+      dispatchesByUrl[urlIndex] = (dispatchesByUrl[urlIndex] ?? 0) + 1;
     };
 
     // Resolve how many in-place retries a failure gets, honoring skip-rules and the
@@ -383,7 +372,7 @@ export class BaseExecutor {
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
     const tryRetry = async (urlIndex, statusKey, reason, response = null, errorKind = null, text = null) => {
       const { attempts, delayMs } = resolveAttempts({ statusKey, errorKind, text });
-      if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts) return false;
+      if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts || !transportBudgetLeft(urlIndex)) return false;
       const matchedRule = skipRules ?
       matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules) :
       null;
@@ -476,6 +465,7 @@ export class BaseExecutor {
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
+        chargeDispatch(urlIndex);
         beginDispatch();
         const fetchOptions = { method: "POST", headers, body: bodyStr, signal: mergedSignal };
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
@@ -508,14 +498,14 @@ export class BaseExecutor {
             connectCtrl = new AbortController();
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            spendTransportBudget(urlIndex);
+            chargeDispatch(urlIndex);
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
               ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
         }
-        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false) {
+        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
           const errorText = await readOptionalProbeText(response, { signal });
@@ -542,6 +532,7 @@ export class BaseExecutor {
             connectCtrl = new AbortController();
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            chargeDispatch(urlIndex);
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
               ...fetchOptions, body: bodyStr, signal: mergedSignal

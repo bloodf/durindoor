@@ -1,4 +1,7 @@
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { isChatModel } from "@/shared/constants/models";
+import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { resolveProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 /**
  * Build the list of connection options for the active provider group.
@@ -67,6 +70,107 @@ function dedupeModels(models) {
     if (!map.has(model.id)) map.set(model.id, model);
   }
   return Array.from(map.values());
+}
+
+/**
+ * Human-readable provider label for a connection.
+ * @param {object} connection
+ * @returns {string}
+ */
+export function getProviderLabel(connection) {
+  const fallback = String(connection?.provider || connection?.id || "provider").
+    replace(/[-_]/g, " ").
+    replace(/\b\w/g, (char) => char.toUpperCase()).
+    trim() || "Unknown";
+  return connection?.name || fallback;
+}
+
+/**
+ * The prefix a connection's provider is addressed by in a published model id.
+ *
+ * A custom provider (OpenAI-/Anthropic-compatible, custom embedding, System One)
+ * is a provider node whose id is a UUID-bearing string. The operator configures
+ * a short prefix on the node, and every other surface — `/v1/models`, the
+ * model picker, the provider page — advertises that prefix. The Playground
+ * must send the same id, otherwise the model id it shows is not the model id
+ * it uses.
+ *
+ * @param {object} connection
+ * @returns {string}
+ */
+export function resolveConnectionPrefix(connection) {
+  return resolveProviderPrefix({
+    providerId: connection?.providerId || connection?.provider || connection?.id,
+    providerSpecificData: connection?.providerSpecificData
+  });
+}
+
+/**
+ * Build one Playground model row from a registry (static) model.
+ *
+ * `requestModel` is the id sent to the gateway. For a custom provider it is
+ * the published prefix form; `legacyId` keeps the node-id form resolvable so a
+ * selection saved before the prefix was published still resolves.
+ *
+ * @param {object} model
+ * @param {object} connection
+ * @returns {object|null}
+ */
+export function normalizeStaticModel(model, connection) {
+  if (!model?.id) return null;
+  // Agent-only static models (e.g. Devin) are not chat candidates; skip them.
+  if (!isChatModel(model)) return null;
+  const providerId = connection.providerId || connection.provider || connection.id;
+  const prefix = resolveConnectionPrefix(connection);
+  const requestModel = `${prefix}/${model.id}`;
+  return {
+    id: requestModel,
+    requestModel,
+    legacyId: prefix === providerId ? undefined : `${providerId}/${model.id}`,
+    name: model.name || model.id,
+    providerId,
+    providerName: connection.providerName || getProviderLabel(connection),
+    source: "static"
+  };
+}
+
+/**
+ * Build one Playground model row from a live-discovered model.
+ *
+ * A live id that already carries a provider segment is kept verbatim; a bare
+ * id on a custom provider is published under the configured prefix.
+ *
+ * @param {object|string} model
+ * @param {object} connection
+ * @returns {object|null}
+ */
+export function normalizeLiveModel(model, connection) {
+  const rawId = isString(model) ? model : model?.id || model?.name || model?.model || "";
+  if (!rawId) return null;
+
+  const displayName = isString(model) ?
+  model :
+  model?.name || model?.displayName || rawId;
+
+  const providerId = connection.providerId || connection.provider || connection.id;
+  let requestModel = rawId;
+  const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+  let legacyId;
+  if (isCompatible && !rawId.includes("/")) {
+    const prefix = resolveConnectionPrefix(connection);
+    requestModel = `${prefix}/${rawId}`;
+    if (prefix !== providerId) legacyId = `${providerId}/${rawId}`;
+  }
+
+  return {
+    id: requestModel,
+    requestModel,
+    legacyId,
+    name: displayName,
+    providerId,
+    providerName: connection.providerName || getProviderLabel(connection),
+    source: "live"
+  };
 }
 
 /**

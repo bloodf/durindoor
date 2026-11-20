@@ -72,6 +72,89 @@ export function parseVertexSaJson(apiKey) {
   }
 }
 
+/**
+ * Credential shapes a Vertex connection can carry.
+ *
+ *   - `service_account`: the JSON key downloaded from the Cloud console.
+ *   - `authorized_user`: the ADC file written by `gcloud auth application-default login`.
+ *   - `api_key`: an opaque Express-mode API key.
+ *   - `none`: the connection carries no API key (an OAuth token is used instead).
+ */
+export const VERTEX_CREDENTIAL = {
+  NONE: "none",
+  SERVICE_ACCOUNT: "service_account",
+  ADC: "authorized_user",
+  API_KEY: "api_key",
+  UNSUPPORTED: "unsupported"
+};
+
+const VERTEX_SERVICE_ACCOUNT_FIELDS = ["client_email", "private_key", "project_id"];
+const VERTEX_ADC_FIELDS = ["client_id", "client_secret", "refresh_token"];
+
+function vertexUnsupportedCredentialMessage(parsed) {
+  if (parsed?.web || parsed?.installed) {
+    return "Vertex: OAuth client JSON is not a Service Account key. Import the Service Account JSON key file, an authorized_user ADC file, or a raw API key.";
+  }
+  return "Vertex: the credential is a JSON document that is not a Google service account or authorized_user file. Import the Service Account JSON key file, an authorized_user ADC file, or a raw API key.";
+}
+
+/**
+ * Classify the credential a Vertex connection carries.
+ *
+ * A JSON document that is neither a Service Account key nor an ADC file is a
+ * Google credential shape this gateway cannot use. It must never be demoted to
+ * a raw API key: a raw key travels in the URL query string, so that demotion
+ * would put a private key, a client secret or a refresh token into the
+ * outbound URL and in front of the egress proxy.
+ *
+ * @param {*} apiKey The stored connection credential.
+ * @returns {{kind: string, json: object|null, error: string|null}}
+ */
+export function classifyVertexCredential(apiKey) {
+  if (!isString(apiKey)) return { kind: VERTEX_CREDENTIAL.NONE, json: null, error: null };
+  const trimmed = apiKey.trim();
+  if (!trimmed) return { kind: VERTEX_CREDENTIAL.NONE, json: null, error: null };
+  if (!trimmed.startsWith("{")) return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+  }
+  if (!isObject(parsed) || Array.isArray(parsed)) {
+    return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+  }
+
+  if (parsed.type === "service_account") {
+    const missing = VERTEX_SERVICE_ACCOUNT_FIELDS.filter((field) => !parsed[field]);
+    return {
+      kind: VERTEX_CREDENTIAL.SERVICE_ACCOUNT,
+      json: parsed,
+      error: missing.length ?
+      `Vertex: service account JSON is missing ${missing.join(", ")}` :
+      null
+    };
+  }
+
+  if (parsed.type === "authorized_user") {
+    const missing = VERTEX_ADC_FIELDS.filter((field) => !parsed[field]);
+    return {
+      kind: VERTEX_CREDENTIAL.ADC,
+      json: parsed,
+      error: missing.length ?
+      `Vertex: ADC authorized_user JSON is missing ${missing.join(", ")}` :
+      null
+    };
+  }
+
+  return {
+    kind: VERTEX_CREDENTIAL.UNSUPPORTED,
+    json: parsed,
+    error: vertexUnsupportedCredentialMessage(parsed)
+  };
+}
+
 export function validateVertexSaKey(saJson) {
   if (!saJson?.private_key) return "Vertex: service account JSON missing private_key";
 

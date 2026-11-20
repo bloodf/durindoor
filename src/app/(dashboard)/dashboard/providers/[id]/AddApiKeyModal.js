@@ -61,11 +61,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isLocalWhisper = provider === "local-whisper";
   const isOpenCodeServer = provider === "opencode-server";
   const isLaya = provider === "laya";
+  const isCerebrium = provider === "cerebrium";
   // Self-hosted providers store their origin per connection rather than taking
   // it from the registry, so they need the host field.
-  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya || isOpenCodeServer;
-  const hostFieldLabel = isOpenCodeServer ? "OpenCode Server URL" : isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
-  const hostFieldPlaceholder = isOpenCodeServer ? "http://127.0.0.1:4096" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
+  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya || isCerebrium || isOpenCodeServer;
+  const hostFieldLabel = isCerebrium ? "Deployment URL (ending in /run)" : isOpenCodeServer ? "OpenCode Server URL" : isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
+  const hostFieldPlaceholder = isCerebrium ? "https://api.cortex.cerebrium.ai/v4/project/app/run" : isOpenCodeServer ? "http://127.0.0.1:4096" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
   const isDevinAgentic = provider === "devin-cli-agentic";
   const isCookie = authType === "cookie";
   const { copied, copy } = useCopyToClipboard();
@@ -218,6 +219,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const handleSubmit = async () => {
     if (!provider) return;
+    if (isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim())) return;
     if (isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied())) return;
     // Self-hosted providers are keyless and auto-named, so neither an API key
     // nor a typed name can be required — the submit would be unreachable.
@@ -617,7 +619,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         ) : null}
         <div className="flex gap-2">
-          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied()) || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim()) || isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied()) || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" className="w-full">

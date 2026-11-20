@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
@@ -210,6 +211,11 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   // malformed chat probe can return 400 before checking the key, so it cannot
   // establish credential validity.
   if (provider === "codebuddy-intl") return null;
+  if (provider === "cerebrium") {
+    const base = cerebriumBaseUrl(providerSpecificData?.baseUrl);
+    if (!base || !apiKey) return null;
+    return { url: `${base}/models`, options: { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8000) }, accepts: "standard" };
+  }
   const cfg = PROVIDERS[provider];
   if (!cfg?.baseUrl) return null;
 

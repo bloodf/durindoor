@@ -1036,7 +1036,9 @@ const PROVIDERS = {
           clientType: config.clientType,
           scopes: config.scopes,
           grantTypes: config.grantTypes,
-          issuerUrl: config.issuerUrl
+          // OmniRoute src/lib/oauth/providers/kiro.ts: enterprise start URLs
+          // must not be bound to the fixed Builder ID issuer.
+          ...(authMethod === "idc" ? {} : { issuerUrl: config.issuerUrl })
         }),
         proxyOptions
       });

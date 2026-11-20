@@ -1215,6 +1215,15 @@ const PROVIDERS = {
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";
       const registerClientUrl = `https://oidc.${region}.amazonaws.com/client/register`;
       const deviceAuthUrl = `https://oidc.${region}.amazonaws.com/device_authorization`;
+      const registration = {
+        clientName: config.clientName,
+        clientType: config.clientType,
+        scopes: config.scopes,
+        grantTypes: config.grantTypes
+      };
+      // OmniRoute src/lib/oauth/providers/kiro.ts: enterprise start URLs
+      // must not be bound to the fixed Builder ID issuer.
+      if (authMethod !== "idc") registration.issuerUrl = config.issuerUrl;
 
       const registerRes = await fetch(registerClientUrl, {
         method: "POST",
@@ -1222,13 +1231,7 @@ const PROVIDERS = {
           "Content-Type": "application/json",
           Accept: "application/json"
         },
-        body: JSON.stringify({
-          clientName: config.clientName,
-          clientType: config.clientType,
-          scopes: config.scopes,
-          grantTypes: config.grantTypes,
-          issuerUrl: config.issuerUrl
-        }),
+        body: JSON.stringify(registration),
         proxyOptions
       });
 

@@ -23,6 +23,11 @@ Open **Providers**, then **Kiro**, then Connect. The modal offers seven methods.
 
 ### Builder ID and IAM Identity Center
 
+IAM Identity Center client registration uses the selected region without binding
+the client to the fixed Builder ID issuer. Builder ID registration retains that
+issuer. This distinction is covered by mocked tests; live sign-in and provider
+acceptance have not been validated as part of this change.
+
 These use a device code. DurinDoor registers an OIDC client at `oidc.<region>.amazonaws.com`, shows a verification URL and code, and polls until you approve it. After login it fetches your `profileArn`. If AWS returns none, the connection is not saved, because every chat call would fail with 403 without it.
 
 ### Google and GitHub

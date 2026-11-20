@@ -129,7 +129,8 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   // decolua/9router #2800). An explicit persisted thinkingFormat (handled above)
   // still wins for operators who know their upstream speaks a native format.
   if (isString(provider) && provider.startsWith("openai-compatible-")) {
-    return "openai";
+    return targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE
+      ? "openai-responses" : "openai";
   }
   // DeepSeek on the OpenCode Go Messages lane speaks Claude adaptive thinking.
   if (provider === "opencode-go" && targetFormat === FORMATS.CLAUDE &&

@@ -26,6 +26,34 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
 
+/** Repair truncated array keywords in Responses tool schemas before Chat forwarding.
+ * Traverse schema positions only, so literal enum/default values are preserved.
+ */
+function sanitizeChatSchema(schema) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return schema;
+  const result = { ...schema };
+  for (const key of ["enum", "required", "anyOf", "oneOf", "allOf", "prefixItems"]) {
+    if (!(key in result)) continue;
+    let value = result[key];
+    if (!Array.isArray(value) && value && typeof value === "object") {
+      const keys = Object.keys(value);
+      if (keys.length && keys.every((entry, index) => entry === String(index))) value = keys.map((entry) => value[entry]);
+    }
+    if (!Array.isArray(value)) { delete result[key]; continue; }
+    result[key] = ["anyOf", "oneOf", "allOf", "prefixItems"].includes(key) ? value.map(sanitizeChatSchema) : value;
+  }
+  for (const key of ["items", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "unevaluatedProperties", "additionalItems", "contentSchema", "unevaluatedItems"]) {
+    if (result[key] && typeof result[key] === "object") result[key] = Array.isArray(result[key]) ? result[key].map(sanitizeChatSchema) : sanitizeChatSchema(result[key]);
+    else if (typeof result[key] === "string" && /^\[(?:MaxDepth|Truncated|Circular|Object|Array)\]$/.test(result[key].trim())) result[key] = {};
+  }
+  for (const key of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas"]) {
+    if (result[key] && typeof result[key] === "object" && !Array.isArray(result[key])) {
+      result[key] = Object.fromEntries(Object.entries(result[key]).map(([name, value]) => [name, sanitizeChatSchema(value)]));
+    }
+  }
+  return result;
+}
+
 /**
  * Scan a Responses API `input[]` and collect every `call_id` declared by a
  * `function_call` item. Returns a Set (possibly empty) of known call ids.
@@ -584,6 +612,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       };
     }).
     filter(Boolean);
+    result.tools = result.tools.map((tool) => tool.function?.parameters === undefined ? tool : ({
+      ...tool, function: { ...tool.function, parameters: sanitizeChatSchema(tool.function.parameters) }
+    }));
   }
   const customToolNames = [...declaredToolTypes].filter(([, type]) => type === "custom").map(([name]) => name);
   if (customToolNames.length > 0) result._customToolNames = customToolNames;

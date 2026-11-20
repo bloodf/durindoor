@@ -441,3 +441,12 @@ describe("executor max-token rename dispatch", () => {
     expect(input).toEqual({ max_completion_tokens: 77 }); // caller body not mutated
   });
 });
+
+
+it("strips temperature only for OpenCode Go GPT models", () => {
+  for (const [provider, model, expected] of [["opencode-go", "gpt-6-luna", undefined], ["opencode-go", "glm-5", 0.2], ["openrouter", "gpt-6-luna", 0.2]]) {
+    const body = { temperature: 0.2 };
+    stripUnsupportedParams(provider, model, body);
+    expect(body.temperature).toBe(expected);
+  }
+});

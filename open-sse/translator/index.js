@@ -10,6 +10,7 @@ import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
+import { mergeHistoricalToolIdentities } from "./response/openai-responses/historyToolIdentity.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
@@ -461,6 +462,13 @@ export function initState(sourceFormat, requestBody) {
       }
     }
   }
+
+  // A follow-up turn that continues a conversation (previous_response_id) or
+  // simply omits `tools` still carries the namespace identity of every earlier
+  // call in its own `input` history. Recover it so the response translator
+  // restores `{namespace, name}` instead of forwarding a flat dotted name
+  // (OmniRoute #15974). Current declarations always win.
+  mergeHistoricalToolIdentities(toolNamespaces, requestBody?.input);
 
   // Base state for all formats
   const base = {

@@ -38,6 +38,7 @@ import {
   ORCAROUTER_MODALITIES,
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
+import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
@@ -923,5 +924,19 @@ export const PROVIDER_MODELS_CONFIG = {
   // resolver form rather than a registry-level modelsFetcher. The key stays here.
   [ORCAROUTER_ID]: {
     customResolver: resolveOrcaRouterModels
+  },
+  // Gisoo's catalog is public (`GET /api/v1/models` needs no key and answers
+  // 200 even for an invalid one), so discovery runs without an Authorization
+  // header: the stored key never leaves the server for a request that does not
+  // need it, and the request target is the registry constant rather than the
+  // connection's client-writable baseUrl.
+  gisoo: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const result = await discoverGisooModels({
+        fetchImpl: (url, init) => proxyAwareFetch(url, init, proxyOptions),
+      });
+      if (result.error) return { error: result.error, status: result.status };
+      return { models: result.models };
+    }
   }
 };

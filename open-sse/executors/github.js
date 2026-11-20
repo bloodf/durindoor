@@ -27,7 +27,7 @@ import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.
 export class GithubExecutor extends BaseExecutor {
   constructor(provider = "github", config = PROVIDERS[provider]) {
     super(provider, config);
-    this.knownCodexModels = new Set();
+    this.knownCodexModels = new Map();
   }
 
   /**
@@ -217,8 +217,13 @@ export class GithubExecutor extends BaseExecutor {
     // account's discovered endpoint contract, or a cached escalation after
     // Copilot's own error — and that the /responses endpoint actually serves
     // (excludes Gemini/Claude, see #1062).
+    // Keep learned fallbacks per connection and API host; anonymous calls retry
+    // normally but cannot safely share a learned route with another account.
+    const accountId = options.connectionId || options.credentials?.connectionId || options.credentials?.id;
+    const cacheKey = accountId ? JSON.stringify([accountId, this.endpointUrl("baseUrl", options.credentials)]) : null;
+    const route = this.copilotEndpointRoute(model, options.credentials);
     if (this.supportsResponsesEndpoint(model) &&
-      (this.knownCodexModels.has(model) || this.usesResponsesRoute(model, options.credentials))) {
+      (route === "responses" || (route === null && cacheKey && this.knownCodexModels.get(cacheKey)?.has(model)))) {
       log?.debug("GITHUB", `Using /responses route for ${model}`);
       return this.executeWithResponsesEndpoint(options);
     }
@@ -244,7 +249,10 @@ export class GithubExecutor extends BaseExecutor {
 
       if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
         log?.warn("GITHUB", `Model ${model} requires /responses. Switching...`);
-        this.knownCodexModels.add(model);
+        if (cacheKey) {
+          if (!this.knownCodexModels.has(cacheKey)) this.knownCodexModels.set(cacheKey, new Set());
+          this.knownCodexModels.get(cacheKey).add(model);
+        }
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "fallback" });
         try {
           const cancellation = result.response.body?.cancel?.("switching GitHub route");

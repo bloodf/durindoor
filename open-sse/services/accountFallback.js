@@ -121,7 +121,8 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     provider,
     status,
     headers,
-    resolveRuleMatchBody(provider, structuredError, errorText)
+    resolveRuleMatchBody(provider, structuredError, errorText),
+    errorText
   );
   // The endpoint marker is model capacity, unless the error message also
   // supplies terminal billing or explicit exhausted-quota evidence.
@@ -147,7 +148,11 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
       shouldFallback: true,
       cooldownMs: providerRule.cooldownMs,
       newBackoffLevel: 0,
-      scope: providerRule.scope ?? null
+      scope: providerRule.scope ?? null,
+      // A provider rule may mark its own state terminal (billing/credit
+      // exhausted, identity verification pending): the account still cools
+      // down, but no client-facing Retry-After may be advertised for it.
+      ...(providerRule.terminal ? { terminal: true } : null)
     };
   }
 

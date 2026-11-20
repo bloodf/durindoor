@@ -7,9 +7,19 @@ import {
 } from "../../config/museCode.js";
 
 // Muse Code (Meta), the agentic coding CLI. Wire format is the OpenAI Responses
-// API. Dual auth: sign in with the Muse device flow to use a Muse subscription
-// (MuseCodeExecutor remints the inference key from the stored dca token), or
-// paste a META_API_KEY.
+// API. Dual auth, and the two credentials are not interchangeable:
+//
+// - The Muse device flow signs in the same way `muse login` does. Meta scopes
+//   the subscription key it hands out to the Muse Code client, so that path
+//   keeps the Muse Code client identity and the inference key is reminted from
+//   the stored device token.
+// - A pasted META_API_KEY is a Meta Model API key. Meta documents that key
+//   for external clients on https://api.meta.ai/v1 with a bearer token, and
+//   the documented request carries no Muse Code client fingerprint, so it
+//   travels bare and is never reminted.
+//
+// The base URL is the same for both: it is Meta's documented Model API
+// responses endpoint.
 export default {
   id: "muse-code",
   priority: 285,
@@ -20,9 +30,9 @@ export default {
     icon: "auto_awesome",
     color: "#0866FF",
     textIcon: "MC",
-    website: "https://ai.developer.meta.com/docs/muse-code/auth",
+    website: "https://dev.meta.ai/docs/muse-code/auth",
     notice: {
-      text: "Sign in with the Muse Code device flow (same as `muse login`) to use a Muse subscription, or paste a META_API_KEY.",
+      text: "Sign in with the Muse Code device flow (same as `muse login`) to use a Muse subscription. The subscription key is scoped to the Muse Code client. Paste a Meta Model API key instead for the documented Model API.",
     },
   },
   category: "oauth",

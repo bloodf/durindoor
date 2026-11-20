@@ -153,7 +153,7 @@ export async function handleImageGenerationCore({
   let url;
   let headers;
   let requestBody;
-  const adapterOptions = { streamToClient, ...imageFetchOptions() };
+  const adapterOptions = { streamToClient, signal };
 
   try {
     url = adapter.buildUrl(model, credentials, body, adapterOptions);

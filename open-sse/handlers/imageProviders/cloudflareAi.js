@@ -1,4 +1,4 @@
-import { nowSec, urlToBase64 } from "./_base.js";
+import { imageFetchOptions, nowSec, urlToBase64 } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { isString, isUndefined } from "../../../src/shared/utils/typeChecks.js";
 import { fetchImageAsBase64, parseDataUri } from "../../translator/concerns/image.js";
@@ -136,7 +136,7 @@ async function buildMultipartBody(body, options) {
       }
     }
     if (isString(image) && /^https?:\/\//i.test(image)) {
-      const fetched = await fetchImageAsBase64(image, options);
+      const fetched = await fetchImageAsBase64(image, imageFetchOptions(options));
       if (options?.signal?.aborted) throw options.signal.reason;
       if (!fetched) throw invalidReference("Unable to fetch reference image safely");
       image = fetched.url;

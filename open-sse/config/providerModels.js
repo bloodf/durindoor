@@ -3,6 +3,7 @@ import REGISTRY from "../providers/registry/index.js";
 import { PROVIDER_MODELS } from "../providers/index.js";
 import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, modelForceStream, modelForceNonStreaming, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
+import { dothooshFamilyFormats } from "../providers/dothooshCatalog.js";
 import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -73,7 +74,12 @@ function getOpenCodeZenPassthroughTargetFormat(modelId) {
 const OPENAI_FORMAT_MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
 const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"]);
 
+// DotHoosh has no static model list (its catalog is live), so the lanes come
+// from the model family. The provider id and its alias both resolve.
+const DOTHOOSH_PROVIDERS = new Set(["dothoosh", "dh"]);
+
 export function getModelTargetFormat(aliasOrId, modelId) {
+  if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.targetFormat || null;
   const models = PROVIDER_MODELS[aliasOrId];
   const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
   if (configuredTargetFormat) return configuredTargetFormat;
@@ -87,6 +93,7 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 // Declared upstream formats for a model. Null keeps providers with no per-model
 // endpoint restriction on their existing transport-selection path.
 export function getModelSupportedFormats(aliasOrId, modelId) {
+  if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.supportedFormats || null;
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   const model = findModel(models, modelId, aliasOrId);

@@ -44,8 +44,10 @@ export const INLINE_THINKING_FORMATS = Object.freeze({
  * transport and the exact listed model ids.
  *
  * OAuthConfig: { clientId, authorizeUrl, tokenUrl, deviceCodeUrl, refreshUrl, scope|scopes, redirectUri,
- *   callbackPath, fixedPort, codeChallengeMethod, extraParams, refresh:{encoding,scope}, refreshLeadMs,
- *   userInfoUrl }.
+ *   callbackPath, fixedPort, codeChallengeMethod, extraParams, refresh:{encoding,scope,headers},
+ *   refreshLeadMs, userInfoUrl }.
+ * `refresh.headers` is an optional header map merged into the refresh grant request
+ *   (e.g. the OAuth-only `anthropic-beta` the Anthropic control plane requires).
  *
  * MediaConfig: { serviceKinds:[...], ttsConfig, sttConfig, embeddingConfig, imageConfig,
  *   searchViaChat:{defaultModel,pricingUrl}, hiddenKinds } — each *Config: {baseUrl,authType,authHeader,

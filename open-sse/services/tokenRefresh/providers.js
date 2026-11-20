@@ -166,21 +166,41 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = 
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {
     try {
+      // Anthropic's OAuth control plane answers the grant only when the
+      // OAuth-only beta is present, and the grant has to name the scope the
+      // authorize step obtained — a refresh that omits it can come back
+      // down-scoped and drop the Claude Code session and MCP grants. Both
+      // come from the registry entry, which is the single source for the
+      // Claude OAuth contract.
+      // Sources: OmniRoute open-sse/services/tokenRefresh/providers/
+      // claudeOAuth.ts (beta header) and CLIProxyAPI
+      // internal/auth/claude/anthropic_auth.go (scope on refresh).
+      const claudeOauth = PROVIDER_OAUTH.claude || {};
       const response = await proxyAwareFetch(OAUTH_ENDPOINTS.anthropic.token, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json"
+          Accept: "application/json",
+          ...(claudeOauth.refresh?.headers || {})
         },
         body: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: refreshToken,
-          client_id: PROVIDERS.claude.clientId
+          client_id: PROVIDERS.claude.clientId,
+          ...(claudeOauth.refresh?.scope ? { scope: claudeOauth.refresh.scope } : null)
         })
       }, proxyOptions);
 
       if (!response.ok) {
         const errorText = await response.text();
+        const failure = classifyOAuthRefreshError(errorText, response.status);
+        if (failure.permanent) {
+          log?.error?.("TOKEN_REFRESH", "Claude refresh token already used or invalid. Re-auth required.", {
+            status: response.status,
+            code: safeRefreshError(failure.code)
+          });
+          return { error: "unrecoverable_refresh_error", code: failure.code };
+        }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", {
           status: response.status,
           error: safeRefreshError(errorText)

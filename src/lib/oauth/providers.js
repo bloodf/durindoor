@@ -241,7 +241,16 @@ const PROVIDERS = {
         scope: config.scopes.join(" "),
         code_challenge: codeChallenge,
         code_challenge_method: config.codeChallengeMethod,
-        state: state
+        state: state,
+        // Anthropic's IdP reuses the browser session for every authorization
+        // request made with this public client id. The reused session counts as
+        // a session takeover and invalidates the refresh-token family of the
+        // account that signed in first, so a second Claude connection silently
+        // breaks the first one. `prompt=login` forces a fresh authentication
+        // instead of reusing the stored session, which keeps each Claude
+        // account's credentials isolated. OmniRoute
+        // `src/lib/oauth/providers/claude.ts` sends the same parameter.
+        prompt: "login"
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },

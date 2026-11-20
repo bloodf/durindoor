@@ -22,6 +22,23 @@ export function publicBaseUrl(location) {
 }
 
 /**
+ * Server-side default redirect_uri for a provider, used when the caller does
+ * not send one.
+ *
+ * Claude is special: Anthropic accepts only its own manual-code callback for
+ * this OAuth client, so a caller that omits the redirect_uri must still get a
+ * registered value. Every other provider keeps the generic dashboard
+ * callback, which the route fills in.
+ *
+ * @param {string} provider provider id
+ * @returns {string|null} absolute redirect_uri, or null for the generic default
+ */
+export function defaultOAuthRedirectUri(provider) {
+  if (provider === "claude") return CLAUDE_MANUAL_REDIRECT_URI;
+  return null;
+}
+
+/**
  * Build the redirect_uri to hand to the provider's authorization server.
  *
  * @param {object} location window.location ({ hostname, port, protocol, origin })

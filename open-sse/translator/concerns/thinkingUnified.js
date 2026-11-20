@@ -471,6 +471,14 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         body.reasoning = { effort: objectEffort };
         break;
       }
+    case "qwen-effort": {
+      if (none) { body.reasoning_effort = "none"; break; }
+      const level = toLevel(eff);
+      if (!level || level === "auto") break;
+      body.reasoning_effort = level === "minimal" ? "low"
+        : ["high", "max", "ultra"].includes(level) ? "xhigh" : level;
+      break;
+    }
     case "qwen":{
         if (none && canDisable) {body.enable_thinking = false;break;}
         body.enable_thinking = true;

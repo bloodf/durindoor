@@ -1823,9 +1823,10 @@ function ProviderDetail({ providerId }) {
         </Link>
         <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-dd-lg bg-dd-surface-2">
-            {providerInfo.iconUrl ? (
+            {providerInfo.iconUrl || isCompatible ? (
               <ProviderIcon
-                src={providerInfo.iconUrl}
+                src={providerInfo.iconUrl || `/providers/${providerId}.png`}
+                fallbackSrc={isAnthropicCompatible ? "/providers/anthropic-m.png" : isOpenAICompatible ? (providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png") : undefined}
                 alt={providerInfo.name}
                 size={48}
                 className="max-h-12 max-w-12 rounded-dd object-contain"

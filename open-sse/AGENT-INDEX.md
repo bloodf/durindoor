@@ -110,6 +110,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `auggie` | openai | free | `auggie://cli/stdio` |
 | `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |
 | `auto` |  | system | `` |
+| `avalai` | openai | apikey | `https://api.avalai.ir/v1/chat/completions` |
 | `aws-polly` |  | apikey | `` |
 | `azure` |  | apikey | `` |
 | `azure-ai` |  | apikey | `https://example-resource.services.ai.azure.com/openai/v1/chat/completions` |

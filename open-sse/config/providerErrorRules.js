@@ -86,6 +86,15 @@ function buildAgentrouterRules() {
 
 export const providerRuleRegistry = new Map([
 ["agentrouter", buildAgentrouterRules()],
+...["opencode", "opencode-go", "opencode-zen"].map((provider) => [provider, [{
+  id: "opencode-endpoint-unavailable",
+  match: ({ status, body }) => {
+    if (status !== 400 && status !== 429) return null;
+    const { message } = inspectProviderErrorEnvelope(body);
+    if (!message.toLowerCase().includes("endpoint is unavailable")) return null;
+    return { reason: "model_capacity", scope: "model", cooldownMs: 300_000, endpointUnavailable: true };
+  }
+}]]),
 ["nvidia", [{
   id: "nvidia-degraded-model",
   match: ({ status, body }) => {

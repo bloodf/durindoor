@@ -11,6 +11,10 @@ function usageFromResponses(responseUsage) {
   const inputTotal = n(raw.input_tokens);
   const outputTokens = n(raw.output_tokens);
   const cacheRead = n(raw.cached_tokens);
+  // Preserve an explicitly reported zero separately from an absent counter.
+  const reportedCacheRead = [responseUsage?.cache_read_input_tokens, responseUsage?.cached_tokens,
+    responseUsage?.input_tokens_details?.cached_tokens, responseUsage?.prompt_tokens_details?.cached_tokens]
+    .some((value) => typeof value === "number" && Number.isFinite(value) && value >= 0);
   const cacheCreate = n(raw.cache_creation_input_tokens);
   const freshInput = Math.max(0, inputTotal - cacheRead - cacheCreate);
 
@@ -25,9 +29,9 @@ function usageFromResponses(responseUsage) {
       prompt_tokens: inputTotal,
       completion_tokens: outputTokens,
       total_tokens: inputTotal + outputTokens,
-      ...(cacheRead > 0 || cacheCreate > 0 ? {
+      ...(reportedCacheRead || cacheRead > 0 || cacheCreate > 0 ? {
         prompt_tokens_details: {
-          ...(cacheRead > 0 ? { cached_tokens: cacheRead } : null),
+          ...(reportedCacheRead || cacheRead > 0 ? { cached_tokens: cacheRead } : null),
           ...(cacheCreate > 0 ? { cache_creation_tokens: cacheCreate } : null)
         }
       } : null)

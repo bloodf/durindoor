@@ -5,7 +5,7 @@ import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/provi
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
-import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -17,7 +17,54 @@ import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
+import { CLAUDE_BLOCK } from "../translator/schema/index.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+// Official API keys must not identify as Claude Code; OAuth and gateways retain their own identity.
+function isOfficialAnthropicApiKey(provider, credentials) {
+  if (provider !== "anthropic" && !provider?.startsWith("anthropic-compatible-")) return false;
+  if (!isString(credentials?.apiKey) || !credentials.apiKey || credentials.accessToken || credentials.apiKey.startsWith("sk-ant-oat")) return false;
+  const url = credentials.runtimeTransport?.baseUrl || (provider === "anthropic" ? ANTHROPIC_COMPAT_BASE : credentials.providerSpecificData?.baseUrl || ANTHROPIC_COMPAT_BASE);
+  return isOfficialAnthropicBaseUrl(url);
+}
+
+function stripClaudeIdentity(body) {
+  const strip = (text) => {
+    const lines = text.match(/[^\n]*\n|[^\n]+$/g) || [];
+    const prefix = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].replace(/\r?\n$/, "");
+      if (line === CLAUDE_SYSTEM_PROMPT) continue;
+      if (/^x-anthropic-billing-header:/i.test(line)) prefix.push(lines[i]);
+      else return prefix.join("") + lines.slice(i).join("");
+    }
+    return prefix.join("");
+  };
+  let system = body?.system;
+  if (isString(system)) system = strip(system);
+  else if (Array.isArray(system)) {
+    const parts = [];
+    let leading = true;
+    for (const block of system) {
+      if (!leading || block?.type !== CLAUDE_BLOCK.TEXT || !isString(block.text) || !block.text) {
+        parts.push(block);
+        leading = false;
+        continue;
+      }
+      const text = strip(block.text);
+      if (!text) continue;
+      parts.push(text === block.text ? block : { ...block, text });
+      leading = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)?$/i.test(text);
+    }
+    if (parts.length === system.length && parts.every((block, index) => block === system[index])) return body;
+    system = parts;
+  } else return body;
+  if (system === body.system) return body;
+  const result = { ...body };
+  if (system === "" || (Array.isArray(system) && !system.length)) delete result.system;
+  else result.system = system;
+  return result;
+}
+
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
@@ -318,6 +365,8 @@ export class DefaultExecutor extends BaseExecutor {
     if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
     let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
+
+    if (isOfficialAnthropicApiKey(this.provider, credentials)) transformed = stripClaudeIdentity(transformed);
 
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({
@@ -629,19 +678,23 @@ export class DefaultExecutor extends BaseExecutor {
     // claudeOverlay live-header merge — so this block only covers
     // anthropic-compatible-* nodes.)
     const isClaudeModel = isString(model) && /^claude-/.test(model);
-    const compatBaseUrl = credentials?.providerSpecificData?.baseUrl || "";
+    const compatBaseUrl = credentials?.runtimeTransport?.baseUrl || credentials?.providerSpecificData?.baseUrl || "";
     // `claude` always targets api.anthropic.com; compat nodes only when their host is official.
     const firstPartyHost = this.provider === "claude" || compatBaseUrl === "" || isOfficialAnthropicBaseUrl(compatBaseUrl);
-    if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
-      headers["Anthropic-Beta"] = selectAnthropicBeta(model, { firstParty: firstPartyHost });
+    const officialApiKey = isOfficialAnthropicApiKey(this.provider, credentials);
+    const compatibleClaudeModel = this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel;
+    if (compatibleClaudeModel) {
+      const modelBeta = selectAnthropicBeta(model, { firstParty: firstPartyHost });
+      const runtimeBeta = officialApiKey && rt?.headers ? new Headers(rt.headers).get("anthropic-beta") : null;
+      headers["Anthropic-Beta"] = [modelBeta, runtimeBeta].filter(Boolean).join(",");
     }
-    if (this.provider === "claude" || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel)) {
+    if (this.provider === "claude" || (this.provider === "anthropic" && officialApiKey) || compatibleClaudeModel) {
       mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
-      const baseUrl = credentials?.providerSpecificData?.baseUrl || "";
+      const baseUrl = compatBaseUrl;
       /**
        * Exact-host check (CodeQL js/incomplete-url-substring-sanitization): a substring
        * `.includes("api.anthropic.com")` would accept look-alike upstreams such as
@@ -680,6 +733,18 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
+    if (officialApiKey) {
+      const betas = [];
+      for (const key of Object.keys(headers)) {
+        const lower = key.toLowerCase();
+        if (lower === "anthropic-beta") {
+          betas.push(headers[key]);
+          delete headers[key];
+        } else if (lower === "x-app" || lower === "anthropic-dangerous-direct-browser-access") delete headers[key];
+      }
+      const filtered = withoutClaudeCodeIdentityBetas(betas.join(","));
+      if (filtered) headers["Anthropic-Beta"] = [...new Set(filtered.split(","))].join(",");
+    }
     if (stream) headers["Accept"] = "text/event-stream";
     return headers;
   }

@@ -218,7 +218,8 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel, provider = 
   // their ERROR_RULES status match, so they never reach this fallthrough.
   // `requestScoped` tells combo rotation this member rejected THIS request, so the
   // next member may still serve it (upstream 9router 5cdcddf5, #5057).
-  if (status >= 400 && status < 500) {
+  // Upstream HTTP 408 and 425 use the transient cooldown below.
+  if (status >= 400 && status < 500 && Number(status) !== 408 && Number(status) !== 425) {
     return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 

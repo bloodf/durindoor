@@ -29,6 +29,12 @@ Save, then send a request using one of the connection's models. A duplicate prov
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
+## Anthropic API-key requests
+
+For official Anthropic API-key requests, DurinDoor removes the leading Claude Code
+system identity and Claude Code beta flag. OAuth requests and third-party gateway
+requests retain their existing identity behavior.
+
 ## OpenAI completion token limits
 
 For the `openai` provider, DurinDoor sends Chat Completions output limits as

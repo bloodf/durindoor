@@ -244,11 +244,10 @@ function migrateObservabilityKeys(raw) {
  *   - an engine the write does mention is merged field by field, so a write
  *     that only flips `enabled` keeps the stored `level` and the stored
  *     per-engine options (lite's truncateToolResults / maxToolLength);
- *   - an explicit `null` field clears that one field.
+ *   - an explicit `null` engine removes that engine; a null property is stored.
  *
- * The map is never widened: no engine is added by a merge, and an unavailable
- * catalog engine stays unavailable -- dispatch still gates on
- * isEngineAvailable(), so merging can never enable one.
+ * New engine IDs can be added; dispatch still gates unavailable catalog engines
+ * on isEngineAvailable().
  *
  * @param {unknown} stored the currently stored `compressionEngines` value
  * @param {unknown} incoming the incoming `compressionEngines` value
@@ -261,6 +260,10 @@ export function mergeCompressionEngines(stored, incoming) {
   if (!isRecord(incoming)) return { ...base };
   const merged = { ...base };
   for (const [id, entry] of Object.entries(incoming)) {
+    if (entry === null) {
+      delete merged[id];
+      continue;
+    }
     const baseEntry = isRecord(base[id]) ? base[id] : {};
     merged[id] = isRecord(entry) ? { ...baseEntry, ...entry } : entry;
   }

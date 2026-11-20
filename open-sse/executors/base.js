@@ -269,6 +269,8 @@ export class BaseExecutor {
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
+    // Keep explicit 400 downgrades across rebuilt attempts in this execution.
+    const strippedFields = new Set();
     let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
     attemptStartedAt :
     null;
@@ -421,6 +423,10 @@ export class BaseExecutor {
           (/\/chat\/completions\/?$/.test(new URL(url).pathname) ? FORMATS.OPENAI : null);
         const openAIChatWire = wireFormat === FORMATS.OPENAI;
         let requestBody = openAIChatWire ? this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody;
+        if (strippedFields.size && requestBody && isObject(requestBody) && !Array.isArray(requestBody)) {
+          requestBody = { ...requestBody };
+          for (const field of strippedFields) delete requestBody[field];
+        }
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
@@ -447,6 +453,7 @@ export class BaseExecutor {
           {
             requestBody = { ...requestBody };
             delete requestBody[field];
+            strippedFields.add(field);
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });

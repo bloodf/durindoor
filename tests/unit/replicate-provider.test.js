@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock("open-sse/utils/proxyFetch.js", async (original) => ({ ...(await original()), proxyAwareFetch: transport.fetch }));
+// The mocked transport keeps the real dispatch wrapper so quota reservations,
+// dispatch tickets, and their settlement stay exercised without any network.
+vi.mock("open-sse/utils/proxyFetch.js", async (original) => {
+  const actual = await original();
+  const { runProviderAttemptDispatch } = await import("open-sse/services/providerAttemptContext.js");
+  return {
+    ...actual,
+    proxyAwareFetch: (url, options, proxyOptions) =>
+      runProviderAttemptDispatch(() => transport.fetch(url, options, proxyOptions)),
+  };
+});
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
@@ -10,6 +20,11 @@ import { getExecutor } from "../../open-sse/executors/index.js";
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
+import {
+  runWithProviderAttemptContext,
+  settleProviderAttemptDispatch } from
+  "../../open-sse/services/providerAttemptContext.js";
+import { QuotaDispatchUnavailableError } from "../../open-sse/services/quota/dispatch.js";
 
 const model = "meta/meta-llama-3-70b-instruct";
 const api = "https://api.replicate.com/v1";
@@ -17,6 +32,21 @@ const credentials = { apiKey: "synthetic-replicate-key" };
 const body = { messages: [{ role: "user", content: "Write a short poem about the weather." }] };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const execute = (overrides = {}) => getExecutor("replicate").execute({ model, body, stream: false, credentials, ...overrides });
+const withQuota = (beginQuotaDispatch, run) =>
+  runWithProviderAttemptContext(() => Date.now(), run, { beginQuotaDispatch });
+const quotaTicket = () => ({
+  tracked: true,
+  reservationId: "reservation-1",
+  heartbeat: vi.fn(),
+  settle: vi.fn().mockResolvedValue({ changed: true }),
+  release: vi.fn(),
+});
+const streamEvents = () => new Response(new ReadableStream({ start(controller) {
+  for (const part of ["event: output\ndata: Hello\n\n", "event: done\ndata: {}\n\n"]) {
+    controller.enqueue(new TextEncoder().encode(part));
+  }
+  controller.close();
+} }));
 
 beforeEach(() => { transport.fetch.mockReset(); vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network"); })); });
 afterEach(() => vi.unstubAllGlobals());
@@ -100,6 +130,83 @@ describe("Replicate official text predictions", () => {
     expect((await execute({ body: { messages: [{ role: "user", content: [{ type: "image_url", image_url: "https://example.com/a" }] }] } })).response.status).toBe(400);
     expect((await execute({ body: { ...body, tools: [{ type: "function" }] } })).response.status).toBe(400);
     expect((await execute({ model: "../evil" })).response.status).toBe(400);
+    expect(transport.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Replicate quota lifecycle", () => {
+  it("refuses a locally denied reservation before any prediction request is sent", async () => {
+    const beginQuotaDispatch = vi.fn().mockRejectedValue(new QuotaDispatchUnavailableError("capacity_exhausted"));
+    await expect(withQuota(beginQuotaDispatch, () => execute())).rejects.toMatchObject({
+      code: "QUOTA_DISPATCH_UNAVAILABLE",
+      reason: "capacity_exhausted",
+    });
+    expect(transport.fetch).not.toHaveBeenCalled();
+  });
+  it("charges prediction creation only and leaves polling retrieval uncharged", async () => {
+    const beginQuotaDispatch = vi.fn().mockResolvedValue(quotaTicket());
+    transport.fetch.mockResolvedValueOnce(json({ status: "starting", urls: { get: `${api}/predictions/fixture` } }, 201));
+    transport.fetch.mockResolvedValueOnce(json({ status: "succeeded", output: ["Finished"] }));
+    await withQuota(beginQuotaDispatch, () => execute());
+    expect(beginQuotaDispatch).toHaveBeenCalledTimes(1);
+    expect(transport.fetch).toHaveBeenCalledTimes(2);
+  });
+  it("charges prediction creation only and leaves stream retrieval uncharged", async () => {
+    const beginQuotaDispatch = vi.fn().mockResolvedValue(quotaTicket());
+    transport.fetch.mockResolvedValueOnce(json({ status: "starting", urls: { stream: "https://streaming.api.replicate.com/v1/predictions/fixture" } }, 201));
+    transport.fetch.mockResolvedValueOnce(streamEvents());
+    await withQuota(beginQuotaDispatch, () => execute({ stream: true }));
+    expect(beginQuotaDispatch).toHaveBeenCalledTimes(1);
+    expect(transport.fetch).toHaveBeenCalledTimes(2);
+  });
+  it("moves the dispatch ticket onto the shaped completion so it settles once", async () => {
+    const ticket = quotaTicket();
+    const beginQuotaDispatch = vi.fn().mockResolvedValue(ticket);
+    transport.fetch.mockResolvedValueOnce(json({ status: "succeeded", output: ["Hello"] }, 201));
+    const out = await withQuota(beginQuotaDispatch, () => execute());
+    expect(ticket.settle).not.toHaveBeenCalled();
+    expect(await settleProviderAttemptDispatch(out.response, { success: true })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(await settleProviderAttemptDispatch(out.response, { success: true })).toEqual({ changed: false });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+  });
+  it("moves the dispatch ticket onto the streamed completion so it settles once", async () => {
+    const ticket = quotaTicket();
+    const beginQuotaDispatch = vi.fn().mockResolvedValue(ticket);
+    transport.fetch.mockResolvedValueOnce(json({ status: "starting", urls: { stream: "https://streaming.api.replicate.com/v1/predictions/fixture" } }, 201));
+    transport.fetch.mockResolvedValueOnce(streamEvents());
+    const out = await withQuota(beginQuotaDispatch, () => execute({ stream: true }));
+    expect(ticket.settle).not.toHaveBeenCalled();
+    expect(await settleProviderAttemptDispatch(out.response, { success: true })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(await settleProviderAttemptDispatch(out.response, { success: true })).toEqual({ changed: false });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+  });
+  it("moves the dispatch ticket onto a provider failure so it settles once", async () => {
+    const ticket = quotaTicket();
+    const beginQuotaDispatch = vi.fn().mockResolvedValue(ticket);
+    transport.fetch.mockResolvedValueOnce(json({ status: "failed", error: "fixture" }));
+    const out = await withQuota(beginQuotaDispatch, () => execute());
+    expect(out.response.status).toBe(502);
+    expect(await settleProviderAttemptDispatch(out.response, { success: false, reason: "upstream_error" })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(await settleProviderAttemptDispatch(out.response, { success: false, reason: "upstream_error" })).toEqual({ changed: false });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+  });
+  it("reports a local quota denial as unavailable capacity instead of an upstream failure", async () => {
+    await initTranslators();
+    const quotaReservation = {
+      tracked: true,
+      beginDispatch: async () => { throw new QuotaDispatchUnavailableError("capacity_exhausted"); },
+      settle: vi.fn(async () => ({ changed: false })),
+      heartbeat: vi.fn(),
+    };
+    const request = { ...body, model: `replicate/${model}` };
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), errorLine: vi.fn() };
+    const result = await handleChatCore({ body: request, modelInfo: { provider: "replicate", model }, credentials, clientRawRequest: { endpoint: "/v1/chat/completions", body: request, headers: { accept: "application/json" } }, connectionId: "offline-replicate", log, quotaReservation });
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(503);
+    expect(result.quotaCapacityUnavailable).toBe(true);
     expect(transport.fetch).not.toHaveBeenCalled();
   });
 });

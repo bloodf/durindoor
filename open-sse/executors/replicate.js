@@ -3,6 +3,7 @@ import { isString, isNumber } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor, waitForRetryDelay } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorJson, jsonResponse } from "./websession-utils.js";
+import { runQuotaBearingProviderRequest, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 
 const API = "https://api.replicate.com";
 const STREAM_ORIGINS = ["https://streaming.api.replicate.com", "https://stream.replicate.com"];
@@ -136,29 +137,47 @@ export class ReplicateExecutor extends BaseExecutor {
     if (!validModel) return result(errorJson(400, "Replicate model must be an official owner/name", "invalid_request"));
     if (!input) return result(errorJson(400, "Replicate supports text messages without tools", "invalid_request"));
     const send = (target, options) => proxyAwareFetch(target, { ...options, redirect: "manual" }, proxyOptions);
-    const created = await send(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal });
-    if (!created.ok) return result(errorJson(created.status >= 300 && created.status < 400 ? 502 : created.status, `Replicate request failed (HTTP ${created.status})`));
+    // The creation POST is the single billable dispatch of a Replicate
+    // prediction, so it is the only send that consumes a quota reservation.
+    // Polling and stream retrieval read that same prediction and stay
+    // outside the charge.
+    //
+    // A local quota denial is a gateway capacity decision, not provider
+    // evidence: the reservation is refused before the transport call, so no
+    // request reaches Replicate. The error keeps its type, so chatCore
+    // reports local quota unavailability instead of an upstream failure.
+    const created = await runQuotaBearingProviderRequest(() =>
+      send(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }));
+    // The physical creation response owns the dispatch ticket. Every response
+    // returned below replaces it, so the ticket has to follow the
+    // replacement; otherwise the reservation is orphaned and never settled
+    // exactly once.
+    const carryTicket = (returned) => {
+      transferProviderAttemptDispatch(created, returned);
+      return returned;
+    };
+    if (!created.ok) return result(carryTicket(errorJson(created.status >= 300 && created.status < 400 ? 502 : created.status, `Replicate request failed (HTTP ${created.status})`)));
     let prediction;
-    try { prediction = await created.json(); } catch { return result(errorJson(502, "Invalid Replicate prediction")); }
+    try { prediction = await created.json(); } catch { return result(carryTicket(errorJson(502, "Invalid Replicate prediction"))); }
     if (stream && !TERMINAL.has(prediction.status) && prediction.urls?.stream) {
       const streamUrl = STREAM_ORIGINS.map((origin) => trustedUrl(prediction.urls.stream, origin)).find(Boolean);
-      if (!streamUrl) return result(errorJson(502, "Unexpected Replicate stream URL"));
+      if (!streamUrl) return result(carryTicket(errorJson(502, "Unexpected Replicate stream URL")));
       const response = await send(streamUrl, { headers: { Authorization: headers.Authorization, Accept: "text/event-stream" }, signal });
-      if (!response.ok) return result(errorJson(response.status >= 300 && response.status < 400 ? 502 : response.status, "Replicate stream request failed"));
-      return result(streamCompletion(model, (emit, streamSignal) => readEvents(response, emit, streamSignal), signal));
+      if (!response.ok) return result(carryTicket(errorJson(response.status >= 300 && response.status < 400 ? 502 : response.status, "Replicate stream request failed")));
+      return result(carryTicket(streamCompletion(model, (emit, streamSignal) => readEvents(response, emit, streamSignal), signal)));
     }
     const deadline = Date.now() + 120000;
     while (!TERMINAL.has(prediction.status) && Date.now() < deadline) {
       const pollUrl = trustedUrl(prediction.urls?.get, API);
-      if (!pollUrl) return result(errorJson(502, "Unexpected Replicate polling URL"));
+      if (!pollUrl) return result(carryTicket(errorJson(502, "Unexpected Replicate polling URL")));
       await waitForRetryDelay(1000, signal);
       const response = await send(pollUrl, { headers: { Authorization: headers.Authorization }, signal });
-      if (!response.ok) return result(errorJson(response.status >= 300 && response.status < 400 ? 502 : response.status, "Replicate polling failed"));
-      try { prediction = await response.json(); } catch { return result(errorJson(502, "Invalid Replicate prediction")); }
+      if (!response.ok) return result(carryTicket(errorJson(response.status >= 300 && response.status < 400 ? 502 : response.status, "Replicate polling failed")));
+      try { prediction = await response.json(); } catch { return result(carryTicket(errorJson(502, "Invalid Replicate prediction"))); }
     }
-    if (prediction.status !== "succeeded") return result(errorJson(TERMINAL.has(prediction.status) ? 502 : 504, `Replicate prediction ${prediction.status || "timed out"}`));
+    if (prediction.status !== "succeeded") return result(carryTicket(errorJson(TERMINAL.has(prediction.status) ? 502 : 504, `Replicate prediction ${prediction.status || "timed out"}`)));
     let content;
-    try { content = textOutput(prediction.output); } catch (error) { return result(errorJson(502, error.message)); }
-    return result(stream ? streamCompletion(model, async (emit) => emit(content), signal) : jsonResponse(completion(model, content)));
+    try { content = textOutput(prediction.output); } catch (error) { return result(carryTicket(errorJson(502, error.message))); }
+    return result(carryTicket(stream ? streamCompletion(model, async (emit) => emit(content), signal) : jsonResponse(completion(model, content))));
   }
 }

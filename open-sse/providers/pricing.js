@@ -395,6 +395,24 @@ export const PROVIDER_PRICING = {
     "z-ai/glm-5.3-free": { input: 0, output: 0, cached: 0, reasoning: 0 },
   },
 
+  // Gisoo (gisoo.pro) — prepaid relay. The relay publishes its own per-model
+  // rates in the public catalog (`GET /api/v1/models`, `pricing.input_per_million`
+  // etc.), and they differ from the canonical vendor prices, so the seed models
+  // carry the relay's published rates. Reasoning tokens are billed as output.
+  // Rates read from the live catalog on 2026-11-20; long-context rows repeat
+  // the published "over the threshold" rates as multipliers.
+  gisoo: {
+    "claude-opus-5-5": { input: 5.60, output: 28.00, cached: 0.28 },
+    "claude-sonnet-5-5": { input: 2.80, output: 14.00, cached: 0.14 },
+    "claude-haiku-5-5": { input: 0.14, output: 0.70, cached: 0.014, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
+    "gpt-5.6-sol": { input: 5.60, output: 28.00, cached: 0.56, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gpt-5.5": { input: 7.00, output: 42.00, cached: 0.70, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gemini-3.8-flash": { input: 0.90, output: 4.50, cached: 0.09 },
+    "gemini-3.1-pro-preview": { input: 2.80, output: 16.80, cached: 0.28, longContextThreshold: 200000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "deepseek-v4-pro": { input: 1.848, output: 5.544, cached: 0.0616 },
+    "deepseek-flash": { input: 0.36, output: 1.44, cached: 0.0072 }
+  },
+
   // Fireworks AI — OpenAI-compatible, reasoning/cache_creation not separately
   // charged (completion_tokens already includes reasoning tokens; setting
   // reasoning/cache_creation to output/input would double-count in the

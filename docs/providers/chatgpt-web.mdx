@@ -137,3 +137,5 @@ These optional `providerSpecificData` fields apply to a ChatGPT Web connection:
 5. Confirm the request on **Usage**. Test attachments and tools separately.
 
 If session validation returns an empty object, copy a fresh complete cookie. For 503 in browser mode, check Chromium and the display. For `SENTINEL_BLOCKED`, try a supported browser session rather than assuming HTTP can solve Turnstile. Tool calls use prompt emulation over HTTP and may differ from native API tools. Private web endpoints and account restrictions can change without a DurinDoor release.
+
+The GPT-6 Instant, Thinking, and Pro catalog entries use the browser transport's model picker. Their availability depends on your session and account. The HTTP fallback has not been validated for these entries; select browser transport when using them. Browser streaming returns OpenAI-formatted SSE after the browser turn completes.

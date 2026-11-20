@@ -16,6 +16,7 @@ import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
+import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -803,6 +804,12 @@ export function createSSEStream(options = {}) {
               streamErrorPayload ??= extractStreamErrorPayload(parsed);
               const publicError = sanitizePublicErrorEnvelope(parsed, errorSecrets);
 
+              // OpenAI-format upstreams may stream `delta.content` as typed part
+              // arrays (Mistral thinking chunks). Fold them into the string
+              // `content` / `reasoning_content` the chat-chunk contract requires
+              // before any client-visible path sees the chunk (OmniRoute #15757).
+              if (targetFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
+
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
                   id: parsed.id,
@@ -1137,6 +1144,13 @@ export function createSSEStream(options = {}) {
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim()) upstreamTerminal.fail();
           continue;
         }
+
+        // An OpenAI-shaped upstream may stream `delta.content` as typed part
+        // arrays (Mistral thinking chunks). Fold them into the string
+        // `content` / `reasoning_content` the chat-chunk contract requires, so
+        // the response translator never emits a non-string
+        // `response.output_text.delta.delta` (OmniRoute #15757).
+        if (sourceFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
 
         if (upstreamErrorForwarded) continue;
         // Capture raw diagnostics first; redact the public envelope (including

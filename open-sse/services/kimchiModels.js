@@ -35,8 +35,8 @@ function readToken(credentials) {
 }
 
 function cacheKey(credentials, endpoint) {
-  const psd = credentials?.providerSpecificData || {};
-  const seed = psd.userId || psd.username || credentials?.refreshToken || readToken(credentials) || "anonymous";
+  // Catalog entitlements follow the credential, even for the same profile.
+  const seed = readToken(credentials) || "anonymous";
   return createHash("sha256").
   update(`kimchi:${normalizeKimchiEndpoint(endpoint)}:${seed}`).
   digest("hex");

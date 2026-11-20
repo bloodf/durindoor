@@ -43,7 +43,7 @@ function hasOutputTokens(usage) {
 // already visible to the client and must not be replaced by an empty error.
 function isEmptyCompletion(content, usage, summary) {
   return !content?.upstreamError && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
-    !content?.content?.trim?.() && !content?.hadToolCalls &&
+    !content?.content?.trim?.() && !content?.hadToolCalls && !content?.hasSnapshotOutput &&
     !content?.thinking?.trim?.() && !hasOutputTokens(usage);
 }
 
@@ -363,6 +363,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     !isRequestScopedRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&
+    !contentObj?.hasSnapshotOutput &&
     !contentObj?.thinking?.trim?.() &&
     !hasOutputTokens(usage))
     {

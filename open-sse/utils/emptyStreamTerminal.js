@@ -4,6 +4,20 @@ import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
 const encoder = new TextEncoder();
 const GRACE_MS = 1000;
 
+/** Recognize actual native Responses snapshot output, never arbitrary metadata. */
+export function hasResponsesSnapshotOutput(payload) {
+  if (!["response.completed", "response.done"].includes(payload?.type) || payload?.response?.status === "failed") return false;
+  return Array.isArray(payload?.response?.output) && payload.response.output.some((item) => {
+    if (item?.type === "message" && Array.isArray(item.content)) {
+      return item.content.some((part) =>
+        part?.type === "output_text" && typeof part.text === "string" && part.text.trim() ||
+        part?.type === "refusal" && typeof part.refusal === "string" && part.refusal.trim());
+    }
+    return ["function_call", "custom_tool_call"].includes(item?.type) &&
+      [item.name, item.arguments, item.input].some((value) => typeof value === "string" && value.trim());
+  });
+}
+
 /** Hold only success terminals while the completion classifier is still pending. */
 export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
   const decoder = new TextDecoder();
@@ -37,7 +51,8 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     if (error) { sawError = true; held = ""; clear(); send(controller, frame); return; }
     // Native Claude and Responses passthrough content is not accumulated by
     // the OpenAI-oriented accounting snapshot, so observe client output too.
-    if (event === "content_block_delta" && (payload?.delta?.text?.trim?.() || payload?.delta?.thinking?.trim?.()) ||
+    if (format === FORMATS.OPENAI_RESPONSES && hasResponsesSnapshotOutput(payload) ||
+        event === "content_block_delta" && (payload?.delta?.text?.trim?.() || payload?.delta?.thinking?.trim?.()) ||
         event === "content_block_start" && payload?.content_block?.type === "tool_use" ||
         ["response.output_text.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta"].includes(event) && payload?.delta?.trim?.() ||
         event === "response.output_item.added" && ["function_call", "custom_tool_call"].includes(payload?.item?.type)) {

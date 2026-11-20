@@ -24571,7 +24571,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "1f5be6e3ab8c95f8ebc567da4abe33ecfdc0374eed7027b49df869db7c9b0252",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25913,7 +25913,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25926,7 +25926,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25939,7 +25939,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25952,7 +25952,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -25990,7 +25990,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26013,7 +26013,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26035,7 +26035,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26057,7 +26057,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26229,7 +26229,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26261,7 +26261,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -26376,7 +26376,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26464,7 +26464,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "1b3620a39b83925ae46507ae33d49afb4521515f6abe7bf63a451546eee1f895",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "ee31d658b52eef2013f993cb110501c5ae4656084bd25d5ede88106d2a33a9e6",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "2be0bdcf10a0213ac85446543932e14740ffa0de6ebb286f4d5e911c5a02b07d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -45723,9 +45723,9 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "600a8ae3827bed60512c2e8be16f237574c51ed2bac752320b4171b67e6a6ec2"
+            "src/app/api/oauth/[provider]/[action]/route.js": "1dc93da3bf3ce3fcda5c7df5e688c3935b80a63bf86aa7bb9ebca90c744242d5"
           },
           "expectedVisibleText": "Enter an https URL, for example https://ghe.company.com",
           "id": "production-shared-auth-ghecopilotauthmodal--invalid-origin",
@@ -45747,9 +45747,9 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "600a8ae3827bed60512c2e8be16f237574c51ed2bac752320b4171b67e6a6ec2"
+            "src/app/api/oauth/[provider]/[action]/route.js": "1dc93da3bf3ce3fcda5c7df5e688c3935b80a63bf86aa7bb9ebca90c744242d5"
           },
           "expectedVisibleText": "GHE-1234",
           "id": "production-shared-auth-ghecopilotauthmodal--device-code-handoff",
@@ -48667,7 +48667,7 @@
       "id": "src/shared/components/OAuthModal.js#OAuthModal",
       "sourcePath": "src/shared/components/OAuthModal.js",
       "symbol": "OAuthModal",
-      "sourceSha256": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+      "sourceSha256": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48692,7 +48692,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
@@ -48708,7 +48708,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
@@ -48724,7 +48724,7 @@
             "fingerprint"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -48741,7 +48741,7 @@
             "device-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
@@ -48756,7 +48756,7 @@
             "manual-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
@@ -48771,7 +48771,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
+            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
@@ -92338,7 +92338,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "69a0588e8a7656e8d9d35c280d84e67589a69a09231203c3e4f82a2e1ad92927",
-    "sourceCensusSha256": "aca2e99ea928f7ad321ce0534ddc20773ccb9fce88e91ff25c92ef42e06eb5da",
+    "sourceCensusSha256": "128b6503d1490c63065537d1ed28bcc8420b56fa8c666097e60cef5f0adcd11a",
     "pendingRows": 340,
     "retainedApprovedRows": 273,
     "pendingReferences": 1275,

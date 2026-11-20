@@ -271,7 +271,9 @@ async function ensureFirstPartyBridge(page) {
 
 function directModel(selection) {
   if (selection.kind === "free") return { model: "auto", reason: selection.thinkEnabled };
-  const base = selection.modelLabel === "GPT-5.6 Sol" ? "gpt-5-6" : "gpt-5-5";
+  // OmniRoute fbd3396, open-sse/utils/chatgptWebFirstParty.ts.
+  const base = { "GPT-6 Sol": "gpt-6", "GPT-5.6 Sol": "gpt-5-6", "GPT-5.5": "gpt-5-5" }[selection.modelLabel];
+  if (!base) throw new Error("ChatGPT Web first-party request has an unsupported model selection");
   if (selection.effortIndex === 4) return { model: `${base}-pro`, reason: false };
   return { model: base, reason: selection.effortIndex > 0 };
 }

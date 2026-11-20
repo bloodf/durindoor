@@ -197,7 +197,6 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   const [observabilityEnabled, setObservabilityEnabled] = useState(null);
   const [filters, setFilters] = useState({
     provider: "",
-    model: "",
     startDate: "",
     endDate: "",
   });
@@ -222,7 +221,6 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       const buildParams = (page, pageSize) => {
         const params = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() });
         if (filters.provider) params.append("provider", filters.provider);
-        if (filters.model) params.append("model", filters.model);
         if (filters.startDate) params.append("startDate", filters.startDate);
         if (filters.endDate) params.append("endDate", filters.endDate);
         return params;
@@ -317,7 +315,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   };
 
   const handleClearFilters = () => {
-    setFilters({ provider: "", model: "", startDate: "", endDate: "" });
+    setFilters({ provider: "", startDate: "", endDate: "" });
     setPagination((prev) => ({ ...prev, page: 1 }));
   };
 
@@ -360,13 +358,12 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
         <CardContent>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Select aria-label="Provider" options={providerOptions} value={filters.provider} onChange={(value) => setFilters((prev) => ({ ...prev, provider: value }))} />
-            <Input label="Model" value={filters.model} onChange={(event) => setFilters((prev) => ({ ...prev, model: event.target.value }))} placeholder="Filter by model" />
             <Input label="Start date" type="datetime-local" value={filters.startDate} onChange={(event) => setFilters((prev) => ({ ...prev, startDate: event.target.value }))} />
             <Input label="End date" type="datetime-local" value={filters.endDate} onChange={(event) => setFilters((prev) => ({ ...prev, endDate: event.target.value }))} />
             <div className="flex flex-col items-stretch gap-2 sm:items-end sm:justify-end">
               <span className="hidden text-[13px] font-medium text-dd-text opacity-0 lg:block" aria-hidden="true">Clear</span>
               <div className="flex gap-2">
-                <Button variant="ghost" onClick={handleClearFilters} disabled={!filters.provider && !filters.model && !filters.startDate && !filters.endDate} className="flex-1">Clear filters</Button>
+                <Button variant="ghost" onClick={handleClearFilters} disabled={!filters.provider && !filters.startDate && !filters.endDate} className="flex-1">Clear filters</Button>
                 <Button variant="secondary" icon="refresh" onClick={() => { if (inflightController.current) inflightController.current.abort(); const c = new AbortController(); inflightController.current = c; fetchDetails(c.signal); }} loading={loading} aria-label="Refresh">Refresh</Button>
               </div>
             </div>

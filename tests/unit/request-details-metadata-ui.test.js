@@ -14,7 +14,7 @@ vi.mock("@/shared/ui/components/Button.jsx", () => ({ default: ({ children, load
 vi.mock("@/shared/ui/components/Drawer.jsx", () => ({ default: ({ open, children, title }) => open ? React.createElement("aside", null, React.createElement("h2", null, title), children) : null }));
 vi.mock("@/shared/ui/components/Pagination.jsx", () => ({ default: () => null }));
 vi.mock("@/shared/ui/components/Select.jsx", () => ({ default: () => null }));
-vi.mock("@/shared/ui/components/Input.jsx", () => ({ default: ({ label, ...props }) => React.createElement("label", null, label, React.createElement("input", props)) }));
+vi.mock("@/shared/ui/components/Input.jsx", () => ({ default: () => null }));
 vi.mock("@/shared/ui/components/Badge.jsx", () => ({ Badge: ({ children }) => React.createElement("span", null, children) }));
 vi.mock("@/shared/utils/cn", () => ({ cn: (...classes) => classes.filter(Boolean).join(" ") }));
 vi.mock("@/shared/constants/providers", () => ({ AI_PROVIDERS: {}, getProviderByAlias: () => null }));
@@ -64,31 +64,6 @@ describe("Request Details metadata-only UI", () => {
     act(() => root.unmount());
     container.remove();
     vi.restoreAllMocks();
-  });
-
-  it("sends the selected model as a request-details filter", async () => {
-    const urls = [];
-    globalThis.fetch = vi.fn(async (url) => {
-      urls.push(String(url));
-      return { ok: true, json: async () => String(url).startsWith("/api/usage/request-details")
-        ? { details: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } }
-        : String(url) === "/api/usage/providers" ? { providers: [] } : { nodes: [] } };
-    });
-    await act(async () => {
-      root.render(React.createElement(RequestDetailsTab));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    const modelInput = container.querySelector('input[placeholder="Filter by model"]');
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-      setter.call(modelInput, "gpt-test");
-      modelInput.dispatchEvent(new Event("input", { bubbles: true }));
-      modelInput.dispatchEvent(new Event("change", { bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(urls.some((url) => url.includes("model=gpt-test"))).toBe(true);
   });
 
   it("explains all four redacted stages and offers no raw payload copy or view path", async () => {

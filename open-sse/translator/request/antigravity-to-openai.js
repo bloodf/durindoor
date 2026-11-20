@@ -95,34 +95,21 @@ export function antigravityToOpenAIRequest(model, body, stream) {
  * @param {object} schema - Antigravity tool parameter schema.
  * @returns {object} Normalized schema (a shallow-cloned tree).
  */
+const PROTOJSON_INT64_SCHEMA_KEYS = new Set(["minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"]);
+
 function normalizeSchemaTypes(schema) {
+  if (Array.isArray(schema)) return schema.map(normalizeSchemaTypes);
   if (!schema || !isObject(schema)) return schema;
-
-  const result = Array.isArray(schema) ? [...schema] : { ...schema };
-
-
-  if (isString(result.type)) {
-    result.type = result.type.toLowerCase();
-  }
-
-  // Strip enumDescriptions — not supported by upstream APIs
-  delete result.enumDescriptions;
-
-
-  if (result.properties) {
-    const normalized = {};
-    for (const [key, val] of Object.entries(result.properties)) {
-      normalized[key] = normalizeSchemaTypes(val);
+  const result = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "enumDescriptions") continue;
+    if (key === "type" && isString(value)) { result[key] = value.toLowerCase(); continue; }
+    if (PROTOJSON_INT64_SCHEMA_KEYS.has(key) && typeof value === "string" && /^\d+$/.test(value.trim())) {
+      const parsed = Number(value);
+      result[key] = Number.isSafeInteger(parsed) ? parsed : value;
+      continue;
     }
-    result.properties = normalized;
-  }
-
-  if (result.items) {
-    result.items = normalizeSchemaTypes(result.items);
-  }
-
-  if (result.additionalProperties && isObject(result.additionalProperties)) {
-    result.additionalProperties = normalizeSchemaTypes(result.additionalProperties);
+    result[key] = normalizeSchemaTypes(value);
   }
 
   // Gemini rejects type:object without properties — add placeholder to satisfy API

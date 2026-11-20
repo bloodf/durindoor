@@ -53,6 +53,16 @@ describe("Antigravity → OpenAI", () => {
       : content === "";
     expect(hasEmpty, "empty text part emitted").toBe(false);
   });
+
+  it("normalizes ProtoJSON integer constraints throughout tool schemas", () => {
+    const out = AG2O({ tools: [{ functionDeclarations: [{ name: "f", parameters: {
+      type: "OBJECT", minProperties: "1", properties: { value: { type: "STRING", minLength: "2" } },
+      items: [{ type: "ARRAY", maxItems: "5" }], enumDescriptions: ["unsupported"],
+    } }] }] });
+    expect(out.tools[0].function.parameters).toMatchObject({ type: "object", minProperties: 1,
+      properties: { value: { type: "string", minLength: 2 } }, items: [{ type: "array", maxItems: 5 }] });
+    expect(out.tools[0].function.parameters).not.toHaveProperty("enumDescriptions");
+  });
 });
 
 describe("Antigravity → Claude", () => {

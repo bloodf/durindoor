@@ -31,6 +31,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cxa` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
+| `devin-cli-agentic` | DevinCliAgenticExecutor | `./devin-cli-agentic.js` |
 | `dify` | DifyExecutor | `./dify.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
@@ -178,6 +179,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
+| `devin-cli-agentic` | claude | free | `devin://acp/stdio` |
 | `dgrid` |  | apikey | `https://api.dgrid.ai/v1/chat/completions` |
 | `dify` |  | apikey | `` |
 | `digitalocean` |  | apikey | `https://inference.do-ai.run/v1/chat/completions` |

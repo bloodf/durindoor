@@ -1149,6 +1149,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
+  if (connection.provider === "devin-cli-agentic") {
+    return { valid: false, skipped: true, error: "Verify the local Devin CLI with a model request", latencyMs: 0, testedAt: new Date().toISOString() };
+  }
   if (isConversationProbeProvider(connection.provider)) {
     if (connection.provider === "yuanbao-web" && !buildYuanbaoCookie(connection.apiKey).hasToken) {
       return { valid: false, error: "Paste a Yuanbao cookie containing hy_user and hy_token", latencyMs: 0, testedAt: new Date().toISOString() };

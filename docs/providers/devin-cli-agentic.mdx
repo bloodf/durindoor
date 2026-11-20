@@ -1,0 +1,16 @@
+---
+title: Devin CLI (Agentic)
+description: Set up the experimental Devin CLI agent over local ACP stdio.
+---
+
+Use `devin-cli-agentic/adaptive` (alias `dva/adaptive`) for a turn with the installed Devin agent. The hosted Devin API and the `devin-cli` summarizer have separate connections.
+
+1. Install the [official Devin CLI](https://docs.devin.ai/cli) and its [sandbox prerequisites](https://docs.devin.ai/cli/sandbox) on Linux or macOS.
+2. Run the gateway under a dedicated OS account or container with an isolated filesystem and restricted network access. Set `DEVIN_AGENTIC_HOME` to a private, dedicated directory outside both the gateway account's home and the gateway working tree. Sign in with `devin auth login` under that directory's `HOME` and standard XDG subdirectories. The agent uses this directory as its workspace, so keep gateway files and credentials out of it.
+3. Set `CLI_DEVIN_BIN` to the absolute path of the official binary. Restart DurinDoor and add **Devin CLI (Agentic)** under Providers. The connection requires no pasted credential. Only grant access to callers authorized to use this shared CLI account and workspace.
+
+DurinDoor starts a new ACP session per request and launches Devin with its sandbox and normal permission mode. The gateway cancels interactive permission prompts and exposes no filesystem, terminal, or MCP services over ACP. Devin applies the operator's CLI policy to tools it runs internally. Restrict its workspace, permissions, plugins, hooks, and network through that policy and the runtime environment. ACP runs outside DurinDoor's HTTP proxy and relay layer. Connections configured to require that layer are rejected.
+
+The gateway exposes the curated `adaptive` and `swe-1-6-fast` selections through its model catalog. Discovery reads this local catalog. CLI account entitlements may vary. Text input and streaming or JSON output are supported. Native tool events appear as progress text showing kind and status. Clients cannot submit callable tools or receive executable tool calls, raw tool inputs or raw results. Usage is estimated from request and reply text. Devin charges, where applicable, follow the signed-in account's plan.
+
+The setup and protocol are documented by [Cognition](https://docs.devin.ai/cli/reference/commands#devin-acp) and the [ACP registry](https://github.com/agentclientprotocol/registry/blob/91bc123dfe20857ff7095b7643ebd187137befae/devin/agent.json). DurinDoor's implementation is verified with offline fixtures. Live sign-in, model availability and sandbox behavior still need account-backed verification.

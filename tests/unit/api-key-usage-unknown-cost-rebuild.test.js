@@ -444,6 +444,33 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
   });
 
   describe("migration 028 repairs the durable count", () => {
+    it("leaves totals untouched when the writer lock is unavailable, then repairs on retry", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "migration028-busy-"));
+      const file = path.join(dir, "data.sqlite");
+      const repair = createBetterSqliteAdapter(file);
+      const writer = createBetterSqliteAdapter(file);
+      try {
+        repair.exec("PRAGMA busy_timeout = 0");
+        for (const name of ["apiKeys", "usageHistory", "apiKeyUsageTotals"]) {
+          repair.exec(buildCreateTableSql(name, TABLES[name]));
+        }
+        insertKey(repair, "key-1");
+        insertHistory(repair, { cost: null });
+        setTotals(repair, "key-1", { unknownCostRequests: 0 });
+        writer.transaction(() => {
+          writer.run('UPDATE "apiKeyUsageTotals" SET "totalTokens" = "totalTokens" WHERE "apiKeyId" = ?', ["key-1"]);
+          expect(() => migration028.up(repair)).toThrow(/locked|busy/i);
+          expect(unknownCount(writer, "key-1")).toBe(0);
+        });
+        migration028.up(repair);
+        expect(unknownCount(repair, "key-1")).toBe(1);
+      } finally {
+        writer.close();
+        repair.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     it("passes the repair upsert through the PostgreSQL adapter", async () => {
       const sqlite = freshDb();
       insertKey(sqlite, "key-1");

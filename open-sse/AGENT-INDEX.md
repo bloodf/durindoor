@@ -17,6 +17,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `azure` | AzureExecutor | `./azure.js` |
 | `azure-openai` | AzureOpenAIExecutor | `./azure-openai.js` |
 | `bedrock` | BedrockExecutor | `./bedrock.js` |
+| `cerebrium` | CerebriumExecutor | `./cerebrium.js` |
 | `chipotle` | ChipotleExecutor | `./chipotle.js` |
 | `codebuddy-cn` | CodeBuddyExecutor | `./codebuddy-cn.js` |
 | `codex` | CodexExecutor | `./codex.js` |
@@ -145,6 +146,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cablyai` |  | apikey | `https://api.cablyai.com/v1/chat/completions` |
 | `cartesia` |  | apikey | `` |
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
+| `cerebrium` | openai | apikey | `` |
 | `charm-hyper` |  | apikey | `https://hyper.charm.land/v1/chat/completions` |
 | `chatanywhere` |  | apikey | `https://api.chatanywhere.org/v1/chat/completions` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |

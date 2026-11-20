@@ -28,6 +28,7 @@ import {
   requestDeviceCode } from
 "@/lib/oauth/providers.js";
 import { resolveOAuthProxySelection } from "@/lib/oauth/proxySelection.js";
+import { defaultOAuthRedirectUri } from "@/lib/oauth/redirectUri.js";
 import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 import {
   clearCodexSession,
@@ -269,7 +270,13 @@ function oauthErrorResponse(error, operation) {
 async function beginAuthorization(provider, input) {
   requireOAuthProvider(provider);
   const intent = beginOAuthFlowIntent(provider, input.ownerId);
-  const redirectUri = input.redirectUri || input.redirect_uri || "http://localhost:8080/callback";
+  // Anthropic only accepts its own registered redirect for the Claude OAuth
+  // client, so a caller that omits one must not fall back to the generic
+  // dashboard callback. The value is stored in the flow payload, so the token
+  // exchange reuses the same redirect_uri.
+  const redirectUri = input.redirectUri || input.redirect_uri ||
+  defaultOAuthRedirectUri(provider) ||
+  "http://localhost:8080/callback";
   const meta = input.meta && isObject(input.meta) ? input.meta : undefined;
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(

@@ -1,4 +1,4 @@
-import { CLAUDE_CLI_SPOOF_HEADERS } from "../shared.js";
+import { CLAUDE_CLI_SPOOF_HEADERS, CLAUDE_OAUTH_BETA } from "../shared.js";
 
 export default {
   id: "claude",
@@ -66,15 +66,39 @@ export default {
     // Account email + organization plan tier, read once at connect time. The
     // `user:profile` scope below is what authorizes it.
     profileUrl: "https://api.anthropic.com/api/oauth/profile",
+    // Anthropic grants these scopes per OAuth client, not per account. Both
+    // upstreams ask for the Claude Code session and MCP scopes on top of the
+    // inference and profile scopes: CLIProxyAPI
+    // internal/auth/claude/anthropic_auth.go (`ClaudeOAuthScope`) and
+    // OmniRoute `src/lib/oauth/constants/oauth.ts` (`CLAUDE_CONFIG.scopes`).
+    // `user:sessions:claude_code` is what authorizes the Claude Code session
+    // the runtime announces with `X-Claude-Code-Session-Id`; without it the
+    // granted token cannot carry that session.
     scopes: [
       "org:create_api_key",
       "user:profile",
       "user:inference",
+      "user:sessions:claude_code",
+      "user:mcp_servers",
     ],
     codeChallengeMethod: "S256",
     refreshLeadMs: 14400000,
     refresh: {
       encoding: "json",
+      // A refresh that omits `scope` can come back down-scoped, which would
+      // drop the session and MCP grants the authorize step asked for. Ask for
+      // the granted scope on every refresh: CLIProxyAPI
+      // internal/auth/claude/anthropic_auth.go sends the same string on
+      // `refreshTokensSingleFlight`. `org:create_api_key` stays authorize-only
+      // — it is the console scope, not a token scope.
+      scope: "user:profile user:inference user:sessions:claude_code user:mcp_servers",
+      // Anthropic's OAuth control plane answers the grant only when the
+      // OAuth-only beta is present. OmniRoute
+      // open-sse/services/tokenRefresh/providers/claudeOAuth.ts sends it on
+      // the refresh, and the profile lookup already sends it.
+      headers: {
+        "anthropic-beta": CLAUDE_OAUTH_BETA
+      }
     },
   },
   features: {

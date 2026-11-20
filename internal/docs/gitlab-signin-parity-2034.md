@@ -1,0 +1,7 @@
+# GitLab sign-in investigation (#2034)
+
+DurinDoor's `src/lib/oauth/providers.js` implements separate `gitlab` and `gitlab-duo` browser authorization-code PKCE flows. Both exchange the code and fetch user information from the selected instance. `src/app/api/oauth/gitlab/pat/route.js` provides the separate PAT entry point. The Duo executor in `open-sse/executors/gitlab.js` sends code-suggestion requests to the selected instance, buffers the response and synthesizes SSE for streaming callers. `open-sse/services/tokenRefresh/providers.js` refreshes Duo OAuth tokens using connection-specific instance and client ID metadata.
+
+`tests/unit/gitlab-signin-parity.test.js` exercises both OAuth providers through their public helpers and tests two Duo request credentials with closed fetch mocks. The existing PAT and Duo test-configuration tests also pass. These tests do not establish upstream parity, validate host admission through the OAuth route, test refresh, or demonstrate incremental upstream streaming.
+
+The pinned upstream source trees were not available locally and no outbound calls were made. The inventories in `provider-parity-cliproxyapi.md`, `provider-parity-easycliproxyapi.md`, and `provider-parity-omniroute.md` identify comparison revisions but do not establish the required GitLab sign-in and request contracts. Consequently no upstream delta or port is claimed. Source comparison and any corresponding regression and implementation work remain outstanding.

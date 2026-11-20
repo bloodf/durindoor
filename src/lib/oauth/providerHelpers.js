@@ -1,6 +1,6 @@
 import { buildKiroIdentityHeaders } from "../../../open-sse/shared/kiroHeaders.js";
 import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
-import { ANTHROPIC_API_VERSION } from "../../../open-sse/providers/shared.js";
+import { ANTHROPIC_API_VERSION, CLAUDE_OAUTH_BETA } from "../../../open-sse/providers/shared.js";
 import { isBoolean, isString } from "../../shared/utils/typeChecks.js";
 
 const BASE64_BLOCK_SIZE = 4;
@@ -128,7 +128,7 @@ export async function fetchClaudeProfile(accessToken, profileUrl, proxyOptions =
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${accessToken}`,
-        "anthropic-beta": "oauth-2025-04-20",
+        "anthropic-beta": CLAUDE_OAUTH_BETA,
         "anthropic-version": ANTHROPIC_API_VERSION
       },
       proxyOptions

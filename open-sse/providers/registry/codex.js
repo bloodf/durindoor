@@ -122,6 +122,15 @@ export default {
     codeChallengeMethod: "S256",
     fixedPort: 1455,
     callbackPath: "/auth/callback",
+    // Headless sign-in (device flow). Upstream provenance:
+    // router-for-me/CLIProxyAPI `sdk/auth/codex_device.go` at
+    // 6faa8d20b2673404cff70a2f2d9537ae0d0e684d — the Codex device flow asks
+    // auth.openai.com for a user code, polls for an authorization code plus the
+    // server-issued PKCE pair, and exchanges that code with the device redirect.
+    deviceCodeUrl: "https://auth.openai.com/api/accounts/deviceauth/usercode",
+    deviceTokenUrl: "https://auth.openai.com/api/accounts/deviceauth/token",
+    deviceVerificationUrl: "https://auth.openai.com/codex/device",
+    deviceRedirectUri: "https://auth.openai.com/deviceauth/callback",
     extraParams: {
       id_token_add_organizations: "true",
       codex_cli_simplified_flow: "true",

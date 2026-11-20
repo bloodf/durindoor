@@ -5,7 +5,7 @@ import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/provi
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
-import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, buildKimiHeaders, buildKimiDeviceHeaders, NOUS_ATTRIBUTION, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -14,6 +14,7 @@ import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reason
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
+import { refreshKimiToken } from "../services/tokenRefresh/providers.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
@@ -243,7 +244,14 @@ const HEADER_HOOKS = {
     h["X-Conversation-Request-ID"] = requestId;
     h["X-Conversation-Message-ID"] = requestId;
   },
-  kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
+  kimiHeaders: (h, c) => {
+    const deviceId = c.providerSpecificData?.deviceId;
+    Object.assign(h, deviceId ? buildKimiDeviceHeaders(deviceId) : buildKimiHeaders());
+  },
+  kimiDeviceHeaders: (h, c) => {
+    const deviceId = c.providerSpecificData?.deviceId;
+    if (deviceId) Object.assign(h, buildKimiDeviceHeaders(deviceId));
+  },
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
   kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},
   claudeOverlay: (h) => {
@@ -271,8 +279,13 @@ const REFRESH_GRANTS = Object.fromEntries(
     const tokenUrl = o.tokenUrl;
     const encoding = o.refresh.encoding;
     const extraParams = o.refresh.scope ? { scope: o.refresh.scope } : {};
+    // Provider-declared refresh headers (e.g. the OAuth-only Anthropic beta
+    // the Claude grant needs). Kept in the registry so the dedicated refresher
+    // and this generic grant send the same wire contract.
+    const extraHeaders = o.refresh.headers || null;
     return [id, {
       encoding,
+      headers: extraHeaders,
       url: () => tokenUrl,
       params: (ex) => id === "gemini" ?
       { client_id: ex.config.clientId, client_secret: ex.config.clientSecret, ...extraParams } :
@@ -629,8 +642,12 @@ export class DefaultExecutor extends BaseExecutor {
     }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
-    for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
+    for (const hook of desc.hooks || []) {
+      if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials);
+    }
     applyAuth(headers, desc, credentials);
+    // Cline's hook normalizes OAuth JWTs; generic bearer auth otherwise overwrites it.
+    if (desc.hooks?.includes("clineHeaders")) HEADER_HOOKS.clineHeaders(headers, credentials);
 
     // Claude Code OAuth Messages send `oauth-2025-04-20` (+ extended-cache-ttl);
     // the API-key path keeps the plain first-party pin (#1383).
@@ -755,8 +772,8 @@ export class DefaultExecutor extends BaseExecutor {
     const grant = REFRESH_GRANTS[this.provider];
     const params = { grant_type: "refresh_token", refresh_token: credentials.refreshToken, ...grant.params(this) };
     return grant.encoding === "json" ?
-    this.refreshWithJSON(grant.url(), params, proxyOptions) :
-    this.refreshWithForm(grant.url(), params, proxyOptions);
+    this.refreshWithJSON(grant.url(), params, proxyOptions, grant.headers) :
+    this.refreshWithForm(grant.url(), params, proxyOptions, grant.headers);
   }
 
   async refreshCredentials(credentials, log, proxyOptions = null) {
@@ -772,7 +789,8 @@ export class DefaultExecutor extends BaseExecutor {
       "codebuddy-cn": () => refreshCodebuddyToken(credentials.refreshToken, log, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
-      "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
+      "kimi-coding": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
+      "kimi-ai": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
       kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
     };
 
@@ -789,10 +807,10 @@ export class DefaultExecutor extends BaseExecutor {
     }
   }
 
-  async refreshWithJSON(url, body, proxyOptions = null) {
+  async refreshWithJSON(url, body, proxyOptions = null, extraHeaders = null) {
     const response = await proxyAwareFetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", ...(extraHeaders || {}) },
       body: JSON.stringify(body)
     }, proxyOptions);
     if (!response.ok) return null;
@@ -800,10 +818,10 @@ export class DefaultExecutor extends BaseExecutor {
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || body.refresh_token, expiresIn: tokens.expires_in };
   }
 
-  async refreshWithForm(url, params, proxyOptions = null) {
+  async refreshWithForm(url, params, proxyOptions = null, extraHeaders = null) {
     const response = await proxyAwareFetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", ...(extraHeaders || {}) },
       body: new URLSearchParams(params)
     }, proxyOptions);
     if (!response.ok) return null;
@@ -850,22 +868,6 @@ export class DefaultExecutor extends BaseExecutor {
       accessToken = `workos:${accessToken}`;
     }
     return { accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
-  }
-
-  async refreshKimiCoding(refreshToken, proxyOptions = null) {
-    const kimiHeaders = buildKimiHeaders();
-    const response = await proxyAwareFetch(PROVIDERS["kimi-coding"].refreshUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        ...kimiHeaders
-      },
-      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: PROVIDERS["kimi-coding"].clientId })
-    }, proxyOptions);
-    if (!response.ok) return null;
-    const tokens = await response.json();
-    return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };
   }
 
   async refreshKilocode(refreshToken, proxyOptions = null) {

@@ -25,6 +25,11 @@ export class ClaudeService extends OAuthService {
       code_challenge: codeChallenge,
       code_challenge_method: CLAUDE_CONFIG.codeChallengeMethod,
       state: state,
+      // Same contract as the dashboard sign-in
+      // (src/lib/oauth/providers.js): force a fresh Anthropic authentication
+      // instead of reusing the browser session, so a second Claude account
+      // cannot invalidate the first account's refresh-token family.
+      prompt: "login",
     });
 
     return `${CLAUDE_CONFIG.authorizeUrl}?${params.toString()}`;

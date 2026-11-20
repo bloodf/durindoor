@@ -85,6 +85,9 @@ Responses `max_output_tokens` remains untouched by these helpers.
 
 ## Non-streaming SSE errors
 
+An unparseable forced SSE-to-JSON response records `FAILED 502` before returning
+the gateway error, without recording successful usage.
+
 Port `decolua/9router@56dbf466f10787d284b09bd28e35c0f7171b6d06`
 (#1355) preserves explicit OpenAI-style SSE error envelopes before the fork's
 terminal-coherence aggregation. `createSSEErrorResult` is shared by

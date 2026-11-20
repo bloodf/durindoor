@@ -1,5 +1,5 @@
 import { PROVIDERS, PROVIDER_OAUTH } from "../../config/providers.js";
-import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../../config/appConstants.js";
+import { OAUTH_ENDPOINTS, GITHUB_COPILOT, buildKimiDeviceHeaders, buildKimiHeaders, getKimiOAuthClientId } from "../../config/appConstants.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { buildKiroOidcEndpoint, KIRO_DEFAULT_REGION } from "../../config/kiroRegions.js";
 import { dedupRefresh } from "./dedup.js";
@@ -105,6 +105,43 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
   }, log, proxyOptions);
 }
 
+export async function refreshKimiToken(provider, credentials, log, proxyOptions = null) {
+  const { refreshToken, providerSpecificData } = credentials;
+  if (!refreshToken) return null;
+
+  return dedupRefresh(provider, refreshToken, async () => {
+    try {
+      const deviceId = providerSpecificData?.deviceId;
+      const response = await proxyAwareFetch(PROVIDERS[provider].refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          ...(deviceId ? buildKimiDeviceHeaders(deviceId) : buildKimiHeaders())
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          client_id: getKimiOAuthClientId(provider)
+        }),
+        redirect: "error"
+      }, proxyOptions);
+      if (!response.ok) return null;
+
+      const tokens = await response.json();
+      if (!tokens?.access_token) return null;
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || refreshToken,
+        expiresIn: tokens.expires_in
+      };
+    } catch (error) {
+      log?.warn?.("TOKEN_REFRESH", `Kimi refresh failed: ${safeRefreshError(error)}`);
+      return null;
+    }
+  }, log, proxyOptions);
+}
+
 export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log, proxyOptions = null) {
   if (!refreshToken) return null;
   const baseUrl = String(
@@ -166,21 +203,41 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = 
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {
     try {
+      // Anthropic's OAuth control plane answers the grant only when the
+      // OAuth-only beta is present, and the grant has to name the scope the
+      // authorize step obtained — a refresh that omits it can come back
+      // down-scoped and drop the Claude Code session and MCP grants. Both
+      // come from the registry entry, which is the single source for the
+      // Claude OAuth contract.
+      // Sources: OmniRoute open-sse/services/tokenRefresh/providers/
+      // claudeOAuth.ts (beta header) and CLIProxyAPI
+      // internal/auth/claude/anthropic_auth.go (scope on refresh).
+      const claudeOauth = PROVIDER_OAUTH.claude || {};
       const response = await proxyAwareFetch(OAUTH_ENDPOINTS.anthropic.token, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json"
+          Accept: "application/json",
+          ...(claudeOauth.refresh?.headers || {})
         },
         body: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: refreshToken,
-          client_id: PROVIDERS.claude.clientId
+          client_id: PROVIDERS.claude.clientId,
+          ...(claudeOauth.refresh?.scope ? { scope: claudeOauth.refresh.scope } : null)
         })
       }, proxyOptions);
 
       if (!response.ok) {
         const errorText = await response.text();
+        const failure = classifyOAuthRefreshError(errorText, response.status);
+        if (failure.permanent) {
+          log?.error?.("TOKEN_REFRESH", "Claude refresh token already used or invalid. Re-auth required.", {
+            status: response.status,
+            code: safeRefreshError(failure.code)
+          });
+          return { error: "unrecoverable_refresh_error", code: failure.code };
+        }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", {
           status: response.status,
           error: safeRefreshError(errorText)

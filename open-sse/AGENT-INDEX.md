@@ -246,6 +246,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kilocode` |  | oauth | `https://api.kilo.ai/api/openrouter/chat/completions` |
 | `kimchi` | openai | oauth | `https://llm.kimchi.dev/openai/v1/chat/completions` |
 | `kimi` | claude | apikey | `https://api.moonshot.ai/anthropic/v1/messages` |
+| `kimi-ai` | openai | oauth | `https://api.kimi.ai/coding/v1/chat/completions` |
 | `kimi-coding` | claude | oauth | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding-apikey` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-web` | openai | webCookie | `https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat` |

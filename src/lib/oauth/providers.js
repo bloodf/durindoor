@@ -7,6 +7,7 @@
 import "open-sse/index.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
+import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
 
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
@@ -23,6 +24,7 @@ import {
   assertValidAwsRegion,
   CURSOR_CONFIG,
   KIMI_CODING_CONFIG,
+  KIMI_AI_CONFIG,
   KILOCODE_CONFIG,
   CLINE_CONFIG,
   CLINEPASS_CONFIG,
@@ -34,7 +36,8 @@ import {
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
   GROK_CLI_CONFIG,
-  getOAuthClientMetadata } from
+  getOAuthClientMetadata,
+  OAUTH_TIMEOUT } from
 "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
 import {
@@ -46,7 +49,7 @@ import {
   claudeProfileFields,
   fetchKiroProfileArn } from
 "./providerHelpers";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import museCode from "./museCodeProvider.js";
@@ -227,6 +230,99 @@ function antigravityOnboardRetryDelayMs() {
   return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS", 5000, 0);
 }
 
+function kimiDeviceProvider(config, fallbackVerificationUrl) {
+  return {
+    config,
+    flowType: "device_code",
+    requestDeviceCode: async (config, _codeChallenge, _options, proxyOptions) => {
+      const deviceId = crypto.randomUUID();
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...buildKimiDeviceHeaders(deviceId) },
+        body: new URLSearchParams({ client_id: config.clientId }),
+        redirect: "error",
+        proxyOptions
+      });
+      if (!response.ok) {
+        throw new Error(`Kimi device authorization request failed (HTTP ${response.status})`);
+      }
+      const data = await response.json();
+      if (!data?.user_code) throw new Error("Invalid Kimi device authorization response");
+      const verificationUri = data.verification_uri || fallbackVerificationUrl;
+      const verificationUriComplete = data.verification_uri_complete ||
+        (fallbackVerificationUrl && `${fallbackVerificationUrl}?user_code=${encodeURIComponent(data.user_code)}`);
+      if (!verificationUriComplete) {
+        throw new Error("Invalid Kimi device authorization response");
+      }
+      return {
+        _deviceId: deviceId,
+        device_code: data.device_code,
+        user_code: data.user_code,
+        verification_uri: verificationUri,
+        verification_uri_complete: verificationUriComplete,
+        expires_in: data.expires_in,
+        interval: data.interval || 5
+      };
+    },
+    pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
+      const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
+      const deviceId = extraData?._deviceId;
+      if (deviceId) Object.assign(headers, buildKimiDeviceHeaders(deviceId));
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers,
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: config.clientId,
+          device_code: deviceCode
+        }),
+        redirect: "error",
+        proxyOptions
+      });
+      const data = await response.json().catch(() => null);
+      if (!data || !isObject(data) || Array.isArray(data)) {
+        return { ok: false, data: { error: "invalid_response", error_description: "Invalid Kimi token response" } };
+      }
+      return { ok: response.ok, data };
+    },
+    // The pending flow owns this ID. Carry it into the connection only on success.
+    postExchange: (_tokens, _proxyOptions, extraData) => extraData,
+    mapTokens: (tokens, extraData) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+      providerSpecificData: extraData?._deviceId ? { deviceId: extraData._deviceId } : undefined
+    })
+  };
+}
+
+// Codex device flow (headless sign-in).
+// Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
+// at 6faa8d20b2673404cff70a2f2d9537ae0d0e684d — `codexDeviceTimeout` is 15
+// minutes and `codexDeviceDefaultPollIntervalSeconds` is 5.
+//
+// The OAuth flow store caps every flow at OAUTH_TIMEOUT, and the client polls
+// for as long as the advertised window. Advertising the full upstream window
+// would have the client poll a session the server already expired, so the
+// advertised window is capped with the flow.
+const CODEX_DEVICE_FLOW_TTL_SECONDS = Math.min(
+  15 * 60,
+  Math.floor(OAUTH_TIMEOUT / 1000)
+);
+const CODEX_DEVICE_POLL_INTERVAL_SECONDS = 5;
+
+/**
+ * The Codex device endpoint returns `interval` as either a number of seconds or
+ * a numeric string. Anything else falls back to the upstream default.
+ */
+function parseCodexDevicePollInterval(raw) {
+  const seconds = isString(raw) ? Number(raw.trim()) : raw;
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.floor(seconds);
+  }
+  return CODEX_DEVICE_POLL_INTERVAL_SECONDS;
+}
+
 // Provider configurations
 const PROVIDERS = {
   claude: {
@@ -241,7 +337,16 @@ const PROVIDERS = {
         scope: config.scopes.join(" "),
         code_challenge: codeChallenge,
         code_challenge_method: config.codeChallengeMethod,
-        state: state
+        state: state,
+        // Anthropic's IdP reuses the browser session for every authorization
+        // request made with this public client id. The reused session counts as
+        // a session takeover and invalidates the refresh-token family of the
+        // account that signed in first, so a second Claude connection silently
+        // breaks the first one. `prompt=login` forces a fresh authentication
+        // instead of reusing the stored session, which keeps each Claude
+        // account's credentials isolated. OmniRoute
+        // `src/lib/oauth/providers/claude.ts` sends the same parameter.
+        prompt: "login"
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -369,6 +474,156 @@ const PROVIDERS = {
         };
       }
       return mapped;
+    },
+    // Headless sign-in: the Codex device flow.
+    //
+    // Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
+    // at 6faa8d20b2673404cff70a2f2d9537ae0d0e684d (`loginWithDeviceFlow`). It is
+    // NOT the RFC 8628 device-code grant: auth.openai.com issues a user code,
+    // then hands back an authorization code together with the server-side PKCE
+    // pair, and that code is exchanged like any other authorization code. The
+    // flow lives under `deviceFlow` (not `flowType: "device_code"`) because the
+    // browser PKCE path stays this provider's primary flow.
+    deviceFlow: {
+      requestDeviceCode: async (config, _codeChallenge, _options, proxyOptions) => {
+        const response = await fetch(config.deviceCodeUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ client_id: config.clientId }),
+          proxyOptions
+        });
+
+        const text = await response.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = {};
+        }
+        if (!response.ok) {
+          throw new Error(
+            `Codex device code request failed: ${text || response.statusText}`
+          );
+        }
+
+        const deviceAuthId = isString(data.device_auth_id) ?
+          data.device_auth_id.trim() :
+          "";
+        const userCode = (isString(data.user_code) ? data.user_code : "") ||
+          (isString(data.usercode) ? data.usercode : "");
+        if (!deviceAuthId || !userCode) {
+          throw new Error("Codex device code response is missing required fields");
+        }
+
+        const verificationUrl = config.deviceVerificationUrl;
+        return {
+          // The device handle the flow store keeps server-side.
+          device_code: deviceAuthId,
+          user_code: userCode,
+          verification_uri: verificationUrl,
+          verification_uri_complete: verificationUrl ?
+            `${verificationUrl}?user_code=${encodeURIComponent(userCode)}` :
+            undefined,
+          expires_in: CODEX_DEVICE_FLOW_TTL_SECONDS,
+          interval: parseCodexDevicePollInterval(data.interval),
+          // Private: the poll needs the user code next to the device handle.
+          _userCode: userCode
+        };
+      },
+      pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
+        const userCode = isString(extraData?._userCode) ?
+          extraData._userCode :
+          "";
+        const response = await fetch(config.deviceTokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({
+            device_auth_id: deviceCode,
+            user_code: userCode
+          }),
+          proxyOptions
+        });
+
+        const text = await response.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = {};
+        }
+
+        // Upstream treats 403 and 404 as "still waiting for the user".
+        if (!response.ok) {
+          if (response.status === 403 || response.status === 404) {
+            return { ok: true, data: { error: "authorization_pending" } };
+          }
+          return {
+            ok: false,
+            data: {
+              error: data.error || "device_token_failed",
+              error_description: data.error_description || text || response.statusText
+            }
+          };
+        }
+
+        const authorizationCode = isString(data.authorization_code) ?
+          data.authorization_code.trim() :
+          "";
+        const codeVerifier = isString(data.code_verifier) ?
+          data.code_verifier.trim() :
+          "";
+        if (!authorizationCode || !codeVerifier) {
+          return {
+            ok: false,
+            data: {
+              error: "invalid_device_response",
+              error_description: "Codex device token response is missing required fields"
+            }
+          };
+        }
+
+        // Exchange the device authorization code. The redirect URI is the one the
+        // device flow was minted for, not the loopback callback.
+        const tokenResponse = await fetch(config.tokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json"
+          },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            client_id: config.clientId,
+            code: authorizationCode,
+            redirect_uri: config.deviceRedirectUri,
+            code_verifier: codeVerifier
+          }).toString(),
+          proxyOptions
+        });
+
+        const tokenText = await tokenResponse.text();
+        let tokens = {};
+        try {
+          tokens = tokenText ? JSON.parse(tokenText) : {};
+        } catch {
+          tokens = {};
+        }
+        if (!tokenResponse.ok || !tokens.access_token) {
+          return {
+            ok: false,
+            data: {
+              error: tokens.error || "code_exchange_failed",
+              error_description: tokens.error_description || tokenText || tokenResponse.statusText
+            }
+          };
+        }
+        return { ok: true, data: tokens };
+      }
     }
   },
 
@@ -472,7 +727,30 @@ const PROVIDERS = {
         throw new Error(`Grok CLI device code request failed: ${error}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      // OmniRoute #7358 validates device authorization data before presenting links.
+      if (!isString(data?.device_code) || !isString(data?.user_code) ||
+          !isString(data?.verification_uri)) {
+        throw new Error("Grok device authorization response is incomplete");
+      }
+      if (!/^[A-Za-z0-9-]+$/.test(data.user_code)) {
+        throw new Error("Grok returned an invalid device code");
+      }
+      for (const value of [data.verification_uri, data.verification_uri_complete]) {
+        if (value === undefined) continue;
+        if (!isString(value) || /[\x00-\x1f\x7f]/.test(value)) {
+          throw new Error("Grok returned an invalid verification URL");
+        }
+        let url;
+        try { url = new URL(value); } catch {
+          throw new Error("Grok returned an invalid verification URL");
+        }
+        if (url.protocol !== "https:" && !(url.protocol === "http:" &&
+            (url.hostname === "localhost" || url.hostname === "127.0.0.1"))) {
+          throw new Error("Grok returned an unsupported verification URL");
+        }
+      }
+      return data;
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
@@ -621,7 +899,11 @@ const PROVIDERS = {
         );
         if (projectRes.ok) {
           const data = await projectRes.json();
-          projectId = data.cloudaicompanionProject?.id || data.cloudaicompanionProject || "";
+          // Only a nonempty ID is usable; a truthy response object would prevent
+          // the request path from attempting its own project discovery.
+          const project = data.cloudaicompanionProject;
+          const id = isString(project) ? project : project?.id;
+          projectId = isString(id) ? id.trim() : "";
         }
       } catch (e) {
         console.log("Failed to fetch project ID:", e);
@@ -951,13 +1233,13 @@ const PROVIDERS = {
         proxyOptions
       });
 
-      // Handle response properly - if not ok, try to get error as text first
+      // Read once so a non-JSON response can still be returned as an error.
+      // Adapted from OmniRoute src/lib/oauth/providers/github.ts.
+      const text = await response.text();
       let data;
       try {
-        data = await response.json();
-      } catch (e) {
-        // If response is not JSON, get as text
-        const text = await response.text();
+        data = JSON.parse(text);
+      } catch {
         data = { error: "invalid_response", error_description: text };
       }
 
@@ -1024,6 +1306,15 @@ const PROVIDERS = {
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";
       const registerClientUrl = `https://oidc.${region}.amazonaws.com/client/register`;
       const deviceAuthUrl = `https://oidc.${region}.amazonaws.com/device_authorization`;
+      const registration = {
+        clientName: config.clientName,
+        clientType: config.clientType,
+        scopes: config.scopes,
+        grantTypes: config.grantTypes
+      };
+      // OmniRoute src/lib/oauth/providers/kiro.ts: enterprise start URLs
+      // must not be bound to the fixed Builder ID issuer.
+      if (authMethod !== "idc") registration.issuerUrl = config.issuerUrl;
 
       const registerRes = await fetch(registerClientUrl, {
         method: "POST",
@@ -1031,13 +1322,7 @@ const PROVIDERS = {
           "Content-Type": "application/json",
           Accept: "application/json"
         },
-        body: JSON.stringify({
-          clientName: config.clientName,
-          clientType: config.clientType,
-          scopes: config.scopes,
-          grantTypes: config.grantTypes,
-          issuerUrl: config.issuerUrl
-        }),
+        body: JSON.stringify(registration),
         proxyOptions
       });
 
@@ -1175,58 +1460,8 @@ const PROVIDERS = {
     })
   },
 
-  "kimi-coding": {
-    config: KIMI_CODING_CONFIG,
-    flowType: "device_code",
-    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
-      const response = await fetch(config.deviceCodeUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: new URLSearchParams({ client_id: config.clientId }),
-        proxyOptions
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Device code request failed: ${error}`);
-      }
-      const data = await response.json();
-      return {
-        device_code: data.device_code,
-        user_code: data.user_code,
-        verification_uri: data.verification_uri || "https://www.kimi.com/code/authorize_device",
-        verification_uri_complete:
-        data.verification_uri_complete ||
-        `https://www.kimi.com/code/authorize_device?user_code=${data.user_code}`,
-        expires_in: data.expires_in,
-        interval: data.interval || 5
-      };
-    },
-    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: new URLSearchParams({
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-          client_id: config.clientId,
-          device_code: deviceCode
-        }),
-        proxyOptions
-      });
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        const text = await response.text();
-        data = { error: "invalid_response", error_description: text };
-      }
-      return { ok: response.ok, data };
-    },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in
-    })
-  },
+  "kimi-coding": kimiDeviceProvider(KIMI_CODING_CONFIG, "https://www.kimi.com/code/authorize_device"),
+  "kimi-ai": kimiDeviceProvider(KIMI_AI_CONFIG),
 
   kilocode: {
     config: KILOCODE_CONFIG,
@@ -1303,6 +1538,7 @@ const PROVIDERS = {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
+        try { base64 = decodeURIComponent(base64); } catch { /* Keep an already-decoded or malformed code. */ }
         const padding = 4 - base64.length % 4;
         if (padding !== 4) base64 += "=".repeat(padding);
         const decoded = Buffer.from(base64, "base64").toString("utf-8");
@@ -1363,6 +1599,7 @@ const PROVIDERS = {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
+        try { base64 = decodeURIComponent(base64); } catch { /* Keep an already-decoded or malformed code. */ }
         const padding = 4 - base64.length % 4;
         if (padding !== 4) base64 += "=".repeat(padding);
         const decoded = Buffer.from(base64, "base64").toString("utf-8");
@@ -1594,17 +1831,18 @@ const PROVIDERS = {
           "X-No-User-Id": "true",
           "X-Product": "SaaS"
         },
-        body: "{}",
+        body: JSON.stringify({ platform: config.platform }),
         proxyOptions
       });
       if (!response.ok) throw new Error(`CodeBuddy state request failed: ${await response.text()}`);
       const data = await response.json();
-      if (data.code !== 0 || !data.data?.state || !data.data?.authUrl) {
+      const authUrl = data.data?.authUrl || data.data?.url;
+      if (data.code !== 0 || !data.data?.state || !authUrl) {
         throw new Error(`CodeBuddy state error: ${data.msg || "missing state/authUrl"}`);
       }
       return {
         device_code: data.data.state,
-        verification_uri: data.data.authUrl,
+        verification_uri: authUrl,
         user_code: "",
         interval: config.pollInterval / 1000,
         _isCodeBuddy: true
@@ -1811,14 +2049,28 @@ export async function exchangeTokens(providerName, code, redirectUri, codeVerifi
 }
 
 /**
+ * Resolve the device-flow handler set for a provider.
+ *
+ * A provider is device-only (`flowType: "device_code"`, handlers on the
+ * provider record) or dual: its primary flow is something else (Codex keeps
+ * browser PKCE) and the device handlers live under `deviceFlow`.
+ */
+function resolveDeviceFlow(provider) {
+  if (!provider) return null;
+  if (provider.flowType === "device_code") return provider;
+  return provider.deviceFlow || null;
+}
+
+/**
  * Request device code (for device_code flow)
  */
 export async function requestDeviceCode(providerName, codeChallenge, options, proxyOptions = null) {
   const provider = getProvider(providerName);
-  if (provider.flowType !== "device_code") {
+  const device = resolveDeviceFlow(provider);
+  if (!device || !isFunction(device.requestDeviceCode)) {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
-  return await provider.requestDeviceCode(provider.config, codeChallenge, options || {}, proxyOptions);
+  return await device.requestDeviceCode(provider.config, codeChallenge, options || {}, proxyOptions);
 }
 
 /**
@@ -1830,11 +2082,12 @@ export async function requestDeviceCode(providerName, codeChallenge, options, pr
  */
 export async function pollForToken(providerName, deviceCode, codeVerifier, extraData, proxyOptions = null) {
   const provider = getProvider(providerName);
-  if (provider.flowType !== "device_code") {
+  const device = resolveDeviceFlow(provider);
+  if (!device || !isFunction(device.pollToken)) {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
 
-  const result = await provider.pollToken(provider.config, deviceCode, codeVerifier, extraData, proxyOptions);
+  const result = await device.pollToken(provider.config, deviceCode, codeVerifier, extraData, proxyOptions);
 
   if (result.ok) {
     // For device code flows, success is only when we have an access token

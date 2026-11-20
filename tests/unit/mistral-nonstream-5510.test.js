@@ -3,12 +3,19 @@ import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { parseSSEToOpenAIResponse } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { createSSEStream } from "../../open-sse/utils/stream.js";
 
 vi.mock("@/lib/usageDb.js", () => ({ appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}), saveUsageStats: vi.fn(async () => {}) }));
 const parts = [{ type: "thinking", thinking: [{ type: "text", text: "thought" }] }, { type: "text", text: "answer" }];
 const frame = (data) => `data: ${JSON.stringify(data)}\n\n`;
 
 describe("Mistral non-stream reasoning (#5510)", () => {
+  it("serializes normalized content even when the stream chunk already has all standard fields", async () => {
+    const chunk = { id: "chatcmpl-12345678", object: "chat.completion.chunk", created: 1, model: "test", choices: [{ index: 0, delta: { content: parts }, finish_reason: null }] };
+    const input = new Response(frame(chunk) + frame({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) + "data: [DONE]\n\n");
+    const out = await new Response(input.body.pipeThrough(createSSEStream({ mode: "passthrough", provider: "mistral", targetFormat: FORMATS.OPENAI }))).text();
+    expect(JSON.parse(out.split("\n").find((line) => line.startsWith("data: {" )).slice(6)).choices[0].delta).toMatchObject({ content: "answer", reasoning_content: "thought" });
+  });
   it("does not reintroduce rejected reasoning history after model injection", () => {
     const body = new DefaultExecutor("mistral").transformRequest("deepseek-v4", { messages: [{ role: "assistant", content: "answer", reasoning_content: "prior" }] });
     expect(body.messages[0]).toEqual({ role: "assistant", content: "answer" });

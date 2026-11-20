@@ -548,7 +548,7 @@ export function createSSEStream(options = {}) {
     if (targetFormat !== FORMATS.OPENAI || !Array.isArray(parsed?.choices)) {
       return { changed: false, keep: true };
     }
-    let changed = false;
+    let changed = normalizeArrayContentChunk(parsed);
     for (const choice of parsed.choices) {
       const delta = choice?.delta;
       if (isString(delta?.reasoning) && delta.reasoning.trim() && !delta.reasoning_content) {
@@ -832,7 +832,6 @@ export function createSSEStream(options = {}) {
               // arrays (Mistral thinking chunks). Fold them into the string
               // `content` / `reasoning_content` the chat-chunk contract requires
               // before any client-visible path sees the chunk (OmniRoute #15757).
-              if (targetFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {

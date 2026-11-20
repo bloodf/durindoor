@@ -343,10 +343,10 @@ export async function PATCH(request) {
     // The compression stack map is a partial patch: the persistence layer
     // merges it per engine id (mergeCompressionEngines in settingsRepo), so a
     // write that carries one engine never drops its siblings. A value that is
-    // not a map of per-engine records is rejected instead of stored.
+    // not a map of per-engine records or null removals is rejected.
     if (Object.prototype.hasOwnProperty.call(body, "compressionEngines")) {
       const engines = body.compressionEngines;
-      if (!isRecord(engines) || Object.values(engines).some((entry) => !isRecord(entry))) {
+      if (!isRecord(engines) || Object.values(engines).some((entry) => entry !== null && !isRecord(entry))) {
         return NextResponse.json({ error: "Invalid compressionEngines" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }

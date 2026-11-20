@@ -101,7 +101,7 @@ describe("port(omniroute): #1073 - compressionEngines partial writes", () => {
     });
   });
 
-  it("stores exactly the written engine on a fresh install (no map is widened)", async () => {
+  it("stores exactly the written engine on a fresh install", async () => {
     await db.updateSettings({ compressionEngines: { "session-dedup": { enabled: true } } });
 
     const { compressionEngines } = await db.getSettings();

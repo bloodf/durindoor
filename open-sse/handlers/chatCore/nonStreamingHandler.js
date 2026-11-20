@@ -728,7 +728,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     if (!isClaudeMessageResponse && translatedResponse?.usage) {
       translatedResponse.usage = filterUsageForFormat(
-        enrichUsageCost(addBufferToUsage(translatedResponse.usage), provider, model),
+        enrichUsageCost(addBufferToUsage(translatedResponse.usage, provider), provider, model),
         sourceFormat
       );
     }

@@ -281,7 +281,7 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
       options: { headers, signal: AbortSignal.timeout(8000) },
       accepts: "ok",
     };
-    if (cfg.format === "openai") {
+    if (cfg.format === "openai" && cfg.quirks?.validationChatFallback !== false) {
       probe.fallback = {
         url: baseUrl,
         options: {

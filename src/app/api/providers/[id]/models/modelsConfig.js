@@ -1,3 +1,4 @@
+import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
@@ -307,6 +308,18 @@ export const PROVIDER_MODELS_CONFIG = {
     pageSize: 1000,
     nextPageToken: (data) => (isString(data?.nextPageToken) && data.nextPageToken) || null,
     parseResponse: (data) => data.models || []
+  },
+  "gemini-interactions": {
+    url: GEMINI_MODELS_URL,
+    apiKeyOnly: true,
+    redirect: "error",
+    authHeader: "x-goog-api-key",
+    pageSize: 1000,
+    nextPageToken: (data) => (isString(data?.nextPageToken) && data.nextPageToken) || null,
+    // Google models.list does not report Interactions support. Intersect it
+    // with the text-only models verified in the Interactions overview.
+    parseResponse: (data) => geminiInteractions.models.filter(({ id }) =>
+      data.models?.some(({ name }) => name === `models/${id}`)),
   },
   qwen: {
     url: "https://portal.qwen.ai/v1/models",

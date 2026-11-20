@@ -45725,7 +45725,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "edbdc48567e0e41ccbaa6fa769c1a7dbfcf1be4b17aeb3a9db0c03729cb7358e"
+            "src/app/api/oauth/[provider]/[action]/route.js": "600a8ae3827bed60512c2e8be16f237574c51ed2bac752320b4171b67e6a6ec2"
           },
           "expectedVisibleText": "Enter an https URL, for example https://ghe.company.com",
           "id": "production-shared-auth-ghecopilotauthmodal--invalid-origin",
@@ -45749,7 +45749,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "edbdc48567e0e41ccbaa6fa769c1a7dbfcf1be4b17aeb3a9db0c03729cb7358e"
+            "src/app/api/oauth/[provider]/[action]/route.js": "600a8ae3827bed60512c2e8be16f237574c51ed2bac752320b4171b67e6a6ec2"
           },
           "expectedVisibleText": "GHE-1234",
           "id": "production-shared-auth-ghecopilotauthmodal--device-code-handoff",

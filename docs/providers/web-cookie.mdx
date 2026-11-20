@@ -103,3 +103,9 @@ If automatic recovery fails, sign in to the site again, copy a fresh cookie, and
 Keep one browser profile for the account you hand to DurinDoor, and avoid signing out of it.
 
 After saving a supported session, send one short request and check **Usage**. A skipped validation is not a successful probe. HTTP 501 `provider_port_pending` means no credential change can enable that provider in this build.
+
+### Copilot Web sessions
+
+Copilot Web accepts a pasted access token, a bearer header, a cookie containing `access_token`, a JSON object containing `access_token` (and optionally the exact `https://copilot.microsoft.com` origin), or a HAR. HAR credentials are taken only from requests to that exact HTTPS origin; other origins are ignored. An invalid supplied credential is rejected locally. Each request starts a fresh personal conversation. An expired or revoked session must be replaced; no refresh token is retained for this manual flow.
+
+Microsoft 365 Copilot Web uses a separate Chathub path and access token. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` and `included` select the education profile. Individual accounts retain their existing defaults. If a Microsoft 365 stream rewrites text already sent to the client, the stream reports an error; retry without streaming to receive the final snapshot. Manually supplied Microsoft 365 tokens are not refreshed automatically.

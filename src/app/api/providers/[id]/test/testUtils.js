@@ -1,3 +1,5 @@
+import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
+import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -971,6 +973,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           return { valid: false, error: params.error, refreshed: false, newTokens: null };
         }
 
+      case "t3-web":{
+          if (effectiveProxy?.vercelRelayUrl) {
+            return { valid: false, error: "T3 Chat sessions require a route without an HTTP relay." };
+          }
+          return validateT3Session(connection, (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy));
+        }
+
       case "perplexity-web":{
           const res = await fetchWithConnectionProxy("https://www.perplexity.ai/api/auth/session", {
             method: "GET",
@@ -1141,6 +1150,9 @@ export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
   if (isConversationProbeProvider(connection.provider)) {
+    if (connection.provider === "yuanbao-web" && !buildYuanbaoCookie(connection.apiKey).hasToken) {
+      return { valid: false, error: "Paste a Yuanbao cookie containing hy_user and hy_token", latencyMs: 0, testedAt: new Date().toISOString() };
+    }
     if (connection.provider === "zenmux-free" && !extractZenmuxCtoken(connection.apiKey)) {
       return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken", latencyMs: 0, testedAt: new Date().toISOString() };
     }

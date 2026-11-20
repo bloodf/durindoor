@@ -1,0 +1,10 @@
+# 1073: Official Anthropic structured output
+
+Inventory: [DurinDoor #1073](https://github.com/bloodf/durindoor/issues/1073).
+Source: [OmniRoute #16626](https://github.com/cheaper-inference/OmniRoute/pull/16626), merge [3de4743f9732a7e72b5baefc8e615395c3e54ba7](https://github.com/cheaper-inference/OmniRoute/commit/3de4743f9732a7e72b5baefc8e615395c3e54ba7), head [ea2158e1d30d0be2961802771bb2caf73a498097](https://github.com/cheaper-inference/OmniRoute/commit/ea2158e1d30d0be2961802771bb2caf73a498097), base [e369ffc633131ef0b1ddbee9d2b40475e63c0808](https://github.com/cheaper-inference/OmniRoute/commit/e369ffc633131ef0b1ddbee9d2b40475e63c0808).
+
+- **Already covered — official API-key route:** Anthropic documents JSON schema output via [`output_config.format`](https://platform.claude.com/docs/en/build-with-claude/structured-outputs). `open-sse/providers/registry/anthropic.js` identifies the API-key route, Messages URL and Claude transport. `chatCore.js` clones the native passthrough body and applies thinking and Claude normalization; neither removes the format. `thinkingUnified.js` retains non-effort output configuration even for non-reasoning models. `translator/index.js` prepares same-format requests, and `openai-to-claude.js` maps OpenAI JSON schemas to the native format. The default executor retains the field. Focused offline fixtures exercise these paths.
+- **Inapplicable — upstream compatibility strip helper:** The upstream passthrough-only blanket strip is absent locally. Adding it would change existing compatible-route behavior. Local `prepareClaudeRequest` instead honors explicit `dropOutputConfig` and model exceptions, including MiniMax. The fixture checks both an unqualified compatible route and the existing MiniMax rule.
+- **Already covered — OAuth control:** The same passthrough normalization does not impose the upstream provider-only strip. No authentication or provider aliases were changed.
+
+The fixture uses only local request transformations, with no streaming or provider calls. The schema is forwarded; actual model support and schema restrictions remain Anthropic's responsibility.

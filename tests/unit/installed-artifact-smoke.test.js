@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,12 +10,26 @@ import { validateArtifact, verifyEndpoints } from "../../scripts/smoke-installed
 import { verifyStaticAssets } from "../../scripts/verify-static-assets.mjs";
 
 const cleanup = [];
+let fixtureParent;
+let inheritedTempParent;
+beforeAll(() => {
+  // Capture a clean parent before scenarios change the worker's temp environment.
+  inheritedTempParent = fs.realpathSync(os.tmpdir());
+  const parent = hasAncestorDependencies(inheritedTempParent) ? platformTemp() : inheritedTempParent;
+  if (hasAncestorDependencies(parent)) {
+    throw new Error(`Isolation requires no ancestor node_modules: ${parent}`);
+  }
+  fixtureParent = fs.mkdtempSync(path.join(parent, "installed-smoke-fixtures-"));
+});
+afterAll(() => {
+  if (fixtureParent) fs.rmSync(fixtureParent, { recursive: true, force: true });
+});
 afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn();
 });
 
 function artifact() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "installed-smoke-test-"));
+  const root = fs.mkdtempSync(path.join(fixtureParent, "installed-smoke-test-"));
   cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
   const entry = path.join(root, "custom-server.js");
   fs.writeFileSync(entry, "throw new Error('server must not run before dependency probe');");
@@ -66,16 +80,27 @@ async function dashboardServer(handler, { bypass, ignoreLoginSetting = false } =
 }
 
 const script = fileURLToPath(new URL("../../scripts/smoke-installed-artifact.mjs", import.meta.url));
-// The full gate's private TMPDIR can be below the checkout's node_modules.
-// Resolve the platform default in a child without changing this worker's env,
-// then give each smoke subprocess its own owned temporary relocation parent.
-function smokeTemp() {
+function hasAncestorDependencies(dir) {
+  // ESM can resolve packages from a node_modules directory at any ancestor.
+  for (;;) {
+    if (fs.existsSync(path.join(dir, "node_modules"))) return true;
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+function platformTemp() {
   const env = Object.fromEntries(Object.entries(process.env)
     .filter(([key]) => !["TMPDIR", "TMP", "TEMP"].includes(key.toUpperCase())));
   const parent = execFileSync(process.execPath, ["-e", "process.stdout.write(require('node:os').tmpdir())"], {
     env, encoding: "utf8", timeout: 5000,
   });
-  const temp = fs.realpathSync(fs.mkdtempSync(path.join(parent, "installed-smoke-runtime-test-")));
+  return fs.realpathSync(parent);
+}
+
+function smokeTemp() {
+  const temp = fs.mkdtempSync(path.join(fixtureParent, "installed-smoke-runtime-test-"));
   cleanup.push(() => fs.rmSync(temp, { recursive: true, force: true }));
   return temp;
 }
@@ -102,11 +127,14 @@ function run(entry, { aliasedTemp = false, contaminatedTemp = false } = {}) {
 }
 
 describe("installed artifact smoke failures", () => {
-  // A private CI temp directory may itself sit below checkout dependencies;
-  // subprocess relocation must still use a clean platform temp root.
-  it("uses an isolated relocation root when the inherited temp directory is under node_modules", async () => {
+  it("reuses the clean private fixture parent when inherited temp changes to a node_modules descendant", async () => {
     const { entry } = artifact();
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-inherited-temp-"));
+    const cleanTemp = smokeTemp();
+    expect(path.dirname(cleanTemp)).toBe(fixtureParent);
+    if (!hasAncestorDependencies(inheritedTempParent)) {
+      expect(path.dirname(fixtureParent)).toBe(inheritedTempParent);
+    }
+    const parent = fs.mkdtempSync(path.join(fixtureParent, "smoke-inherited-temp-"));
     cleanup.push(() => fs.rmSync(parent, { recursive: true, force: true }));
     const inherited = path.join(parent, "node_modules", "private-temp");
     fs.mkdirSync(inherited, { recursive: true });
@@ -116,6 +144,8 @@ describe("installed artifact smoke failures", () => {
       const result = await run(entry);
       expect(result.code).toBe(1);
       expect(result.signal).toBeNull();
+      expect(path.dirname(result.temp)).toBe(path.dirname(cleanTemp));
+      expect(result.temp).not.toBe(cleanTemp);
       expect(result.temp.startsWith(parent + path.sep)).toBe(false);
       expect(result.output).toContain("Optional runtime probe failed");
       expect(result.output).not.toContain("Isolation requires no ancestor node_modules");

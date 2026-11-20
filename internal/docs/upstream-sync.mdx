@@ -189,4 +189,4 @@ The workflow needs `issues: write` and `contents: read`. It uses `GH_TOKEN: ${{ 
 
 - 9router #5709 is closed without merging and is not eligible for porting. No successor was identified in the open PR search for custom quota.
 - 9router #5727 adds WARP address rotation, proxy-pool controls and privileged host setup; adopting that network feature requires a product decision and is deferred.
-- 9router #5734 remains unported: DurinDoor uses a separate model auto-sync pipeline and the live per-account catalog needs adaptation and focused coverage.
+- 9router #5734: Antigravity discovery uses the Hub per-account catalog; the dashboard merges active account results and falls back to its existing catalog when no live models resolve.

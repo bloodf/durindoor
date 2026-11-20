@@ -147,6 +147,49 @@ function mergeAdjacentUserTurns(messages, index) {
   messages.splice(index + 1, 1);
 }
 
+// Anthropic rejects cache_control nested inside tool_result.content[]; the
+// breakpoint belongs on the tool_result block. Only the first-party Anthropic
+// targets are verified to enforce this, so compatible Claude-wire providers
+// keep their existing bodies.
+const TOOL_RESULT_CACHE_MARKER_TARGETS = new Set(["claude", "anthropic"]);
+
+export function normalizesToolResultCacheMarkers(provider) {
+  return TOOL_RESULT_CACHE_MARKER_TARGETS.has(provider);
+}
+
+function validCacheMarker(value) {
+  if (!isObject(value) || value === null || value.type !== "ephemeral") return null;
+  if (value.ttl === undefined) return { type: "ephemeral" };
+  return value.ttl === "5m" || value.ttl === "1h" ? { type: "ephemeral", ttl: value.ttl } : null;
+}
+
+/**
+ * Move the first valid nested tool_result.content marker onto the enclosing
+ * tool_result and drop every nested marker (malformed ones are never hoisted).
+ * An existing parent marker keeps precedence. Parts are copied rather than
+ * mutated, so caller-owned blocks stay untouched. Budget enforcement stays with
+ * the caller's existing cap/anchor logic.
+ */
+export function hoistToolResultCacheMarkers(body) {
+  if (!Array.isArray(body?.messages)) return body;
+  for (const message of body.messages) {
+    if (!Array.isArray(message?.content)) continue;
+    for (const block of message.content) {
+      if (!isObject(block) || block === null || block.type !== CLAUDE_BLOCK.TOOL_RESULT || !Array.isArray(block.content)) continue;
+      if (!block.content.some((part) => isObject(part) && part !== null && "cache_control" in part)) continue;
+      let hoisted = null;
+      block.content = block.content.map((part) => {
+        if (!isObject(part) || part === null || !("cache_control" in part)) return part;
+        const { cache_control, ...rest } = part;
+        hoisted ??= validCacheMarker(cache_control);
+        return rest;
+      });
+      if (hoisted && (block.cache_control === undefined || block.cache_control === null)) block.cache_control = hoisted;
+    }
+  }
+  return body;
+}
+
 /** Count request-wide Anthropic cache breakpoints. */
 function countCacheControlBlocks(body) {
   let count = 0;
@@ -182,8 +225,9 @@ function capCacheControlBlocks(body) {
   for (const block of remaining.slice(0, Math.max(0, remaining.length - keep))) delete block.cache_control;
 }
 // Re-anchor cache breakpoints on a Claude passthrough body after transformations.
-export function anchorClaudeCache(body) {
+export function anchorClaudeCache(body, provider = null) {
   if (!body || !isObject(body)) return body;
+  if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       delete msg.cache_control;
@@ -806,6 +850,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   if (body.messages && Array.isArray(body.messages)) {
     const clientRole = clientLastRole ?? body.messages.at(-1)?.role;
     body.messages = removeNamelessToolHistory(body.messages);
+    // Before pass 1 so a hoisted marker obeys the same message-marker policy as any other.
+    if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
     const len = body.messages.length;
     const originalLastRole = clientRole;
     let filtered = [];

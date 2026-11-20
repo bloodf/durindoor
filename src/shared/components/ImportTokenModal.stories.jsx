@@ -59,6 +59,6 @@ export const ImportFailure = {
     const dialog = await within(document.body).findByRole("dialog", { name: "Connect GitHub" });
     await userEvent.type(within(dialog).getByLabelText("Access token"), "invalid-token");
     await userEvent.click(within(dialog).getByRole("button", { name: "Connect" }));
-    await expect(within(dialog).getByRole("alert")).toHaveTextContent("Token was rejected");
+    await expect(within(dialog).getByRole("alert")).toHaveTextContent("Import failed. Please try again.");
   },
 };

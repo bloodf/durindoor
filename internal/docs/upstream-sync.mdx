@@ -188,3 +188,9 @@ The workflow needs `issues: write` and `contents: read`. It uses `GH_TOKEN: ${{ 
 ## 2026-11-20 deferred Docker validation
 
 Upstream [`87190db`](https://github.com/decolua/9router/commit/87190db) for [#5755](https://github.com/decolua/9router/pull/5755) is deferred pending validation in a Docker-capable environment. Validate runtime ownership and `sql.js`, `normalizeEnv.js`, and `typeChecks.js` packaging before reconsidering the Dockerfile ownership changes. This machine has no Docker; no Docker validation was run.
+
+### Intake #1072: remaining decisions
+
+- 9router #5709 is closed without merging and is not eligible for porting. No successor was identified in the open PR search for custom quota.
+- 9router #5727 adds WARP address rotation, proxy-pool controls and privileged host setup; adopting that network feature requires a product decision and is deferred.
+- 9router #5734: Antigravity discovery uses the Hub per-account catalog; the dashboard merges active account results and falls back to its existing catalog when no live models resolve.

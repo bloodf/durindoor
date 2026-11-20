@@ -27,6 +27,7 @@ import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import VisibleModelsModal from "./VisibleModelsModal";
 import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
+import { loadLiveAntigravityModels } from "./liveAntigravityModels";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import NetworkNodeStatus from "./NetworkNodeStatus";
@@ -186,6 +187,7 @@ function ProviderDetail({ providerId }) {
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   // Effective auto-synced model list (ModelAutoSyncPanel); null = registry defaults.
   const [syncedModels, setSyncedModels] = useState(null);
+  const [liveAntigravityModels, setLiveAntigravityModels] = useState(null);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
@@ -210,6 +212,15 @@ function ProviderDetail({ providerId }) {
       oneByOneRunRef.current = null;
     };
   }, [providerId]);
+
+  useEffect(() => {
+    if (providerId !== "antigravity") return;
+    const controller = new AbortController();
+    loadLiveAntigravityModels(connections, { signal: controller.signal }).then((models) => {
+      if (!controller.signal.aborted) setLiveAntigravityModels(models);
+    });
+    return () => controller.abort();
+  }, [providerId, connections]);
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -286,7 +297,7 @@ function ProviderDetail({ providerId }) {
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
-  const models = syncedModels || getModelsByProviderId(providerId);
+  const models = liveAntigravityModels || syncedModels || getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
 
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);

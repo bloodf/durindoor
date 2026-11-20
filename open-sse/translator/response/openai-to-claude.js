@@ -2,6 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/index.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
+import { extractTextContent } from "../concerns/textContent.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
@@ -253,7 +254,8 @@ export function openaiToClaudeResponse(chunk, state) {
   }
 
   // Handle regular content
-  if (delta?.content) {
+  const textContent = extractTextContent(delta?.content);
+  if (textContent) {
     stopThinkingBlock(state, results);
 
     if (!state.textBlockStarted) {
@@ -270,7 +272,7 @@ export function openaiToClaudeResponse(chunk, state) {
     results.push({
       type: "content_block_delta",
       index: state.textBlockIndex,
-      delta: { type: "text_delta", text: delta.content }
+      delta: { type: "text_delta", text: textContent }
     });
   }
 

@@ -1,4 +1,5 @@
 import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
@@ -550,7 +551,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       FORMATS.OPENAI;
       const parsed = parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
-        providerBody: finalBody || translatedBody
+        providerBody: finalBody || translatedBody,
+        provider
       });
       if (!parsed) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -590,6 +592,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       responseBody = unwrapped;
     }
+    // Normalize Mistral typed content before coherence checks and projection.
+    if (provider === "mistral") for (const choice of responseBody?.choices || []) normalizeMistralContent(choice?.message);
     const maskedGatewayError = classifyMaskedGatewayError(responseBody);
     if (maskedGatewayError) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });

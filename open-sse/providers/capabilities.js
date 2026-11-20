@@ -1342,6 +1342,9 @@ const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, 
 export function getCapabilitiesForModel(provider, model) {
   const finalize = (caps) => {
     let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
+    if (provider === "gemini-interactions" && model === "gemini-4-hydrogen") {
+      result = { ...result, thinkingEfforts: ["low", "medium", "high", "xhigh"] };
+    }
     // Workers AI pages publish max_tokens defaults, never enforceable ceilings.
     if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
       result = { ...result, maxOutput: undefined };

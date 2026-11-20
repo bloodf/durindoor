@@ -628,6 +628,16 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     return body;
   }
 
+  // Interactions Hydrogen has a distinct documented enum; do not apply the
+  // generic Gemini xhigh-to-high conversion. Unsupported intents are omitted.
+  if (provider === "gemini-interactions" && cleanModel === "gemini-4-hydrogen") {
+    stripAll(body, false);
+    if (cfg.mode === "level" && ["low", "medium", "high", "xhigh"].includes(cfg.level)) {
+      body.reasoning_effort = cfg.level;
+    }
+    return body;
+  }
+
   const fmt = resolveFormat(targetFormat, cleanModel, provider, caps);
   // Anthropic's `display` (summarized | omitted) decides whether thinking text
   // comes back at all; capture what the client asked for before stripAll wipes

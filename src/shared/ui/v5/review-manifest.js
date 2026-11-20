@@ -864,6 +864,7 @@ export const REVIEW_SURFACES = [
       "WebSearch",
       "WebSearchRun",
       "ImageGen",
+      "SyncedImageModel",
       "CodexStreamingRun",
       "RunError"
     ],
@@ -871,6 +872,7 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-example--web-search",
       "v5-review-pages-example--web-search-run",
       "v5-review-pages-example--image-gen",
+      "v5-review-pages-example--synced-image-model",
       "v5-review-pages-example--codex-streaming-run",
       "v5-review-pages-example--run-error"
     ],
@@ -885,11 +887,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-media-sttexamplecard--default",
     "states": [
       "Default",
+      "CustomSttModel",
       "CurlCopies",
       "UploadAndTranscribe"
     ],
     "storyIds": [
       "v5-review-pages-media-sttexamplecard--default",
+      "v5-review-pages-media-sttexamplecard--custom-stt-model",
       "v5-review-pages-media-sttexamplecard--curl-copies",
       "v5-review-pages-media-sttexamplecard--upload-and-transcribe"
     ],
@@ -1090,6 +1094,25 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.stories.jsx",
+    "title": "V5 review/Pages/playground/PlaygroundCompare",
+    "storyId": "v5-review-pages-playground-playgroundcompare--two-columns",
+    "states": [
+      "TwoColumns",
+      "RunsAllColumns",
+      "NoModels"
+    ],
+    "storyIds": [
+      "v5-review-pages-playground-playgroundcompare--two-columns",
+      "v5-review-pages-playground-playgroundcompare--runs-all-columns",
+      "v5-review-pages-playground-playgroundcompare--no-models"
+    ],
+    "pathname": "/dashboard/playground",
+    "routePattern": "/dashboard/playground",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx",
     "title": "V5 review/Pages/playground/PlaygroundPageClient",
     "storyId": "v5-review-pages-playground-playgroundpageclient--empty-conversation",
@@ -1178,6 +1201,25 @@ export const REVIEW_SURFACES = [
     ],
     "pathname": "/dashboard/profile",
     "routePattern": "/dashboard/profile",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/NetworkNodeStatus.stories.jsx",
+    "title": "V5 review/Pages/providers/NetworkNodeStatus",
+    "storyId": "v5-review-pages-providers-networknodestatus--healthy",
+    "states": [
+      "Healthy",
+      "Unreachable",
+      "NoModels"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-networknodestatus--healthy",
+      "v5-review-pages-providers-networknodestatus--unreachable",
+      "v5-review-pages-providers-networknodestatus--no-models"
+    ],
+    "pathname": "/dashboard/providers/ollama-local",
+    "routePattern": "/dashboard/providers/[^/]+",
     "routePriority": 0,
     "standalone": false
   },
@@ -1286,6 +1328,27 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.stories.jsx",
+    "title": "V5 review/Pages/providers/components/LanDiscoveryPanel",
+    "storyId": "v5-review-pages-providers-components-landiscoverypanel--idle",
+    "states": [
+      "Idle",
+      "WithCandidates",
+      "Empty",
+      "Disabled"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-components-landiscoverypanel--idle",
+      "v5-review-pages-providers-components-landiscoverypanel--with-candidates",
+      "v5-review-pages-providers-components-landiscoverypanel--empty",
+      "v5-review-pages-providers-components-landiscoverypanel--disabled"
+    ],
+    "pathname": "/dashboard/providers",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/providers/components/ModelAvailabilityBadge.stories.jsx",
     "title": "V5 review/Pages/providers/components/ModelAvailabilityBadge",
     "storyId": "v5-review-pages-providers-components-modelavailabilitybadge--healthy",
@@ -1329,6 +1392,7 @@ export const REVIEW_SURFACES = [
       "Inventory",
       "StatusFiltering",
       "AllStatusScenarios",
+      "BatchProviderUnavailable",
       "LoadFailureAndRetry",
       "MalformedResponseAndRetry",
       "NetworkFailureAndRetry",
@@ -1340,6 +1404,7 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-providers-providerspage--inventory",
       "v5-review-pages-providers-providerspage--status-filtering",
       "v5-review-pages-providers-providerspage--all-status-scenarios",
+      "v5-review-pages-providers-providerspage--batch-provider-unavailable",
       "v5-review-pages-providers-providerspage--load-failure-and-retry",
       "v5-review-pages-providers-providerspage--malformed-response-and-retry",
       "v5-review-pages-providers-providerspage--network-failure-and-retry",

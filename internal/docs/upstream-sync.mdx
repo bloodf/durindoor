@@ -184,3 +184,7 @@ On dispatch it:
 4. Creates or updates a tracking issue labeled `upstream-scan`.
 
 The workflow needs `issues: write` and `contents: read`. It uses `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`.
+
+## 2026-11-20 deferred Docker validation
+
+Upstream [`87190db`](https://github.com/decolua/9router/commit/87190db) for [#5755](https://github.com/decolua/9router/pull/5755) is deferred pending validation in a Docker-capable environment. Validate runtime ownership and `sql.js`, `normalizeEnv.js`, and `typeChecks.js` packaging before reconsidering the Dockerfile ownership changes. This machine has no Docker; no Docker validation was run.

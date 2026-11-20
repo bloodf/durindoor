@@ -310,7 +310,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  * @param {number} ttftTimeoutMs - Maximum wait for the first raw upstream byte
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, emptyTerminalGuard = null) {
   let stallTimer = null;
   let firstChunkTimer = null;
   let chunkCount = 0;
@@ -390,9 +390,10 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     flush() {dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();}
   });
 
-  const transformedBody = providerResponse.body.
+  let transformedBody = providerResponse.body.
   pipeThrough(upstreamTap).
   pipeThrough(transformStream);
+  if (emptyTerminalGuard) transformedBody = transformedBody.pipeThrough(emptyTerminalGuard);
 
   return createDisconnectAwareStream(
     { readable: transformedBody },

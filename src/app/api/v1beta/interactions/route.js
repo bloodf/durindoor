@@ -7,7 +7,7 @@ import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { interactionEvent, mapInteractionEvents } from "open-sse/utils/interactionEvents.js";
 import { SSE_DONE, SSE_HEADERS_CORS } from "open-sse/utils/sseConstants.js";
 
-import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isRecord, isString } from "@/shared/utils/typeChecks.js";
 
 export { OPTIONS };
 
@@ -52,8 +52,7 @@ async function createInteraction(request) {
       (body.stream !== undefined && !isBoolean(body.stream)) ||
       (body.store !== undefined && body.store !== false) ||
       (body.background !== undefined && body.background !== false) ||
-      (body.generation_config !== undefined && (!body.generation_config ||
-        typeof body.generation_config !== "object" || Array.isArray(body.generation_config) ||
+      (body.generation_config !== undefined && (!isRecord(body.generation_config) ||
         Object.keys(body.generation_config).some((key) => key !== "thinking_level") ||
         model !== "gemini-4-hydrogen" ||
         !["low", "medium", "high", "xhigh"].includes(body.generation_config.thinking_level)))) {

@@ -61,6 +61,8 @@ export function transformToOllama(response, model) {
 
   // Process one complete line (already trimmed). Shared by transform + flush.
   const processLine = (trimmed, controller) => {
+    // A terminal or error closes the wire, including later lines in the same chunk.
+    if (ended) return;
     // Skip SSE control lines, comments, and blanks.
     if (!trimmed || trimmed.startsWith(":") || trimmed.startsWith("event:")) return;
 

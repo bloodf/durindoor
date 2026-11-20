@@ -9,7 +9,7 @@
  */
 import { register, initState } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, recoverTextSnapshotsByOutputIndex, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
+import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
@@ -736,7 +736,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
     // A stream that ends with no terminal event still owes buffered custom input.
     const pending = flushWrappedCustomToolInputs(state);
-    return pending.length ? [...pending, finalChunk] : finalChunk;
+    // A stream that ends with no terminal event still owes the text it held
+    // back for source order: release it before the final chunk (#1073).
+    const held = flushResponsesTextSnapshots(state);
+    return held.length || pending.length ? [...held, ...pending, finalChunk] : finalChunk;
   }
 
   // Handle different event types from Responses API
@@ -773,18 +776,18 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.output_text.delta") {
     const delta = data.delta || "";
     if (!isString(delta) || !delta || state.finishReasonSent) return null;
-    recordResponsesTextDelta(state, data, delta);
-
-    return buildChunk(
-      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { content: delta }
-    );
+    // A delta waits behind an earlier item that can still owe text: the
+    // recovered suffix of that item belongs before this one (#1073).
+    const chunks = recordResponsesTextDelta(state, data, delta);
+    if (!chunks.length) return null;
+    return chunks.length === 1 ? chunks[0] : chunks;
   }
 
   // A snapshot may contain a suffix missing from the delta stream.
   if (eventType === "response.output_text.done") {
-    const suffix = reconcileResponsesTextDone(state, data, data.text);
-    return suffix ? buildChunk({ id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK }, { content: suffix }) : null;
+    const chunks = reconcileResponsesTextDone(state, data, data.text);
+    if (!chunks.length) return null;
+    return chunks.length === 1 ? chunks[0] : chunks;
   }
   if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.MESSAGE) {
     return synthesizeTextItemSnapshot(state, data.item, data.output_index);
@@ -913,7 +916,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
-    const textSnapshots = [...recoverTextSnapshotsByOutputIndex(state, data.response?.output).values()].flat();
+    const textSnapshots = finalizeResponsesTextSnapshots(state, data.response?.output);
     closeResponsesTextSnapshots(state);
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
@@ -986,8 +989,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         { content: `[Error] ${message}` },
         OPENAI_FINISH.STOP
       );
+      // A failed stream still owes the text it already streamed: release it
+      // before the error so no text is dropped (#1073).
+      const held = flushResponsesTextSnapshots(state);
       const pending = flushWrappedCustomToolInputs(state);
-      return pending.length ? [...pending, errorChunk] : errorChunk;
+      return held.length || pending.length ? [...held, ...pending, errorChunk] : errorChunk;
     }
     return null;
   }

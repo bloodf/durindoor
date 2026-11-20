@@ -157,6 +157,9 @@ export const MODEL_CAPABILITIES = {
   // https://platform.kimi.ai/docs/models.md — K3.1 Pro / Highspeed share K3 series 1M context + reasoning_effort.
   // https://platform.kimi.ai/docs/guide/use-reasoning-effort.md — low|high|max (default max); always reasons.
   // https://platform.kimi.ai/docs/guide/troubleshooting — default output 131072; max = 1048576 - prompt.
+  // Kimi Code uses bare K3.1 identifiers.
+  "k3.1-pro": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
   "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
   "kimi-k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
   // https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart — vision+video, thinking always on, 262144 context.

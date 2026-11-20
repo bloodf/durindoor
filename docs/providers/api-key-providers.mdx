@@ -102,6 +102,14 @@ For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts
 
 Buffered responses are decoded the same way before they are projected into the format the client asked for, so a JSON reply to Chat Completions, Claude Messages, Gemini or Responses requests carries the tool call instead of the raw frame. The same reply still arrives as a single JSON body.
 
+## DeepSeek thinking history
+
+DeepSeek's thinking mode requires the `reasoning_content` of earlier assistant turns to be sent back with later requests that carry `tools`; omitting it makes the API answer HTTP 400. OpenAI Chat clients usually drop that field, so on the OpenAI Chat wire DurinDoor adds a single-space `reasoning_content` placeholder to every prior assistant message that has none, or has an empty one.
+
+- A non-empty `reasoning_content` that the client already sent is never replaced, and tool calls, tool call IDs, tool results and message order are left as received. The client's own history object is not modified.
+- The Anthropic-compatible DeepSeek endpoint carries thinking as `thinking` content blocks with signatures. DurinDoor forwards those blocks unchanged and sends no `reasoning_content` on that transport, including when the transport is selected as `claude-apikey`.
+- Another provider that serves a model with the same ID keeps its own endpoint and credentials. On an Anthropic-format transport it never receives `reasoning_content`. On an OpenAI Chat transport, other providers with a `deepseek` model ID receive the same placeholder, as before, because gateways that front DeepSeek enforce the same rule; models with other IDs are untouched.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:

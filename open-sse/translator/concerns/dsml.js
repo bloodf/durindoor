@@ -1,8 +1,8 @@
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { createDsmlStreamState, isDeepSeekFamilyModel, parseDsmlToolCalls } from "../../utils/dsmlToolCalls.js";
 import { fallbackToolCallId } from "./toolCall.js";
-import { OPENAI_FINISH } from "../schema/finishReasons.js";
-import { OPENAI_BLOCK } from "../schema/blocks.js";
+import { CLAUDE_STOP, OPENAI_FINISH } from "../schema/finishReasons.js";
+import { CLAUDE_BLOCK, OPENAI_BLOCK } from "../schema/blocks.js";
 function wireCall(call, index) {
   return { index, id: fallbackToolCallId(index), type: OPENAI_BLOCK.FUNCTION, function: { name: call.name, arguments: JSON.stringify(call.arguments) } };
 }
@@ -69,4 +69,51 @@ export function normalizeDsmlCompletion(response, model, provider) {
     if (choice.finish_reason === OPENAI_FINISH.STOP) choice.finish_reason = OPENAI_FINISH.TOOL_CALLS;
   }
   return response;
+}
+
+/**
+ * Decode DSML frames carried inside a native Claude message's text blocks.
+ *
+ * The Claude transport has no OpenAI `tool_calls` field to decode into, so the
+ * frames would stay literal text in the delivered message. Decoded frames
+ * become `tool_use` blocks placed right after the text block that held them;
+ * a turn that gained a tool call reports the `tool_use` stop reason.
+ *
+ * @param {object} message - Native Claude message, mutated in place.
+ * @param {string} model - Effective upstream model id.
+ * @param {string} provider - Upstream provider key.
+ * @returns {boolean} True when the message changed.
+ */
+export function normalizeDsmlClaudeMessage(message, model, provider) {
+  if (!isDeepSeekFamilyModel(model, provider)) return false;
+  const blocks = message?.content;
+  if (!Array.isArray(blocks)) return false;
+  const decoded = [];
+  let changed = false;
+  let index = 0;
+  for (const block of blocks) {
+    if (block?.type !== CLAUDE_BLOCK.TEXT || !isString(block.text)) {
+      decoded.push(block);
+      continue;
+    }
+    const parsed = parseDsmlToolCalls(block.text);
+    if (!parsed.toolCalls.length) {
+      decoded.push(block);
+      continue;
+    }
+    changed = true;
+    if (parsed.content) decoded.push({ ...block, text: parsed.content });
+    for (const call of parsed.toolCalls) {
+      decoded.push({
+        type: CLAUDE_BLOCK.TOOL_USE,
+        id: fallbackToolCallId(index++),
+        name: call.name,
+        input: call.arguments
+      });
+    }
+  }
+  if (!changed) return false;
+  message.content = decoded;
+  if (message.stop_reason === CLAUDE_STOP.END_TURN) message.stop_reason = CLAUDE_STOP.TOOL_USE;
+  return true;
 }

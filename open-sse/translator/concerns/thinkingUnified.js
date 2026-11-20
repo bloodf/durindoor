@@ -386,6 +386,11 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         if (level) body.reasoning_effort = level;
         break;
       }
+    case "llmtr": {
+        // LLMTR Chat Completions accepts a boolean reasoning switch.
+        body.reasoning = !(none && canDisable);
+        break;
+      }
     case "tokenmarket": {
         // Token Market exposes a provider-agnostic boolean switch under
         // extra_body rather than portable effort levels or thinking budgets.

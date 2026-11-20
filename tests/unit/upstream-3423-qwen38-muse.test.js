@@ -8,6 +8,7 @@ import {
   PATTERN_PRICING,
   getPricingForModel,
 } from "../../open-sse/providers/pricing.js";
+import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
 
 const price = (input, output, cached, reasoning, cache_creation) => ({
   input,
@@ -63,6 +64,25 @@ describe("upstream #3423 ordered Qwen3.8 and Muse capabilities", () => {
     expect(family).toBeGreaterThan(open);
     expect(family).toBeLessThan(patternIndex(PATTERN_CAPABILITIES, "*qwen*max*"));
     expect(family).toBeLessThan(patternIndex(PATTERN_CAPABILITIES, "*qwen*"));
+    expect(patternIndex(PATTERN_CAPABILITIES, "*qwen3.8*omni*")).toBeLessThan(family);
+    expect(patternIndex(PATTERN_CAPABILITIES, "*qwen3.8*27b*")).toBeLessThan(family);
+  });
+
+  it("selects official Qwen 3.8 effort tiers and 27B output limits", () => {
+    expect(getCapabilitiesForModel(null, "Qwen3.8-27B")).toMatchObject({
+      vision: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 262144,
+    });
+    expect(getCapabilitiesForModel(null, "qwen3.8-omni-flash")).toMatchObject({
+      audioInput: true, videoInput: true, thinkingFormat: "qwen-effort",
+    });
+  });
+
+  it("maps Qwen 3.8 thinking requests to the official reasoning_effort field", () => {
+    const body = { reasoning_effort: "high" };
+    applyThinking("openai", "Qwen3.8-27B", body, null);
+    expect(body.reasoning_effort).toBe("xhigh");
+    expect(body.enable_thinking).toBeUndefined();
+    expect(body.thinking_budget).toBeUndefined();
   });
 
   it("keeps Muse specializations ahead of the generic Muse fallback", () => {
@@ -79,16 +99,16 @@ describe("upstream #3423 ordered Qwen3.8 and Muse capabilities", () => {
       vision: false,
       videoInput: false,
       reasoning: true,
-      thinkingFormat: "qwen",
+      thinkingFormat: "qwen-effort",
       contextWindow: 262144,
     });
     expect(getCapabilitiesForModel(null, "qwen3.8-max")).toMatchObject({
       vision: true,
       videoInput: true,
       reasoning: true,
-      thinkingFormat: "qwen",
+      thinkingFormat: "qwen-effort",
       contextWindow: 1000000,
-      maxOutput: 65536,
+      maxOutput: 131072,
     });
   });
 

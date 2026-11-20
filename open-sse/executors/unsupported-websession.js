@@ -68,14 +68,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires OmniRoute's music-generation route and Udio media executor contract",
   },
-  "yuanbao-web": {
-    aliases: ["ybw"],
-    source: [
-      "open-sse/executors/yuanbao-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires Tencent Yuanbao cookie-session SSE executor and validation flow",
-  },
 };
 
 export const BLOCKED_OMNIROUTE_PROVIDER_ALIASES = Object.fromEntries(

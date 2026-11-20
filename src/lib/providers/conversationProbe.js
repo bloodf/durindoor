@@ -2,7 +2,7 @@
 // automated probes get accounts suspended (OmniRoute #14780/#14818). Callers MUST skip
 // (not fail) and never persist an error status for these providers. Read-only session
 // checks (e.g. perplexity-web GET /api/auth/session) create nothing and stay allowed.
-const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free"]);
+const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "yuanbao-web"]);
 
 export const isConversationProbeProvider = (provider) => CONVERSATION_PROBE_PROVIDERS.has(provider);
 

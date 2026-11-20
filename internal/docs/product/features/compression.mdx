@@ -60,6 +60,8 @@ RTK still runs through the dedicated `rtkEnabled` path above. The catalog `rtk` 
 
 `compressionEngines` is a per-id map such as `{ caveman: { enabled: true, level: "full" } }`. One enabled single-mode engine becomes that mode; several become `stacked`, ordered by `stackPriority`.
 
+A settings write that carries `compressionEngines` is a partial patch: the store merges it per engine id (`mergeCompressionEngines` in `src/lib/db/repos/settingsRepo.js`). Engines the write does not mention keep their stored entry, and an engine it does mention is merged field by field, so a write that only flips `enabled` keeps the stored `level` and the stored per-engine options. A merge never adds an engine and never enables an unavailable catalog entry.
+
 ## Bypass
 
 Send this header to disable every token saver for one chat request, including Ponytail slash-command interceptors:

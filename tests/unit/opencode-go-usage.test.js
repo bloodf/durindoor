@@ -31,7 +31,7 @@ import {
 } from "../../src/app/api/providers/[id]/test/testUtils.js";
 
 const originalFetch = global.fetch;
-const USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
+const USAGE_URL = "https://opencode.ai/inference/go/v1/usage";
 const SPENT = '{"error":{"type":"CreditsError","message":"Insufficient balance."}}';
 const INVALID = '{"error":{"type":"AuthError","message":"Invalid API key."}}';
 

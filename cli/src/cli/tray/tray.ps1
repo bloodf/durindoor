@@ -76,6 +76,8 @@ function Write-Event($obj) {
   [Console]::Out.Flush()
 }
 
+Write-Event @{ type = "ready" }
+
 function Add-MenuItem($index, $title, $enabled) {
   $item = New-Object System.Windows.Forms.ToolStripMenuItem
   $item.Text = $title

@@ -14,7 +14,7 @@ import { useFieldContext } from "./Field.jsx";
  * `<label>`, so clicking the text toggles the control. The row has a 44px
  * minimum target so the click area is comfortable.
  *
- * Props: `label`, `hint`, `checked`, `onChange(nextChecked: boolean)`,
+ * Props: `label`, `hint`, `checked`, `onChange(nextChecked: boolean, event)`,
  * `disabled`, `className` (merged on the root label). Remaining props
  * (`name`, `value`, aria-*, …) spread onto the hidden `<input>`; that is
  * also where an enclosing Field's `aria-invalid` / `aria-describedby` land
@@ -52,7 +52,7 @@ const Checkbox = forwardRef(function Checkbox(
         className="peer absolute left-0 top-0 size-11 cursor-inherit opacity-0"
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange?.(event.target.checked)}
+        onChange={(event) => onChange?.(event.target.checked, event)}
         {...rest}
         aria-invalid={ariaInvalid || undefined}
         aria-describedby={mergedDescribedBy}

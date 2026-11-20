@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { KIMI_CODING_MODELS_URL } from "../../../../../open-sse/providers/shared.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import {
@@ -20,6 +21,7 @@ import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { discoverOllamaCatalog, isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -234,6 +236,11 @@ const LIVE_MODEL_RESOLVERS = {
       return model;
     });
     return models.length ? { models } : null;
+  },
+  commandcode: async (conn) => {
+    if (!conn.apiKey) return null;
+    const { proxyOptions } = await liveResolverOptions(conn);
+    return resolveCommandCodeModels((url, options) => proxyAwareFetch(url, options, proxyOptions));
   },
   cursor: async (conn) => {
     const result = await resolveCursorModels({
@@ -789,11 +796,13 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       if (isDisabled(alias, model.id)) continue;
       if (hidePaidModels && isPaidModel(`${alias}/${model.id}`)) continue;
       const caps = getCapabilitiesForModel(providerId, model.id);
+      const thinkingLevels = modelKind(model) === LLM_KIND ? getThinkingLevelsFromCapabilities(caps, providerId, model.id) : null;
       const entry = {
         id: `${alias}/${model.id}`,
         object: "model",
         owned_by: alias,
         capabilities: caps,
+        ...(thinkingLevels?.length ? { thinking_levels: thinkingLevels } : null),
         ...projectModelPresentation({ model, modelId: model.id, providerId, outputAlias: alias }),
       };
       if (modelKind(model) === LLM_KIND) {
@@ -1276,6 +1285,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           };
           if ((kind === LLM_KIND || allowAsLlm) && (hasStaticLimits || Object.keys(explicitCaps).length)) {
             attachModelLimits(model, providerId, modelId, customCaps, liveCaps);
+          }
+          if (kind === LLM_KIND || allowAsLlm) {
+            const levels = getThinkingLevelsFromCapabilities(caps, providerId, modelId);
+            if (levels?.length) model.thinking_levels = levels;
           }
           perProviderModels.push(model);
         }

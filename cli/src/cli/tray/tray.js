@@ -42,10 +42,29 @@ function isTraySupported() {
  * @param {Object} options - { port, onQuit, onOpenDashboard }
  * @returns {Object|null} tray instance or null if not supported/failed
  */
+function trackTrayStartup({ onReady, onError }, timeoutMs = 4000) {
+  let pending = true;
+  const settle = (callback, error) => {
+    if (!pending) return;
+    pending = false;
+    clearTimeout(timer);
+    callback?.(error);
+  };
+  const timer = setTimeout(() => settle(onError, new Error("Tray process did not confirm startup")), timeoutMs);
+  timer.unref?.();
+  return {
+    onReady: () => settle(onReady),
+    onError: (error) => settle(onError, error)
+  };
+}
+
 function initTray(options) {
   if (!isTraySupported()) {
+    options.onError?.(new Error("System tray is unavailable for this session"));
     return null;
   }
+
+  options = { ...options, ...trackTrayStartup(options) };
 
   // Windows uses PowerShell NotifyIcon (AV-safe), others use systray
   if (process.platform === "win32") {
@@ -124,6 +143,8 @@ function initWindowsTray(options) {
       iconPath,
       tooltip: `DurinDoor - Port ${port}`,
       items,
+      onReady: options.onReady,
+      onError: options.onError,
       onClick: (index) => {
         handleClick(index, options, (newEnabled) => {
           const newTitle = newEnabled ? "✓ Auto-start Enabled" : "Enable Auto-start";
@@ -132,9 +153,11 @@ function initWindowsTray(options) {
       }
     });
 
+    if (!trayInstance) options.onError(new Error("Could not launch the Windows tray process"));
     isWinTray = true;
     return trayInstance;
   } catch (err) {
+    options.onError(err);
     return null;
   }
 }
@@ -190,7 +213,10 @@ function initUnixTray(options) {
   const { port } = options;
   try {
     const resolved = resolveSystray();
-    if (!resolved) return null;
+    if (!resolved) {
+      options.onError(new Error("System tray dependency is unavailable"));
+      return null;
+    }
     const { mod: SysTray, isV2 } = resolved;
 
     chmodTrayBin(isV2 ? "systray2" : "systray");
@@ -227,20 +253,15 @@ function initUnixTray(options) {
     });
 
     if (isV2) {
-      // systray2 exposes a ready() promise instead of onReady/onError. Surface
-      // failures (binary crash, EACCES, etc.) so users can see why the icon
-      // didn't appear instead of getting a misleading "running in tray" log.
-      trayInstance.ready().catch((err) => {
-        process.stderr.write(`[durindoor] tray failed to start: ${err && err.message ? err.message : err}\n`);
-      });
+      trayInstance.ready().then(options.onReady, options.onError);
     } else {
-      trayInstance.onReady(() => {});
-      trayInstance.onError(() => {});
+      trayInstance.onReady(options.onReady);
+      trayInstance.onError(options.onError);
     }
 
     return trayInstance;
   } catch (err) {
-    process.stderr.write(`[durindoor] tray init error: ${err.message}\n`);
+    options.onError(err);
     return null;
   }
 }
@@ -319,5 +340,6 @@ function openBrowser(url) {
 
 module.exports = {
   initTray,
-  killTray
+  killTray,
+  trackTrayStartup
 };

@@ -6,7 +6,8 @@ import { OPENAI_BLOCK } from "../schema/index.js";
 // keeps its structure. This fixes providers that reject repeated
 // [{type:text},{type:text}] arrays and avoids losing content when a single
 // message carries several consecutive text blocks.
-export function collapseTextParts(parts) {
+export function collapseTextParts(parts, { preserveCacheControl = false } = {}) {
+  if (preserveCacheControl && parts.some((part) => part?.cache_control)) return parts;
   return parts.length > 0 && parts.every((part) => part?.type === OPENAI_BLOCK.TEXT)
     ? parts.map((part) => part.text || "").join("\n")
     : parts;

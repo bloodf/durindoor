@@ -13,6 +13,8 @@ import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
 import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 
+const LOCAL_USAGE_COOKIE_PROVIDERS = { "grok-web": "Grok Web", "chatgpt-web": "ChatGPT Web" };
+
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
 function isAuthExpiredMessage(usage) {
@@ -41,6 +43,13 @@ export async function GET(request, { params }) {
     }
 
     connection = await backfillCursorIdentity(connection);
+
+    // Web-session subscriptions expose no stable quota API (#2034). Report what
+    // DurinDoor itself recorded for this saved session instead of "unavailable".
+    const localCookieLabel = connection.authType === "cookie" ? LOCAL_USAGE_COOKIE_PROVIDERS[connection.provider] : null;
+    if (localCookieLabel) {
+      return Response.json(await aggregateLocalUsage(connection, localCookieLabel));
+    }
 
     // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/kiro/...)
     // Kiro's headless api-key flow persists authType "api_key" (underscore) while

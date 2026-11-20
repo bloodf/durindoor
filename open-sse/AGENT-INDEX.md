@@ -203,6 +203,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `edge-tts` |  | freeTier | `` |
 | `electronhub` |  | apikey | `https://api.electronhub.ai/v1/chat/completions` |
 | `elevenlabs` |  | apikey | `` |
+| `empiriolabs` |  | apikey | `https://api.empiriolabs.ai/v1/chat/completions` |
 | `empower` |  | apikey | `https://app.empower.dev/api/v1/chat/completions` |
 | `eurouter` |  | apikey | `https://api.eurouter.ai/v1/chat/completions` |
 | `exa` |  | apikey | `` |
@@ -242,7 +243,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `google-tts` |  | freeTier | `` |
 | `greenpt` |  | apikey | `https://api.greenpt.ai/v1/chat/completions` |
 | `grok-cli` | openai-responses | oauth | `https://cli-chat-proxy.grok.com/v1/responses` |
-| `grok-web` | grok-web | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
+| `grok-web` | openai | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
 | `groq` |  | apikey | `https://api.groq.com/openai/v1/chat/completions` |
 | `hackclub` |  | apikey | `https://ai.hackclub.com/proxy/v1/chat/completions` |
 | `haiper` |  | apikey | `https://api.haiper.ai/v1` |

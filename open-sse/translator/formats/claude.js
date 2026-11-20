@@ -464,6 +464,25 @@ export function enforceClaudeToolChoiceThinking(body, model = "", provider = "cl
   return body;
 }
 
+// Console API keys answer Claude Code's identity system text with a misleading
+// 400 "credit balance is too low" (the identity is subscription-only). Native
+// passthrough forwards Claude Code / Claude Desktop (Cowork) bodies untouched, and
+// they lead the system prompt with these blocks, so drop them for API-key targets.
+const CLAUDE_CODE_IDENTITY = /^(You are Claude Code|You are a Claude agent, built on Anthropic's Claude Agent SDK|x-anthropic-billing-header:)/;
+
+export function dropClaudeCodeIdentitySystem(body) {
+  if (!body || !isObject(body) || !body.system) return body;
+  const isIdentity = (t) => isString(t) && CLAUDE_CODE_IDENTITY.test(t.trim());
+  if (isString(body.system)) {
+    const rest = body.system.split("\n").filter((line) => !isIdentity(line)).join("\n").trim();
+    if (rest) body.system = rest; else delete body.system;
+  } else if (Array.isArray(body.system)) {
+    body.system = body.system.filter((b) => !isIdentity(b?.text));
+    if (body.system.length === 0) delete body.system;
+  }
+  return body;
+}
+
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
 // 1. thinking.type "adaptive" → unsupported on older/unversioned Haiku
@@ -670,6 +689,19 @@ export function ensureTrailingUserTurn(messages, originalLastRole) {
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
 export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null, clientLastRole = null) {
+  // Anthropic API keys reject the subscription-only Claude Code identity.
+  // Remove only leading identity blocks or lines, preserving user instructions.
+  if (provider === "anthropic" && body.system) {
+    const isIdentity = (text) => isString(text) && /^(You are Claude Code|You are a Claude agent, built on Anthropic's Claude Agent SDK|x-anthropic-billing-header:)/.test(text.trim());
+    if (isString(body.system)) {
+      const lines = body.system.split("\n");
+      while (lines.length && isIdentity(lines[0])) lines.shift();
+      if (lines.length) body.system = lines.join("\n"); else delete body.system;
+    } else if (Array.isArray(body.system)) {
+      while (body.system.length && isIdentity(body.system[0]?.text)) body.system.shift();
+      if (!body.system.length) delete body.system;
+    }
+  }
   const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl ||
   provider === "ollama" ||
   provider === "ollama-local";

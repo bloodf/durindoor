@@ -4,6 +4,41 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const STREAM_TIMEOUT_MS = parseInt(process.env.TRAE_STREAM_TIMEOUT_MS || "300000", 10);
 
+// Trae's web client origin moved from solo.trae.ai to work.trae.ai (the SOLO
+// coding agent is now served under the TraeWork product surface). The backend
+// appears to validate Origin/Referer against the JWT session's real origin, so
+// a stale value here produces a clean 401 even with a fresh token
+// (cheaper-inference/OmniRoute #12190, PR #13255).
+//
+// Kept overridable — fleet-wide through TRAE_WEB_ORIGIN and per connection
+// through providerSpecificData.refererOrigin for an account that still
+// authenticates against the legacy host — rather than a second hardcoded guess
+// that would go stale the same way.
+const DEFAULT_TRAE_WEB_ORIGIN = (process.env.TRAE_WEB_ORIGIN || "https://work.trae.ai").replace(/\/$/, "");
+
+/**
+ * Resolve the web origin used for the Origin/Referer headers.
+ *
+ * A per-connection `refererOrigin` wins over the fleet default. Only an
+ * absolute http(s) origin is accepted, so a malformed or relative value
+ * cannot produce a broken header; anything else falls back to the default.
+ * The token itself is never sent to this origin — it only travels to the
+ * registry base URL — so this value cannot redirect a credential.
+ *
+ * @param {unknown} value - candidate origin from providerSpecificData
+ * @returns {string} origin without a trailing slash
+ */
+function resolveWebOrigin(value) {
+  if (!isString(value) || !value.trim()) return DEFAULT_TRAE_WEB_ORIGIN;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return DEFAULT_TRAE_WEB_ORIGIN;
+    return url.origin;
+  } catch {
+    return DEFAULT_TRAE_WEB_ORIGIN;
+  }
+}
+
 function flattenQuery(messages = []) {
   const parts = [];
   for (const message of messages) {
@@ -38,13 +73,17 @@ export class TraeExecutor extends BaseExecutor {
 
   buildHeaders(credentials = {}) {
     const providerData = credentials.providerSpecificData || {};
+    const webOrigin = resolveWebOrigin(providerData.refererOrigin);
+    const timezone = providerData.userTimezone;
     return {
       Authorization: `Cloud-IDE-JWT ${credentials.accessToken || credentials.apiKey || ""}`,
       "Content-Type": "application/json",
       "X-Trae-Client-Type": "web",
       "X-Preferenced-Language": providerData.appLanguage || "en",
       "x-user-region": providerData.userRegion || "US",
-      Referer: "https://solo.trae.ai/",
+      Referer: `${webOrigin}/`,
+      Origin: webOrigin,
+      ...(timezone ? { "x-trae-user-timezone": timezone } : null),
       "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 Chrome Safari TraeWeb"
     };
   }

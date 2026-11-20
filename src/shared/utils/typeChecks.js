@@ -62,6 +62,19 @@ export function isObject(value) {
   return value === null || (Object(value) === value && !isFunctionTag(value));
 }
 
+/**
+ * A plain record: an object that is neither `null` nor an array.
+ *
+ * Use this for JSON-like payloads (request bodies, stored metadata), where an
+ * array or `null` is not a usable field container.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isRecord(value) {
+  return isObject(value) && value !== null && !Array.isArray(value);
+}
+
 /** `typeof value === "undefined"` for evaluated values (not undeclared names). */
 export function isUndefined(value) {
   return value === undefined;

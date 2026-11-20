@@ -1,9 +1,11 @@
+import { AdaptaWebExecutor } from "./adapta-web.js";
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
 import { AzureOpenAIExecutor } from "./azure-openai.js";
 import { BedrockExecutor } from "./bedrock.js";
 import { ChipotleExecutor } from "./chipotle.js";
+import { GeminiInteractionsExecutor } from "./gemini-interactions.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { GheCopilotExecutor } from "./ghe-copilot.js";
@@ -38,16 +40,20 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
+import { NlpCloudExecutor } from "./nlpcloud.js";
 import { OneMinAiExecutor } from "./oneminai.js";
 import { GrokCliExecutor } from "./grok-cli.js";
 import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
+import { DevinCliAgenticExecutor } from "./devin-cli-agentic.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
 import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+import { YuanbaoWebExecutor } from "./yuanbao-web.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
@@ -60,6 +66,8 @@ import { resolveProviderAlias } from "../services/model.js";
 const chatGptWebExecutor = new ChatGptWebExecutor();
 
 const executors = {
+  "adapta-web": new AdaptaWebExecutor(),
+  "adp-web": new AdaptaWebExecutor(),
   antigravity: new AntigravityExecutor(),
   agy: new AntigravityExecutor("agy"),
   auggie: new AuggieExecutor(),
@@ -71,6 +79,7 @@ const executors = {
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
+  "gemini-interactions": new GeminiInteractionsExecutor(),
   github: new GithubExecutor(),
   "ghe-copilot": new GheCopilotExecutor(),
   "muse-code": new MuseCodeExecutor(),
@@ -115,17 +124,23 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   oneminai: new OneMinAiExecutor(),
+  nlpcloud: new NlpCloudExecutor(),
   "grok-cli": new GrokCliExecutor(),
   "gitlab-duo": new GitlabExecutor("gitlab-duo"),
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
+  "devin-cli-agentic": new DevinCliAgenticExecutor(),
   windsurf: new WindsurfExecutor(),
+  "t3-web": new T3ChatWebExecutor(),
+  t3chat: new T3ChatWebExecutor(),
   "copilot-web": new CopilotWebExecutor(),
   copilot: new CopilotWebExecutor(),
   "copilot-m365-web": new CopilotM365WebExecutor(),
   m365copilot: new CopilotM365WebExecutor(),
   "veoaifree-web": new VeoAIFreeWebExecutor(),
   "veo-free": new VeoAIFreeWebExecutor(),
+  "yuanbao-web": new YuanbaoWebExecutor(),
+  ybw: new YuanbaoWebExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
   zmf: new ZenmuxFreeExecutor(),
   ...Object.fromEntries(
@@ -221,6 +236,7 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { MimocodeExecutor } from "./mimocode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
+export { NlpCloudExecutor } from "./nlpcloud.js";
 export { OneMinAiExecutor } from "./oneminai.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { GitlabExecutor } from "./gitlab.js";

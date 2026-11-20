@@ -1,9 +1,11 @@
+import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
-import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
+import { normalizeClaudePassthrough, anchorClaudeCache, dropClaudeCodeIdentitySystem } from "../translator/formats/claude.js";
+import { normalizeClaudeAssistantTail } from "../translator/concerns/claudeAssistantTail.js";
 import { validateInputAudio, validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
@@ -577,6 +579,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
 
+  // Validate before generic modality stripping can discard unsupported inputs.
+  if (provider === "nlpcloud" && (hasMediaBlocks(body) || body?.tools?.length || body?.functions?.length)) {
+    finishTimeline("error", "error", "NLP Cloud supports text conversations only");
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "NLP Cloud supports text conversations only");
+  }
+  if (provider === "nlpcloud" && sourceFormat === FORMATS.OPENAI) {
+    try { validateNlpCloudRequest(body, stream); }
+    catch (error) {
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
+  }
+
   // Reject unsupported original audio before modality stripping replaces it with text.
   const inputAudioError = validateInputAudio(body, sourceFormat, targetFormat, cleanUpstreamModel);
   if (inputAudioError) {
@@ -691,6 +706,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true, rawHeaders: clientRawRequest?.headers });
+    if (clientTool === "claude" && provider === "anthropic") dropClaudeCodeIdentitySystem(translatedBody);
     /**
      * Native OpenAI Responses and Claude Messages bodies carry top-level
      * `stream`; Gemini-family native bodies do not and reject an injected key.
@@ -925,6 +941,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // for any call that lost its response) to restore the tool-pairing invariant.
   salvageOrphanedToolResults(translatedBody);
   fixMissingToolResponses(translatedBody);
+  if (finalFormat === FORMATS.CLAUDE) translatedBody = normalizeClaudeAssistantTail(translatedBody);
 
   // Behavioral style prompts are skipped when the request carries media: on
   // susceptible models a terse/style system prompt measurably degrades multimodal

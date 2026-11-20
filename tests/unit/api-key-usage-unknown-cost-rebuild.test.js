@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { incrementApiKeyUsageSync } from "../../src/lib/db/repos/apiKeyUsageTotalsRepo.js";
 import { afterEach, describe, expect, it } from "vitest";
+import { createPostgresAdapter } from "../../src/lib/db/adapters/pgAdapter.js";
 import { createBetterSqliteAdapter } from "../../src/lib/db/adapters/betterSqliteAdapter.js";
 import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
 import { rewriteSqliteDml } from "../../src/lib/db/dialects/postgres/dmlRewrite.js";
@@ -443,6 +444,48 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
   });
 
   describe("migration 028 repairs the durable count", () => {
+    it("passes the repair upsert through the PostgreSQL adapter", async () => {
+      const sqlite = freshDb();
+      insertKey(sqlite, "key-1");
+      insertHistory(sqlite, { cost: null });
+      setTotals(sqlite, "key-1", { unknownCostRequests: 0 });
+      const calls = [];
+      const recorded = new Proxy(sqlite, {
+        get(target, prop) {
+          if (prop === "run") return (sql, params) => {
+            calls.push({ sql, params });
+            return target.run(sql, params);
+          };
+          return target[prop];
+        },
+      });
+      migration028.up(recorded);
+      expect(unknownCount(sqlite, "key-1")).toBe(1);
+      const repairUpserts = calls.filter(({ sql }) => /INSERT INTO "apiKeyUsageTotals"/i.test(sql));
+      expect(repairUpserts).toHaveLength(1);
+
+      const queries = [];
+      const client = {
+        async connect() {},
+        async end() {},
+        async query(sql, params) {
+          queries.push({ sql, params });
+          return { rows: [], rowCount: 1 };
+        },
+      };
+      const pg = await createPostgresAdapter({ url: "postgres://fixture@localhost/fixture", clientFactory: () => client });
+      try {
+        await pg.run(repairUpserts[0].sql, repairUpserts[0].params);
+        const query = queries.at(-1);
+        expect(query.sql).toContain('VALUES ($1, $2)');
+        expect(query.sql).toContain('ON CONFLICT ("apiKeyId") DO UPDATE');
+        expect(query.sql).toContain('"apiKeyUsageTotals"."unknownCostRequests" < excluded."unknownCostRequests"');
+        expect(query.params).toEqual(["key-1", 1]);
+      } finally {
+        await pg.close();
+      }
+    });
+
     it("serializes repair and a second connection's increment across history pruning", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "migration028-lock-"));
       const file = path.join(dir, "data.sqlite");

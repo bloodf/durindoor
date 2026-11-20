@@ -33,6 +33,9 @@ import { isString } from "../../../src/shared/utils/typeChecks.js";
 /** Error code for a refused caller-supplied `provider_options.baseUrl`. */
 export const SEARCH_BASE_URL_OVERRIDE_REFUSED = "SEARCH_BASE_URL_OVERRIDE_REFUSED";
 
+/** Error code for a refused redirect hop that would carry the credential away. */
+export const SEARCH_CREDENTIAL_REDIRECT_REFUSED = "SEARCH_CREDENTIAL_REDIRECT_REFUSED";
+
 /**
  * Refusal for a caller-supplied `provider_options.baseUrl` that would move a
  * stored credential to a destination the administrator did not authorize.
@@ -176,6 +179,53 @@ export function requestCarriesSearchCredential(url, headers, token) {
 }
 
 /**
+ * Refusal for a redirect hop that would move a stored search credential to a
+ * destination the administrator did not authorize.
+ *
+ * The refusal is deliberately distinct from {@link SearchBaseUrlOverrideError}:
+ * a caller-selected base URL is a request problem (400), while a redirect hop
+ * is the upstream provider sending the credential somewhere else (502).
+ */
+export class SearchCredentialRedirectError extends Error {
+  constructor(providerId) {
+    super("Redirect target is not an authorized destination for the stored credential.");
+    this.name = "SearchCredentialRedirectError";
+    this.code = SEARCH_CREDENTIAL_REDIRECT_REFUSED;
+    this.providerId = providerId ?? null;
+  }
+}
+
+/**
+ * Would this dispatch carry the stored credential to an origin the
+ * administrator did not authorize?
+ *
+ * The answer is exact for the request about to be sent: a keyless builder
+ * (SearXNG) carries nothing, so it is never bound; a builder that keeps the
+ * key in the query (google-pse/searchapi) carries it only while the query
+ * keeps it.
+ *
+ * @param {object} config Provider search config.
+ * @param {object} params Search request params (providerOptions/providerSpecificData/token).
+ * @param {string} url Destination of this dispatch.
+ * @param {object|Headers} headers Headers of this dispatch.
+ * @returns {boolean}
+ */
+function credentialLeavesAuthorizedDestination(config, params, url, headers) {
+  const token = params?.token;
+  if (!requestCarriesSearchCredential(url, headers, token)) return false;
+  let target = null;
+  try {
+    target = new URL(url).origin;
+  } catch {
+    target = null;
+  }
+  // An unparsable destination can never be requested, so there is nothing to
+  // protect here — the request fails on its own before any socket is opened.
+  if (!target) return false;
+  return !authorizedSearchOrigins(config, params).has(target);
+}
+
+/**
  * Bind a stored search credential to an administrator-authorized destination.
  *
  * Throws {@link SearchBaseUrlOverrideError} when the built request would carry
@@ -186,17 +236,27 @@ export function requestCarriesSearchCredential(url, headers, token) {
  * @param {{config: object, params: object, url: string, init: object}} input
  */
 export function assertSearchCredentialBinding({ config, params, url, init }) {
-  const token = params?.token;
-  if (!requestCarriesSearchCredential(url, init?.headers, token)) return;
-  let target = null;
-  try {
-    target = new URL(url).origin;
-  } catch {
-    target = null;
+  if (credentialLeavesAuthorizedDestination(config, params, url, init?.headers)) {
+    throw new SearchBaseUrlOverrideError(config?.id);
   }
-  // An unparsable destination can never be requested, so there is nothing to
-  // protect here — the request fails on its own before any socket is opened.
-  if (!target) return;
-  if (authorizedSearchOrigins(config, params).has(target)) return;
-  throw new SearchBaseUrlOverrideError(config?.id);
+}
+
+/**
+ * Bind a stored search credential to an administrator-authorized destination
+ * on a REDIRECT HOP.
+ *
+ * The build-time check only sees the first destination. A redirect hop is a
+ * second destination the same stored credential would travel to, so it needs
+ * the same authorization decision before the hop is dispatched — otherwise an
+ * authorized provider could hand the stored key to any host it likes.
+ *
+ * A hop that carries no credential (a keyless builder, or a query credential
+ * the redirect dropped) is not bound: there is nothing to protect there.
+ *
+ * @param {{config: object, params: object, url: string, init: object}} input
+ */
+export function assertSearchCredentialRedirectBinding({ config, params, url, init }) {
+  if (credentialLeavesAuthorizedDestination(config, params, url, init?.headers)) {
+    throw new SearchCredentialRedirectError(config?.id);
+  }
 }

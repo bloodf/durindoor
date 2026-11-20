@@ -1,5 +1,6 @@
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
+import { supportsServiceTier } from "../config/serviceTier.js";
 import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
@@ -343,7 +344,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
     }
   }
-  const requestedCatalogModel = parseSuffix(requestedModel).cleanModel;
+  const requestedCatalogModel = parseSuffix(requestedModel, provider).cleanModel;
   const unavailableModel = getProviderModels(provider).find((entry) =>
     entry.id === requestedCatalogModel || entry.aliases?.includes(requestedCatalogModel));
   if (unavailableModel?.routingUnavailableReason) {
@@ -427,7 +428,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Parse the request-only dashboard suffix once. The raw ID is retained only
   // for client-visible bypass identity; routing, compression, accounting, and
   // provider dispatch consistently use the clean catalog identity.
-  const parsedModel = parseModelModifiers(requestedModel);
+  // Service-tier suffixes are provider-scoped: only OpenAI and Codex accept a
+  // tier, so on every other provider a tier-shaped suffix stays part of the
+  // opaque model ID and reaches dispatch intact.
+  const parsedModel = parseModelModifiers(requestedModel, provider);
   const cleanModel = parsedModel.cleanModel;
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
@@ -829,7 +833,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
   // Explicit model modifiers take precedence after translation on supported transports.
-  if ((provider === "openai" || provider === "codex") && parsedModel.serviceTier &&
+  if (supportsServiceTier(provider) && parsedModel.serviceTier &&
       (finalFormat === FORMATS.OPENAI || finalFormat === FORMATS.OPENAI_RESPONSES)) {
     translatedBody.service_tier = parsedModel.serviceTier;
   }

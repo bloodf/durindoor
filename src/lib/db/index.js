@@ -273,7 +273,7 @@ export {
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus } from
+  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, rotateApiKey, validateApiKey, getApiKeyUsageLimitStatus } from
 "./repos/apiKeysRepo.js";
 export { getApiKeyProviderConnectionIds, setApiKeyProviderConnectionIds } from
 "./repos/apiKeyProviderConnectionsRepo.js";

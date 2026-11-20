@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -13,6 +14,7 @@ import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { isFunction, isString } from "@/shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
+import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
@@ -75,6 +77,7 @@ function sanitizeProviderConnection(connection) {
 // never more permissive than what each resolver actually consumes.
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
+  if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (provider === "t3-web") return true; // Curated local catalog.
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
@@ -99,6 +102,8 @@ export function canDiscoverModels(connection) {
     // request so the client never spends an HTTP round-trip on a call
     // the resolver would refuse or refuse meaningfully.
     switch (provider) {
+      case "opencode-server":
+        return !resolveOpenCodeServer(connection).error;
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
@@ -115,6 +120,8 @@ export function canDiscoverModels(connection) {
       case "agy":
         return Boolean(connection.accessToken);
       case "ollama-local":
+      case "mlx":
+      case "devin-cli-agentic":
         return true;
       default:
         return false;
@@ -244,6 +251,18 @@ export async function createProvider(request, { shouldCommit } = {}) {
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
+    if (provider === "cerebrium") {
+      if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Cerebrium connections require an operator" }, { status: 403 });
+      if (!cerebriumBaseUrl(body.providerSpecificData?.baseUrl) || !isString(apiKey) || !apiKey.trim()) return NextResponse.json({ error: "Cerebrium requires a deployment /run URL and project API key" }, { status: 400 });
+    }
+    if (provider === "devin-cli-agentic") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "Devin CLI connections require an operator" }, { status: 403 });
+      }
+      if (apiKey) {
+        return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+      }
+    }
     const usesAwsCredentials = AI_PROVIDERS[provider]?.credentialForm === "aws";
     const awsProfile = usesAwsCredentials ? checkBedrockProfileInput(body.providerSpecificData) : { profile: "" };
     if (awsProfile.error) {
@@ -271,6 +290,14 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
+    if (provider === "opencode-server") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "OpenCode Server connections require an operator" }, { status: 403 });
+      }
+      const endpoint = resolveOpenCodeServer({ providerSpecificData, apiKey });
+      if (endpoint.error) return NextResponse.json({ error: endpoint.error }, { status: endpoint.status });
+      providerSpecificData = { ...providerSpecificData, baseUrl: endpoint.baseUrl };
+    }
     if (requiresProviderAccountId(provider)) {
       try {
         providerSpecificData = {
@@ -344,6 +371,10 @@ export async function createProvider(request, { shouldCommit } = {}) {
 
     if (proxyPoolId !== null) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
+    }
+    if (provider === "opencode-server" &&
+      (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {
+      return NextResponse.json({ error: "OpenCode Server requires a direct connection" }, { status: 400 });
     }
     if ((provider === "laya" || isSystemoneCompatibleProvider(provider)) &&
       (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {

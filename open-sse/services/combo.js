@@ -1,3 +1,4 @@
+import { hasResponsesContentItem, isResponsesEnvelope, isResponsesReceipt } from "../utils/responsesContent.js";
 import { withRouteResponseHeaders } from "../utils/routeResponseHeaders.js";
 import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 /**
@@ -14,6 +15,8 @@ import { filterByContextRequirements, sortByContextSize, validateContextRequirem
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
+import { CLAUDE_BLOCK, RESPONSES_ITEM } from "../translator/schema/blocks.js";
+import { OPENAI_FINISH, CLAUDE_STOP, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../translator/schema/finishReasons.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 import { classifyTier } from "./jevClassifier.js";
@@ -25,6 +28,25 @@ import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/s
 const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
 const SSE_CONTENT_TYPE = "text/event-stream";
+
+// HTTP-date allows IMF-fixdate and the two obsolete HTTP date formats.
+const HTTP_DATE = /^(?:[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]+, \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d{2}:\d{2}:\d{2} \d{4})$/;
+
+function comboRetryAfter(response, legacyReset, now) {
+  const header = response.headers?.get?.("retry-after")?.trim() || "";
+  let reset = NaN;
+  if (/^\d+$/.test(header)) {
+    reset = now + Number(header) * 1000;
+  } else if (HTTP_DATE.test(header)) {
+    // The obsolete asctime format has an implicit GMT timezone.
+    reset = Date.parse(header.endsWith(" GMT") ? header : `${header} GMT`);
+  }
+  if (reset >= now && Number.isFinite(new Date(reset).getTime())) return reset;
+  const legacyIsTimestamp = isNumber(legacyReset) ||
+    (isString(legacyReset) && (/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(legacyReset) || HTTP_DATE.test(legacyReset)));
+  const legacyDeadline = legacyIsTimestamp ? new Date(legacyReset).getTime() : NaN;
+  return legacyDeadline > now ? legacyDeadline : null;
+}
 
 function nonEmptyString(value) {
   return isString(value) && value.length > 0;
@@ -303,6 +325,7 @@ function taskWeight(level) {
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
  */
 const comboRotationState = new Map();
+const comboWeightedRotationState = new Map();
 
 /**
  * Keep chat-like traffic on the same first model so provider-side prompt caches
@@ -1143,6 +1166,34 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
     return models;
   }
 
+  // Match member occurrences so duplicate model entries retain their weights.
+  const remaining = Array.isArray(members) ? [...members] : [];
+  const weights = models.map((model) => {
+    const index = remaining.findIndex((member) => member?.id === model);
+    const value = index < 0 ? 1 : remaining.splice(index, 1)[0].weight;
+    return Number.isFinite(value) && value >= 0 ? value : 1;
+  });
+  if (weights.some((weight) => weight > 0) && weights.some((weight) => weight !== weights[0])) {
+    const key = comboName || "__default__";
+    const signature = JSON.stringify([models, weights]);
+    let state = comboWeightedRotationState.get(key);
+    if (!state || state.signature !== signature) state = { signature, current: weights.map(() => 0), head: -1, count: 0 };
+    if (state.head < 0 || state.count >= normalizeStickyLimit(stickyLimit)) {
+      weights.forEach((weight, i) => { state.current[i] += weight; });
+      state.head = weights.findIndex((weight) => weight > 0);
+      weights.forEach((weight, i) => { if (weight > 0 && state.current[i] > state.current[state.head]) state.head = i; });
+      state.current[state.head] -= weights.reduce((sum, weight) => sum + weight, 0);
+      state.count = 0;
+    }
+    state.count++;
+    comboWeightedRotationState.set(key, state);
+    const order = models.map((model, i) => ({ model, i }));
+    order.sort((a, b) => (a.i === state.head ? -1 : b.i === state.head ? 1 :
+      (weights[b.i] > 0) - (weights[a.i] > 0) || (state.current[b.i] + weights[b.i]) - (state.current[a.i] + weights[a.i]) || a.i - b.i));
+    return order.map(({ model }) => model);
+  }
+  comboWeightedRotationState.delete(comboName || "__default__");
+
   const rotationKey = comboName || "__default__";
   const normalizedStickyLimit = normalizeStickyLimit(stickyLimit);
   const state = getRotationState(rotationKey);
@@ -1178,12 +1229,14 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
  */
 export function resetComboRotation(comboName) {
   if (comboName) {
+    comboWeightedRotationState.delete(comboName);
     comboRotationState.delete(comboName);
     const prefix = `${comboName}:`;
     for (const key of comboConversationAffinity.keys()) {
       if (key.startsWith(prefix)) comboConversationAffinity.delete(key);
     }
   } else {
+    comboWeightedRotationState.clear();
     comboRotationState.clear();
     comboConversationAffinity.clear();
   }
@@ -1278,6 +1331,12 @@ export async function detectUpstreamError(response) {
  * Whether a successful (2xx) NON-STREAMING response has a meaningful body.
  * Returns true when the body is empty or a known "empty output" shape despite
  * a 200. Streaming/opaque responses are trusted (caller must not read them).
+ *
+ * A native Responses envelope (`object: "response"` with native `output`
+ * items) is judged by those items and by its status. The envelope's own
+ * `text` field is the request's text CONFIGURATION — metadata, not assistant
+ * content — so it never makes a completed response with a valid native item
+ * look empty (#1072).
  * @param {Response} response
  * @returns {Promise<boolean>}
  */
@@ -1295,27 +1354,69 @@ async function isBodyEmpty(response) {
   if (!payload || Array.isArray(payload) && payload.length === 0) return true;
   if (!isObject(payload) || Object.keys(payload).length === 0) return true;
 
+  // Policy refusals and paused provider turns are valid responses even without text.
+  if ((Array.isArray(payload.choices) && payload.choices.some((choice) => choice?.finish_reason === OPENAI_FINISH.CONTENT_FILTER || nonEmptyString(choice?.message?.refusal))) ||
+      payload.stop_reason === CLAUDE_STOP.REFUSAL || payload.stop_reason === CLAUDE_STOP.PAUSE_TURN ||
+      payload.incomplete_details?.reason === OPENAI_FINISH.CONTENT_FILTER ||
+      (Array.isArray(payload.candidates) && payload.candidates.some((candidate) => GEMINI_CONTENT_FILTER_FINISH_REASONS.has(candidate?.finishReason))) ||
+      payload.promptFeedback?.blockReason) return false;
+
+  const hasText = (value) => isString(value) && value.trim().length > 0;
+  const hasBlock = (block) => hasText(block?.text) || hasText(block?.thinking) ||
+    block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE ||
+    block?.type === RESPONSES_ITEM.FUNCTION_CALL || block?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL ||
+    Boolean(block?.image_url || block?.image || block?.source || block?.audio || block?.file || block?.refusal);
+
+  // Native Responses output items that carry client-usable content.
+  const hasNativeOutput = (output) => Array.isArray(output) && output.some((item) =>
+    hasResponsesContentItem(item) || hasBlock(item) ||
+    (Array.isArray(item?.content) && item.content.some(hasBlock)) ||
+    (Array.isArray(item?.summary) && item.summary.some(hasBlock)));
+
   if (Array.isArray(payload.choices)) {
     if (payload.choices.length === 0) return true;
     return payload.choices.every((choice) => {
       const message = choice?.message ?? choice?.delta;
-      if (!message || !isObject(message)) return true;
-      return !nonEmptyString(message.content) &&
-      !(Array.isArray(message.content) && message.content.length > 0) &&
-      !nonEmptyString(message.reasoning_content) &&
-      !nonEmptyString(message.reasoning) &&
+      if (!message || !isObject(message)) return !hasText(choice?.text);
+      return !hasText(choice?.text) && !hasText(message.content) &&
+      !(Array.isArray(message.content) && message.content.some(hasBlock)) &&
+      !hasText(message.reasoning_content) &&
+      !hasText(message.reasoning) && !message.audio &&
       !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0) &&
       !message.function_call;
     });
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "content")) {
-    return !nonEmptyString(payload.content) &&
-    !(Array.isArray(payload.content) && payload.content.length > 0) &&
-    !(isObject(payload.content) && nonEmptyString(payload.content.text));
+    return !hasText(payload.content) &&
+    !(Array.isArray(payload.content) && payload.content.some(hasBlock)) &&
+    !(isObject(payload.content) && hasBlock(payload.content));
   }
-  if (Object.prototype.hasOwnProperty.call(payload, "text")) return !nonEmptyString(payload.text);
-  if (Array.isArray(payload.output)) return payload.output.length === 0;
+
+  // A queued/in_progress receipt acknowledges an accepted background job even
+  // when the envelope carries no output items. Checked before the generic
+  // `text` branch so a receipt that also echoes a text configuration stays a
+  // receipt instead of being read as an empty body.
+  if (isResponsesReceipt(payload)) return false;
+
+  // Native Responses envelope (#1072): the provider echoes the request's text
+  // CONFIGURATION (`text: {format: {type: "json_schema"}}`) next to its native
+  // output. That field is metadata, not assistant content — the generic `text`
+  // branch below reads any non-string `text` as an empty body, which discarded
+  // a completed response carrying a valid native item (an image_generation_call)
+  // and made combo spend two more attempts and replace the answer with a
+  // fallback. Judge the envelope by its native output items and status.
+  if (isResponsesEnvelope(payload)) {
+    if (hasNativeOutput(payload.output)) return false;
+    // No native output: a `text` STRING is still content, while a text
+    // configuration object is metadata and leaves the envelope empty.
+    return !hasText(payload.text);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "text")) return !hasText(payload.text);
+  if (Array.isArray(payload.candidates)) return !payload.candidates.some((candidate) =>
+    Array.isArray(candidate?.content?.parts) && candidate.content.parts.some((part) => hasText(part?.text) || part?.functionCall || part?.inlineData?.data || part?.inline_data?.data || part?.fileData || part?.file_data));
+  if (Array.isArray(payload.output)) return !hasNativeOutput(payload.output);
   return false;
 }
 
@@ -1475,7 +1576,7 @@ export async function handleComboChat({
   // Weighted strategy: the ranker always re-orders by `index`, which would
   // collapse the weight-driven permutation on every chat call. Skip reordering
   // so the weighted first pick survives the full dispatch pipeline.
-  if (isFunction(quotaRanker) && comboStrategy !== "weighted") {
+  if (isFunction(quotaRanker) && comboStrategy !== "weighted" && !(comboStrategy === "round-robin" && comboWeightedRotationState.has(comboName || "__default__"))) {
     try {
       const quotaOrdered = await quotaRanker(rotatedModels);
       if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {
@@ -1633,7 +1734,7 @@ export async function handleComboChat({
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
         if (comboStrategy === "round-robin") {
           const actuallyRotated = modelStr !== rotatedModels[0];
-          if (actuallyRotated) {
+          if (actuallyRotated && !comboWeightedRotationState.has(comboName || "__default__")) {
             advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
         }
@@ -1654,7 +1755,7 @@ export async function handleComboChat({
       try {
         errorBody = await result.clone().json();
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
-        retryAfter = errorBody?.retryAfter || null;
+        retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
       } catch {
 
         // Ignore JSON parse errors
@@ -1662,13 +1763,6 @@ export async function handleComboChat({
       // Normalize error text to string (Worker-safe)
       if (!isString(errorText)) {
         try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
-      }
-
-      // Track earliest retryAfter across all combo models
-      if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
-        earliestRetryAfter = retryAfter;
-        earliestRetryStatus = result.status;
-        earliestRetryError = errorText || String(result.status);
       }
 
       // A client-side abort that surfaced without a 499 (bare
@@ -1690,7 +1784,7 @@ export async function handleComboChat({
       if (result[LOCAL_POLICY_REJECTION]) localPolicyRejections++;
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs, requestScoped } = checkFallbackError(
+      const { shouldFallback, cooldownMs, requestScoped, terminal } = checkFallbackError(
         result.status,
         errorText,
         0,
@@ -1717,6 +1811,16 @@ export async function handleComboChat({
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
         log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, { status: result.status });
         return result;
+      }
+
+      // Billing and authentication failures can rotate without offering a reset.
+      if (!terminal && result.status !== 401 && result.status !== 403) {
+        const reset = comboRetryAfter(result, retryAfter, Date.now());
+        if (reset !== null && (earliestRetryAfter === null || reset < earliestRetryAfter)) {
+          earliestRetryAfter = reset;
+          earliestRetryStatus = result.status;
+          earliestRetryError = errorText || String(result.status);
+        }
       }
 
       if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
@@ -1776,7 +1880,7 @@ export async function handleComboChat({
   // A transient failure with a retry hint wins: another member may serve the
   // request once it recovers, so the client keeps the Retry-After (#1433).
   // Only a retry hint still in the future beats the request-scoped rejection.
-  if (requestScopedResult && earliestRetryAfter && new Date(earliestRetryAfter).getTime() > Date.now()) {
+  if (requestScopedResult && earliestRetryAfter > Date.now()) {
     const retryHuman = formatRetryAfter(earliestRetryAfter);
     log.warn("COMBO", `No model served the request; returning the retryable failure | ${earliestRetryError} (${retryHuman})`);
     return unavailableResponse(getClientStatusFromError(earliestRetryStatus, earliestRetryError), earliestRetryError, earliestRetryAfter, retryHuman);
@@ -1794,7 +1898,7 @@ export async function handleComboChat({
   const status = allDisabled ? HTTP_STATUS.SERVICE_UNAVAILABLE : getClientStatusFromError(lastStatus, lastError);
   const msg = lastError || "All combo models unavailable";
 
-  if (earliestRetryAfter) {
+  if (earliestRetryAfter > Date.now() && status !== 401 && status !== 403) {
     const retryHuman = formatRetryAfter(earliestRetryAfter);
     log.warn("COMBO", `All models failed | ${msg} (${retryHuman})`);
     return unavailableResponse(status, msg, earliestRetryAfter, retryHuman);

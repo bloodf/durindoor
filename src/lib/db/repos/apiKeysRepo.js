@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { isApiKeyExpired, normalizeApiKeyExpiresAt } from "@/shared/utils/apiKeyExpiry";
 import { mergeApiKeyPolicy, normalizeApiKeyPolicy } from "../helpers/apiKeyPolicy.js";
+import { apiKeyUsageScope } from "../helpers/apiKeyAttribution.js";
 import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 
 /**
@@ -197,17 +198,27 @@ export async function validateApiKey(key, now = Date.now()) {
   return !isApiKeyExpired(row.expiresAt, now);
 }
 
-export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
-  if (!key) return { enforced: false, exceeded: false };
+export async function getApiKeyUsageLimitStatus(key, now = new Date(), apiKeyId = null) {
+  if (!key && !apiKeyId) return { enforced: false, exceeded: false };
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE key = ?`, [key]);
+  // The admitted id resolves the key even when the secret it was admitted
+  // with has since changed; the secret is the fallback for callers that do
+  // not carry one.
+  const row = apiKeyId
+    ? db.get(`SELECT id, isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE id = ?`, [apiKeyId])
+    : db.get(`SELECT id, isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE key = ?`, [key]);
   if (!row || !(row.isActive === 1 || row.isActive === true) || isApiKeyExpired(row.expiresAt, now.getTime())) return { enforced: false, exceeded: false };
   const limit = normalizeDailyLimitTokens(row.dailyLimitTokens);
   if (limit === null || limit === undefined) return { enforced: false, exceeded: false };
   const start = getLocalDayStartIso(now);
+  // The daily allowance belongs to the key, not to the secret it stores: rows
+  // carrying the stable id count directly, legacy rows keep their existing
+  // scoped association through the secret. The branches are disjoint, so a row
+  // is never counted twice.
+  const scope = apiKeyUsageScope(db, { apiKeyId: row.id, apiKey: key });
   const usedTokens = db.all(
-    `SELECT promptTokens, completionTokens, tokens FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [key, start]
+    `SELECT promptTokens, completionTokens, tokens FROM usageHistory WHERE ${scope.clause} AND timestamp >= ?`,
+    [...scope.params, start]
   ).reduce((total, usage) => {
     let tokens = {};
     try {tokens = usage.tokens ? JSON.parse(usage.tokens) : {};} catch {tokens = {};}
@@ -227,4 +238,57 @@ export async function deleteApiKey(id) {
   const db = await getAdapter();
   const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
   return (res?.changes ?? 0) > 0;
+}
+
+/**
+ * Replace a key's secret with a freshly generated one.
+ *
+ * The row is the account; the secret is only the credential that opens it. A
+ * rotation therefore swaps the credential and nothing else: the id, name,
+ * admin scope, policy, quota, groups, provider connections, expiry and history
+ * stay on the same row, so the key keeps its budgets and its usage totals
+ * instead of opening a second account under a new secret.
+ *
+ * The swap is conditional on the secret this call read, so two rotations that
+ * race cannot both report a result: the loser changes no row and is told the
+ * key was rotated elsewhere. Handing out a secret that was never installed
+ * would be worse than the conflict.
+ *
+ * The retired secret is not written anywhere. It stops validating the moment
+ * the update commits, and no ledger, archive or cache keeps a copy of it.
+ *
+ * @param {string} id - the key's stable row id
+ * @param {string} machineId - the server's machine id, the source of the new secret
+ * @returns {Promise<{status: "rotated", key: object} | {status: "not_found"} | {status: "conflict"}>}
+ */
+export async function rotateApiKey(id, machineId) {
+  if (!machineId) throw new Error("machineId is required");
+  const db = await getAdapter();
+  const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
+  let outcome = null;
+  db.transaction(() => {
+    const row = db.get(`SELECT key FROM apiKeys WHERE id = ?`, [id]);
+    if (!row) {
+      outcome = { status: "not_found" };
+      return;
+    }
+    // A rotation has to change the credential. A generator that repeated the
+    // current secret would leave the retired one working, so the candidate is
+    // regenerated until it differs.
+    let candidate = generateApiKeyWithMachine(machineId).key;
+    for (let attempt = 0; attempt < 5 && candidate === row.key; attempt += 1) {
+      candidate = generateApiKeyWithMachine(machineId).key;
+    }
+    if (candidate === row.key) throw new Error("Could not generate a new API key secret");
+    const updated = db.run(
+      `UPDATE apiKeys SET key = ?, machineId = ? WHERE id = ? AND key = ?`,
+      [candidate, machineId, id, row.key]
+    );
+    if ((updated?.changes ?? 0) === 0) {
+      outcome = { status: "conflict" };
+      return;
+    }
+    outcome = { status: "rotated", key: rowToKey(db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id])) };
+  });
+  return outcome;
 }

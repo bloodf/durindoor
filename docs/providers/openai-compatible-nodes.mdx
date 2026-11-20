@@ -75,6 +75,18 @@ OpenAI-compatible and Anthropic-compatible connections have no fixed billing end
 
 `auth` is `bearer` (default), `x-api-key`, or `none`. The connection's saved API key is sent as the credential; `none` sends no auth header. `used`/`total`/`resetAt` are dot/bracket paths into the JSON response (`$.a.b[0].c`), not full JSONPath. A quota only shows up once `total` resolves; a path that cannot resolve is left out rather than reported as 0/0.
 
+Some providers publish only what is left. Map `remaining` instead of `total` for those:
+
+```json
+{
+  "quotas": {
+    "credits": { "remaining": "$.credits", "currency": "credits" }
+  }
+}
+```
+
+A remaining-only quota is reported as a balance with no known total, so it has no usage percentage and counts as empty only when the balance reaches exactly zero. If you map `total` as well, `total` wins and the balance is ignored; if `total` is mapped but missing from the response, the quota is left out instead of falling back to the balance.
+
 ## Aliases and naming
 
 Keep the prefix lowercase and stable. Leave the upstream model id after the slash alone. Avoid spaces.

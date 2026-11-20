@@ -60,6 +60,16 @@ describe("handleChatCore custom system prompt", () => {
     }));
   });
 
+  it("appends ordered combo prompts after client and global instructions", async () => {
+    await run({ body: { model: "gpt-4o", stream: false, messages: [{ role: "system", content: "client" }, { role: "user", content: "hello" }] }, customPromptEnabled: true, customPrompt: "global", comboPrompts: ["outer", "inner"] });
+    expect(sentSystem()).toBe("client\n\nglobal\n\nouter\n\ninner");
+  });
+
+  it("retains combo policy when the request bypasses token savers", async () => {
+    await run({ customPromptEnabled: true, customPrompt: "global", comboPrompts: ["outer", "inner"] }, { "x-durindoor-token-saver": "off" });
+    expect(sentSystem()).toBe("outer\n\ninner");
+  });
+
   it("injects the prompt when enabled, without any saver on", async () => {
     await run({ customPromptEnabled: true, customPrompt: "MY PROMPT" });
     expect(sentSystem()).toBe("MY PROMPT");

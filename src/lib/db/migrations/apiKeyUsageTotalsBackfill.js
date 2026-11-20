@@ -42,6 +42,12 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
   const historyColumns = tableColumnNames(db, "usageHistory");
   const eligibility = unknownCostEligibilitySql(db, "usageHistory");
   const withUnknownCost = hasUnknownCostColumn(db);
+  // A history table that carries the stable key id is joined on it, so the
+  // rebuild follows the key rather than the secret it stores. Legacy rows
+  // without an id keep their existing scoped association through the secret.
+  const join = historyColumns.has("apiKeyId")
+    ? "(usageHistory.apiKeyId = apiKeys.id OR (usageHistory.apiKeyId IS NULL AND usageHistory.apiKey = apiKeys.key))"
+    : "usageHistory.apiKey = apiKeys.key";
   const rows = db.all(`
     SELECT
       apiKeys.id AS apiKeyId,
@@ -49,7 +55,7 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
       COALESCE(SUM(usageHistory.cost), 0) AS totalCost,
       COUNT(usageHistory.id) AS totalRequests
     FROM apiKeys
-    LEFT JOIN usageHistory ON usageHistory.apiKey = apiKeys.key ${eligibility}
+    LEFT JOIN usageHistory ON ${join} ${eligibility}
     GROUP BY apiKeys.id
   `);
 
@@ -61,7 +67,7 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
     for (const row of db.all(`
       SELECT apiKeys.id AS apiKeyId, COUNT(usageHistory.id) AS unknownCostRequests
       FROM apiKeys
-      JOIN usageHistory ON usageHistory.apiKey = apiKeys.key
+      JOIN usageHistory ON ${join}
       WHERE usageHistory.cost IS NULL ${eligibility}
       GROUP BY apiKeys.id
     `)) {
@@ -71,7 +77,7 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
       for (const row of db.all(`
         SELECT apiKeys.id AS apiKeyId, usageHistory.meta
         FROM apiKeys
-        JOIN usageHistory ON usageHistory.apiKey = apiKeys.key
+        JOIN usageHistory ON ${join}
         WHERE usageHistory.cost IS NOT NULL AND usageHistory.meta IS NOT NULL ${eligibility}
       `)) {
         if (parseJson(row.meta)?.costStatus === "unknown") {

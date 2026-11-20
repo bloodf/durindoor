@@ -14,6 +14,7 @@ import { IFlowExecutor } from "./iflow.js";
 import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
 import { DifyExecutor } from "./dify.js";
+import { ReplicateExecutor } from "./replicate.js";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
@@ -39,13 +40,17 @@ import { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
+import { CodeBuddyIntlExecutor } from "./codebuddy-intl.js";
 import { XaiExecutor } from "./xai.js";
+import { NlpCloudExecutor } from "./nlpcloud.js";
 import { OneMinAiExecutor } from "./oneminai.js";
 import { GrokCliExecutor } from "./grok-cli.js";
 import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
+import { DevinCliAgenticExecutor } from "./devin-cli-agentic.js";
 import { WindsurfExecutor } from "./windsurf.js";
+import { CerebriumExecutor } from "./cerebrium.js";
 import { DefaultExecutor } from "./default.js";
 import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
@@ -60,6 +65,8 @@ import {
 } from "./unsupported-websession.js";
 import REGISTRY from "../providers/registry/index.js";
 import { resolveProviderAlias } from "../services/model.js";
+
+import { OpenCodeServerExecutor } from "./opencode-server.js";
 
 const chatGptWebExecutor = new ChatGptWebExecutor();
 
@@ -76,6 +83,7 @@ const executors = {
   "azure-openai": new AzureOpenAIExecutor(),
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
+  cerebrium: new CerebriumExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   "gemini-interactions": new GeminiInteractionsExecutor(),
   github: new GithubExecutor(),
@@ -86,6 +94,7 @@ const executors = {
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
   dify: new DifyExecutor(),
+  replicate: new ReplicateExecutor(),
   "qoder-cn": new QoderExecutor("qoder-cn"),
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
@@ -100,6 +109,7 @@ const executors = {
   "vertex-partner": new VertexExecutor("vertex-partner"),
   qwen: new QwenExecutor(),
   opencode: new OpenCodeExecutor(),
+  "opencode-server": new OpenCodeServerExecutor(),
   "opencode-zen": new OpenCodeZenExecutor(),
   "opencode-go": new OpenCodeGoExecutor(),
   "grok-web": new GrokWebExecutor(),
@@ -120,12 +130,15 @@ const executors = {
   mcode: new MimocodeExecutor(), // Alias for mimocode
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
+  "codebuddy-intl": new CodeBuddyIntlExecutor(),
   xai: new XaiExecutor(),
   oneminai: new OneMinAiExecutor(),
+  nlpcloud: new NlpCloudExecutor(),
   "grok-cli": new GrokCliExecutor(),
   "gitlab-duo": new GitlabExecutor("gitlab-duo"),
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
+  "devin-cli-agentic": new DevinCliAgenticExecutor(),
   windsurf: new WindsurfExecutor(),
   "t3-web": new T3ChatWebExecutor(),
   t3chat: new T3ChatWebExecutor(),
@@ -232,6 +245,7 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { MimocodeExecutor } from "./mimocode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
+export { NlpCloudExecutor } from "./nlpcloud.js";
 export { OneMinAiExecutor } from "./oneminai.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { GitlabExecutor } from "./gitlab.js";

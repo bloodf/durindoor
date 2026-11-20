@@ -1,3 +1,7 @@
+import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
+import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
+import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
@@ -23,6 +27,7 @@ import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
+import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
@@ -38,37 +43,25 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
-/**
- * Check the emitted response shape for client-usable text, reasoning, or tools.
- * Translation can emit a shape other than the client's source dialect, so the
- * body itself—not sourceFormat—selects the content fields inspected here.
- */
-function hasNonemptyResponseValue(value) {
-  return isString(value) ? value.trim().length > 0 :
-  value !== null && isObject(value) && !Array.isArray(value) && Object.keys(value).length > 0;
-}
-
-function hasResponsesContentItem(item) {
-  if (!item || !isObject(item)) return false;
-  if (item.type === "image_generation_call") return hasNonemptyResponseValue(item.result);
-  if (item.type === "mcp_approval_request") {
-    const id = item.id || item.approval_request_id;
-    return isString(id) && id.trim().length > 0 &&
-    hasNonemptyResponseValue(item.name || item.server_label || item.arguments);
+/** Recover a complete JSON object only when its sole trailing content is an SSE done marker (#5384). */
+export function parseJsonWithTrailingDone(text) {
+  const input = text.trimStart();
+  if (!input.startsWith("{")) return null;
+  let depth = 0, quoted = false, escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) {
+      if (!/^\s*data:\s*\[DONE\]\s*$/.test(input.slice(i + 1))) return null;
+      try { return JSON.parse(input.slice(0, i + 1)); } catch { return null; }
+    }
   }
-  if (["function_call", "custom_tool_call", "computer_call", "shell_call", "local_shell_call", "apply_patch_call"].includes(item.type)) {
-    const id = item.call_id || item.id;
-    return isString(id) && id.trim().length > 0 &&
-    hasNonemptyResponseValue(item.name || item.action || item.operation || item.command || item.arguments || item.input);
-  }
-  if (item.type === "reasoning") {
-    return isString(item.reasoning) && item.reasoning.trim() ||
-    Array.isArray(item.summary) && item.summary.some((part) => isString(part?.text) && part.text.trim());
-  }
-  if (item.type !== "message" || !Array.isArray(item.content)) return false;
-  return item.content.some((part) =>
-  isString(part?.text) && part.text.trim() ||
-  isString(part?.refusal) && part.refusal.trim());
+  return null;
 }
 
 /** Check the emitted response shape for client-usable text, reasoning, or tools. */
@@ -93,7 +86,7 @@ function hasUsefulContent(response) {
   }
 
   // Background Responses acknowledge acceptance with an empty output array.
-  if (response?.object === "response" && isString(response.id) && response.id.trim() && ["queued", "in_progress"].includes(response.status)) return true;
+  if (isResponsesReceipt(response)) return true;
   if (Array.isArray(response?.output)) return response.output.some(hasResponsesContentItem);
 
   const candidates = response?.candidates ?? response?.response?.candidates;
@@ -276,6 +269,7 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
  * handles non-streaming JSON bodies.
  */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, options = {}) {
+  if (targetFormat === FORMATS.OPENAI) normalizeDsmlCompletion(responseBody, options.effectiveModel || options.model, options.provider);
   /** Upstream PR #3373: request translators emit arrays; projection uses Set membership. */
   const customToolNames = options.customToolNames instanceof Set ?
   options.customToolNames :
@@ -355,7 +349,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // including a usage object (some clients validate `usage.input_tokens`).
   if (targetFormat === FORMATS.OPENAI_RESPONSES) {
     if (sourceFormat === FORMATS.CLAUDE) {
-      const claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      let claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      if (options.provider === "codex" && hasClaudeSearch(options.requestBody)) claudeMsg = responsesSearchToClaudeMessage(responseBody, claudeMsg, true);
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
     if (sourceFormat === FORMATS.OPENAI) {
@@ -434,6 +429,11 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 
   // Claude
   if (targetFormat === FORMATS.CLAUDE) {
+    // DeepSeek encodes tool calls as DSML text, and its Anthropic-compatible
+    // transport carries those frames inside a plain text block. Decode them
+    // before the content blocks are read so the body yields tool_use blocks
+    // instead of literal markup.
+    normalizeDsmlClaudeMessage(responseBody, options.effectiveModel || options.model, options.provider);
     // Always translate a Claude-format body to OpenAI, even if `content` is
     // missing/null (e.g. M3 with max_tokens:1 spends the budget on thinking
     // and returns `content: null`). Returning the raw body would leave the
@@ -508,7 +508,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -517,6 +517,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     };
     const contentType = providerResponse.headers.get("content-type") || "";
     let responseBody;
+    let responseFormat = targetFormat;
 
     let responseText;
     try {
@@ -548,7 +549,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       FORMATS.OPENAI;
       const parsed = parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
-        providerBody: finalBody || translatedBody
+        providerBody: finalBody || translatedBody,
+        provider
       });
       if (!parsed) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -560,13 +562,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         return sseError;
       }
       responseBody = parsed;
+      // The SSE accumulator produces OpenAI completions even when the provider
+      // transport and client use the same native format (#5380).
+      responseFormat = FORMATS.OPENAI;
     } else {
       try {
         responseBody = JSON.parse(responseText);
       } catch (err) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        responseBody = parseJsonWithTrailingDone(responseText);
+        if (!responseBody) {
+          appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+          console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        }
       }
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -588,12 +596,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       responseBody = unwrapped;
     }
+    // Normalize Mistral typed content before coherence checks and projection.
+    if (provider === "mistral") for (const choice of responseBody?.choices || []) normalizeMistralContent(choice?.message);
     const maskedGatewayError = classifyMaskedGatewayError(responseBody);
     if (maskedGatewayError) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
     }
-    if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
+    if (!isCoherentNonStreamingResponse(responseBody, responseFormat)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     }
@@ -611,16 +621,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // MiniMax's OpenAI transport may inline M3 reasoning as complete <think>
     // segments. Normalize the raw provider completion once, before a client
     // projection can collapse its per-choice OpenAI shape.
-    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
+    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat: responseFormat });
     responseBody = inlineThinking.responseBody;
 
 
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
       responseBody,
-      targetFormat,
+      responseFormat,
       sourceFormat,
-      { claudeCompat, model, customToolNames, toolNameMap, requestBody: body }
+      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
     );
 
     /**
@@ -643,7 +653,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const usage = extractUsageFromResponse(responseBody);
     appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
 
     // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
     // its only content is an optional, possibly null/blank explanation string.

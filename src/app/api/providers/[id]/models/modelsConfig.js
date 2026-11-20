@@ -1,4 +1,7 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
+import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
+import mlx from "open-sse/providers/registry/mlx.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
@@ -13,6 +16,12 @@ import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import {
+  ANTIGRAVITY_CATALOG_URL,
+  buildAntigravityCatalogBody,
+  classifyAntigravityCatalogStatus,
+  parseAntigravityCatalogModels
+} from "open-sse/services/antigravityCatalog.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -277,7 +286,50 @@ export function buildClaudeModelsHeaders(token) {
   };
 }
 
+/** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
+export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
+  model && isString(model.id) &&
+  (!Array.isArray(model.supported_operations) || model.supported_operations.length === 0 || model.supported_operations.includes("CHAT_COMPLETIONS"))
+);
+
 export const PROVIDER_MODELS_CONFIG = {
+  "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
+  replicate: {
+    url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    redirect: "manual",
+    parseResponse: (data) => data?.owner === "meta" && data?.name === "meta-llama-3-70b-instruct"
+      ? [{ id: "meta/meta-llama-3-70b-instruct", name: "Llama 3 70B Instruct" }] : [],
+  },
+  openference: {
+    customResolver: async (connection, proxyOptions) => {
+      if (!connection.accessToken) return { error: "No valid token found", status: 401 };
+      const fetchModels = (token) => proxyAwareFetch("https://api.openference.com/v1/models", {
+        headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000)
+      }, proxyOptions);
+      try {
+        let response = await fetchModels(connection.accessToken);
+        if (response.status === 401 && connection.refreshToken) {
+          const refreshed = await refreshOpenferenceToken(connection, null, proxyOptions);
+          if (refreshed?.accessToken) {
+            await updateProviderCredentials(connection.id, refreshed);
+            response = await fetchModels(refreshed.accessToken);
+          }
+        }
+        if (!response.ok) return { error: `Openference models request failed: ${response.status}`, status: response.status };
+        const data = await response.json();
+        if (!Array.isArray(data?.data)) return { error: "Invalid Openference models response", status: 502 };
+        return { models: data.data };
+      } catch {
+        return { error: "Openference models request failed", status: 502 };
+      }
+    }
+  },
+  llmtr: { ...createOpenAIModelsConfig("https://llmtr.com/v1/models"), parseResponse: parseLlmtrModels },
+  "devin-cli-agentic": {
+    customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
+  },
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
@@ -382,7 +434,7 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   antigravity: {
     // The per-account Hub catalog replaces the stale sandbox models endpoint.
-    url: "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    url: ANTIGRAVITY_CATALOG_URL,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -392,14 +444,17 @@ export const PROVIDER_MODELS_CONFIG = {
     },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => Object.entries(data?.models || {})
-      .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
-      .map(([id, info]) => ({
-        id, name: info?.displayName || id,
-        contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
-        supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
-      }))
+    // The catalog is account scoped: the request carries the signed-in
+    // account's validated project instead of an empty body. A connection
+    // without a usable project omits the field rather than sending a
+    // placeholder.
+    buildBody: (_token, connection) => buildAntigravityCatalogBody(connection),
+    // Tell an auth rejection apart from a transient upstream failure, so a
+    // dead credential is not read as a temporarily empty catalog.
+    classifyStatus: classifyAntigravityCatalogStatus,
+    // Returns null for a payload that is not a catalog, which keeps a known
+    // catalog in place instead of replacing it with an empty list.
+    parseResponse: parseAntigravityCatalogModels
   },
   // Enterprise discovery must use the connection's scoped token and tenant host.
   "ghe-copilot": {
@@ -501,7 +556,9 @@ export const PROVIDER_MODELS_CONFIG = {
   nebius: createOpenAIModelsConfig("https://api.studio.nebius.ai/v1/models"),
   novita: createOpenAIModelsConfig("https://api.novita.ai/openai/v1/models"),
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
+  nan: createOpenAIModelsConfig("https://api.nan.builders/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
+  paraloncloud: createOpenAIModelsConfig("https://paraloncloud.com/v1/models"),
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
@@ -643,6 +700,22 @@ export const PROVIDER_MODELS_CONFIG = {
       parseFn: parseGeminiCliModels,
       errorLabel: "Failed to fetch Antigravity CLI models"
     })
+  },
+  mlx: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const base = (connection.providerSpecificData?.baseUrl || mlx.transport.baseUrl).replace(/\/+$/, "");
+      try {
+        const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+        const response = await guardedProbeFetch(`${base}/models`, {
+          method: "GET", headers, cache: "no-store", signal: AbortSignal.timeout(8000)
+        }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
+        if (!response.ok) return { error: `Failed to fetch models: ${response.status}`, status: response.status };
+        return { models: parseOpenAIStyleModels(await response.json()) };
+      } catch (error) {
+        console.log("Error fetching models from mlx:", sanitizeErrorMessage(error?.message));
+        return { error: "Failed to fetch models", status: 500 };
+      }
+    }
   },
   "ollama-local": {
     customResolver: async (connection, proxyOptions = null) => {

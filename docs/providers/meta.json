@@ -6,6 +6,8 @@
     "index",
     "connecting-accounts",
     "api-key-providers",
+    "arcee-platform",
+    "cerebrium",
     "web-cookie",
     "openai-compatible-nodes",
     "network-llm-servers",
@@ -15,11 +17,16 @@
     "claude-code",
     "codex",
     "codex-app-server",
+    "devin-cli-agentic",
     "antigravity",
     "kiro",
+    "xkiro",
     "cursor",
     "kimi-web",
+    "openference",
+    "tokenharbor",
     "retired",
+    "hetzner",
     "catalog"
   ]
 }

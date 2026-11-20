@@ -1,6 +1,7 @@
 import { nowSec, urlToBase64 } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { isString, isUndefined } from "../../../src/shared/utils/typeChecks.js";
+import { fetchImageAsBase64, parseDataUri } from "../../translator/concerns/image.js";
 
 const BASE_URL = PROVIDER_MEDIA["cloudflare-ai"]?.imageConfig?.baseUrl;
 
@@ -91,7 +92,26 @@ async function buildJsonBody(body) {
   return req;
 }
 
-function buildMultipartBody(body) {
+/**
+ * Client-side rejection: the request asked for something this endpoint cannot
+ * honour. Marked as a 400 so the caller sees the request error instead of a
+ * provider failure.
+ */
+function invalidReference(message) {
+  return Object.assign(new Error(message), { status: 400 });
+}
+
+/**
+ * FLUX.2 takes a single reference image as a binary multipart file part.
+ * `image` may be a data URI, raw base64, a byte array, or a remote URL; the
+ * remote URL is fetched through the guarded image fetcher so a private or
+ * disguised payload can never be pulled in.
+ */
+async function buildMultipartBody(body) {
+  if (body.images != null && (!Array.isArray(body.images) || body.images.length > 0)) {
+    throw invalidReference("FLUX.2 expects a single reference in image; images is not supported");
+  }
+
   const form = new FormData();
   form.append("prompt", body.prompt);
 
@@ -103,6 +123,27 @@ function buildMultipartBody(body) {
   addOptionalFields(form, body, (target, key, value) => {
     target.append(key, String(value));
   });
+
+  let image = typeof body.image === "string" ? body.image.trim() : body.image;
+  if (image != null && image !== "") {
+    if (Array.isArray(image)) {
+      for (const byte of image) {
+        if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+          throw invalidReference("Invalid reference image");
+        }
+      }
+    }
+    if (typeof image === "string" && /^https?:\/\//i.test(image)) {
+      const fetched = await fetchImageAsBase64(image);
+      if (!fetched) throw invalidReference("Unable to fetch reference image safely");
+      image = fetched.url;
+    }
+    const imageData = await resolveImageInput(image);
+    if (!imageData?.bytes?.length) throw invalidReference("Invalid reference image");
+    form.append("input_image_0", new Blob([Uint8Array.from(imageData.bytes)], {
+      type: parseDataUri(image)?.mimeType || "application/octet-stream",
+    }), "reference-image");
+  }
 
   return form;
 }
@@ -158,7 +199,7 @@ export default {
 
   buildBody: async (model, body) =>
   MULTIPART_MODELS.has(model) ?
-  buildMultipartBody(body) :
+  await buildMultipartBody(body) :
   await buildJsonBody(body),
 
 

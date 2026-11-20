@@ -393,6 +393,16 @@ const ANTIGRAVITY_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, vi
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
 export const PROVIDER_CAPABILITIES = {
+  nan: {
+    "deepseek-v4-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
+    "mimo-v2.5": { vision: true, audioInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
+    "mimo-v2.6-flash": { vision: true, audioInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
+    "qwen3.8-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144 },
+    "glm5.3-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
+    "qwen3.6": { vision: true, reasoning: true, thinkingFormat: "openai" },
+    "gemma4": { vision: true, reasoning: true, thinkingFormat: "openai" },
+    "glm5.3": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
+  },
   // Native Mistral Large 4 catalog limits; resellers retain their own limits.
   mistral: Object.fromEntries(["mistral-large-latest", "mistral-large-4", "mistral-large-4-0"].map(id => [id, { vision: true, contextWindow: 1048576 }])),
   "sensenova-intl": {

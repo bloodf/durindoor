@@ -17,7 +17,7 @@ export default {
     "webFetch"
   ],
   fetchConfig: {
-    baseUrl: "https://api.firecrawl.dev/v1/scrape",
+    baseUrl: "https://api.firecrawl.dev/v2/scrape",
     method: "POST",
     authType: "apikey",
     authHeader: "bearer",

@@ -8,6 +8,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import UpdatePanel from "./UpdatePanel";
+import useSettingsStore from "@/store/settingsStore";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Tooltip from "@/shared/ui/components/Tooltip.jsx";
 import {
@@ -59,7 +60,9 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
   const handleToggleCollapse = onToggleCollapse ?? (() => undefined);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [enableTranslator, setEnableTranslator] = useState(false);
+  const settings = useSettingsStore((state) => state.settings);
+  const showUpdateNotifications = settings !== null && settings.showUpdateNotifications !== false;
+  const enableTranslator = settings?.enableTranslator === true;
   // Collapsible group overrides, keyed by group entry key. An absent key falls
   // back to "open when the current route is inside the group".
   const [groupOverrides, setGroupOverrides] = useState({});
@@ -75,19 +78,21 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
     setGroupOverrides((prev) => ({ ...prev, [key]: !(prev[key] ?? active) }));
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then(res => res.json())
-      .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
-      .catch(() => {});
+    useSettingsStore.getState().fetchSettings();
   }, []);
 
-  // Lazy check for new npm version on mount
+  // Wait for settings and discard responses from checks disabled in the meantime.
   useEffect(() => {
-    fetch("/api/version")
-      .then(res => res.json())
-      .then(data => { if (data.hasUpdate) setUpdateInfo(data); })
-      .catch(() => {});
-  }, []);
+    if (!showUpdateNotifications) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch("/api/version")
+        .then(res => res.json())
+        .then(data => { if (!cancelled && data.hasUpdate) setUpdateInfo(data); })
+        .catch(() => {});
+    }, 2500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [showUpdateNotifications]);
 
   const renderItem = (item, indent = false) => {
     if (item.requiresTranslator && !enableTranslator) return null;
@@ -240,7 +245,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
               <span className="text-xs text-dd-muted">v{APP_CONFIG.version}</span>
             </div>
           </Link>
-          {updateInfo && (
+          {showUpdateNotifications && updateInfo && (
             <div className="sidebar-update flex flex-col gap-1.5 rounded p-1 -m-1">
               <span className="text-xs font-semibold text-dd-success">
                 ↑ New version available: v{updateInfo.latestVersion}

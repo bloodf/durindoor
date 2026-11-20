@@ -1672,7 +1672,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   if (Number(status) === 429) {
     try {
-      await recordProviderRateLimitEvidence({
+      const evidenceWrite = {
         connectionId,
         provider,
         model,
@@ -1682,9 +1682,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         // compatibility breaker as a provider reset. Generic cooldown evidence
         // may use that bounded local deadline.
         resetAtMs: evidenceState === "exhausted" ? normalizedReset : normalizedReset || deadline,
-        ...(modelScopedExhaustion ? { exhaustionScope: "model" } : {}),
         signal
-      });
+      };
+      if (modelScopedExhaustion) evidenceWrite.exhaustionScope = "model";
+      await recordProviderRateLimitEvidence(evidenceWrite);
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       log.warn("QUOTA", "Runtime rate-limit evidence could not be persisted");

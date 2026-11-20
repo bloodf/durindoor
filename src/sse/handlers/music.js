@@ -32,6 +32,8 @@ async function replayMusicJob(job, apiKey) {
     ...accounting, timestamp, usageEventId: job.usageEventId, provider: job.provider,
     model: job.model, connectionId: job.connectionId, endpoint: job.endpoint, modality: "music",
     billingEpoch: job.billingEpoch,
+    // The media job carries the stable id of the key that created it.
+    apiKeyId: job.apiKeyId,
   });
   else await retractAcceptedUsage({ usageEventId: job.usageEventId, billingEpoch: job.billingEpoch });
   return connectionResponse(new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }), job.connectionId);
@@ -118,7 +120,7 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
     };
     const result = await handleMusicGenerationCore({
       provider, model, body, credentials, signal: request.signal,
-      onComplete: (accounting) => recordApiKeyUsage(apiKey, usage(accounting)),
+      onComplete: (accounting) => recordApiKeyUsage(apiKey, { ...usage(accounting), apiKeyId }),
     });
     if (result.success) {
       if (result.job) {
@@ -128,7 +130,7 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
         await recordAcceptedJobUsage(apiKey, { billingEpoch, usageEventId, provider, model, connectionId: credentials.connectionId, endpoint, modality: "music" });
         return connectionResponse(result.response, credentials.connectionId);
       }
-      if (!result.deferred && result.accounting?.state === "complete") return recordApiKeyUsageForResponse(apiKey, result.response, usage(result.accounting));
+      if (!result.deferred && result.accounting?.state === "complete") return recordApiKeyUsageForResponse(apiKey, result.response, { ...usage(result.accounting), apiKeyId });
       return result.response;
     }
 

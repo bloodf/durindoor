@@ -131,6 +131,8 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
         usageEventId: JSON.stringify([getRequestId(request), "image-edit", provider, model, credentials.connectionId ?? null]), provider, model,
         connectionId: credentials.connectionId ?? null, endpoint: "/v1/images/edits",
         modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+        // The stable id of the admitted key travels with the usage.
+        apiKeyId,
       });
     }
 

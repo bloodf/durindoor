@@ -152,6 +152,8 @@ async function handleEmbeddingsHandler(request) {
         usageEventId: JSON.stringify([getRequestId(request), "embedding", provider, model, credentials.connectionId ?? null]), provider, model,
         connectionId: credentials.connectionId ?? null, endpoint: "/v1/embeddings",
         modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+        // The stable id of the admitted key travels with the usage.
+        apiKeyId: apiKeyAuth.apiKeyId,
       });
     }
     if (result.status === 499) return result.response;

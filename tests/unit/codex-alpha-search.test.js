@@ -133,10 +133,12 @@ it("routes /v1 through the existing versioned rewrite", async () => {
 
 
 it("isolates search cooldowns while preserving model policy and quota identity", async () => {
+  mocks.auth.billingEpoch = "admission-epoch";
   const req = request();
   expect((await POST(req)).status).toBe(200);
   expect(mocks.policyCheck).toHaveBeenCalledWith(req, "codex/gpt-5.4", "gateway");
   expect(mocks.lifecycle).toHaveBeenCalledWith(expect.objectContaining({ routeKey: "codex/gpt-5.4" }));
+  expect(mocks.usage).toHaveBeenCalledWith("gateway", expect.any(Response), expect.objectContaining({ apiKeyId: "key", billingEpoch: "admission-epoch" }));
   expect(mocks.select).toHaveBeenCalledWith("codex", expect.any(Set), "websearch:codex", { apiKeyId: "key", webSearch: true, modelCandidates: ["gpt-5.4"] });
   expect(mocks.clear).toHaveBeenCalledWith("one", mocks.credentials, "websearch:codex", { provider: "codex", webSearch: true });
   expect(mocks.mark).not.toHaveBeenCalled();

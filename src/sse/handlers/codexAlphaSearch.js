@@ -74,7 +74,7 @@ export async function handleCodexAlphaSearch(request) {
     success = true;
     await clearAccountError(credentials.connectionId, selected, searchLockKey, { provider, webSearch: true });
     return await recordApiKeyUsageForResponse(apiKey, Response.json(data), {
-      billingEpoch: auth.billingEpoch, usageEventId: `${getRequestId(request)}:codex-alpha-search`, provider, model,
+      apiKeyId: auth.apiKeyId, billingEpoch: auth.billingEpoch, usageEventId: `${getRequestId(request)}:codex-alpha-search`, provider, model,
       connectionId: credentials.connectionId, endpoint: "/v1/alpha/search", modality: "webSearch", tokens: {}, nativeUnits: { operations: 1 }, cost: null, costStatus: "unknown", costSource: "unavailable",
     });
   } catch (error) {

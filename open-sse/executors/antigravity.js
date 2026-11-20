@@ -26,10 +26,10 @@ function rewriteOpenCodeBranding(text) {
 }
 
 function stripHarnessTelemetry(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (!isObject(value) || value === null || Array.isArray(value)) return value;
   const cleaned = { ...value };
   for (const key of ANTIGRAVITY_TELEMETRY_KEYS) delete cleaned[key];
-  if (cleaned.labels && typeof cleaned.labels === "object" && !Array.isArray(cleaned.labels)) {
+  if (isObject(cleaned.labels) && cleaned.labels !== null && !Array.isArray(cleaned.labels)) {
     const labels = { ...cleaned.labels };
     for (const key of ANTIGRAVITY_TELEMETRY_KEYS) delete labels[key];
     cleaned.labels = labels;
@@ -250,7 +250,9 @@ export class AntigravityExecutor extends BaseExecutor {
       if (body.request.systemInstruction?.parts) {
         body.request.systemInstruction = {
           ...body.request.systemInstruction,
-          parts: body.request.systemInstruction.parts.map((part) => part && typeof part === "object" ? { ...part } : part)
+          parts: body.request.systemInstruction.parts.map((part) =>
+            isObject(part) && part !== null && !Array.isArray(part) ? { ...part } : part
+          )
         };
       }
     }

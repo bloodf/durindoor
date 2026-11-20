@@ -48,16 +48,17 @@ export function chatbotRequest(body, stream) {
   return payload;
 }
 
-// Native chatbot streaming is raw text terminated by [DONE]. Retain a small
-// suffix across chunks so a split marker is never exposed as generated text.
+// Native chatbot streaming appends [DONE] to raw text. Confirm it at clean
+// EOF so a marker embedded in generated text cannot finish the stream early.
 export function translateNlpCloudStream(upstream, model, id, created) {
-  const reader = upstream.getReader(), decoder = new TextDecoder(), encoder = new TextEncoder();
-  let buffer = "", finished = false, cancelled = false, roleSent = false;
+  const reader = upstream.getReader(), decoder = new TextDecoder("utf-8", { fatal: true }), encoder = new TextEncoder();
+  let buffer = "", finished = false, cancelled = false, hasOutput = false, roleSent = false;
   const queue = [];
   const chunk = (delta, finish_reason = null) => `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
   const emit = (text) => {
     if (!text) return;
     if (!roleSent) { queue.push(chunk({ role: ROLE.ASSISTANT })); roleSent = true; }
+    hasOutput ||= Boolean(text.trim());
     queue.push(chunk({ content: text }));
   };
   const cancel = (reason) => { try { void reader.cancel(reason).catch(() => {}); } catch { /* cleanup */ } };
@@ -68,16 +69,15 @@ export function translateNlpCloudStream(upstream, model, id, created) {
           const { value, done } = await reader.read();
           if (cancelled) return;
           buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-          const end = buffer.indexOf(DONE);
-          if (end >= 0) {
-            emit(buffer.slice(0, end));
+          if (done) {
+            if (!buffer.endsWith(DONE)) throw new Error("NLP Cloud stream ended before completion");
+            emit(buffer.slice(0, -DONE.length));
+            if (!hasOutput) throw new Error("NLP Cloud returned no stream output");
             queue.push(chunk({}, "stop"), "data: [DONE]\n\n");
             finished = true;
-            cancel("NLP Cloud stream complete");
-          } else if (done) {
-            throw new Error("NLP Cloud stream ended before completion");
-          } else if (buffer.length >= DONE.length) {
-            const count = buffer.length - DONE.length + 1;
+            reader.releaseLock();
+          } else if (buffer.length > DONE.length) {
+            const count = buffer.length - DONE.length;
             emit(buffer.slice(0, count));
             buffer = buffer.slice(count);
           }
@@ -99,7 +99,7 @@ export class NlpCloudExecutor extends BaseExecutor {
   async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
     let payload;
     const url = this.buildUrl(model || "");
-    const result = (response, headers = {}, transformedBody = body) => ({ response, url, headers, transformedBody });
+    const result = (response, headers = {}, transformedBody = body, terminalProvenance) => ({ response, url, headers, transformedBody, terminalProvenance });
     // The physical upstream Response owns the quota dispatch ticket. Every
     // returned response below replaces it, so the ticket has to follow the
     // replacement; otherwise the reservation is orphaned and never settled.
@@ -134,7 +134,11 @@ export class NlpCloudExecutor extends BaseExecutor {
     const id = `chatcmpl-nlpcloud-${randomUUID()}`, created = Math.floor(Date.now() / 1000);
     if (stream) {
       if (!response.body) return result(carryTicket(response, fail(502, "NLP Cloud returned an empty stream")), headers, payload);
-      return result(carryTicket(response, new Response(translateNlpCloudStream(response.body, model, id, created), { headers: { "Content-Type": "text/event-stream" } })), headers, payload);
+      if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "text/event-stream") {
+        void response.body.cancel().catch(() => {});
+        return result(carryTicket(response, fail(502, "NLP Cloud returned an invalid stream type")), headers, payload);
+      }
+      return result(carryTicket(response, new Response(translateNlpCloudStream(response.body, model, id, created), { headers: { "Content-Type": "text/event-stream" } })), headers, payload, "validated");
     }
     let data;
     try { data = JSON.parse(await readBoundedResponseText(response, { signal, maxBytes: MAX_JSON_BYTES, timeoutMs: 30000, throwOnTimeout: true })); }
@@ -142,7 +146,7 @@ export class NlpCloudExecutor extends BaseExecutor {
       if (error?.name === "AbortError" || signal?.aborted) throw error;
       return result(carryTicket(response, fail(502, "NLP Cloud returned an unreadable response")), headers, payload);
     }
-    if (!isString(data?.response)) return result(carryTicket(response, fail(502, "NLP Cloud returned an invalid response")), headers, payload);
-    return result(carryTicket(response, jsonResponse(200, { id, object: "chat.completion", created, model, choices: [{ index: 0, message: { role: ROLE.ASSISTANT, content: data.response }, finish_reason: "stop" }] })), headers, payload);
+    if (!isString(data?.response) || !data.response.trim()) return result(carryTicket(response, fail(502, "NLP Cloud returned an invalid response")), headers, payload);
+    return result(carryTicket(response, jsonResponse(200, { id, object: "chat.completion", created, model, choices: [{ index: 0, message: { role: ROLE.ASSISTANT, content: data.response }, finish_reason: "stop" }] })), headers, payload, "validated");
   }
 }

@@ -102,3 +102,18 @@ These 22 candidates are not qualified here because their operative contract is O
 - The existing open/closed qualification reports were absent from the worktree; if they exist elsewhere, their conclusions could change candidate status. This document does not change issue state and makes no live-service claim.
 
 No product code, provider credentials, stored secrets, session data, issue states, or external APIs were touched. This is a source-level qualification and acceptance plan, not a claim of executed tests.
+
+### MLX Gemma and Qwen (#2034)
+
+At OmniRoute `bd9b1324abb82f0e00066f631b6dd7744e5d975a`,
+[`registry/mlx/index.ts`](https://github.com/cheaper-inference/OmniRoute/blob/bd9b1324abb82f0e00066f631b6dd7744e5d975a/open-sse/config/providers/registry/mlx/index.ts)
+creates separate OpenAI-compatible Gemma and Qwen entries on ports 11435 and
+11436. Its `buildOpenAiCompatibleRegistryEntry` composes the default executor,
+OpenAI format and bearer authentication; its default resolver selects that
+executor. DurinDoor uses one `mlx` identity with a URL per connection and a
+request pin. The two example model IDs are passthrough IDs rather than static
+capability declarations. Discovery, JSON, SSE, connection pinning and usage
+are covered by offline mock tests. This does not verify the upstream preset's
+tool-calling, memory, context or output-limit claims against either model.
+The [mlx-lm server](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/server.py)
+is the protocol reference; no model server was started.

@@ -393,6 +393,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : log?.nextTag ? log.nextTag() : "";
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+  const executor = getExecutor(provider);
+  const clientRequestError = executor.validateClientRequest?.(body, sourceFormat);
+  if (clientRequestError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, clientRequestError);
 
   // Per-request token-saver bypass (#2609): `X-DurinDoor-Token-Saver: off`
   // (or the legacy `X-9Router-Token-Saver` alias) disables every saver below
@@ -449,7 +452,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       ? modelCapabilities.customKeys : new Set(Object.keys(modelCapabilities || {})),
     enumerable: false,
   });
-  const executor = getExecutor(provider);
   const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat } = resolveRequestTransport({
     provider,
     alias,
@@ -704,11 +706,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   let toolNameMap;
   let customToolNames;
   let claudeCloaked = false;
-  // Messages requires max_tokens even when the source Chat request omits it.
+  // Messages requires max_tokens; Kimi Chat also needs its documented default
+  // materialized for consistent dispatch and output reservation.
   // Feed its translator the operator/sent/documented default, never the model
   // maximum. The resulting body is also what preflight reserves.
   let translationBody = body;
-  if (targetFormat === FORMATS.CLAUDE &&
+  if ((targetFormat === FORMATS.CLAUDE || (provider === "kimi" && targetFormat === FORMATS.OPENAI)) &&
       body.max_tokens === undefined && body.max_completion_tokens === undefined &&
       body.max_output_tokens === undefined) {
     const defaultOutput = executor.resolveEffectiveOutputReservation?.({}, {

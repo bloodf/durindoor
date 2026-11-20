@@ -41,6 +41,8 @@ Muse Code uses Meta device login or a pasted `META_API_KEY`. Device login can mi
 
 Choose **Kimi Coding (International)** for a `kimi.ai` account and use a model such as `kimi-ai/k3`. Existing `kimi-coding` connections use the `kimi.com` account service and keep the `kmc` model prefix. The Kimi platform and Kimi Coding API-key cards have their own credentials.
 
+The **Kimi** API-key connection uses a key from the [Kimi API Platform](https://platform.kimi.ai/console/api-keys). Initial key validation and model discovery use the platform model list. Testing a saved connection sends a Chat Completions probe and treats 401 or 403 as an invalid key; other responses do not establish model access. OpenAI Chat Completions clients use the platform Chat Completions API, while Anthropic Messages clients use the platform Messages API; both use the same saved platform key. Kimi Coding keys and OAuth accounts remain separate. Model-specific parameter restrictions and availability are controlled by the [platform API](https://platform.kimi.ai/docs/api/chat).
+
 Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an array / `accounts` object. Imports stay serial so connection priorities keep the input order.
 
 ## Import token and cookie OAuth
@@ -114,3 +116,7 @@ With a `passToken`, `mimo-v2.6-pro`, `mimo-v2.6-flash`, and `mimo-v2.6-pro-ultra
 Drag-reorder and the row up/down arrows on the provider page both persist the full connection id list through `PUT /api/providers/reorder` in one transaction. The body must be exactly that provider's ids, no extras and none missing, or the route returns 409 and writes nothing. Per-connection writes for a single move are not used: two independent `PUT /api/providers/:id` calls race under the server's priority-renumbering tiebreak, so a move could land in the wrong position or fail silently.
 
 After connecting, send a short request with an ID from `GET /v1/models` and check **Usage**. A successful login proves token acquisition, not inference access. If login stalls, check callback reachability, an occupied callback port, the selected account region, and any required OAuth client variables.
+
+For CodeBuddy International, create an [International API key](https://www.codebuddy.ai/profile/keys) and save it under **CodeBuddy International** in the dashboard. Tencent's [IAM guide](https://www.codebuddy.ai/docs/cli/iam) lists `CODEBUDDY_API_KEY` for individual developers, identifies International as the default CLI environment, and specifies the `X-Api-Key` header. China keys use the separate CodeBuddy CN connection.
+
+DurinDoor follows the [pinned OmniRoute transport](https://github.com/cheaper-inference/OmniRoute/blob/bd9b1324abb82f0e00066f631b6dd7744e5d975a/open-sse/config/providers/registry/codebuddy-intl/index.ts) for the International chat endpoint, conversation headers and upstream streaming. DurinDoor aggregates the stream for non-streaming clients. The gateway transport has been tested with mocks. Save the key and use a chat request to check it, since the dashboard has no separate validation probe. The curated model list is a fallback and availability varies by account. International OAuth, token refresh, account-specific model discovery and quota reporting are unavailable.

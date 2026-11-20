@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 344 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 348 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -63,6 +63,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | CablyAI | `cablyai` | apikey | 0 | [site](https://cablyai.com) |
 | Cartesia | `cartesia` | apikey | 2 | [site](https://cartesia.ai) |
 | Cerebras | `cerebras` | apikey | 7 | [site](https://www.cerebras.ai) |
+| Cerebrium | `cerebrium` | apikey | 0 | [site](https://cerebrium.ai) |
 | Charm Hyper | `charm-hyper` | apikey | 20 | [site](https://hyper.charm.land) |
 | ChatAnywhere | `chatanywhere` | apikey | 0 |  |
 | ChatGPT Web | `chatgpt-web` | cookie | 11 | [site](https://chatgpt.com) |
@@ -79,6 +80,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Cloudflare | `cloudflare-ai` | apikey | 41 | [site](https://developers.cloudflare.com/workers-ai/) |
 | Naver CLOVA Studio | `clova-studio` | apikey | 3 | [site](https://api.ncloud-docs.com/docs/en/ai-naver-clovastudio-summary) |
 | CodeBuddy CN | `codebuddy-cn` | oauth, apikey | 11 | [site](https://copilot.tencent.com) |
+| CodeBuddy International | `codebuddy-intl` | apikey | 6 | [site](https://www.codebuddy.ai) |
 | Codestral | `codestral` | apikey | 2 | [site](https://mistral.ai) |
 | OpenAI Codex | `codex` | oauth | 42 | [site](https://chatgpt.com/codex) |
 | OpenAI Codex (App-Server, unverified) | `codex-app-server` | none | 30 | [site](https://learn.chatgpt.com/docs/app-server) |
@@ -95,6 +97,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Crof AI | `crof` | apikey | 19 | [site](https://crof.ai) |
 | Cursor IDE | `cursor` | oauth | 14 | [site](https://cursor.com) |
 | Dahl | `dahl` | apikey | 0 |  |
+| DaoXE | `daoxe` | apikey | 9 | [site](https://daoxe.com) |
 | Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
 | DataRobot | `datarobot` | apikey | 0 | [site](https://docs.datarobot.com) |
 | DeepAI | `deepai` | apikey | 1 | [site](https://deepai.org/docs) |
@@ -252,6 +255,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | OpenAI | `openai` | apikey | 103 | [site](https://platform.openai.com) |
 | OpenCode Free | `opencode` | none | 3 |  |
 | OpenCode Go | `opencode-go` | apikey | 20 | [site](https://opencode.ai/auth) |
+| OpenCode Server | `opencode-server` | apikey | 0 | [site](https://opencode.ai/docs/api) |
 | OpenCode Zen | `opencode-zen` | apikey | 82 | [site](https://opencode.ai/zen) |
 | Openference | `openference` | oauth | 0 | [site](https://openference.com) |
 | Openference (API key) | `openference-api` | apikey | 0 | [site](https://openference.com) |
@@ -318,6 +322,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | TinyFish Fetch | `tinyfish` | apikey | 0 | [site](https://docs.tinyfish.ai/fetch-api) |
 | Together AI | `together` | apikey | 83 | [site](https://www.together.ai) |
 | Token Kiosk | `token-kiosk` | apikey | 0 |  |
+| Token Harbor | `tokenharbor` | apikey | 0 | [site](https://tokenharbor.ai) |
 | Token Market | `tokenmarket` | apikey | 5 | [site](https://www.tokensmarket.ai) |
 | TokenReply | `tokenreply` | apikey | 0 |  |
 | TokenRouter | `tokenrouter` | freeTier | 23 | [site](https://tokenrouter.com) |

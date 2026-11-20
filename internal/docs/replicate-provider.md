@@ -29,6 +29,8 @@ One Replicate request is one billable dispatch, and prediction creation is the o
 3. **Denial** — a refused reservation keeps its `QUOTA_DISPATCH_UNAVAILABLE` type. `chatCore` reports it as local quota capacity unavailable (`503`) instead of an upstream `502`, and the request is never sent.
 4. **Settlement** — the physical creation response owns the dispatch ticket. Every response the executor returns replaces that response, so the ticket is transferred to the shaped completion, the shaped stream, or the provider failure. The ticket then settles exactly once through `settleProviderAttemptDispatch`, and a second settlement is a no-op.
 
+JSON and locally synthesized SSE completions require a `succeeded` prediction with nonempty text output. Native SSE needs a text `output` event followed by a complete `done` event with the documented empty JSON object. Errors, cancellation, and premature EOF release the reservation.
+
 The regression evidence lives in `tests/unit/replicate-provider.test.js` under "Replicate quota lifecycle".
 
 ## Verification limits

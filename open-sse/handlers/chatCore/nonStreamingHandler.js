@@ -40,6 +40,27 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
+/** Recover a complete JSON object only when its sole trailing content is an SSE done marker (#5384). */
+export function parseJsonWithTrailingDone(text) {
+  const input = text.trimStart();
+  if (!input.startsWith("{")) return null;
+  let depth = 0, quoted = false, escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) {
+      if (!/^\s*data:\s*\[DONE\]\s*$/.test(input.slice(i + 1))) return null;
+      try { return JSON.parse(input.slice(0, i + 1)); } catch { return null; }
+    }
+  }
+  return null;
+}
+
 /**
  * Check the emitted response shape for client-usable text, reasoning, or tools.
  * Translation can emit a shape other than the client's source dialect, so the
@@ -568,9 +589,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       try {
         responseBody = JSON.parse(responseText);
       } catch (err) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        responseBody = parseJsonWithTrailingDone(responseText);
+        if (!responseBody) {
+          appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+          console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        }
       }
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });

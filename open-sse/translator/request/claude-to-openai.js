@@ -8,6 +8,22 @@ import { collapseTextParts } from "../concerns/message.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
+/** Convert supported top-level Claude documents without fetching remote URLs. */
+export function claudeDocumentToOpenAIPart(block) {
+  const source = block.source;
+  let part;
+  if (source?.type === "text" && isString(source.data) && source.data) {
+    part = { type: OPENAI_BLOCK.TEXT, text: block.title ? `[${block.title}]\n${source.data}` : source.data };
+  } else if (source?.type === "url" && isString(source.url) && /^https?:\/\//i.test(source.url)) {
+    part = { type: OPENAI_BLOCK.TEXT, text: `[Document${block.title ? `: ${block.title}` : ""}] ${source.url}` };
+  } else if (source?.type === "base64" && isString(source.data) && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(source.data) && source.data.length > 0 && (source.media_type === undefined || source.media_type === "application/pdf")) {
+    const file = { file_data: encodeDataUri("application/pdf", source.data) };
+    if (isString(block.title) && block.title) file.filename = block.title;
+    part = { type: OPENAI_BLOCK.FILE, file };
+  }
+  return part;
+}
+
 function stripAnthropicBillingHeader(text) {
   if (!isString(text)) return "";
   return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
@@ -277,6 +293,17 @@ function convertClaudeMessage(msg, opts) {
           const part = { type: OPENAI_BLOCK.TEXT, text: block.text };
           if (opts?.preserveCacheControl && block.cache_control) part.cache_control = block.cache_control;
           parts.push(part);
+          break;
+        }
+
+        case CLAUDE_BLOCK.DOCUMENT: {
+          // Only translate well-formed top-level sources; native Claude blocks
+          // remain attached separately for a subsequent Claude-format hop.
+          const part = claudeDocumentToOpenAIPart(block);
+          if (part) {
+            if (opts?.preserveCacheControl && block.cache_control) part.cache_control = block.cache_control;
+            parts.push(part);
+          }
           break;
         }
 

@@ -29,6 +29,8 @@ Your plan decides which of these chatgpt.com accepts. This checkout exposes two 
 
 ## Session cookie
 
+DurinDoor saves a rotated cookie only if the same connection still holds the session used by the request. If you import a replacement while a request is in flight, the imported cookie stays in place. When two requests try to rotate the same cookie, the first committed rotation wins.
+
 chatgpt.com keeps its NextAuth session in `__Secure-next-auth.session-token`. When the session is larger than about 4KB, NextAuth splits it into chunks named `__Secure-next-auth.session-token.0`, `.1`, and so on, each holding a different part of the value. DurinDoor accepts any of these pastes:
 
 - a bare token value

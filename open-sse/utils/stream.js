@@ -175,6 +175,9 @@ export function createSSEStream(options = {}) {
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();
   let usage = null;
+  // Delay estimates for clients requesting an OpenAI usage trailer.
+  let pendingUsageEstimate = false;
+  let usageChunkMeta = {};
 
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
   const decoder = new TextDecoder("utf-8", { fatal: false });
@@ -512,6 +515,24 @@ export function createSSEStream(options = {}) {
   let currentUpstreamEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
+  const emitPendingUsageEstimate = (controller) => {
+    if (!pendingUsageEstimate) return;
+    pendingUsageEstimate = false;
+    if (hasValidUsage(usage)) return;
+    usage = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+    const chunk = {
+      id: usageChunkMeta.id,
+      object: "chat.completion.chunk",
+      created: usageChunkMeta.created ?? Math.floor(Date.now() / 1000),
+      model: usageChunkMeta.model || model,
+      choices: [],
+      usage: filterUsageForFormat(usage, FORMATS.OPENAI),
+    };
+    const output = `data: ${JSON.stringify(chunk)}\n\n`;
+    reqLogger?.appendConvertedChunk?.(output);
+    controller.enqueue(sharedEncoder.encode(output));
+  };
+
   let streamDoneSent = false; // track duplicate [DONE] across transform + flush
   // OpenAI choices terminate independently. Suppress only repeated terminal
   // chunks for the same index; another choice may still finish later.
@@ -771,6 +792,7 @@ export function createSSEStream(options = {}) {
           if (isDoneLine) {
             if (streamDoneSent) continue;
             pendingInlineThinkingOutput = flushInlineThinkingStates();
+            emitPendingUsageEstimate(controller);
             streamDoneSent = true;
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
           }
@@ -1026,15 +1048,20 @@ export function createSSEStream(options = {}) {
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
+              if (parsed.id || parsed.model) usageChunkMeta = { id: parsed.id, created: parsed.created, model: parsed.model };
               const isFinishChunk = parsed.choices?.some?.((choice) => choice?.finish_reason) ||
               parsed.response?.candidates?.[0]?.finishReason;
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
-              if (isFinishChunk && !hasValidUsage(usage)) {
+              const lateUsage = pendingUsageEstimate && hasValidUsage(parsed.usage);
+              if (isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
+                pendingUsageEstimate = true;
+              } else if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
-              } else if (isFinishChunk && usage) {
+              } else if ((isFinishChunk || lateUsage) && usage) {
+                pendingUsageEstimate = false;
                 const buffered = addBufferToUsage(usage);
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
@@ -1285,7 +1312,10 @@ export function createSSEStream(options = {}) {
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
-              const buffered = addBufferToUsage(state.usage);
+              // Preserve the translated Claude cache details for OpenAI clients.
+              const translatedUsage = targetFormat === FORMATS.CLAUDE && sourceFormat === FORMATS.OPENAI
+                && item.usage?.prompt_tokens !== undefined ? item.usage : state.usage;
+              const buffered = addBufferToUsage(translatedUsage);
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), sourceFormat);
             }
 
@@ -1367,6 +1397,7 @@ export function createSSEStream(options = {}) {
             let output = "";
             if (parsed?.done) {
               if (!streamDoneSent) {
+                emitPendingUsageEstimate(controller);
                 upstreamTerminal.observe({ rawDone: true, eventName: currentUpstreamEvent });
                 currentUpstreamEvent = null;
                 streamDoneSent = true;
@@ -1410,6 +1441,7 @@ export function createSSEStream(options = {}) {
             }
           }
 
+          emitPendingUsageEstimate(controller);
           if (!hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
           }

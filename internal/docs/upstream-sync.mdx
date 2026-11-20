@@ -184,3 +184,9 @@ On dispatch it:
 4. Creates or updates a tracking issue labeled `upstream-scan`.
 
 The workflow needs `issues: write` and `contents: read`. It uses `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`.
+
+### Intake #1072: remaining decisions
+
+- 9router #5709 is closed without merging and is not eligible for porting. No successor was identified in the open PR search for custom quota.
+- 9router #5727 adds WARP address rotation, proxy-pool controls and privileged host setup; adopting that network feature requires a product decision and is deferred.
+- 9router #5734: Antigravity discovery uses the Hub per-account catalog; the dashboard merges active account results and falls back to its existing catalog when no live models resolve.

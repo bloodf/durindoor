@@ -1,6 +1,8 @@
 // Port of decolua/9router#5786 (source commit
 // efbe45057816b197220135bcaf71cd1dc52c9523, fixes upstream #5763):
-// publish and resolve the configured custom-provider prefix consistently.
+// publish and resolve the configured custom-provider prefix consistently. The
+// prefix is the published/display label; the Playground addresses requests by
+// the stable node id.
 //
 // A custom provider (openai-/anthropic-compatible, custom embedding, System
 // One) is a provider node whose id is a UUID-bearing string such as
@@ -177,47 +179,70 @@ describe("resolveProviderPrefix", () => {
 // ── 2. the dashboard Playground publishes the prefix ────────────────────────
 
 describe("Playground model ids", () => {
-  it("publishes the configured prefix for a live compatible model", () => {
+  it("addresses a live compatible model by the node id and displays the prefix", () => {
     const row = normalizeLiveModel({ id: MODEL, name: "DeepSeek" }, connection());
-    expect(row.requestModel).toBe(`${PREFIX}/${MODEL}`);
-    expect(row.id).toBe(`${PREFIX}/${MODEL}`);
-    // The node-id label stays available so a selection saved before the
-    // prefix was published still resolves.
-    expect(row.legacyId).toBe(`${NODE_ID}/${MODEL}`);
+    // Canonical internal request id: stable, bound to the selected node.
+    expect(row.requestModel).toBe(`${NODE_ID}/${MODEL}`);
+    expect(row.id).toBe(`${NODE_ID}/${MODEL}`);
+    // The configured prefix is shown separately and is never the request id.
+    expect(row.prefix).toBe(PREFIX);
+    expect(row.displayModel).toBe(`${PREFIX}/${MODEL}`);
+    expect(row.requestModel).not.toBe(row.displayModel);
     expect(row.providerId).toBe(NODE_ID);
     expect(row.providerName).toBe("MiraiAPI");
   });
 
-  it("publishes the configured prefix for a static compatible model", () => {
+  it("addresses a static compatible model by the node id and displays the prefix", () => {
     const row = normalizeStaticModel({ id: MODEL, name: "DeepSeek" }, connection());
-    expect(row.requestModel).toBe(`${PREFIX}/${MODEL}`);
-    expect(row.legacyId).toBe(`${NODE_ID}/${MODEL}`);
+    expect(row.requestModel).toBe(`${NODE_ID}/${MODEL}`);
+    expect(row.id).toBe(row.requestModel);
+    expect(row.prefix).toBe(PREFIX);
+    expect(row.displayModel).toBe(`${PREFIX}/${MODEL}`);
   });
 
-  it("keeps the node id when no prefix is configured", () => {
+  it("shows the node id as the label when no prefix is configured", () => {
     const bare = connection({ providerSpecificData: { apiType: "chat" } });
     const row = normalizeLiveModel({ id: MODEL }, bare);
     expect(row.requestModel).toBe(`${NODE_ID}/${MODEL}`);
-    expect(row.legacyId).toBeUndefined();
+    expect(row.displayModel).toBe(`${NODE_ID}/${MODEL}`);
+  });
+
+  it("keeps the request id on the selected node when two nodes share a prefix", () => {
+    const other = connection({ provider: OTHER_NODE_ID });
+    const a = normalizeLiveModel({ id: MODEL }, connection());
+    const b = normalizeLiveModel({ id: MODEL }, other);
+    expect(a.displayModel).toBe(b.displayModel);
+    expect(a.requestModel).toBe(`${NODE_ID}/${MODEL}`);
+    expect(b.requestModel).toBe(`${OTHER_NODE_ID}/${MODEL}`);
+  });
+
+  it("keeps a live id that already carries a provider segment verbatim", () => {
+    const row = normalizeLiveModel({ id: "vendor/some-model" }, connection());
+    expect(row.requestModel).toBe("vendor/some-model");
   });
 
   it("leaves a built-in provider on its own id", () => {
     const codex = { id: "conn-codex", provider: "codex", name: "Codex", isActive: true, providerSpecificData: {} };
     expect(normalizeLiveModel({ id: "gpt-5.4" }, codex).requestModel).toBe("gpt-5.4");
-    expect(normalizeStaticModel({ id: "gpt-5.4" }, codex).requestModel).toBe("codex/gpt-5.4");
+    const stat = normalizeStaticModel({ id: "gpt-5.4" }, codex);
+    expect(stat.requestModel).toBe("codex/gpt-5.4");
+    expect(stat.displayModel).toBe("codex/gpt-5.4");
+    // A stray prefix on a built-in connection never renames it.
+    const stray = { ...codex, providerSpecificData: { prefix: "not-the-alias" } };
+    expect(normalizeStaticModel({ id: "gpt-5.4" }, stray).displayModel).toBe("codex/gpt-5.4");
   });
 
-  it("keeps the group and ordering contract under the published prefix", () => {
+  it("keeps the group and ordering contract under the request id", () => {
     const groups = groupModelsByProvider(
       [{ provider: NODE_ID, providerName: "MiraiAPI" }],
       [
-        { providerId: NODE_ID, id: `${PREFIX}/b-model`, name: "Bravo" },
-        { providerId: NODE_ID, id: `${PREFIX}/a-model`, name: "Alpha" }
+        { providerId: NODE_ID, id: `${NODE_ID}/b-model`, name: "Bravo" },
+        { providerId: NODE_ID, id: `${NODE_ID}/a-model`, name: "Alpha" }
       ]
     );
     expect(groups).toHaveLength(1);
     expect(groups[0].models.map((m) => m.name)).toEqual(["Alpha", "Bravo"]);
-    expect(groups[0].models.map((m) => m.id)).toEqual([`${PREFIX}/a-model`, `${PREFIX}/b-model`]);
+    expect(groups[0].models.map((m) => m.id)).toEqual([`${NODE_ID}/a-model`, `${NODE_ID}/b-model`]);
   });
 });
 

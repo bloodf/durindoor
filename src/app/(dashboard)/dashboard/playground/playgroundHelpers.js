@@ -86,14 +86,14 @@ export function getProviderLabel(connection) {
 }
 
 /**
- * The prefix a connection's provider is addressed by in a published model id.
+ * The prefix a connection's provider is published under.
  *
- * A custom provider (OpenAI-/Anthropic-compatible, custom embedding, System One)
- * is a provider node whose id is a UUID-bearing string. The operator configures
- * a short prefix on the node, and every other surface — `/v1/models`, the
- * model picker, the provider page — advertises that prefix. The Playground
- * must send the same id, otherwise the model id it shows is not the model id
- * it uses.
+ * A custom provider (OpenAI-/Anthropic-compatible, custom embedding, System
+ * One) is a provider node whose id is a UUID-bearing string. The operator
+ * configures a short prefix on the node, and the other surfaces — `/v1/models`,
+ * the model picker, the provider page — advertise that prefix. In the
+ * Playground the prefix is a display label only: the request is addressed by
+ * the stable node id.
  *
  * @param {object} connection
  * @returns {string}
@@ -106,11 +106,28 @@ export function resolveConnectionPrefix(connection) {
 }
 
 /**
+ * Split a Playground model address into the id sent to the gateway and the
+ * label shown to the operator.
+ *
+ * `requestModel` (also the row `id`, so saved selections keep resolving) is
+ * always `<provider id>/<model>`, which for a compatible node is the node id.
+ * `displayModel` is the same model under the configured prefix, and `prefix`
+ * is that prefix on its own. For a built-in provider, or a node without a
+ * configured prefix, the two forms are identical.
+ */
+function buildModelAddress(connection, providerId, modelId) {
+  const prefix = resolveConnectionPrefix(connection);
+  const requestModel = `${providerId}/${modelId}`;
+  const displayModel = `${prefix}/${modelId}`;
+  return { requestModel, displayModel, prefix };
+}
+
+/**
  * Build one Playground model row from a registry (static) model.
  *
- * `requestModel` is the id sent to the gateway. For a custom provider it is
- * the published prefix form; `legacyId` keeps the node-id form resolvable so a
- * selection saved before the prefix was published still resolves.
+ * `requestModel` is the id sent to the gateway: always the provider id, so the
+ * address stays bound to the selected node. `displayModel` carries the
+ * published prefix form for the UI.
  *
  * @param {object} model
  * @param {object} connection
@@ -121,12 +138,12 @@ export function normalizeStaticModel(model, connection) {
   // Agent-only static models (e.g. Devin) are not chat candidates; skip them.
   if (!isChatModel(model)) return null;
   const providerId = connection.providerId || connection.provider || connection.id;
-  const prefix = resolveConnectionPrefix(connection);
-  const requestModel = `${prefix}/${model.id}`;
+  const { requestModel, displayModel, prefix } = buildModelAddress(connection, providerId, model.id);
   return {
     id: requestModel,
     requestModel,
-    legacyId: prefix === providerId ? undefined : `${providerId}/${model.id}`,
+    displayModel,
+    prefix,
     name: model.name || model.id,
     providerId,
     providerName: connection.providerName || getProviderLabel(connection),
@@ -137,8 +154,9 @@ export function normalizeStaticModel(model, connection) {
 /**
  * Build one Playground model row from a live-discovered model.
  *
- * A live id that already carries a provider segment is kept verbatim; a bare
- * id on a custom provider is published under the configured prefix.
+ * A live id that already carries a provider segment is kept verbatim. A bare
+ * id on a compatible provider is addressed by the node id and displayed under
+ * the configured prefix.
  *
  * @param {object|string} model
  * @param {object} connection
@@ -154,18 +172,18 @@ export function normalizeLiveModel(model, connection) {
 
   const providerId = connection.providerId || connection.provider || connection.id;
   let requestModel = rawId;
+  let displayModel = rawId;
+  let prefix = resolveConnectionPrefix(connection);
   const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
-  let legacyId;
   if (isCompatible && !rawId.includes("/")) {
-    const prefix = resolveConnectionPrefix(connection);
-    requestModel = `${prefix}/${rawId}`;
-    if (prefix !== providerId) legacyId = `${providerId}/${rawId}`;
+    ({ requestModel, displayModel, prefix } = buildModelAddress(connection, providerId, rawId));
   }
 
   return {
     id: requestModel,
     requestModel,
-    legacyId,
+    displayModel,
+    prefix,
     name: displayName,
     providerId,
     providerName: connection.providerName || getProviderLabel(connection),

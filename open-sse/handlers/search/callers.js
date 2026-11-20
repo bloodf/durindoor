@@ -30,7 +30,7 @@
  * @property {Record<string,unknown>} [providerSpecificData]
  */
 
-import { assertOutboundUrlAllowed } from "../../utils/outboundUrlGuard.js";
+import { resolveSearchBaseUrl } from "./baseUrl.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -69,15 +69,17 @@ export function getProviderSetting(params, key) {
  * Resolve the search base URL, requiring caller-controlled overrides to be
  * public HTTP(S) targets. Provider defaults are trusted administrator config.
  *
+ * The trust decision itself lives in `./baseUrl.js` (OmniRoute #12620): the
+ * administrator's connection endpoint wins over a caller-supplied one, and a
+ * stored credential may only travel to an administrator-authorized origin.
+ *
  * @param {SearchProviderConfig} config
  * @param {SearchRequestParams} params
  * @returns {string}
  * @throws {import("../../utils/outboundUrlGuard.js").OutboundUrlGuardError} When an override is invalid or targets a private address.
  */
 export function resolveBaseUrl(config, params) {
-  const override = getProviderSetting(params, "baseUrl");
-  if (override) assertOutboundUrlAllowed(override, "public-only");
-  return (override || config.baseUrl).replace(/\/+$/, "");
+  return resolveSearchBaseUrl(config, params).baseUrl;
 }
 
 /**

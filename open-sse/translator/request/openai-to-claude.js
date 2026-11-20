@@ -23,6 +23,8 @@ const CLAUDE_OAUTH_TOOL_PREFIX = "";
  * Missing provider context and compatible providers receive no added persona.
  * OpenAI input_audio has no supported Claude mapping. Reject it before content
  * extraction can discard it, for both streaming and non-streaming requests.
+ * For Claude, remove a leading client billing metadata line from system text
+ * before caching the remaining instructions.
  * @throws {Error} With statusCode 400 so chatCore rejects the request before upstream dispatch.
  */
 export function openaiToClaudeRequest(model, body, stream, credentials = null, translationContext = null) {
@@ -73,7 +75,13 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
       if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-        systemParts.push(isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n"));
+        const text = isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n");
+        if (msg.role === ROLE.SYSTEM && translationContext?.provider === "claude") {
+          const stripped = text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
+          if (stripped !== "" || text === stripped) systemParts.push(stripped);
+        } else {
+          systemParts.push(text);
+        }
       }
     }
 

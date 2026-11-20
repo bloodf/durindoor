@@ -333,6 +333,8 @@ function isAstraMinimalFloorModel(provider, model) {
 // Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
 export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (!level) return level;
+  // Adaptive intent must resolve to an OpenAI wire effort.
+  if (level === "auto") level = "high";
   const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
   if (Array.isArray(allowed)) {
     if (allowed.includes(level)) return level;

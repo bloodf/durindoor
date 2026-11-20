@@ -64,8 +64,8 @@ export async function handleEmbeddingsCore({
     input,
     encoding_format: body.encoding_format || "float",
     dimensions: body.dimensions,
-    ...(inputType ? { input_type: inputType } : {})
   });
+  if (inputType) requestBody.input_type = inputType;
 
   log?.debug?.("EMBEDDINGS", `${provider.toUpperCase()} | ${model} | input=${Array.isArray(input) ? `array[${input.length}]` : "string"}${inputType ? ` | input_type=${inputType}` : ""}`);
 

@@ -26,7 +26,7 @@ import {
 } from "../concerns/finishReason.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function recordFinalOutputItem(state, eventType, data) {
   if (eventType !== "response.output_item.added" && eventType !== "response.output_item.done") return;
   const outputIndex = Number(data.output_index);
@@ -918,7 +918,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       // A zero counter is a reported cache miss, not missing usage data.
       const cacheCounters = [responseUsage.cache_read_input_tokens, responseUsage.cached_tokens,
         responseUsage.input_tokens_details?.cached_tokens, responseUsage.prompt_tokens_details?.cached_tokens];
-      if (cacheCounters.some((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+      if (cacheCounters.some((value) => isNumber(value) && Number.isFinite(value) && value >= 0)) {
         state.usage.prompt_tokens_details ||= {};
         state.usage.prompt_tokens_details.cached_tokens = normalized.cached_tokens ?? 0;
       }

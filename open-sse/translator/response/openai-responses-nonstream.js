@@ -14,7 +14,7 @@ function usageFromResponses(responseUsage) {
   // Preserve an explicitly reported zero separately from an absent counter.
   const reportedCacheRead = [responseUsage?.cache_read_input_tokens, responseUsage?.cached_tokens,
     responseUsage?.input_tokens_details?.cached_tokens, responseUsage?.prompt_tokens_details?.cached_tokens]
-    .some((value) => typeof value === "number" && Number.isFinite(value) && value >= 0);
+    .some((value) => isNumber(value) && Number.isFinite(value) && value >= 0);
   const cacheCreate = n(raw.cache_creation_input_tokens);
   const freshInput = Math.max(0, inputTotal - cacheRead - cacheCreate);
 

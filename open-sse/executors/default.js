@@ -498,7 +498,10 @@ export class DefaultExecutor extends BaseExecutor {
     if (credentials?.runtimeTransport?.format === "claude") {
       return this.ensureThinkingBudget(transformed, model, requestContext?.modelCapabilities);
     }
-    return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model, requestContext?.modelCapabilities);
+    const injected = injectReasoningContent({ provider: this.provider, model, body: transformed });
+    // Model-wide injection must not reintroduce fields rejected by Mistral.
+    if (this.provider === "mistral") stripUnsupportedParams(this.provider, model, injected, requestContext?.modelCapabilities, undefined, credentials);
+    return this.ensureThinkingBudget(injected, model, requestContext?.modelCapabilities);
   }
 
   // ClinePass / OpenRouter-style thinking models burn all of max_tokens on reasoning

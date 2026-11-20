@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
@@ -227,7 +228,8 @@ function aggregateParsedChunks(chunks, fallbackModel, {
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
   format = FORMATS.OPENAI,
-  providerBody = null
+  providerBody = null,
+  provider = null
 } = {}) {
   const chunks = [];
   const terminalObservations = [];
@@ -238,6 +240,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
     }
     try {
       const chunk = JSON.parse(data);
+      if (provider === "mistral") for (const choice of chunk?.choices || []) normalizeMistralContent(choice?.delta);
       chunks.push(chunk);
       terminalObservations.push({ chunk, eventName });
     } catch {return null;}
@@ -531,7 +534,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap) :
       parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
-        providerBody: finalBody || translatedBody
+        providerBody: finalBody || translatedBody,
+        provider
       });
       if (!parsed) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });

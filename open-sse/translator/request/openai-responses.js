@@ -337,7 +337,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // raw body apart from an ordinary function's malformed JSON, and never
   // freeform-wrap a name like "apply_patch" that this request declares as an
   // ordinary function (upstream #4208 review, round 2).
-  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+  // Responses Lite can declare tools in input additional_tools envelopes (#5378).
+  const responseTools = [
+    ...(Array.isArray(body.tools) ? body.tools : []),
+    ...(Array.isArray(body.input) ? body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
+  ];
+  const declaredToolTypes = buildDeclaredToolTypes(responseTools);
 
   // Extract reasoning text from summary[].text or encrypted_content fallback
   const extractReasoningText = (item) => {
@@ -549,8 +554,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
    * response routes can restore Responses semantics (upstream PR #3373).
    * (declaredToolTypes collected earlier, above the item loop.)
    */
-  if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.
+  if (responseTools.length) {
+    result.tools = responseTools.
     flatMap((tool) => {
       // Already in Chat Completions format: { type: "function", function: { name, ... } }.
       // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.

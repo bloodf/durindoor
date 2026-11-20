@@ -1,4 +1,5 @@
 import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
@@ -38,6 +39,27 @@ import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fa
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
+}
+
+/** Recover a complete JSON object only when its sole trailing content is an SSE done marker (#5384). */
+export function parseJsonWithTrailingDone(text) {
+  const input = text.trimStart();
+  if (!input.startsWith("{")) return null;
+  let depth = 0, quoted = false, escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) {
+      if (!/^\s*data:\s*\[DONE\]\s*$/.test(input.slice(i + 1))) return null;
+      try { return JSON.parse(input.slice(0, i + 1)); } catch { return null; }
+    }
+  }
+  return null;
 }
 
 /** Check the emitted response shape for client-usable text, reasoning, or tools. */
@@ -487,6 +509,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     };
     const contentType = providerResponse.headers.get("content-type") || "";
     let responseBody;
+    let responseFormat = targetFormat;
 
     let responseText;
     try {
@@ -518,7 +541,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       FORMATS.OPENAI;
       const parsed = parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
-        providerBody: finalBody || translatedBody
+        providerBody: finalBody || translatedBody,
+        provider
       });
       if (!parsed) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -530,13 +554,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         return sseError;
       }
       responseBody = parsed;
+      // The SSE accumulator produces OpenAI completions even when the provider
+      // transport and client use the same native format (#5380).
+      responseFormat = FORMATS.OPENAI;
     } else {
       try {
         responseBody = JSON.parse(responseText);
       } catch (err) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        responseBody = parseJsonWithTrailingDone(responseText);
+        if (!responseBody) {
+          appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+          console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        }
       }
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -558,12 +588,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       responseBody = unwrapped;
     }
+    // Normalize Mistral typed content before coherence checks and projection.
+    if (provider === "mistral") for (const choice of responseBody?.choices || []) normalizeMistralContent(choice?.message);
     const maskedGatewayError = classifyMaskedGatewayError(responseBody);
     if (maskedGatewayError) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
     }
-    if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
+    if (!isCoherentNonStreamingResponse(responseBody, responseFormat)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     }
@@ -581,14 +613,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // MiniMax's OpenAI transport may inline M3 reasoning as complete <think>
     // segments. Normalize the raw provider completion once, before a client
     // projection can collapse its per-choice OpenAI shape.
-    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
+    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat: responseFormat });
     responseBody = inlineThinking.responseBody;
 
 
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
       responseBody,
-      targetFormat,
+      responseFormat,
       sourceFormat,
       { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
     );

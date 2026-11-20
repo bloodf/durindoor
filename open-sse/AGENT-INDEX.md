@@ -7,6 +7,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 
 | id | executor | source file |
 |---|---|---|
+| `adapta-web` | AdaptaWebExecutor | `./adapta-web.js` |
+| `adp-web` | AdaptaWebExecutor | `./adapta-web.js` |
 | `agy` | AntigravityExecutor | `./antigravity.js` |
 | `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
@@ -29,9 +31,11 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cxa` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
+| `devin-cli-agentic` | DevinCliAgenticExecutor | `./devin-cli-agentic.js` |
 | `dify` | DifyExecutor | `./dify.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
+| `gemini-interactions` | GeminiInteractionsExecutor | `./gemini-interactions.js` |
 | `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
@@ -49,6 +53,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mimocode` | MimocodeExecutor | `./mimocode.js` |
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
 | `muse-code` | MuseCodeExecutor | `./muse-code.js` |
+| `nlpcloud` | NlpCloudExecutor | `./nlpcloud.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
 | `oneminai` | OneMinAiExecutor | `./oneminai.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
@@ -62,6 +67,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
 | `replicate` | ReplicateExecutor | `./replicate.js` |
+| `t3-web` | T3ChatWebExecutor | `./t3-chat-web.js` |
+| `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
@@ -72,6 +79,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xai` | XaiExecutor | `./xai.js` |
 | `xiaomi-mimo` | XiaomiMimoExecutor | `./xiaomi-mimo.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
+| `ybw` | YuanbaoWebExecutor | `./yuanbao-web.js` |
+| `yuanbao-web` | YuanbaoWebExecutor | `./yuanbao-web.js` |
 | `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 | `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 
@@ -172,6 +181,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
+| `devin-cli-agentic` | claude | free | `devin://acp/stdio` |
 | `dgrid` |  | apikey | `https://api.dgrid.ai/v1/chat/completions` |
 | `dify` |  | apikey | `` |
 | `digitalocean` |  | apikey | `https://inference.do-ai.run/v1/chat/completions` |
@@ -204,6 +214,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
+| `gemini-interactions` | openai | apikey | `https://generativelanguage.googleapis.com/v1beta/interactions` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
@@ -296,6 +307,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `navy` |  | apikey | `https://api.navy/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
 | `nimble` |  | apikey | `` |
+| `nlpcloud` | openai | apikey | `https://api.nlpcloud.io/v1/gpu` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
 | `nous-research` | openai | apikey | `https://inference-api.nousresearch.com/v1/chat/completions` |
 | `novita` |  | apikey | `https://api.novita.ai/openai/v1/chat/completions` |
@@ -414,6 +426,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xiaomi-mimo-token-plan` | openai | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
+| `xkiro` |  | apikey | `https://api.xkiro.com/v1/chat/completions` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |
 | `yolo-auto` |  | apikey | `https://yolo-auto.com/v1/chat/completions` |
 | `youcom` |  | apikey | `` |

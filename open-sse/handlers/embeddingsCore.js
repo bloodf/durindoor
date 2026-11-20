@@ -6,6 +6,9 @@ import { resolveCredentialProxyOptions } from "../services/oauthCredentialManage
 import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { mediaAccounting } from "./mediaAccounting.js";
+import { getModelMeta, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { modelParams } from "../providers/models/schema.js";
+import { resolveInputType } from "../config/embeddingParams.js";
 
 /**
  * Core embeddings handler — orchestrator only. Provider-specific URL/headers/body/normalize
@@ -50,16 +53,21 @@ export async function handleEmbeddingsCore({
   }
 
   const ctx = { input };
+  const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const declaredParams = modelParams(getModelMeta(alias, model));
+  const inputType = declaredParams.includes("input_type")
+    ? resolveInputType(declaredParams, body.input_type)
+    : body.input_type;
   const url = adapter.buildUrl(model, credentials, ctx);
   const headers = adapter.buildHeaders(credentials, ctx);
   const requestBody = adapter.buildBody(model, {
     input,
     encoding_format: body.encoding_format || "float",
     dimensions: body.dimensions,
-    input_type: body.input_type
   });
+  if (inputType) requestBody.input_type = inputType;
 
-  log?.debug?.("EMBEDDINGS", `${provider.toUpperCase()} | ${model} | input_type=${Array.isArray(input) ? `array[${input.length}]` : "string"}`);
+  log?.debug?.("EMBEDDINGS", `${provider.toUpperCase()} | ${model} | input=${Array.isArray(input) ? `array[${input.length}]` : "string"}${inputType ? ` | input_type=${inputType}` : ""}`);
 
   let providerResponse;
   try {

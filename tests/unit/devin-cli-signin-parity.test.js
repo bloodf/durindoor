@@ -50,3 +50,43 @@ it("imports separate credentials and speaks the current ACP prompt and streaming
   }
   expect(fetcher).not.toHaveBeenCalled();
 });
+
+it("preserves split UTF-8 in concurrent ACP stdout streams through shutdown", async () => {
+  const children = [childFixture(), childFixture()];
+  spawn.mockReturnValueOnce(children[0]).mockReturnValueOnce(children[1]);
+  const results = await Promise.all(children.map(() => getExecutor("devin-cli").execute({
+    body: { messages: [{ role: "user", content: "hello" }] },
+  })));
+  const answers = ["café", "茶🍵"];
+  const stops = Buffer.from('{"id":3,"result":{"stopReason":"end_turn"}}\n');
+  const chunks = children.map((child, i) => {
+    receive(child, { id: 1, result: {} });
+    receive(child, { id: 2, result: { sessionId: `session-${i}` } });
+    const line = Buffer.from(`${JSON.stringify({
+      method: "session/update",
+      params: {
+        sessionId: `session-${i}`,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: [[{ type: "text", text: answers[i] }], { type: "text", text: "!" }],
+        },
+      },
+    })}\n`);
+    const splitAt = line.indexOf(Buffer.from(i === 0 ? "é" : "🍵")) + 1;
+    child.stdout.emit("data", line.subarray(0, splitAt));
+    return line.subarray(splitAt);
+  });
+
+  for (const [i, child] of children.entries()) {
+    child.stdout.emit("data", Buffer.concat([chunks[i], stops]));
+    child.emit("close", 0);
+    const frames = (await results[i].response.text()).trim().split("\n\n");
+    expect(frames.pop()).toBe("data: [DONE]");
+    expect(frames.map((frame) => JSON.parse(frame.slice("data: ".length)).choices[0])).toEqual([
+      { index: 0, delta: { role: "assistant", content: "" }, finish_reason: null },
+      { index: 0, delta: { content: `${answers[i]}!` }, finish_reason: null },
+      { index: 0, delta: {}, finish_reason: "stop" },
+    ]);
+    expect(child.stdin.end).toHaveBeenCalledTimes(1);
+  }
+});

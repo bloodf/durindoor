@@ -35,6 +35,8 @@ Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an
 
 Cursor, Windsurf, Trae, and Devin CLI do not start a browser authorize step from the dashboard. You import a token the IDE or CLI already issued. Cursor has no public refresh endpoint; reconnect with a fresh import when the session dies. See [Cursor](./cursor.mdx).
 
+Trae accepts a user-approved Cloud-IDE-JWT import. DurinDoor uses a default expiry of 14 days and requires a fresh import when the session expires. The dashboard form accepts the token. Clients using `POST /api/oauth/trae/import-token` can also provide `userRegion` and `userTimezone` for the connection. The region defaults to `US`. The response omits the credential.
+
 iFlow can take a browser cookie instead of the PKCE path. `POST /api/oauth/iflow/cookie` requires a `BXAuth=` field.
 
 ## Cookie connections

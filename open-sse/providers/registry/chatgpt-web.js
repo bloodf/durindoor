@@ -32,6 +32,10 @@ export default {
   // Routes observed in ChatGPT's own Pro and Free web UIs (OmniRoute's list).
   // Tool calls are emulated on the HTTP transport only.
   models: [
+    // OmniRoute fbd3396, open-sse/config/providers/registry/chatgpt-web/index.ts.
+    { id: "gpt-6", name: "GPT-6 Sol — Instant", supportsVision: true },
+    { id: "gpt-6-thinking", name: "GPT-6 Sol — Thinking", supportsReasoning: true, supportsVision: true },
+    { id: "gpt-6-pro", name: "GPT-6 Astra — Pro", supportsReasoning: true, supportsVision: true },
     { id: "gpt-5-6", name: "GPT-5.6 Sol — Instant", supportsVision: true },
     {
       id: "gpt-5-6-thinking",

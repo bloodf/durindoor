@@ -27,6 +27,7 @@ import { join } from "path";
 // Runtime user profiles are not standalone assets; avoid recursive NFT globs.
 const runtimeJoin = join.bind(null);
 import { refreshKiroToken } from "./tokenRefresh.js";
+import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import {
@@ -39,12 +40,6 @@ import {
   stripKiroSyntheticSuffixes } from
 "../providers/models/kiroVariants.js";
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
-
-const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
-const KIRO_AGENT_OS = "windows";
-const KIRO_AGENT_OS_VERSION = "10.0.26200";
-const KIRO_NODE_VERSION = "22.21.1";
-const KIRO_VERSION = "0.10.32";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
@@ -269,25 +264,8 @@ const stripSyntheticSuffixes = stripKiroSyntheticSuffixes;
  * same account always presents the same machineId.
  */
 function buildKiroFingerprintHeaders(credentials) {
-  const seed =
-  credentials?.providerSpecificData?.clientId ||
-  credentials?.refreshToken ||
-  credentials?.providerSpecificData?.profileArn ||
-  credentials?.accessToken ||
-  "kiro-anonymous";
-  const machineId = createHash("sha256").update(String(seed)).digest("hex");
-
-  const userAgent =
-  `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ua/2.1 ` +
-  `os/${KIRO_AGENT_OS}#${KIRO_AGENT_OS_VERSION} ` +
-  `lang/js md/nodejs#${KIRO_NODE_VERSION} ` +
-  `api/codewhispererruntime#${KIRO_RUNTIME_SDK_VERSION} m/N,E ` +
-  `KiroIDE-${KIRO_VERSION}-${machineId}`;
-  const amzUserAgent = `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} KiroIDE-${KIRO_VERSION}-${machineId}`;
-
   return {
-    "User-Agent": userAgent,
-    "x-amz-user-agent": amzUserAgent,
+    ...buildKiroIdentityHeaders(credentials),
     "x-amzn-kiro-agent-mode": "vibe",
     "x-amzn-codewhisperer-optout": "true",
     "amz-sdk-request": "attempt=1; max=1",

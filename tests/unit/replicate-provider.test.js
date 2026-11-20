@@ -36,7 +36,7 @@ describe("Replicate official text predictions", () => {
   it.each([false, true])("routes a chat request through the gateway with stream=%s", async (stream) => {
     await initTranslators();
     transport.fetch.mockResolvedValueOnce(json({ status: "succeeded", output: ["Hello", " there"] }, 201));
-    const request = { ...body, model: `replicate/${model}`, stream };
+    const request = { ...body, model: `replicate/${model}`, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) };
     const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), errorLine: vi.fn() };
     const result = await handleChatCore({ body: request, modelInfo: { provider: "replicate", model }, credentials, clientRawRequest: { endpoint: "/v1/chat/completions", body: request, headers: { accept: stream ? "text/event-stream" : "application/json" } }, connectionId: "offline-replicate", log });
     expect(result.success, result.success ? undefined : await result.response.text()).toBe(true);

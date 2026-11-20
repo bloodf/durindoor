@@ -27,6 +27,7 @@ import VisibleModelsModal from "./VisibleModelsModal";
 import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
+import NetworkNodeStatus from "./NetworkNodeStatus";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import ProviderErrorRulesModal from "./ProviderErrorRulesModal";
@@ -1463,6 +1464,15 @@ function ProviderDetail({ providerId }) {
                 onReconnect={() => handleReconnect(conn)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
+              {(isCompatible || providerId === "ollama-local") && (
+                <NetworkNodeStatus
+                  connection={conn}
+                  onRemoved={(removedId) => {
+                    setConnections((prev) => prev.filter((c) => c.id !== removedId));
+                    setSelectedConnectionIds((prev) => prev.filter((selectedId) => selectedId !== removedId));
+                  }}
+                />
+              )}
             </div>
           </div>
     )}

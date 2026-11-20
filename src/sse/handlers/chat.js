@@ -85,7 +85,7 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject, isString } from "../../shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -1137,15 +1137,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
         }
         if (credentials?.allRateLimited) {
-          const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+          const rawStatus = credentials.lastErrorCode;
+          const parsedStatus = isNumber(rawStatus) || isString(rawStatus) ? Number(rawStatus) : NaN;
+          const validStoredStatus = Number.isInteger(parsedStatus) && parsedStatus >= 400 && parsedStatus <= 599;
+          const storedStatus = validStoredStatus ? parsedStatus : HTTP_STATUS.SERVICE_UNAVAILABLE;
           const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
             status: storedStatus,
             retryAt: credentials.retryAfter || null,
             retryAtKnown: Boolean(credentials.retryAfter)
           });
           const status = combinedRateLimit?.status || (
-          storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
-          const errorMsg = status === storedStatus ?
+          validStoredStatus && storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
+          const errorMsg = status === storedStatus && (validStoredStatus || !lastStatus) ?
           credentials.lastError || "Unavailable" :
           lastError || credentials.lastError || "Unavailable";
           const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;

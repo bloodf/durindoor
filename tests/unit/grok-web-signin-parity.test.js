@@ -18,6 +18,34 @@ describe("Grok Web session request compatibility", () => {
     const text = await response.text();
     expect(text).toContain('"content":"hello back"');
     expect(text).toContain("[DONE]");
+
+    const json = await request("first-session", false);
+    expect(json.response.status).toBe(200);
+    expect((await json.response.json()).choices[0].message.content).toBe("hello back");
+  });
+
+  it("reports a malformed final-only message as a streaming error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(event({ modelResponse: { message: { text: "hello back" } } }))));
+    const { response } = await request("first-session");
+    const frames = (await response.text()).trim().split("\n\n");
+
+    expect(response.status).toBe(200);
+    expect(frames.at(-1)).toBe("data: [DONE]");
+    expect(frames.slice(0, -1).map((frame) => JSON.parse(frame.slice("data: ".length)).choices[0])).toEqual([
+      { index: 0, delta: { role: "assistant" }, finish_reason: null, logprobs: null },
+      { index: 0, delta: { content: "[Error: Invalid Grok final message]" }, finish_reason: null, logprobs: null },
+      { index: 0, delta: {}, finish_reason: "stop", logprobs: null },
+    ]);
+  });
+
+  it("reports a malformed final-only message as a JSON upstream error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(event({ modelResponse: { message: { text: "hello back" } } }))));
+    const { response } = await request("first-session", false);
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: { message: "Invalid Grok final message", type: "upstream_error", code: "GROK_ERROR" },
+    });
   });
 
   it("does not repeat the final message after token chunks and isolates session cookies", async () => {

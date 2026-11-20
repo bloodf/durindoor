@@ -135,11 +135,16 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
 
     if (resp.modelResponse) {
       const mr = resp.modelResponse;
+      const message = mr.message;
+      if (message != null && typeof message !== "string") {
+        yield { error: "Invalid Grok final message", done: true };
+        return;
+      }
       if (thinkOpened && isThinkingModel) {
-        if (mr.message) yield { thinking: mr.message };
+        if (message) yield { thinking: message };
         thinkOpened = false;
       }
-      if (mr.message) yield { fullMessage: mr.message, fingerprint, responseId };
+      if (message) yield { fullMessage: message, fingerprint, responseId };
       if (mr.metadata?.llm_info?.modelHash) fingerprint = mr.metadata.llm_info.modelHash;
       continue;
     }

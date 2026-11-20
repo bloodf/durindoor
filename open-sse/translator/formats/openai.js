@@ -26,7 +26,7 @@ export function filterToOpenAIFormat(body, opts = {}) {
     // Some OpenAI-compatible APIs deserialize these names as aliases of one
     // field. Keep the explicit canonical value (even null/empty) when both
     // names are present, without changing structured reasoning data.
-    if (msg.role === ROLE.ASSISTANT && typeof msg.reasoning === "string" && msg.reasoning_content !== undefined) {
+    if (msg.role === ROLE.ASSISTANT && isString(msg.reasoning) && msg.reasoning_content !== undefined) {
       msg = { ...msg };
       delete msg.reasoning;
     }

@@ -20,6 +20,12 @@ function chunkMeta(state) {
 // `thoughtSignature` is the provider-issued signature from the surrounding part, if any;
 // it rides inside the emitted OpenAI tool-call id so the request translator can replay it.
 function emitFunctionCall(functionCall, state, thoughtSignature = null) {
+  // Repeated full snapshots with the same provider ID are not new calls.
+  const upstreamId = functionCall.id;
+  if (isString(upstreamId) && upstreamId && state.emittedGeminiCallIds?.has(upstreamId)) return null;
+  if (isString(upstreamId) && upstreamId) {
+    (state.emittedGeminiCallIds ??= new Set()).add(upstreamId);
+  }
   const rawName = functionCall.name;
   // Restore original tool name from mapping (AG cloaking)
   const fcName = state.toolNameMap?.get(rawName) || rawName;
@@ -29,7 +35,6 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   // functionResponse without name reconstruction. Fall back to a generated id.
   // Anthropic tool_use ids must match [a-zA-Z0-9_-], so sanitize either way.
   if (!state.seenToolCallIds) state.seenToolCallIds = new Set();
-  const upstreamId = functionCall.id;
   const rawId = upstreamId && !state.seenToolCallIds.has(upstreamId)
     ? upstreamId
     : `${fcName}_${Date.now()}_${toolCallIndex}`;
@@ -137,7 +142,8 @@ export function geminiToOpenAIResponse(chunk, state) {
         }
 
         if (hasFunctionCall) {
-          results.push(emitFunctionCall(part.functionCall, state, hasThoughtSig));
+          const call = emitFunctionCall(part.functionCall, state, hasThoughtSig);
+          if (call) results.push(call);
           state.pendingThoughtSignature = null;
         }
         continue;
@@ -164,7 +170,8 @@ export function geminiToOpenAIResponse(chunk, state) {
       // Function call
       if (part.functionCall) {
         const sig = state.pendingThoughtSignature || null;
-        results.push(emitFunctionCall(part.functionCall, state, sig));
+        const call = emitFunctionCall(part.functionCall, state, sig);
+        if (call) results.push(call);
         state.pendingThoughtSignature = null;
       }
 

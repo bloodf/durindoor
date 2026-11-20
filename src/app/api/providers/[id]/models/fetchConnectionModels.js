@@ -1,3 +1,5 @@
+import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
 import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -86,6 +88,15 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   // egress contract once and reuse it for initial, refresh, and retry calls.
   const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
+  if (connection.provider === "cerebrium") {
+    const baseUrl = cerebriumBaseUrl(connection.providerSpecificData?.baseUrl);
+    if (!baseUrl || !connection.apiKey) return { error: "Cerebrium requires a deployment /run URL and project API key", status: 400 };
+    const res = await guardedProbeFetch(`${baseUrl}/models`, { headers: { Authorization: `Bearer ${connection.apiKey}` }, signal: AbortSignal.timeout(8000) }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
+    if (!res.ok) return { error: `Model discovery failed: ${res.status}`, status: res.status };
+    const data = await res.json();
+    return { models: parseOpenAIStyleModels(data) };
+  }
+
   if (isOpenAICompatibleProvider(connection.provider)) {
     return fetchCompatibleModels(connection, (token) => {
       const headers = { "Content-Type": "application/json" };
@@ -109,6 +120,8 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
 
   const config = PROVIDER_MODELS_CONFIG[connection.provider];
   if (!config) {
+    // Platform model discovery must never borrow a Coding OAuth token.
+    if (connection.provider === "kimi" && !connection.apiKey) return { error: "No valid token found", status: 401 };
     // Generic fallback for registry providers that declare a modelsFetcher
     // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
     const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;

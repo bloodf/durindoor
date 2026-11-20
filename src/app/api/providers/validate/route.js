@@ -1,3 +1,4 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
@@ -240,6 +241,13 @@ export async function POST(request) {
     const isKeyOptionalNode = isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider) || isCustomEmbeddingProvider(provider);
     if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
+    }
+    if (provider === "opencode-server") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "OpenCode Server validation requires an operator" }, { status: 403 });
+      }
+      const result = await fetchOpenCodeServerModels({ apiKey, providerSpecificData });
+      return NextResponse.json({ valid: !result.error, error: result.error ?? null });
     }
     if (isNoAuth && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
@@ -606,10 +614,17 @@ export async function POST(request) {
           isValid = openrouterRes.ok;
           break;
 
+        case "kimi": {
+            const res = await fetchValidationProbe(providerInfo.modelsFetcher.url, {
+              method: "GET",
+              headers: { Authorization: `Bearer ${apiKey}` },
+            });
+            isValid = res.ok;
+            break;
+          }
         case "glm":
         case "glm-cn":
         case "bigmodel":
-        case "kimi":
         case "minimax":
         case "minimax-cn":
         case "alicode-intl":

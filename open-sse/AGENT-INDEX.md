@@ -17,8 +17,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `azure` | AzureExecutor | `./azure.js` |
 | `azure-openai` | AzureOpenAIExecutor | `./azure-openai.js` |
 | `bedrock` | BedrockExecutor | `./bedrock.js` |
+| `cerebrium` | CerebriumExecutor | `./cerebrium.js` |
 | `chipotle` | ChipotleExecutor | `./chipotle.js` |
 | `codebuddy-cn` | CodeBuddyExecutor | `./codebuddy-cn.js` |
+| `codebuddy-intl` | CodeBuddyIntlExecutor | `./codebuddy-intl.js` |
 | `codex` | CodexExecutor | `./codex.js` |
 | `codex-app-server` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `command-code` | CommandCodeExecutor | `./commandcode.js` |
@@ -58,6 +60,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `oneminai` | OneMinAiExecutor | `./oneminai.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
 | `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
+| `opencode-server` | OpenCodeServerExecutor | `./opencode-server.js` |
 | `opencode-zen` | OpenCodeZenExecutor | `./opencode-zen.js` |
 | `perplexity-web` | PerplexityWebExecutor | `./perplexity-web.js` |
 | `pol` | PollinationsExecutor | `./pollinations.js` |
@@ -144,6 +147,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cablyai` |  | apikey | `https://api.cablyai.com/v1/chat/completions` |
 | `cartesia` |  | apikey | `` |
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
+| `cerebrium` | openai | apikey | `` |
 | `charm-hyper` |  | apikey | `https://hyper.charm.land/v1/chat/completions` |
 | `chatanywhere` |  | apikey | `https://api.chatanywhere.org/v1/chat/completions` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
@@ -160,6 +164,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cloudflare-ai` |  | freeTier | `https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/chat/completions` |
 | `clova-studio` | openai | apikey | `https://clovastudio.stream.ntruss.com/v1/openai/chat/completions` |
 | `codebuddy-cn` |  | oauth | `https://copilot.tencent.com/v2/chat/completions` |
+| `codebuddy-intl` |  | apikey | `https://www.codebuddy.ai/v2/chat/completions` |
 | `codestral` |  | apikey | `https://codestral.mistral.ai/v1/chat/completions` |
 | `codex` | openai-responses | oauth | `https://chatgpt.com/backend-api/codex/responses` |
 | `codex-app-server` | openai | free | `codex-app-server://cli/websocket` |
@@ -176,6 +181,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
 | `dahl` |  | apikey | `https://inference.dahl.global/v1/chat/completions` |
+| `daoxe` |  | apikey | `https://api.daoxe.com/v1/chat/completions` |
 | `databricks` |  | apikey | `https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints` |
 | `datarobot` |  | apikey | `https://app.datarobot.com/api/v2/genai/llmgw/chat/completions/` |
 | `deepai` |  | apikey | `` |
@@ -333,6 +339,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `openai` |  | apikey | `https://api.openai.com/v1/chat/completions` |
 | `opencode` |  | free | `https://opencode.ai` |
 | `opencode-go` |  | apikey | `https://opencode.ai/inference/go/openai/v1/chat/completions` |
+| `opencode-server` | openai | apikey | `` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
 | `openference` | openai | oauth | `https://api.openference.com/v1/chat/completions` |
 | `openference-api` |  | apikey | `https://api.openference.com/v1/chat/completions` |
@@ -399,6 +406,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `tinyfish` |  | apikey | `` |
 | `together` |  | apikey | `https://api.together.xyz/v1/chat/completions` |
 | `token-kiosk` |  | apikey | `https://agent-router.gaib.ai/v1/chat/completions` |
+| `tokenharbor` | openai | apikey | `https://tokenharbor.ai/v1/chat/completions` |
 | `tokenmarket` |  | apikey | `https://api.tokensmarket.ai/v1/chat/completions` |
 | `tokenreply` |  | apikey | `https://api.tokenreply.com/v1/chat/completions` |
 | `tokenrouter` |  | freeTier | `https://api.tokenrouter.com/v1/chat/completions` |

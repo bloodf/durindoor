@@ -1,3 +1,7 @@
+---
+title: Configuration
+description: Configure model service tiers and provider-specific routing, including LLMTR.
+---
 
 OpenAI and Codex model IDs accept `(fast)` for priority service and `(standard)` for standard service. Combine a tier with a reasoning modifier, for example `cx/gpt-6.1-sol(xhigh,fast)`; the explicit tier overrides the request's `service_tier`. No other provider accepts a service tier: on every other provider `(fast)` and `(standard)` are part of the model ID and are sent to the provider unchanged, so a model that really ends in that text still routes. Availability and charges are determined by the upstream provider.
 

@@ -59,19 +59,21 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
+  const isOpenCodeServer = provider === "opencode-server";
   const isLaya = provider === "laya";
+  const isCerebrium = provider === "cerebrium";
   // Self-hosted providers store their origin per connection rather than taking
   // it from the registry, so they need the host field.
-  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya;
-  const hostFieldLabel = isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
-  const hostFieldPlaceholder = isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
+  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya || isCerebrium || isOpenCodeServer;
+  const hostFieldLabel = isCerebrium ? "Deployment URL (ending in /run)" : isOpenCodeServer ? "OpenCode Server URL" : isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
+  const hostFieldPlaceholder = isCerebrium ? "https://api.cortex.cerebrium.ai/v4/project/app/run" : isOpenCodeServer ? "http://127.0.0.1:4096" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
   const isDevinAgentic = provider === "devin-cli-agentic";
   const isCookie = authType === "cookie";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
   // Compatible nodes are often keyless LAN endpoints, so their key is optional.
   const keyOptional = credentialOptional || isCompatible;
-  const credentialLabel = isCookie ? "Cookie Value" : keyOptional ? "API key (optional)" : "API Key";
+  const credentialLabel = isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : keyOptional ? "API key (optional)" : "API Key";
   const credentialPlaceholder = isCookie ?
   provider === "grok-web" ? "sso=xxxxx... or just the raw value" : "eyJhbGciOi..." :
   isXaiApiKey ? "xai-..." : "";
@@ -217,6 +219,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const handleSubmit = async () => {
     if (!provider) return;
+    if (isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim())) return;
+    if (isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied())) return;
     // Self-hosted providers are keyless and auto-named, so neither an API key
     // nor a typed name can be required — the submit would be unreachable.
     if (!hasConfigurableHost && !apiKeySatisfied()) return;
@@ -355,13 +359,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             <p className="text-xs text-dd-muted">Or paste your cookie manually below.</p>
           </section>
         ) : null}
-        {/* Mode switcher */}
-        {!isDevinAgentic && <div className="flex gap-2">
+        {!isOpenCodeServer && !isDevinAgentic && <div className="flex gap-2">
           <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} onClick={() => {setMode("single");setBulkResult(null);}}>Single</Button>
           <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} onClick={() => {setMode("bulk");setBulkResult(null);}}>Bulk Add</Button>
         </div>}
 
-        {!isDevinAgentic && mode === "bulk" &&
+        {mode === "bulk" && !isOpenCodeServer && !isDevinAgentic &&
         <div className="flex flex-col gap-3">
             <p className="text-xs text-dd-muted">
               {requiresAccountId ?
@@ -391,7 +394,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         }
 
-        {(isDevinAgentic || mode === "single") && <>
+        {(mode === "single" || isOpenCodeServer || isDevinAgentic) && <>
         <Input
             label="Name"
             value={formData.name}
@@ -586,7 +589,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
           
 
-        {!isDevinAgentic && <>
+        {!isOpenCodeServer && !isDevinAgentic && <>
         <Field label="Proxy Pool">
           <Select
             aria-label="Proxy Pool"
@@ -616,7 +619,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         ) : null}
         <div className="flex gap-2">
-          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim()) || isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied()) || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" className="w-full">

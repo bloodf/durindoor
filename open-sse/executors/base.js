@@ -535,10 +535,7 @@ export class BaseExecutor {
             chargeDispatch(urlIndex);
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              method: "POST",
-              headers,
-              body: bodyStr,
-              signal: mergedSignal
+              ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
         }

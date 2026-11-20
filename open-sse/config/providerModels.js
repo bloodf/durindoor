@@ -84,6 +84,9 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 // Declared upstream formats for a model. Null keeps providers with no per-model
 // endpoint restriction on their existing transport-selection path.
 export function getModelSupportedFormats(aliasOrId, modelId) {
+  // The Kimi Platform exposes both APIs for platform model IDs, including
+  // IDs discovered after the bundled catalog was published.
+  if (aliasOrId === "kimi") return ["openai", "claude"];
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   const model = findModel(models, modelId, aliasOrId);

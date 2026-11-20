@@ -1,4 +1,4 @@
-import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
+import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_MODELS_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
@@ -834,13 +834,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           return { valid, error: valid ? null : "Invalid API key" };
         }
       case "kimi":{
-          const res = await fetchWithConnectionProxy(KIMI_PLATFORM_CHAT_URL, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: "kimi-for-coding", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          const res = await fetchWithConnectionProxy(KIMI_PLATFORM_MODELS_URL, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${connection.apiKey}` },
           }, effectiveProxy);
-          const valid = res.status !== 401 && res.status !== 403;
-          return { valid, error: valid ? null : "Invalid API key" };
+          return { valid: res.ok, error: res.ok ? null : `Model list returned ${res.status}` };
         }
       case "alicode":
       case "alicode-intl":{

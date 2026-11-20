@@ -596,7 +596,10 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) {
       if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials);
     }
-    applyAuth(headers, desc, credentials);
+    // Platform keys and Kimi Coding OAuth tokens belong to separate accounts.
+    // Never fall back to an access token on the platform API-key connection.
+    const authCredentials = this.provider === "kimi" ? { ...credentials, accessToken: undefined } : credentials;
+    applyAuth(headers, desc, authCredentials);
     // Cline's hook normalizes OAuth JWTs; generic bearer auth otherwise overwrites it.
     if (desc.hooks?.includes("clineHeaders")) HEADER_HOOKS.clineHeaders(headers, credentials);
 

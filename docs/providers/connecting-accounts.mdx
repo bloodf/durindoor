@@ -29,6 +29,8 @@ Muse Code uses Meta device login or a pasted `META_API_KEY`. Device login can mi
 
 Choose **Kimi Coding (International)** for a `kimi.ai` account and use a model such as `kimi-ai/k3`. Existing `kimi-coding` connections use the `kimi.com` account service and keep the `kmc` model prefix. The Kimi platform and Kimi Coding API-key cards have their own credentials.
 
+The **Kimi** API-key connection uses a key from the [Kimi API Platform](https://platform.kimi.ai/console/api-keys). Key validation and model discovery use the platform model list. OpenAI Chat Completions clients use the platform Chat Completions API, while Anthropic Messages clients use the platform Messages API; both use the same saved platform key. Kimi Coding keys and OAuth accounts remain separate. Model-specific parameter restrictions and availability are controlled by the [platform API](https://platform.kimi.ai/docs/api/chat).
+
 Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an array / `accounts` object. Imports stay serial so connection priorities keep the input order.
 
 ## Import token and cookie OAuth

@@ -264,9 +264,12 @@ function kimiDeviceProvider(config, fallbackVerificationUrl) {
       };
     },
     pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
+      const headers = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
+      const deviceId = extraData?._deviceId;
+      if (deviceId) Object.assign(headers, buildKimiDeviceHeaders(deviceId));
       const response = await fetch(config.tokenUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...(extraData?._deviceId ? buildKimiDeviceHeaders(extraData._deviceId) : {}) },
+        headers,
         body: new URLSearchParams({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           client_id: config.clientId,

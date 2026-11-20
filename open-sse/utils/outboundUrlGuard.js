@@ -20,8 +20,11 @@
  *   - "block-metadata" → cloud-metadata hostnames + IPv4 link-local
  *                        (169.254.0.0/16) blocked; LAN/loopback allowed.
  *   - "public-only"    → every private/LAN host blocked (RFC1918, loopback,
- *                        100.64/10, ULA, IPv6 link-local fe80::/10); metadata
- *                        is a subset of private so also blocked.
+ *                        100.64/10, ULA, IPv6 link-local fe80::/10, plus the
+ *                        special-use 192.0.0.0/24, multicast and reserved
+ *                        224.0.0.0/4 and 240.0.0.0/4 ranges, including their
+ *                        IPv4-mapped and NAT64 spellings); metadata is a
+ *                        subset of private so also blocked.
  *
  * Upstream #3313 closes the DNS-rebinding ceiling: active guard modes install
  * an Undici dispatcher whose lookup validates every answer used by the socket.
@@ -113,12 +116,18 @@ export function isPrivateHost(hostname) {
   }
 
   if (isIP(normalized) === 4) {
-    const [a, b] = normalized.split(".").map((s) => parseInt(s, 10));
+    const [a, b, c] = normalized.split(".").map((s) => parseInt(s, 10));
     if (a === 0 || a === 10 || a === 127) return true;
     if (a === 169 && b === 254) return true;
     if (a === 192 && b === 168) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 100 && b >= 64 && b <= 127) return true;
+    // 192.0.0.0/24 IETF protocol assignments (special-use, never a public host).
+    if (a === 192 && b === 0 && c === 0) return true;
+    // 224.0.0.0/4 multicast plus 240.0.0.0/4 reserved, whose top address is the
+    // limited broadcast 255.255.255.255. 198.18.0.0/15 (benchmarking) stays
+    // allowed for fake-IP proxy setups.
+    if (a >= 224) return true;
     return false;
   }
 
@@ -127,6 +136,13 @@ export function isPrivateHost(hostname) {
     if (!words) return true;
     if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
       return isPrivateHost(wordsToIpv4(words));
+    }
+    // NAT64 well-known prefix 64:ff9b::/96 embeds an IPv4 address in the low
+    // 32 bits; classify that address by the IPv4 table. The local-use prefix
+    // 64:ff9b:1::/48 is special-use space and is never public.
+    if (words[0] === 0x0064 && words[1] === 0xff9b) {
+      if (words.slice(2, 6).every((word) => word === 0)) return isPrivateHost(wordsToIpv4(words));
+      if (words[2] === 0x0001) return true;
     }
     // Unspecified, loopback, and deprecated IPv4-compatible IPv6 (::/96).
     if (words.slice(0, 6).every((word) => word === 0)) return true;

@@ -122,6 +122,12 @@ export function stripUnsupportedChatExtensions(body, transport, defaultTransport
  */
 export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES, credentials = null) {
   if (!model || !body || !isObject(body)) return body;
+  // LLMTR rejects Responses-style reasoning objects on its Chat endpoint.
+  if (provider === "llmtr" && body.reasoning != null && typeof body.reasoning !== "boolean") {
+    const value = body.reasoning;
+    body.reasoning = !(value?.enabled === false || value?.effort === "none" || value?.effort === "off");
+  }
+
   if (
   provider?.startsWith?.("openai-compatible-") &&
   /muse/i.test(model) &&

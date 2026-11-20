@@ -7,6 +7,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 
 | id | executor | source file |
 |---|---|---|
+| `adapta-web` | AdaptaWebExecutor | `./adapta-web.js` |
+| `adp-web` | AdaptaWebExecutor | `./adapta-web.js` |
 | `agy` | AntigravityExecutor | `./antigravity.js` |
 | `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
@@ -29,9 +31,11 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cxa` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
+| `devin-cli-agentic` | DevinCliAgenticExecutor | `./devin-cli-agentic.js` |
 | `dify` | DifyExecutor | `./dify.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
+| `gemini-interactions` | GeminiInteractionsExecutor | `./gemini-interactions.js` |
 | `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
@@ -49,6 +53,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mimocode` | MimocodeExecutor | `./mimocode.js` |
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
 | `muse-code` | MuseCodeExecutor | `./muse-code.js` |
+| `nlpcloud` | NlpCloudExecutor | `./nlpcloud.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
 | `oneminai` | OneMinAiExecutor | `./oneminai.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
@@ -61,6 +66,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
+| `t3-web` | T3ChatWebExecutor | `./t3-chat-web.js` |
+| `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
@@ -71,6 +78,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xai` | XaiExecutor | `./xai.js` |
 | `xiaomi-mimo` | XiaomiMimoExecutor | `./xiaomi-mimo.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
+| `ybw` | YuanbaoWebExecutor | `./yuanbao-web.js` |
+| `yuanbao-web` | YuanbaoWebExecutor | `./yuanbao-web.js` |
 | `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 | `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 
@@ -107,9 +116,11 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
 | `arcee-platform` |  | apikey | `https://api.arcee.ai/api/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
+| `atlascloud` |  | apikey | `https://api.atlascloud.ai/v1/chat/completions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
 | `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |
 | `auto` |  | system | `` |
+| `avalai` | openai | apikey | `https://api.avalai.ir/v1/chat/completions` |
 | `aws-polly` |  | apikey | `` |
 | `azure` |  | apikey | `` |
 | `azure-ai` |  | apikey | `https://example-resource.services.ai.azure.com/openai/v1/chat/completions` |
@@ -172,6 +183,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
+| `devin-cli-agentic` | claude | free | `devin://acp/stdio` |
 | `dgrid` |  | apikey | `https://api.dgrid.ai/v1/chat/completions` |
 | `dify` |  | apikey | `` |
 | `digitalocean` |  | apikey | `https://inference.do-ai.run/v1/chat/completions` |
@@ -204,6 +216,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
+| `gemini-interactions` | openai | apikey | `https://generativelanguage.googleapis.com/v1beta/interactions` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
@@ -228,6 +241,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `hcnsec` | openai | apikey | `https://api.hcnsec.cn/v1/chat/completions` |
 | `helixmind` |  | apikey | `https://helixmind.online/v1/chat/completions` |
 | `heroku` |  | apikey | `https://us.inference.heroku.com/v1/chat/completions` |
+| `hetzner` | openai | apikey | `https://inference.hetzner.com/api/v1/chat/completions` |
 | `huggingchat` | openai | webCookie | `https://huggingface.co/chat/conversation` |
 | `huggingface` |  | apikey | `` |
 | `hyperbolic` |  | apikey | `https://api.hyperbolic.xyz/v1/chat/completions` |
@@ -239,6 +253,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `inner-ai` | openai | apikey | `https://chatapi.innerai.com/chat` |
 | `internlm` | openai | apikey | `https://chat.intern-ai.org.cn/api/v1/chat/completions` |
 | `inworld` |  | apikey | `` |
+| `jembatanai` |  | apikey | `https://freeai.jembatanai.com/v1/chat/completions` |
 | `jina-ai` |  | apikey | `` |
 | `jina-reader` |  | apikey | `` |
 | `kenari` |  | apikey | `https://kenari.id/v1/chat/completions` |
@@ -290,12 +305,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `muse-code` | openai-responses | oauth | `https://api.meta.ai/v1/responses` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `naga-ac` |  | apikey | `https://api.naga.ac/v1/chat/completions` |
+| `nan` |  | apikey | `https://api.nan.builders/v1/chat/completions` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |
 | `nara` |  | apikey | `https://router.bynara.id/v1/chat/completions` |
 | `navy` |  | apikey | `https://api.navy/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
 | `nimble` |  | apikey | `` |
+| `nlpcloud` | openai | apikey | `https://api.nlpcloud.io/v1/gpu` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
 | `nous-research` | openai | apikey | `https://inference-api.nousresearch.com/v1/chat/completions` |
 | `novita` |  | apikey | `https://api.novita.ai/openai/v1/chat/completions` |
@@ -320,6 +337,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opper` |  | apikey | `https://api.opper.ai/v3/compat/chat/completions` |
 | `orcarouter` | openai | oauth | `https://api.orcarouter.ai/v1/chat/completions` |
 | `ovhcloud` | openai | apikey | `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions` |
+| `parallel` |  | apikey | `` |
+| `paraloncloud` |  | apikey | `https://paraloncloud.com/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
 | `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
 | `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
@@ -363,6 +382,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `speka` |  | apikey | `https://speka.me/v1/chat/completions` |
 | `stability-ai` |  | apikey | `` |
 | `stepfun` |  | freeTier | `https://api.stepfun.com/v1/chat/completions` |
+| `subq` |  | apikey | `` |
 | `sumopod` |  | apikey | `https://ai.sumopod.com/v1/chat/completions` |
 | `suno` | openai | webCookie | `https://studio-api.suno.ai/api/generate/v2/` |
 | `synthetic` |  | apikey | `https://api.synthetic.new/openai/v1/chat/completions` |
@@ -383,6 +403,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `triton` | openai | apikey | `http://localhost:8000/v1` |
 | `typesafe` |  | apikey | `` |
 | `typhoon` | openai | apikey | `https://api.opentyphoon.ai/v1/chat/completions` |
+| `uberllm` |  | apikey | `https://api.uberllm.dev/v1/chat/completions` |
 | `uc-direct` |  | apikey | `https://api.uncensored.com/api/v1/chat/completions` |
 | `udio` | openai | webCookie | `https://www.udio.com/api/generate-proxy` |
 | `uncloseai` |  | freeTier | `https://hermes.ai.unturf.com/v1/chat/completions` |
@@ -413,6 +434,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xiaomi-mimo-token-plan` | openai | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
+| `xkiro` |  | apikey | `https://api.xkiro.com/v1/chat/completions` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |
 | `yolo-auto` |  | apikey | `https://yolo-auto.com/v1/chat/completions` |
 | `youcom` |  | apikey | `` |

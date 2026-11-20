@@ -14,6 +14,7 @@ import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { normalizeArrayContentDelta } from "../../utils/arrayContentDelta.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
@@ -25,7 +26,7 @@ import {
 } from "../concerns/finishReason.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function recordFinalOutputItem(state, eventType, data) {
   if (eventType !== "response.output_item.added" && eventType !== "response.output_item.done") return;
   const outputIndex = Number(data.output_index);
@@ -142,6 +143,18 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     });
   }
 
+  // Fold typed content before emitting reasoning so each thinking part is emitted
+  // once. Preserve vendor reasoning fields that the fold would otherwise mask.
+  if (Array.isArray(delta.content)) {
+    const vendorReasoning = extractReasoningText({ ...delta, content: undefined });
+    if (isInternalReasoningPlaceholder(vendorReasoning)) {
+      delete delta.reasoning_content;
+    } else if (vendorReasoning && !delta.reasoning_content) {
+      delta.reasoning_content = vendorReasoning;
+    }
+    normalizeArrayContentDelta(delta);
+  }
+
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
   const reasoningText = extractReasoningText(delta);
   if (reasoningText && !isInternalReasoningPlaceholder(reasoningText)) {
@@ -180,7 +193,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
     if (state.inThinking && content) {
       emitReasoningDelta(state, emit, content);
-      return events;
+      content = "";
     }
 
     if (content) {
@@ -396,13 +409,17 @@ export function restoreResponsesToolName(state, name) {
  * Providers sometimes inject a prefix the client never declared (e.g. `functions.exec`
  * for a declared `exec`). Exactly one leading segment is stripped, and only when the
  * remainder is a name this request declared; nothing is matched against a guessed
- * alias table. Unresolvable names are logged once and forwarded unchanged.
+ * alias table. A current flat declaration wins over a historical namespace both
+ * before and after prefix removal. Unresolvable names are logged once and forwarded unchanged.
  */
 export function resolveResponsesToolName(state, name) {
   if (!isString(name)) return { name };
+  // A flat declaration of this exact name wins over a namespace recovered from
+  // the request history: the client declared the dotted name as one ordinary
+  // function, so the call must not acquire a namespace (OmniRoute #15974).
+  if (isDeclaredFlatTool(state, name)) return { name };
   const exact = splitNamespacedName(state, name);
   if (exact) return exact;
-  if (isDeclaredFlatTool(state, name)) return { name };
 
   const dot = name.indexOf(".");
   if (dot === -1) {
@@ -414,9 +431,9 @@ export function resolveResponsesToolName(state, name) {
 
   // The provider may prefix the upstream alias (`functions.<alias>`), so restore the remainder too.
   const rest = restoreResponsesToolName(state, name.slice(dot + 1));
+  if (isDeclaredFlatTool(state, rest)) return { name: rest };
   const injected = splitNamespacedName(state, rest);
   if (injected) return injected;
-  if (isDeclaredFlatTool(state, rest)) return { name: rest };
 
   warnUnresolvedToolName(state, name, "no declared tool name matches");
   return { name };
@@ -899,6 +916,13 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         reasoningTokens: normalized.output_tokens_details?.reasoning_tokens,
         outputTokensDetails: normalized.output_tokens_details
       });
+      // A zero counter is a reported cache miss, not missing usage data.
+      const cacheCounters = [responseUsage.cache_read_input_tokens, responseUsage.cached_tokens,
+        responseUsage.input_tokens_details?.cached_tokens, responseUsage.prompt_tokens_details?.cached_tokens];
+      if (cacheCounters.some((value) => isNumber(value) && Number.isFinite(value) && value >= 0)) {
+        state.usage.prompt_tokens_details ||= {};
+        state.usage.prompt_tokens_details.cached_tokens = normalized.cached_tokens ?? 0;
+      }
     }
 
     if (!state.finishReasonSent) {
@@ -955,13 +979,29 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Reasoning summary delta → emit as reasoning_content for client thinking display
-  if (eventType === "response.reasoning_summary_text.delta") {
-    const delta = data.delta || "";
-    if (!delta || isInternalReasoningPlaceholder(delta)) return null;
+  // Copilot can rotate reasoning item IDs between deltas and the final
+  // snapshot. Match both identifiers to replay only summaries we never streamed.
+  const reasoningEvents = state.responsesReasoningEvents ??= { ids: new Set(), indexes: new Set() };
+  let summary;
+  if (eventType === "response.reasoning_summary_text.delta" || eventType === "response.reasoning_text.delta") {
+    summary = data.delta;
+    if (!isString(summary) || !summary || isInternalReasoningPlaceholder(summary)) return null;
+    if (data.item_id) reasoningEvents.ids.add(data.item_id);
+    if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
+  } else if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.REASONING) {
+    if (reasoningEvents.ids.has(data.item.id) || reasoningEvents.indexes.has(data.output_index)) return null;
+    summary = Array.isArray(data.item.summary) ? data.item.summary
+      .filter(part => part?.type === RESPONSES_ITEM.SUMMARY_TEXT && isString(part.text))
+      .map(part => part.text)
+      .join("\n") : "";
+    if (!summary || isInternalReasoningPlaceholder(summary)) return null;
+    if (data.item.id) reasoningEvents.ids.add(data.item.id);
+    if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
+  }
+  if (summary) {
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      reasoningDelta(delta)
+      reasoningDelta(summary)
     );
   }
 

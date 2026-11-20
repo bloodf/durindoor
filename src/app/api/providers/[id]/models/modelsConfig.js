@@ -1,3 +1,4 @@
+import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
@@ -277,6 +278,9 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  "devin-cli-agentic": {
+    customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
+  },
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
@@ -307,6 +311,18 @@ export const PROVIDER_MODELS_CONFIG = {
     pageSize: 1000,
     nextPageToken: (data) => (isString(data?.nextPageToken) && data.nextPageToken) || null,
     parseResponse: (data) => data.models || []
+  },
+  "gemini-interactions": {
+    url: GEMINI_MODELS_URL,
+    apiKeyOnly: true,
+    redirect: "error",
+    authHeader: "x-goog-api-key",
+    pageSize: 1000,
+    nextPageToken: (data) => (isString(data?.nextPageToken) && data.nextPageToken) || null,
+    // Google models.list does not report Interactions support. Intersect it
+    // with the text-only models verified in the Interactions overview.
+    parseResponse: (data) => geminiInteractions.models.filter(({ id }) =>
+      data.models?.some(({ name }) => name === `models/${id}`)),
   },
   qwen: {
     url: "https://portal.qwen.ai/v1/models",
@@ -368,13 +384,25 @@ export const PROVIDER_MODELS_CONFIG = {
     parseResponse: parseCodexModels
   },
   antigravity: {
-    url: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models",
+    // The per-account Hub catalog replaces the stale sandbox models endpoint.
+    url: "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+      "X-Client-Name": "antigravity",
+      "X-Client-Version": ANTIGRAVITY_IDE_VERSION
+    },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     body: {},
-    parseResponse: (data) => data.models || []
+    parseResponse: (data) => Object.entries(data?.models || {})
+      .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
+      .map(([id, info]) => ({
+        id, name: info?.displayName || id,
+        contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
+        supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
+      }))
   },
   // Enterprise discovery must use the connection's scoped token and tenant host.
   "ghe-copilot": {
@@ -476,7 +504,9 @@ export const PROVIDER_MODELS_CONFIG = {
   nebius: createOpenAIModelsConfig("https://api.studio.nebius.ai/v1/models"),
   novita: createOpenAIModelsConfig("https://api.novita.ai/openai/v1/models"),
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
+  nan: createOpenAIModelsConfig("https://api.nan.builders/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
+  paraloncloud: createOpenAIModelsConfig("https://paraloncloud.com/v1/models"),
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),

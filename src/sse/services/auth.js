@@ -195,7 +195,7 @@ const affinityCleanup = setInterval(() => {
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 if (affinityCleanup.unref) affinityCleanup.unref();
 
-const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode", "devin-cli-agentic"]);
 // Keyless self-hosted servers whose connection row carries what the request
 // needs: Local Whisper's server URL, self-hosted Firecrawl's optional key and
 // headers (its host prefers the Profile setting, see resolveFirecrawlBaseUrl).
@@ -529,7 +529,7 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
   legacyLocked.find((connection) => lockStatus(connection) !== 429);
   if (legacy) {
     const code = lockStatus(legacy);
-    const status = code >= 400 && code <= 599 ? code : 503;
+    const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : 503;
     const message = status === 429 ?
     "Rate limited" :
     status === 401 ?
@@ -554,7 +554,8 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
     boundedModel,
     now
   ));
-  const earliest = retries.length > 0 && retries.every(Boolean) ? retries.sort()[0] : null;
+  const earliest = retries.length > 0 && retries.every(Boolean) ?
+  retries.sort((left, right) => Date.parse(left) - Date.parse(right))[0] : null;
   return {
     status: 429,
     message: "Rate limited",

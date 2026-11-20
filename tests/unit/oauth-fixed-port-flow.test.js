@@ -28,11 +28,36 @@ import {
   stopXaiProxy,
 } from "@/lib/oauth/utils/server.js";
 
+// Keep the real callback servers and handlers, but let the OS assign each test
+// listener a private port so concurrent suites cannot contend for provider ports.
+const listenerPorts = new Map();
+let listenSpy;
+
+beforeEach(() => {
+  listenerPorts.clear();
+  const listen = http.Server.prototype.listen;
+  listenSpy = vi.spyOn(http.Server.prototype, "listen").mockImplementation(function (port, host, callback) {
+    if (port !== 1455 && port !== 56121) return listen.apply(this, arguments);
+    return listen.call(this, 0, host, () => {
+      listenerPorts.set(port, this.address().port);
+      callback();
+    });
+  });
+});
+
+afterEach(() => {
+  listenSpy.mockRestore();
+  listenerPorts.clear();
+});
+
 function callbackRequest(port, path, headers = {}) {
+  if ((port === 1455 || port === 56121) && !listenerPorts.has(port)) {
+    throw new Error(`No isolated listener for callback port ${port}`);
+  }
   return new Promise((resolve, reject) => {
     const request = http.request({
       host: "127.0.0.1",
-      port,
+      port: listenerPorts.get(port) ?? port,
       path,
       method: "GET",
       headers: { Connection: "close", ...headers },

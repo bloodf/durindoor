@@ -26,6 +26,7 @@ import PeakHourProtectionEditor, {
 "@/shared/components/PeakHourProtectionEditor";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
+  const isDevinAgentic = connection?.provider === "devin-cli-agentic";
   const [formData, setFormData] = useState({
     name: "",
     priority: 1,
@@ -254,7 +255,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: formData.name,
         priority: formData.priority
       };
-      if (!isOAuth && formData.apiKey) {
+      if (!isOAuth && !isDevinAgentic && formData.apiKey) {
         updates.apiKey = formData.apiKey;
         let isValid = validationResult === "success";
         let skipped = validationResult === "skipped";
@@ -328,7 +329,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {isOAuth && connection.email ? <section aria-label="Connected account" className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><p className="text-xs text-dd-muted">Email</p><p className="mt-1 text-[13px] font-medium text-dd-text">{connection.email}</p></section> : null}
         <Input label="Priority" type="number" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })} />
         {isGithub ? <Input label="AI Credits limit per billing period" type="number" min="0" step="any" value={aiCreditLimit} onChange={(e) => setAiCreditLimit(e.target.value)} placeholder="No local limit" error={invalidCreditLimit ? "Enter a non-negative number." : undefined} hint="Blank disables the limit; 0 blocks all requests. Checks GitHub-reported credit usage through a short-lived cache, and blocks when usage cannot be verified. Cached readings, GitHub reporting delays and in-flight requests can all overshoot this cutoff, so it is not a guaranteed spending ceiling. Applies only to this connection's traffic." /> : null}
-        {!isOAuth ? <>
+        {!isOAuth && !isDevinAgentic ? <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label="API Key" type="password" value={formData.apiKey} onChange={(e) => { setFormData({ ...formData, apiKey: e.target.value }); setValidationResult(null); }} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={!formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
           {validationResult ? <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "neutral" : "danger"}>{validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}</Badge> : null}
         </> : null}

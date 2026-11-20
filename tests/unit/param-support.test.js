@@ -421,6 +421,19 @@ describe("applyParamRenames", () => {
 // itself. A helper-only test cannot prove the rename fires on the executor's
 // dispatch path. Source: OmniRoute #6912/#6964.
 describe("executor max-token rename dispatch", () => {
+  it("preserves the explicit Anthropic cap for a model matching OpenAI naming rules", () => {
+    const executor = new DefaultExecutor("openrouter");
+    const credentials = { runtimeTransport: { format: FORMATS.CLAUDE } };
+    for (const [input, expected] of [
+      [{ max_tokens: 32 }, 32],
+      [{ max_completion_tokens: 64 }, 64],
+      [{ max_tokens: 32, max_completion_tokens: 64 }, 32],
+    ]) {
+      const out = executor.transformRequest("gpt-5.4", { ...input }, true, credentials);
+      expect(out.max_tokens).toBe(expected);
+      expect(out.max_completion_tokens).toBeUndefined();
+    }
+  });
   it("GithubExecutor.transformRequest forward-renames for a family model", () => {
     const out = new GithubExecutor().transformRequest("o3", { max_tokens: 321 }, true, {});
     expect(out.max_completion_tokens).toBe(321);
@@ -440,4 +453,13 @@ describe("executor max-token rename dispatch", () => {
     expect(out.max_completion_tokens).toBeUndefined();
     expect(input).toEqual({ max_completion_tokens: 77 }); // caller body not mutated
   });
+});
+
+
+it("strips temperature only for OpenCode Go GPT models", () => {
+  for (const [provider, model, expected] of [["opencode-go", "gpt-6-luna", undefined], ["opencode-go", "glm-5", 0.2], ["openrouter", "gpt-6-luna", 0.2]]) {
+    const body = { temperature: 0.2 };
+    stripUnsupportedParams(provider, model, body);
+    expect(body.temperature).toBe(expected);
+  }
 });

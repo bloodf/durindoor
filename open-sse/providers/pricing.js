@@ -79,6 +79,8 @@ function providerPricingFor(provider, model) {
 function registryFreeSignal(providerId, modelId) {
   const entry = registryEntry(providerId);
   if (!entry) return null;
+  // ACP uses an out-of-band Devin account whose plan can charge for use.
+  if (entry.id === "devin-cli-agentic") return null;
   if (entry.noAuth === true || entry.category === "free") return true;
   const m = registryModel(entry, modelId);
   if (!m) return null;
@@ -353,6 +355,10 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  codex: {
+    "gpt-6.2-sol": { input: 2, output: 10, cached: 0.1, reasoning: 10, cache_creation: 2.5 },
+    "gpt-6.2-astra": { input: 8, output: 40, cached: 0.4, reasoning: 40, cache_creation: 10 },
+  },
   // https://docs.typesafe.ai/models — native System One input is billed, output is free.
   typesafe: {
     "jev-latest": { input: JEV_INPUT_PRICE_PER_MTOK, output: JEV_OUTPUT_PRICE_PER_MTOK },
@@ -564,7 +570,8 @@ export function getPricingForModel(provider, model) {
   if (!model) return null;
 
   if (provider) {
-    const providerPricing = providerPricingFor(provider, model);
+    const codexModel = /^(?:codex|cx)$/.test(provider) ? model.replace(/\((?:low|medium|high|xhigh|max)\)$/, "") : model;
+    const providerPricing = providerPricingFor(provider, codexModel);
     if (providerPricing) return providerPricing;
   }
 

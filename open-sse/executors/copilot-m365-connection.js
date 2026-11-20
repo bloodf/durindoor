@@ -26,6 +26,13 @@ export const M365_EDU_OVERRIDES = {
   licenseType: "Starter"
 };
 
+// OmniRoute #6334: work tenants opt in without changing consumer defaults.
+export const M365_ENTERPRISE_OVERRIDES = {
+  scenario: "officeweb",
+  licenseType: "Premium",
+  agent: "work"
+};
+
 export const M365_DEFAULT_VARIANTS = [
 "EnableMcpServerWidgets",
 "feature.EnableMcpServerWidgets",
@@ -132,6 +139,7 @@ export function isStructuredWsUrlCredential(value) {
 function resolveTierOverrides(psd) {
   const tier = isString(psd.tier) ? psd.tier.toLowerCase() : "";
   const isEduTier = tier === "edu" || tier === "included";
+  const isEnterpriseTier = tier === "enterprise" || tier === "work";
   const psdIsEdu =
   isString(psd.isEdu) && psd.isEdu ||
   isBoolean(psd.isEdu) && String(psd.isEdu) ||
@@ -139,11 +147,12 @@ function resolveTierOverrides(psd) {
   return {
     scenario:
     isString(psd.scenario) && psd.scenario || (
-    isEduTier ? M365_EDU_OVERRIDES.scenario : undefined),
+    isEduTier ? M365_EDU_OVERRIDES.scenario : isEnterpriseTier ? M365_ENTERPRISE_OVERRIDES.scenario : undefined),
     isEdu: psdIsEdu || (isEduTier ? M365_EDU_OVERRIDES.isEdu : undefined),
     licenseType:
     isString(psd.licenseType) && psd.licenseType || (
-    isEduTier ? M365_EDU_OVERRIDES.licenseType : undefined)
+    isEduTier ? M365_EDU_OVERRIDES.licenseType : isEnterpriseTier ? M365_ENTERPRISE_OVERRIDES.licenseType : undefined),
+    agent: isString(psd.agent) && psd.agent || (isEnterpriseTier ? M365_ENTERPRISE_OVERRIDES.agent : undefined)
   };
 }
 
@@ -210,7 +219,7 @@ export function buildWsUrl(params) {
     agentHost: M365_INDIVIDUAL_DEFAULTS.agentHost,
     licenseType: params.licenseType ?? M365_INDIVIDUAL_DEFAULTS.licenseType,
     isEdu: params.isEdu ?? "false",
-    agent: M365_INDIVIDUAL_DEFAULTS.agent,
+    agent: params.agent ?? M365_INDIVIDUAL_DEFAULTS.agent,
     scenario: params.scenario ?? M365_INDIVIDUAL_DEFAULTS.scenario
   });
   return `wss://${host}/m365Copilot/Chathub/${encodedPath}?${query.toString()}`;

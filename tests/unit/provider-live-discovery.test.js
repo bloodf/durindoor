@@ -159,11 +159,11 @@ describe("provider live model discovery", () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       result: [
         {
-          name: "@cf/meta/llama-3.2-1b-instruct",
+          name: "@cf/meta/llama-3.1-8b-instruct-fp8",
           properties: [{ property_id: "context_window", value: "65432" }],
         },
         {
-          name: "@cf/meta/llama-3.2-3b-instruct",
+          name: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
           properties: [],
         },
       ],
@@ -175,9 +175,9 @@ describe("provider live model discovery", () => {
 
     const models = await buildModelsList([LLM_KIND]);
 
-    expect(model(models, "cf/@cf/meta/llama-3.2-1b-instruct").capabilities.contextWindow).toBe(65_432);
-    expect(model(models, "cf/@cf/meta/llama-3.2-3b-instruct").capabilities.contextWindow).toBe(80_000);
-    expect(model(models, "cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast")).toBeDefined();
+    expect(model(models, "cf/@cf/meta/llama-3.1-8b-instruct-fp8").capabilities.contextWindow).toBe(65_432);
+    expect(model(models, "cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast").capabilities.contextWindow).toBe(24_000);
+    expect(model(models, "cf/@cf/qwen/qwen3.8-27b")).toBeDefined();
   });
 
   it("keeps every Cloudflare static model when the live page is empty", async () => {
@@ -191,8 +191,9 @@ describe("provider live model discovery", () => {
 
     const models = await buildModelsList([LLM_KIND]);
 
-    expect(model(models, "cf/@cf/meta/llama-3.2-1b-instruct")).toBeDefined();
+    expect(model(models, "cf/@cf/meta/llama-3.1-8b-instruct-fp8")).toBeDefined();
     expect(model(models, "cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast")).toBeDefined();
+    expect(model(models, "cf/@cf/meta/llama-3.2-1b-instruct")).toBeUndefined();
   });
 
   it("adds MiniMax live IDs without inventing limits and preserves known static capabilities", async () => {

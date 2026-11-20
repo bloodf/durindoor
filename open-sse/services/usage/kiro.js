@@ -2,6 +2,7 @@
  * Kiro (AWS CodeWhisperer) usage handler
  */
 
+import { buildKiroIdentityHeaders } from "../../shared/kiroHeaders.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { resolveDefaultProfileArn, resolveKiroRegion, resolveKiroControlPlaneHost, KIRO_DEFAULT_REGION } from "../../config/kiroConstants.js";
 import { U, parseResetTime } from "./shared.js";
@@ -80,6 +81,9 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   const qHost = isDefaultRegion ? U("kiro").qHost : resolveKiroControlPlaneHost(providerSpecificData?.region);
   const limitsPath = U("kiro").limitsPath;
 
+  // All quota surfaces must pass the same client-version gate as inference.
+  const identityHeaders = buildKiroIdentityHeaders({ accessToken, providerSpecificData });
+
   // For compatibility, try multiple known Kiro usage endpoints
   const attempts = [
   {
@@ -91,8 +95,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
         headers: {
           "Authorization": `Bearer ${accessToken}`,
           "Accept": "application/json",
-          "x-amz-user-agent": "aws-sdk-js/1.0.0 KiroIDE",
-          "user-agent": "aws-sdk-js/1.0.0 KiroIDE",
+          ...identityHeaders,
           ...apiKeyHeaders,
           ...externalIdpHeaders
         }
@@ -108,6 +111,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
         "Authorization": `Bearer ${accessToken}`,
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
+        ...identityHeaders,
         "Accept": "application/json",
         ...apiKeyHeaders,
         ...externalIdpHeaders
@@ -132,6 +136,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
         headers: {
           "Authorization": `Bearer ${accessToken}`,
           "Accept": "application/json",
+          ...identityHeaders,
           ...apiKeyHeaders,
           ...externalIdpHeaders
         }

@@ -1,3 +1,4 @@
+import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
@@ -576,6 +577,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  // Validate before generic modality stripping can discard unsupported inputs.
+  if (provider === "nlpcloud" && (hasMediaBlocks(body) || body?.tools?.length || body?.functions?.length)) {
+    finishTimeline("error", "error", "NLP Cloud supports text conversations only");
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "NLP Cloud supports text conversations only");
+  }
+  if (provider === "nlpcloud" && sourceFormat === FORMATS.OPENAI) {
+    try { validateNlpCloudRequest(body, stream); }
+    catch (error) {
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
+  }
 
   // Reject unsupported original audio before modality stripping replaces it with text.
   const inputAudioError = validateInputAudio(body, sourceFormat, targetFormat, cleanUpstreamModel);

@@ -3,6 +3,7 @@ import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, 
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
+import { getProviderModels } from "open-sse/config/providerModels.js";
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
@@ -85,6 +86,11 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
       if (token) headers["x-api-key"] = token;
       return headers;
     }, proxyOptions);
+  }
+
+  // NLP Cloud publishes its chatbot catalog in documentation, not a model-list API.
+  if (connection.provider === "nlpcloud") {
+    return { models: getProviderModels("nlpcloud"), source: "static" };
   }
 
   const config = PROVIDER_MODELS_CONFIG[connection.provider];

@@ -219,6 +219,16 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   const headers = buildProviderProbeHeaders(cfg, apiKey);
   if (cfg.noAuth && !apiKey) return { url: cfg.validateUrl || baseUrl, options: { headers }, accepts: "always" };
 
+  // NLP Cloud has no documented key-only probe; a successful chatbot request
+  // verifies the key, while payload and quota errors are not proof of validity.
+  if (provider === "nlpcloud") {
+    return {
+      url: `${baseUrl}/chatdolphin/chatbot`,
+      options: { method: "POST", headers, body: JSON.stringify({ input: "Hello" }), signal: AbortSignal.timeout(10000) },
+      accepts: "ok",
+    };
+  }
+
   if (cfg.format === "claude") {
     return {
       url: appendUrlSuffix(baseUrl, cfg.urlSuffix),

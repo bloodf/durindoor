@@ -1,3 +1,4 @@
+import { buildKiroIdentityHeaders } from "../../../../open-sse/shared/kiroHeaders.js";
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { buildKiroProfileEndpoint } from "../../../../open-sse/config/kiroRegions.js";
 import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
@@ -333,6 +334,7 @@ export class KiroService {
           method: "POST",
           headers: {
             "Content-Type": "application/x-amz-json-1.0",
+            ...buildKiroIdentityHeaders({ accessToken }),
             "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
             "Authorization": `Bearer ${accessToken}`,
             "Accept": "application/json"

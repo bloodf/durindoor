@@ -14,6 +14,8 @@ import { filterByContextRequirements, sortByContextSize, validateContextRequirem
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
+import { CLAUDE_BLOCK, RESPONSES_ITEM } from "../translator/schema/blocks.js";
+import { OPENAI_FINISH, CLAUDE_STOP, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../translator/schema/finishReasons.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 import { classifyTier } from "./jevClassifier.js";
@@ -1295,27 +1297,43 @@ async function isBodyEmpty(response) {
   if (!payload || Array.isArray(payload) && payload.length === 0) return true;
   if (!isObject(payload) || Object.keys(payload).length === 0) return true;
 
+  // Policy refusals and paused provider turns are valid responses even without text.
+  if ((Array.isArray(payload.choices) && payload.choices.some((choice) => choice?.finish_reason === OPENAI_FINISH.CONTENT_FILTER || nonEmptyString(choice?.message?.refusal))) ||
+      payload.stop_reason === CLAUDE_STOP.REFUSAL || payload.stop_reason === CLAUDE_STOP.PAUSE_TURN ||
+      payload.incomplete_details?.reason === OPENAI_FINISH.CONTENT_FILTER ||
+      (Array.isArray(payload.candidates) && payload.candidates.some((candidate) => GEMINI_CONTENT_FILTER_FINISH_REASONS.has(candidate?.finishReason))) ||
+      payload.promptFeedback?.blockReason) return false;
+
+  const hasText = (value) => isString(value) && value.trim().length > 0;
+  const hasBlock = (block) => hasText(block?.text) || hasText(block?.thinking) ||
+    block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE ||
+    block?.type === RESPONSES_ITEM.FUNCTION_CALL || block?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL ||
+    Boolean(block?.image_url || block?.image || block?.source || block?.audio || block?.file || block?.refusal);
+
   if (Array.isArray(payload.choices)) {
     if (payload.choices.length === 0) return true;
     return payload.choices.every((choice) => {
       const message = choice?.message ?? choice?.delta;
-      if (!message || !isObject(message)) return true;
-      return !nonEmptyString(message.content) &&
-      !(Array.isArray(message.content) && message.content.length > 0) &&
-      !nonEmptyString(message.reasoning_content) &&
-      !nonEmptyString(message.reasoning) &&
+      if (!message || !isObject(message)) return !hasText(choice?.text);
+      return !hasText(choice?.text) && !hasText(message.content) &&
+      !(Array.isArray(message.content) && message.content.some(hasBlock)) &&
+      !hasText(message.reasoning_content) &&
+      !hasText(message.reasoning) && !message.audio &&
       !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0) &&
       !message.function_call;
     });
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "content")) {
-    return !nonEmptyString(payload.content) &&
-    !(Array.isArray(payload.content) && payload.content.length > 0) &&
-    !(isObject(payload.content) && nonEmptyString(payload.content.text));
+    return !hasText(payload.content) &&
+    !(Array.isArray(payload.content) && payload.content.some(hasBlock)) &&
+    !(isObject(payload.content) && hasBlock(payload.content));
   }
-  if (Object.prototype.hasOwnProperty.call(payload, "text")) return !nonEmptyString(payload.text);
-  if (Array.isArray(payload.output)) return payload.output.length === 0;
+  if (Object.prototype.hasOwnProperty.call(payload, "text")) return !hasText(payload.text);
+  if (Array.isArray(payload.candidates)) return !payload.candidates.some((candidate) =>
+    Array.isArray(candidate?.content?.parts) && candidate.content.parts.some((part) => hasText(part?.text) || part?.functionCall || part?.inlineData?.data || part?.inline_data?.data || part?.fileData || part?.file_data));
+  if (Array.isArray(payload.output)) return !payload.output.some((item) =>
+    hasBlock(item) || (Array.isArray(item?.content) && item.content.some(hasBlock)) || (Array.isArray(item?.summary) && item.summary.some(hasBlock)));
   return false;
 }
 

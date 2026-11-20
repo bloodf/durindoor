@@ -1,3 +1,4 @@
+import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
@@ -361,6 +362,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
+  if (targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.CLAUDE && state.searchEnabled) {
+    const converted = responsesToClaudeResponse(chunk, state);
+    return converted ? Array.isArray(converted) ? converted : [converted] : [];
+  }
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
     return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];

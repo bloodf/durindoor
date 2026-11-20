@@ -280,6 +280,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `llm-kiwi` |  | apikey | `https://api.llm.kiwi/v1/chat/completions` |
 | `llm7` |  | apikey | `https://api.llm7.io/v1/chat/completions` |
 | `llmgateway` |  | apikey | `https://api.llmgateway.io/v1/chat/completions` |
+| `llmtr` |  | apikey | `https://llmtr.com/v1/chat/completions` |
 | `lm-studio` | openai | apikey | `http://localhost:1234/v1` |
 | `local-device` |  | freeTier | `` |
 | `local-whisper` |  | apikey | `` |

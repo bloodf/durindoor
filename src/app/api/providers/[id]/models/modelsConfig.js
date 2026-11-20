@@ -284,6 +284,12 @@ export function buildClaudeModelsHeaders(token) {
   };
 }
 
+/** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
+export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
+  model && isString(model.id) &&
+  (!Array.isArray(model.supported_operations) || model.supported_operations.length === 0 || model.supported_operations.includes("CHAT_COMPLETIONS"))
+);
+
 export const PROVIDER_MODELS_CONFIG = {
   openference: {
     customResolver: async (connection, proxyOptions) => {
@@ -309,6 +315,7 @@ export const PROVIDER_MODELS_CONFIG = {
       }
     }
   },
+  llmtr: { ...createOpenAIModelsConfig("https://llmtr.com/v1/models"), parseResponse: parseLlmtrModels },
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },

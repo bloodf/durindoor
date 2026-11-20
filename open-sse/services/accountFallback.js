@@ -65,6 +65,16 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
+  // OpenRouter capability and routing preferences describe this request, not
+  // model health. Keep ordinary missing-model 404s on their existing path.
+  if (Number(status) === 404 && provider === "openrouter" && (
+    /\bno endpoints found that support\b/i.test(normalizedText) ||
+    /\bno allowed providers\b/i.test(normalizedText) ||
+    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText)
+  )) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
+  }
+
   /** #3386: terminal client errors win before message-based transient rules. */
   const terminalRule = ERROR_RULES.find((rule) => rule.status === status && rule.fallback === false);
   if (terminalRule) {

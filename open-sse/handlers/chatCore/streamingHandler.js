@@ -10,6 +10,7 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
+import { createEmptyTerminalGuard } from "../../utils/emptyStreamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
@@ -36,6 +37,14 @@ function hasOutputTokens(usage) {
     usage?.completion_tokens ?? usage?.output_tokens ?? usage?.candidatesTokenCount ?? 0
   );
   return Number.isFinite(count) && count > 0;
+}
+
+// Match the existing cooldown classification; a previously reported error is
+// already visible to the client and must not be replaced by an empty error.
+function isEmptyCompletion(content, usage, summary) {
+  return !content?.upstreamError && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
+    !content?.content?.trim?.() && !content?.hadToolCalls &&
+    !content?.thinking?.trim?.() && !hasOutputTokens(usage);
 }
 
 /** Frame a complete OpenAI response for the normal streaming pipeline. */
@@ -176,7 +185,15 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  let emptyVerdict = null;
+  const observeCompletion = (...args) => {
+    emptyVerdict = isEmptyCompletion(args[0], args[1], args[3]);
+    onStreamComplete?.(...args);
+  };
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  const emptyTerminalGuard = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(emittedFormat)
+    ? createEmptyTerminalGuard(emittedFormat, () => emptyVerdict, () => transformStream.getEmptyStreamSnapshot?.())
+    : null;
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
@@ -220,7 +237,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   });
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
-    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard,
   );
 
   saveRequestDetail(buildRequestDetail({

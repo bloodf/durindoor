@@ -1671,6 +1671,13 @@ export function createSSEStream(options = {}) {
     }
   });
   transformStream.getStreamSnapshot = getStreamSnapshot;
+  // Keep interruption snapshots stable; terminal classification also needs
+  // tool and error state that is not part of the accounting snapshot contract.
+  transformStream.getEmptyStreamSnapshot = () => ({
+    ...getStreamSnapshot(),
+    hadToolCalls,
+    upstreamError: streamErrorPayload
+  });
   return transformStream;
 }
 

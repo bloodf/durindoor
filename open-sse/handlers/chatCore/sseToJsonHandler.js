@@ -18,6 +18,7 @@ import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { restoreClaudeToolNames, restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
+import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -554,6 +555,20 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
       parsed = inlineThinking.responseBody;
+
+      /**
+       * DeepSeek encodes tool calls as DSML text. The streaming path decodes
+       * those frames chunk by chunk (translator/concerns/dsml.js); this buffered
+       * path joins the very same frames into plain text first, so decode them
+       * here — before the client-format projection — or the client receives the
+       * raw markup instead of a structured tool call. Frames the parser does
+       * not recognize stay literal text, and non-DeepSeek models are untouched.
+       */
+      const dsmlModel = finalBody?.model || model;
+      parsed = normalizeDsmlCompletion(parsed, dsmlModel, provider);
+      // The native Claude message overlays the projection, so its own text
+      // blocks need the same decode (DeepSeek also serves a Claude transport).
+      if (claudeSSE?.message) normalizeDsmlClaudeMessage(claudeSSE.message, dsmlModel, provider);
 
       const maskedGatewayError = classifyMaskedGatewayError(parsed);
       if (maskedGatewayError) {

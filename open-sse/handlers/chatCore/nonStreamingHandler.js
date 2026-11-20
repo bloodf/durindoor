@@ -1,6 +1,6 @@
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
-import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
@@ -429,6 +429,11 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 
   // Claude
   if (targetFormat === FORMATS.CLAUDE) {
+    // DeepSeek encodes tool calls as DSML text, and its Anthropic-compatible
+    // transport carries those frames inside a plain text block. Decode them
+    // before the content blocks are read so the body yields tool_use blocks
+    // instead of literal markup.
+    normalizeDsmlClaudeMessage(responseBody, options.effectiveModel || options.model, options.provider);
     // Always translate a Claude-format body to OpenAI, even if `content` is
     // missing/null (e.g. M3 with max_tokens:1 spends the budget on thinking
     // and returns `content: null`). Returning the raw body would leave the

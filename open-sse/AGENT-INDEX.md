@@ -240,6 +240,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `hcnsec` | openai | apikey | `https://api.hcnsec.cn/v1/chat/completions` |
 | `helixmind` |  | apikey | `https://helixmind.online/v1/chat/completions` |
 | `heroku` |  | apikey | `https://us.inference.heroku.com/v1/chat/completions` |
+| `hetzner` | openai | apikey | `https://inference.hetzner.com/api/v1/chat/completions` |
 | `huggingchat` | openai | webCookie | `https://huggingface.co/chat/conversation` |
 | `huggingface` |  | apikey | `` |
 | `hyperbolic` |  | apikey | `https://api.hyperbolic.xyz/v1/chat/completions` |
@@ -279,6 +280,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `llm-kiwi` |  | apikey | `https://api.llm.kiwi/v1/chat/completions` |
 | `llm7` |  | apikey | `https://api.llm7.io/v1/chat/completions` |
 | `llmgateway` |  | apikey | `https://api.llmgateway.io/v1/chat/completions` |
+| `llmtr` |  | apikey | `https://llmtr.com/v1/chat/completions` |
 | `lm-studio` | openai | apikey | `http://localhost:1234/v1` |
 | `local-device` |  | freeTier | `` |
 | `local-whisper` |  | apikey | `` |

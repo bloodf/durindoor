@@ -183,6 +183,8 @@ export async function handleMusicGenerationCore({ provider, model, body, credent
     lyrics: body.lyrics,
     duration: body.duration,
   };
+  // OmniRoute open-sse/handlers/musicGeneration.ts supplies Udio's random-seed default.
+  if (payload && provider === "udio") payload.samplerOptions = { seed: -1 };
   const url = requestId ? new URL(provider === "suno" ? "/api/feed/v2" : "/api/songs", config.baseUrl) : new URL(config.baseUrl);
   if (requestId) url.searchParams.set(provider === "suno" ? "ids" : "songIds", requestId);
 

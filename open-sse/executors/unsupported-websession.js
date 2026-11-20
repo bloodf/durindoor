@@ -51,14 +51,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires OmniRoute's music-generation route and Suno media executor contract",
   },
-  "t3-web": {
-    aliases: ["t3chat"],
-    source: [
-      "open-sse/executors/t3-chat-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires the T3 web-session executor, convex session id, and cookie validation flow",
-  },
   udio: {
     aliases: [],
     source: [
@@ -67,14 +59,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
       "src/app/api/v1/music/generations/route.ts",
     ],
     reason: "requires OmniRoute's music-generation route and Udio media executor contract",
-  },
-  "yuanbao-web": {
-    aliases: ["ybw"],
-    source: [
-      "open-sse/executors/yuanbao-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires Tencent Yuanbao cookie-session SSE executor and validation flow",
   },
 };
 

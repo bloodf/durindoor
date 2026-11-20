@@ -68,13 +68,15 @@ chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure
 
 These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
 
-Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `chatgpt-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
+Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `chatgpt-web`, `huggingchat`, `muse-spark-web`, `suno`, `udio`, and `yuanbao-web`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
 
 ## Validation
 
 **Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web and ZenMux Free skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
-A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
+T3 Chat Web accepts an authorized Cookie value containing `convex-session-id`. The connection model list is curated locally. A provider connection test checks reachability, while a chat request checks whether T3 Chat accepts the session.
+
+A successful authenticated probe applies to the session at the time of the check.
 
 ## Limits
 

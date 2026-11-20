@@ -1,3 +1,4 @@
+import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -5,6 +6,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
 import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
@@ -237,6 +239,14 @@ export async function POST(request) {
     }
     if (isNoAuth && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
+    }
+
+    if (provider === "t3-web") {
+      return NextResponse.json(await validateT3Session({ apiKey }));
+    }
+
+    if (provider === "yuanbao-web" && !buildYuanbaoCookie(apiKey).hasToken) {
+      return NextResponse.json({ valid: false, error: "Paste a Yuanbao cookie containing hy_user and hy_token" });
     }
 
     // Skipping chat must not accept a cookie that could never authenticate.

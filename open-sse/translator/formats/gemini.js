@@ -3,6 +3,7 @@
 import { safeParseJSON } from "../concerns/json.js";
 import { DEFAULT_IMAGE_MIME, OPENAI_BLOCK } from "../schema/index.js";
 import { isGemini4Model } from "../../providers/capabilities.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 function remoteImageMimeType(url) {
   let pathname;
@@ -702,8 +703,32 @@ export function normalizeGeminiParameterRoot(raw) {
   return { ...schema, type: "object", properties };
 }
 
-// Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
-export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false } = {}) {
+/**
+ * Compatibility-only property added to an object schema that would otherwise
+ * be empty (Gemini rejects `OBJECT` with no properties). The model fills it, so
+ * response translators remove it again where it was inserted.
+ */
+export const GEMINI_PLACEHOLDER_KEY = "reason";
+export const GEMINI_PLACEHOLDER_DESCRIPTION = "Brief explanation of why you are calling this tool";
+const placeholderProperties = () => ({ [GEMINI_PLACEHOLDER_KEY]: { type: "string", description: GEMINI_PLACEHOLDER_DESCRIPTION } });
+
+/**
+ * Build the parameter schema DurinDoor sends for one client tool on the Gemini
+ * request path: tool-schema validation, bare-map root coercion, then the cleaner.
+ * Shared by the request translators and the response-side placeholder resolver so
+ * both see the same transformation. `options.placeholderPaths` is forwarded to the cleaner.
+ */
+export function buildGeminiToolParameters(raw, name, options) {
+  return cleanJSONSchemaForAntigravity(
+    structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(raw, name)) || { type: "object", properties: {} }),
+    options
+  );
+}
+
+// Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively.
+// `placeholderPaths`, when an array, receives one entry per node that got the placeholder
+// property: a list of `{ property: name }` / `{ items: true }` steps from the schema root.
+export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false, placeholderPaths = null } = {}) {
   if (!schema || !isObject(schema)) return schema;
 
   // Mutate directly (schema is only used once per request)
@@ -764,43 +789,35 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   // Descend only into real schema nodes — the values of the `properties` map
   // and the `items` schema. The name-map keys under `properties` are
   // user-chosen parameter names, not schema keywords (#2884).
-  function addPlaceholders(obj) {
+  function addPlaceholders(obj, path) {
     if (!obj || !isObject(obj)) return;
 
     // Empty schema {} (no type, no properties) after $ref removal — treat as object with placeholder
     if (Object.keys(obj).length === 0) {
       obj.type = "object";
-      obj.properties = {
-        reason: {
-          type: "string",
-          description: "Brief explanation of why you are calling this tool"
-        }
-      };
-      obj.required = ["reason"];
+      obj.properties = placeholderProperties();
+      obj.required = [GEMINI_PLACEHOLDER_KEY];
+      placeholderPaths?.push(path);
       return;
     }
 
     if (obj.type === "object") {
       if (!obj.properties || Object.keys(obj.properties).length === 0) {
-        obj.properties = {
-          reason: {
-            type: "string",
-            description: "Brief explanation of why you are calling this tool"
-          }
-        };
-        obj.required = ["reason"];
+        obj.properties = placeholderProperties();
+        obj.required = [GEMINI_PLACEHOLDER_KEY];
+        placeholderPaths?.push(path);
       }
     }
 
     if (obj.properties && isObject(obj.properties)) {
-      for (const v of Object.values(obj.properties)) {
-        if (v && isObject(v)) addPlaceholders(v);
+      for (const [name, v] of Object.entries(obj.properties)) {
+        if (v && isObject(v)) addPlaceholders(v, placeholderPaths ? [...path, { property: name }] : path);
       }
     }
-    if (obj.items && isObject(obj.items)) addPlaceholders(obj.items);
+    if (obj.items && isObject(obj.items)) addPlaceholders(obj.items, placeholderPaths ? [...path, { items: true }] : path);
   }
 
-  addPlaceholders(cleaned);
+  addPlaceholders(cleaned, []);
 
   // Phase 6: Enforce Gemini protobuf type predicates (items only on array,
   // properties/required only on object). Runs after placeholders so empty

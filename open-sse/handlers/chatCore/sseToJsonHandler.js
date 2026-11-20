@@ -267,8 +267,8 @@ export function createSSEErrorResult(parsed, credentials = null) {
   return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
 }
 
-function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap) {
-  const state = { toolNameMap };
+export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null) {
+  const state = { toolNameMap, clientTools, providerBody };
   const chunks = [];
 
   for (const { data, done } of parseSseEvents(rawSSE)) {
@@ -538,7 +538,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }) :
       null;
       let parsed = claudeSSE ? claudeSSE.completion : isGeminiFamily ?
-      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap) :
+      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap, Array.isArray(body?.tools) ? body.tools : null) :
       parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
         providerBody: finalBody || translatedBody,

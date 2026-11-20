@@ -88,3 +88,40 @@ function normalizeNode(node, toolName, path) {
 export function normalizeToolSchema(schema, toolName) {
   return normalizeNode(schema, toolName, "parameters");
 }
+
+/** Repair truncated array keywords in Responses tool schemas before Chat forwarding.
+ * Traverse schema positions only, so literal enum/default values are preserved.
+ */
+export function sanitizeChatSchema(schema) {
+  if (!schema || !isObject(schema) || Array.isArray(schema)) return schema;
+  const result = { ...schema };
+  for (const key of ["enum", "required", "anyOf", "oneOf", "allOf", "prefixItems"]) {
+    if (!(key in result)) continue;
+    let value = result[key];
+    if (!Array.isArray(value) && value && isObject(value)) {
+      const keys = Object.keys(value);
+      if (keys.length && keys.every((entry, index) => entry === String(index))) value = keys.map((entry) => value[entry]);
+    }
+    if (!Array.isArray(value)) { delete result[key]; continue; }
+    result[key] = ["anyOf", "oneOf", "allOf", "prefixItems"].includes(key) ? value.map(sanitizeChatSchema) : value;
+  }
+  for (const key of ["items", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "unevaluatedProperties", "additionalItems", "contentSchema", "unevaluatedItems"]) {
+    if (result[key] && isObject(result[key])) result[key] = Array.isArray(result[key]) ? result[key].map(sanitizeChatSchema) : sanitizeChatSchema(result[key]);
+    else if (isString(result[key]) && /^\[(?:MaxDepth|Truncated|Circular|Object|Array)\]$/.test(result[key].trim())) result[key] = {};
+  }
+  for (const key of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas"]) {
+    if (result[key] && isObject(result[key]) && !Array.isArray(result[key])) {
+      result[key] = Object.fromEntries(Object.entries(result[key]).map(([name, value]) => [name, sanitizeChatSchema(value)]));
+    }
+  }
+  return result;
+}
+
+/**
+ * Ensure object schema always has properties field (required by Codex Responses API)
+ */
+export function normalizeToolParameters(params) {
+  if (!params) return { type: "object", properties: {} };
+  if (params.type === "object" && !params.properties) return { ...params, properties: {} };
+  return params;
+}

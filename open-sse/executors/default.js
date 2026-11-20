@@ -446,7 +446,16 @@ export class DefaultExecutor extends BaseExecutor {
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
       // Messages always uses max_tokens, independently of OpenAI model-name rules.
-      if (transportFormat === FORMATS.CLAUDE) {
+      if (this.provider === "kimi" && transportFormat === FORMATS.OPENAI) {
+        // Moonshot Chat uses max_completion_tokens and fixed sampling on these models.
+        if (transformed.max_tokens !== undefined) {
+          transformed.max_completion_tokens ??= transformed.max_tokens;
+          delete transformed.max_tokens;
+        }
+        if (/^kimi-k(?:2\.6|2\.7-code(?:-highspeed)?|3(?:\.1-pro(?:-highspeed)?)?)$/i.test(model)) {
+          for (const param of ["temperature", "top_p", "frequency_penalty", "presence_penalty", "n"]) delete transformed[param];
+        }
+      } else if (transportFormat === FORMATS.CLAUDE) {
         if (transformed.max_completion_tokens !== undefined) {
           transformed.max_tokens ??= transformed.max_completion_tokens;
           delete transformed.max_completion_tokens;
@@ -676,7 +685,10 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) {
       if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials);
     }
-    applyAuth(headers, desc, credentials);
+    // Platform keys and Kimi Coding OAuth tokens belong to separate accounts.
+    // Never fall back to an access token on the platform API-key connection.
+    const authCredentials = this.provider === "kimi" ? { ...credentials, accessToken: undefined } : credentials;
+    applyAuth(headers, desc, authCredentials);
     // Cline's hook normalizes OAuth JWTs; generic bearer auth otherwise overwrites it.
     if (desc.hooks?.includes("clineHeaders")) HEADER_HOOKS.clineHeaders(headers, credentials);
 

@@ -210,7 +210,9 @@ function convertTools(tools) {
 }
 
 export function openaiToCommandCodeRequest(model, body, stream /* , credentials */) {
-  const cleanModel = stripThinkingSuffix(model);
+  // CommandCode is not a service-tier provider, so a tier-shaped suffix stays
+  // part of the opaque model ID and must reach the provider unchanged.
+  const cleanModel = stripThinkingSuffix(model, "commandcode");
   const { messages, system } = convertMessages(body.messages);
   const requestedMaxTokens = body.max_tokens ?? body.max_output_tokens ?? DEFAULT_MAX_TOKENS;
   const safeMaxTokens = Math.max(Number(requestedMaxTokens) || DEFAULT_MAX_TOKENS, 1);

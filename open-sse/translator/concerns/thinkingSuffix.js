@@ -2,6 +2,7 @@
 // confusing opaque/custom model IDs that legitimately contain parentheses.
 
 import { LEVEL_TO_BUDGET } from "./thinking.js";
+import { supportsServiceTier } from "../../config/serviceTier.js";
 
 /**
  * Parse a recognized thinking suffix from a model ID.
@@ -41,16 +42,32 @@ function parseThinkingSuffix(model) {
   return { cleanModel: model, override: null };
 }
 
+/** Whether the service-tier control applies to this provider.
+ * Without a provider context the historical behavior is kept: the suffix is a
+ * tier control. With a provider, only providers whose upstream accepts the
+ * OpenAI-style `service_tier` field (OpenAI, Codex) treat `fast`/`standard` as
+ * a tier modifier. Everywhere else the suffix stays part of the opaque model
+ * ID, so it reaches dispatch intact. */
+function tierApplies(provider) {
+  if (provider === null || provider === undefined) return true;
+  return supportsServiceTier(provider);
+}
+
 /** Parse an optional service tier alongside one recognized thinking modifier.
- * Unknown or conflicting suffixes remain part of the opaque model ID. */
-export function parseModelModifiers(model) {
+ * Unknown or conflicting suffixes remain part of the opaque model ID.
+ *
+ * `provider` scopes the tier control to the providers that accept a service
+ * tier. On every other provider a tier-shaped suffix is opaque model-ID text,
+ * so the whole suffix is preserved and no tier is selected.
+ */
+export function parseModelModifiers(model, provider = null) {
   const empty = { cleanModel: model, override: null, serviceTier: null };
   if (!isString(model)) return empty;
   const match = model.match(/^(.*)\(([^()]+)\)\s*$/);
   if (!match || !match[1].trim()) return empty;
   const tokens = match[2].split(",").map((token) => token.trim().toLowerCase());
   const tiers = tokens.filter((token) => token === "fast" || token === "standard");
-  if (!tiers.length) return { ...parseThinkingSuffix(model), serviceTier: null };
+  if (!tiers.length || !tierApplies(provider)) return { ...parseThinkingSuffix(model), serviceTier: null };
   const thinking = tokens.filter((token) => token !== "fast" && token !== "standard");
   if (tiers.length !== 1 || thinking.length > 1 || thinking.includes("")) return empty;
   const cleanModel = match[1].trim();
@@ -59,13 +76,13 @@ export function parseModelModifiers(model) {
   return { ...parsed, serviceTier: tiers[0] === "fast" ? "priority" : "default" };
 }
 
-export function parseSuffix(model) {
-  const { cleanModel, override } = parseModelModifiers(model);
+export function parseSuffix(model, provider = null) {
+  const { cleanModel, override } = parseModelModifiers(model, provider);
   return { cleanModel, override };
 }
 
 /** Strip only a recognized request-only thinking suffix. */
-export function stripThinkingSuffix(model) {
-  const parsed = parseSuffix(model);
+export function stripThinkingSuffix(model, provider = null) {
+  const parsed = parseSuffix(model, provider);
   return parsed.cleanModel;
 }

@@ -13,7 +13,9 @@ when attributable to one search, URL citations. Late or unattributed citations
 are presented as answer-source text. Search counts appear in
 `usage.server_tool_use.web_search_requests`. Streaming and accumulated responses
 share the evidence conversion; ordinary Responses-to-Claude requests continue
-through the existing translator. Search history forwarded to Codex retains
+through the existing translator. For buffered Claude responses with classifier
+compatibility enabled, the classifier projection takes precedence over search
+evidence reconstruction. Search history forwarded to Codex retains
 queries and source URLs as text; Codex does not produce Anthropic encrypted
 search content.
 

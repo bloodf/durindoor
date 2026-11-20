@@ -7,6 +7,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 
 | id | executor | source file |
 |---|---|---|
+| `adapta-web` | AdaptaWebExecutor | `./adapta-web.js` |
+| `adp-web` | AdaptaWebExecutor | `./adapta-web.js` |
 | `agy` | AntigravityExecutor | `./antigravity.js` |
 | `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
@@ -350,6 +352,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |
 | `requesty` |  | freeTier | `https://router.requesty.ai/v1/chat/completions` |
 | `routeway` |  | apikey | `https://api.routeway.ai/v1/chat/completions` |
+| `runcrate` |  | apikey | `https://api.runcrate.ai/v1/chat/completions` |
 | `runwayml` |  | apikey | `` |
 | `sambanova` |  | freeTier | `https://api.sambanova.ai/v1/chat/completions` |
 | `sap` |  | apikey | `https://example-aicore.cfapps.eu10.hana.ondemand.com/v2/lm/deployments/example-deployment/chat/completions` |

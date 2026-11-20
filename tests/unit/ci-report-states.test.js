@@ -55,7 +55,7 @@ describe("completed Vitest report states", () => {
 
       const report = { success: true, testResults: [suite(path.join(dir, "a.test.js"))] };
       writeFileSync(file, JSON.stringify(report));
-      expect(validateTestReport(file, startedAt, 0, null, dir).report).toEqual(report);
+      expect(validateTestReport(file, startedAt, 0, null, dir).tests).toBe(1);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 

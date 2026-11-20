@@ -1,5 +1,5 @@
 // #1099: compression fidelity eval + protected-block gates.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   bodyToText,
   checkFidelity,
@@ -97,6 +97,18 @@ describe("checkProtectedBlocks", () => {
 });
 
 describe("checkFidelity", () => {
+  it("ignores generated placeholder tokens while protecting real constants", () => {
+    const random = vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((bytes) => bytes.fill(0));
+    try {
+      const hunk = "@@ -1,2 +1,3 @@ x";
+      expect(checkFidelity(hunk, "x", { checkNumericIntegrity: false }).failedInvariant).toBe("diff-hunks");
+      expect(checkFidelity(hunk, hunk).passed).toBe(true);
+      expect(checkFidelity(`${hunk}\nKEEP_THIS`, hunk).failedInvariant).toBe("protected-tokens");
+    } finally {
+      random.mockRestore();
+    }
+  });
+
   it("catches dropped negations, numbers, URLs, JSON keys and diff hunks", () => {
     expect(checkFidelity("Do not delete the db.", "Delete the db.").failedInvariant).toBe("negation");
     expect(checkFidelity("Não altere a planilha.", "Altere a planilha.").failedInvariant).toBe("negation");

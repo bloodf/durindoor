@@ -20,6 +20,7 @@ Open Dashboard, then Providers, then the Ollama Local card, and add a connection
 </Step>
 <Step>
 Set **Ollama Host URL** to the network Ollama server, for example `http://192.168.1.20:11434`. Only `http` and `https` are accepted. A trailing `/api/chat`, `/v1`, or `/api` path is removed and any query string or fragment is dropped, so `http://nas.local:11434/v1` reaches the same server as `http://nas.local:11434`.
+An invalid configured URL is rejected for both chat and Messages requests.
 </Step>
 <Step>
 Leave the API key empty unless your Ollama build checks one. Ollama ignores keys, and DurinDoor sends `Authorization: Bearer` only when a key is saved.

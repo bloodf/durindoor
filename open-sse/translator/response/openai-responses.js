@@ -14,6 +14,7 @@ import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { normalizeArrayContentDelta } from "../../utils/arrayContentDelta.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
@@ -152,6 +153,24 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   // Handle text content
   if (delta.content) {
     let content = delta.content;
+
+    // An OpenAI-compatible upstream may stream `delta.content` as typed part
+    // arrays (Mistral thinking chunks) instead of a string. Fold them into the
+    // string `content` / `reasoning_content` the chat-chunk contract requires,
+    // so `response.output_text.delta.delta` never carries an array that strict
+    // Responses clients reject (OmniRoute #15757).
+    if (Array.isArray(content)) {
+      normalizeArrayContentDelta(delta);
+      content = delta.content;
+      const foldedReasoning = delta.reasoning_content;
+      if (isString(foldedReasoning) && foldedReasoning) {
+        startReasoning(state, emit, idx);
+        emitReasoningDelta(state, emit, foldedReasoning);
+      }
+      // A thinking-only chunk folds to no text at all; the reasoning delta above
+      // is the whole payload, so there is nothing left to emit as content.
+      if (!content) return events;
+    }
 
     // Reasoning arrived via reasoning_content (not inline <think> tags) and now
     // normal text begins → the reasoning section is over. Close it here on the
@@ -400,9 +419,12 @@ export function restoreResponsesToolName(state, name) {
  */
 export function resolveResponsesToolName(state, name) {
   if (!isString(name)) return { name };
+  // A flat declaration of this exact name wins over a namespace recovered from
+  // the request history: the client declared the dotted name as one ordinary
+  // function, so the call must not acquire a namespace (OmniRoute #15974).
+  if (isDeclaredFlatTool(state, name)) return { name };
   const exact = splitNamespacedName(state, name);
   if (exact) return exact;
-  if (isDeclaredFlatTool(state, name)) return { name };
 
   const dot = name.indexOf(".");
   if (dot === -1) {

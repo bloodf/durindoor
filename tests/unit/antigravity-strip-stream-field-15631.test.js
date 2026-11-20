@@ -15,6 +15,7 @@ describe("Antigravity stream envelope", () => {
       { projectId: "project-1" },
     );
 
-    expect(transformed.stream).toBeUndefined();
+    expect(transformed.stream).toBe(true);
+    expect(JSON.parse(JSON.stringify(transformed)).stream).toBeUndefined();
   });
 });

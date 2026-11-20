@@ -498,8 +498,6 @@ export class AntigravityExecutor extends BaseExecutor {
     // with quota available (oh-my-pi #11689 / PR #11742). `image_gen` and
     // `search` buckets are unaffected and keep their own requestType.
     delete body.requestType;
-    // `stream` is transport metadata and is not part of Google's Cloud Code envelope.
-    delete body.stream;
 
     const transformedBody = {
       ...body,
@@ -509,6 +507,14 @@ export class AntigravityExecutor extends BaseExecutor {
       requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
       request: transformedRequest
     };
+    // Keep stream available to in-process callers, but omit it from the serialized
+    // Cloud Code envelope (the endpoint and URL already carry streaming semantics).
+    Object.defineProperty(transformedBody, "stream", {
+      value: body.stream,
+      configurable: true,
+      writable: true,
+      enumerable: false
+    });
     if (toolNameMap.size) {
       const existing = body._toolNameMap instanceof Map ? body._toolNameMap : new Map();
       const composed = new Map(existing);

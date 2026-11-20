@@ -771,6 +771,16 @@ export async function serializeBypassRequestBody(body) {
   return JSON.stringify(body);
 }
 
+// A failed proxy dispatch may already have consumed these bodies. Inspect only
+// their shape; never read, clone, or otherwise disturb the request body.
+function hasNonReplayableBody(input, body) {
+  if (body != null && (typeof body === "object" || typeof body === "function") &&
+    (isFunction(body.getReader) || isFunction(body.pipe) || isFunction(body.stream) ||
+      isFunction(body[Symbol.asyncIterator]))) return true;
+  return typeof Request !== "undefined" && input instanceof Request &&
+    (input.bodyUsed || input.body !== null);
+}
+
 /**
  * Route fetch through configured proxy transport. Automatic redirects fail
  * closed across proxy boundaries, while manual redirects remain visible for
@@ -896,6 +906,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
           : "[ProxyFetch] Proxied transport failed");
       }
     }
+    const nonReplayable = hasNonReplayableBody(url, options.body);
     try {
       const dispatcher = await getDispatcher(proxyUrl);
       return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
@@ -906,6 +917,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
+      if (nonReplayable) throw proxyError;
       logTransportDiagnostic(console.debug, "proxy_direct_fallback", proxyError);
       return sendDirect();
     }

@@ -35,7 +35,7 @@ Google redirects to `http://localhost:<dashboard port>/callback`. If you opened 
 </Step>
 </Steps>
 
-After the token exchange DurinDoor reads your profile, then asks Cloud Code which project and tier belong to the account (`loadCodeAssist`). If the account has no project yet, DurinDoor starts `onboardUser` in the background and retries up to 10 times, five seconds apart. The connection is saved before onboarding finishes. If a request arrives while the project id is still missing, the chat handler looks it up again.
+After the token exchange DurinDoor reads your profile, then asks Cloud Code which project and tier belong to the account (`loadCodeAssist`). If the account has no project yet, DurinDoor runs `onboardUser` inline and waits for it to settle, retrying up to `ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS` times (default 10), `ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS` apart (default 5000). The connection is saved only after the project id is known. If the lookup fails, or the operation settles without a project, the sign-in fails and nothing is saved.
 
 ## The agy id
 
@@ -85,4 +85,4 @@ These references describe repository behavior. They do not establish that a vend
 
 ### Current behavior and implementation boundaries
 
-OAuth clients default empty. Project onboarding is asynchronous and can be incomplete when credentials are saved. Capacity/project errors and account suspension use different fallback handling; the project-403 exception does not include agy. MITM is separate from provider OAuth.
+OAuth clients default empty. Project onboarding completes before the connection is saved, so a stored Antigravity connection always carries a project id. Capacity/project errors and account suspension use different fallback handling; the project-403 exception does not include agy. MITM is separate from provider OAuth.

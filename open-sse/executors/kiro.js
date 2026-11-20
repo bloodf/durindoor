@@ -405,7 +405,7 @@ export class KiroExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       ...this.config.headers,
-      ...buildKiroIdentityHeaders(credentials),
+      ...buildKiroIdentityHeaders(credentials, { inference: true }),
       "Amz-Sdk-Request": "attempt=1; max=3",
       "Amz-Sdk-Invocation-Id": uuidv4()
     };

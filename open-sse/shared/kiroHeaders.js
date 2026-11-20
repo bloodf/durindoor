@@ -7,8 +7,8 @@ import {
   KIRO_NODE_VERSION,
 } from "../config/kiroClient.js";
 
-/** Share the catalog's stable per-account identity with inference and API-key validation. */
-export function buildKiroIdentityHeaders(credentials) {
+/** Share a stable per-account identity; inference identifies its streaming API separately. */
+export function buildKiroIdentityHeaders(credentials, { inference = false } = {}) {
   const seed =
     credentials?.providerSpecificData?.clientId
     || credentials?.refreshToken
@@ -24,7 +24,7 @@ export function buildKiroIdentityHeaders(credentials) {
       `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ua/2.1 ` +
       `os/${KIRO_AGENT_OS}#${KIRO_AGENT_OS_VERSION} ` +
       `lang/js md/nodejs#${KIRO_NODE_VERSION} ` +
-      `api/codewhispererruntime#${KIRO_RUNTIME_SDK_VERSION} m/N,E ${identity}`,
+      `api/codewhisperer${inference ? "streaming" : "runtime"}#${KIRO_RUNTIME_SDK_VERSION} ${inference ? "m/E" : "m/N,E"} ${identity}`,
     "x-amz-user-agent": `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ${identity}`,
   };
 }

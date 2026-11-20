@@ -14,6 +14,12 @@ import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import {
+  ANTIGRAVITY_CATALOG_URL,
+  buildAntigravityCatalogBody,
+  classifyAntigravityCatalogStatus,
+  parseAntigravityCatalogModels
+} from "open-sse/services/antigravityCatalog.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -410,7 +416,7 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   antigravity: {
     // The per-account Hub catalog replaces the stale sandbox models endpoint.
-    url: "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    url: ANTIGRAVITY_CATALOG_URL,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -420,14 +426,17 @@ export const PROVIDER_MODELS_CONFIG = {
     },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => Object.entries(data?.models || {})
-      .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
-      .map(([id, info]) => ({
-        id, name: info?.displayName || id,
-        contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
-        supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
-      }))
+    // The catalog is account scoped: the request carries the signed-in
+    // account's validated project instead of an empty body. A connection
+    // without a usable project omits the field rather than sending a
+    // placeholder.
+    buildBody: (_token, connection) => buildAntigravityCatalogBody(connection),
+    // Tell an auth rejection apart from a transient upstream failure, so a
+    // dead credential is not read as a temporarily empty catalog.
+    classifyStatus: classifyAntigravityCatalogStatus,
+    // Returns null for a payload that is not a catalog, which keeps a known
+    // catalog in place instead of replacing it with an empty list.
+    parseResponse: parseAntigravityCatalogModels
   },
   // Enterprise discovery must use the connection's scoped token and tenant host.
   "ghe-copilot": {

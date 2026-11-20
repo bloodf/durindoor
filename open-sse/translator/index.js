@@ -2,6 +2,7 @@ import { FORMATS } from "./formats.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
+import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -299,6 +300,12 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     const customMaxOutput = resolvedTranslationContext.modelCapabilities?.maxOutput ?? null;
+    /**
+     * Kimi's Claude-compatible endpoint takes deferred MCP definitions in
+     * tools[] and rejects the beta-only `tool_addition` blocks Claude Code
+     * sends mid-session. Hoist them before the Claude wire is prepared.
+     */
+    if (provider === "kimi") result = normalizeDeferredTools(result);
     result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole);
     /**
      * Forced tool choice is rejected by every thinking model, so this must run

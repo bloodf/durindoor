@@ -401,6 +401,7 @@ export class KiroService {
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": target,
+        ...buildKiroIdentityHeaders({ accessToken, providerSpecificData: { profileArn } }),
         "Authorization": `Bearer ${accessToken}`,
         "Accept": "application/json"
       },

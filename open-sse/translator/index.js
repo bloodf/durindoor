@@ -2,7 +2,7 @@ import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
-import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
+import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, repairDisplacedToolResults, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest, removeNamelessOpenAIToolHistory } from "./formats/claude.js";
 import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
@@ -120,7 +120,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // keep rejecting malformed JSON instead of having it silently coerced first.
   ensureToolCallIds(result, targetFormat);
 
-  // Fix missing tool responses (insert empty tool_result if needed)
+  // Fix missing tool responses (insert empty tool_result if needed). A real result
+  // displaced past a non-tool message is hoisted first so no placeholder duplicates it.
+  repairDisplacedToolResults(result);
   fixMissingToolResponses(result);
 
   // Salvage orphaned tool results (tool_result with no matching tool_call).
@@ -269,6 +271,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
   if (targetFormat === FORMATS.OPENAI) {
+    // Responses/Gemini sources only expose messages[] after translation.
+    if (isObject(result)) repairDisplacedToolResults(result);
     result = filterToOpenAIFormat(result, {
       preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||

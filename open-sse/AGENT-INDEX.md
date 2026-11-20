@@ -203,6 +203,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `edge-tts` |  | freeTier | `` |
 | `electronhub` |  | apikey | `https://api.electronhub.ai/v1/chat/completions` |
 | `elevenlabs` |  | apikey | `` |
+| `empiriolabs` |  | apikey | `https://api.empiriolabs.ai/v1/chat/completions` |
 | `empower` |  | apikey | `https://app.empower.dev/api/v1/chat/completions` |
 | `eurouter` |  | apikey | `https://api.eurouter.ai/v1/chat/completions` |
 | `exa` |  | apikey | `` |

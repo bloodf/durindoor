@@ -1,10 +1,23 @@
 // Generic fallback: collapse consecutive duplicate lines + blank-line dedupe + hard line cap
 import { DEDUP_LINE_MAX } from "../constants.js";
 
+// A leading timestamp makes otherwise identical log lines look distinct:
+// "2026-10-31T12:00:00Z INFO ok" repeated with a new second on every line is a
+// heartbeat, not 40 distinct records. Compare the line without its timestamp so
+// the run collapses into one line plus a duplicate marker — the recorded lossy
+// behaviour for RTK on heartbeat logs.
+const TIMESTAMP_PREFIX_RE =
+  /^\s*(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?|\d{2}:\d{2}:\d{2}(?:[.,]\d+)?)\s+/;
+
+function dedupKey(line) {
+  return line.replace(TIMESTAMP_PREFIX_RE, "").trim();
+}
+
 export function dedupLog(input) {
   const lines = input.split("\n");
   const out = [];
   let prev = null;
+  let prevKey = null;
   let runCount = 0;
   let blankStreak = 0;
 
@@ -14,26 +27,35 @@ export function dedupLog(input) {
     }
   };
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (line.trim() === "") {
       if (blankStreak < 1) out.push(line);
       blankStreak += 1;
       flushRun();
       prev = null;
+      prevKey = null;
       runCount = 0;
       continue;
     }
     blankStreak = 0;
-    if (line === prev) {
+    const key = dedupKey(line);
+    if (prev !== null && key === prevKey) {
       runCount += 1;
       continue;
     }
     flushRun();
     out.push(line);
     prev = line;
+    prevKey = key;
     runCount = 1;
     if (out.length >= DEDUP_LINE_MAX) {
-      out.push(`... (truncated at ${DEDUP_LINE_MAX} lines)`);
+      // The cap is deliberate (token saving), but the marker must say how much
+      // was dropped — the old "truncated at 2000 lines" hid the omitted tail.
+      // A trailing newline yields one empty split element; it is not a line.
+      const tailBlank = lines[lines.length - 1] === "" ? 1 : 0;
+      const omitted = Math.max(0, lines.length - (i + 1) - tailBlank);
+      out.push(`... (truncated at ${DEDUP_LINE_MAX} lines: ${omitted} more lines omitted)`);
       return out.join("\n");
     }
   }

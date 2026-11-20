@@ -621,7 +621,11 @@ const PROVIDERS = {
         );
         if (projectRes.ok) {
           const data = await projectRes.json();
-          projectId = data.cloudaicompanionProject?.id || data.cloudaicompanionProject || "";
+          // Only a nonempty ID is usable; a truthy response object would prevent
+          // the request path from attempting its own project discovery.
+          const project = data.cloudaicompanionProject;
+          const id = isString(project) ? project : project?.id;
+          projectId = isString(id) ? id.trim() : "";
         }
       } catch (e) {
         console.log("Failed to fetch project ID:", e);

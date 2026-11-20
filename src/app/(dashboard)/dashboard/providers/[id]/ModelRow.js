@@ -19,6 +19,16 @@ const STATUS_TOKENS = {
   default: { border: "border-dd-border", icon: "smart_toy", iconClass: "text-dd-muted" },
 };
 
+// Measured capability verdicts. "unsupported" is a claim about the model;
+// "no evidence" says the request told us nothing (rate limit, bad credential,
+// timeout), which is a different thing and must not read as a verdict.
+const CAPABILITY_EVIDENCE_LABELS = {
+  tool_call: "confirmed",
+  rejected: "rejected by provider",
+  no_tool_call: "no tool_call returned",
+  inconclusive: "no evidence",
+};
+
 // OmniRoute #14356 (port(omniroute)): the edit pencil is available to any
 // caller that supplies `onEdit`, not only rows the caller marks `isCustom`.
 // This lets a registry/synced model row (page.js's built-in model list) open
@@ -37,6 +47,9 @@ export default function ModelRow({
   onDeleteAlias,
   onTest,
   isTesting,
+  onCheckCapability,
+  capabilityCheck,
+  isCheckingCapability,
   onDisable,
   onEdit,
   caps,
@@ -45,6 +58,13 @@ export default function ModelRow({
 }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const token = STATUS_TOKENS[testStatus] || STATUS_TOKENS.default;
+  const measured = capabilityCheck?.check === "tools" ? capabilityCheck : null;
+  const measuredLabel = measured ? (CAPABILITY_EVIDENCE_LABELS[measured.evidence] || measured.evidence) : null;
+  // Cost and request semantics stay visible: the hover text names the single
+  // upstream request, and the measured line carries the request that was sent.
+  const measuredRequest = measured?.request
+    ? `${measured.request.operation} → ${measured.request.endpoint} · max_tokens ${measured.request.maxTokens}${measured.request.tool ? ` · tool ${measured.request.tool}` : ""}`
+    : null;
 
   return (
     <div
@@ -73,6 +93,12 @@ export default function ModelRow({
               </span>
             ))}
           </span>
+          {measured ? (
+            <span className="text-xs text-dd-subtle" title={measuredRequest || undefined}>
+              Tools measured: {measuredLabel}
+              {measured.detail ? ` — ${measured.detail}` : ""}
+            </span>
+          ) : null}
           <span className="flex min-w-0 items-center gap-1 pl-1 text-xs">
             {model.name ? (
               <span className="truncate text-xs italic text-dd-subtle">{model.name}</span>
@@ -100,6 +126,22 @@ export default function ModelRow({
             />
             <span className="pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 whitespace-nowrap text-[10px] text-dd-muted opacity-0 transition-opacity group-hover/btn:opacity-100">
               {isTesting ? "Testing..." : "Test"}
+            </span>
+          </div>
+        ) : null}
+        {onCheckCapability ? (
+          <div className="relative shrink-0 group/btn">
+            <IconButton
+              label="Check tool support (sends one upstream request)"
+              variant="ghost"
+              size="sm"
+              icon={isCheckingCapability ? "progress_activity" : "rule"}
+              className={isCheckingCapability ? "animate-spin" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}
+              onClick={onCheckCapability}
+              disabled={isCheckingCapability}
+            />
+            <span className="pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 whitespace-nowrap text-[10px] text-dd-muted opacity-0 transition-opacity group-hover/btn:opacity-100">
+              {isCheckingCapability ? "Checking..." : "Check tools · 1 request"}
             </span>
           </div>
         ) : null}
@@ -161,6 +203,17 @@ ModelRow.propTypes = {
   onDeleteAlias: PropTypes.func,
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
+  onCheckCapability: PropTypes.func,
+  capabilityCheck: PropTypes['shape']({
+    check: PropTypes.string,
+    evidence: PropTypes.string,
+    supported: PropTypes.bool,
+    detail: PropTypes.string,
+    declared: PropTypes.bool,
+    request: PropTypes.object,
+    cost: PropTypes.object,
+  }),
+  isCheckingCapability: PropTypes.bool,
   onDisable: PropTypes.func,
   onEdit: PropTypes.func,
   caps: PropTypes.object,

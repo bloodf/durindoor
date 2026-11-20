@@ -247,7 +247,7 @@ function validateQuotaImport(payload, { now }) {
 
 // Settings
 export {
-  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings } from
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings, mergeCompressionEngines } from
 "./repos/settingsRepo.js";
 
 // Provider connections

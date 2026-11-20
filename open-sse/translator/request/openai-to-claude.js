@@ -49,7 +49,8 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // max_completion_tokens would silently fall back to the model maximum.
     max_tokens: adjustMaxTokens(
       { ...body, max_tokens: body.max_tokens ?? body.max_completion_tokens },
-      modelCeiling
+      modelCeiling,
+      true
     ),
     stream: stream
   };
@@ -420,12 +421,13 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       for (const tc of msg.tool_calls) {
         if (tc.type === OPENAI_BLOCK.FUNCTION) {
           // Apply prefix to tool name
-          const toolName = CLAUDE_OAUTH_TOOL_PREFIX + tc.function.name;
+          const name = tc.function?.name;
+          const toolName = isString(name) ? CLAUDE_OAUTH_TOOL_PREFIX + name : name;
           blocks.push({
             type: CLAUDE_BLOCK.TOOL_USE,
             id: tc.id,
             name: toolName,
-            input: safeParseJSON(tc.function.arguments, tc.function.arguments)
+            input: safeParseJSON(tc.function?.arguments, tc.function?.arguments)
           });
         }
       }

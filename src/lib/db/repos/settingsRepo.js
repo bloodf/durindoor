@@ -1,6 +1,6 @@
 import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isBoolean, isFunction, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isRecord, isString } from "../../../shared/utils/typeChecks.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
@@ -228,6 +228,61 @@ function migrateObservabilityKeys(raw) {
   return next;
 }
 
+/**
+ * Merge a partial `compressionEngines` write over the stored toggle map.
+ *
+ * The compression stack is configured by one per-engine map
+ * ({ [engineId]: { enabled, level?, ...engine options } }) stored in a single
+ * settings field. A write that carries only the engine it changed used to
+ * replace that whole map, so a toggle on one surface silently dropped every
+ * sibling engine -- and every sibling's options -- the writer had not loaded.
+ * OmniRoute #15613 fixes the same loss in the upstream compression store;
+ * this is the fork's equivalent, applied to the fork's own settings field.
+ *
+ * Merge rules:
+ *   - engines the write does not mention are kept exactly as stored;
+ *   - an engine the write does mention is merged field by field, so a write
+ *     that only flips `enabled` keeps the stored `level` and the stored
+ *     per-engine options (lite's truncateToolResults / maxToolLength);
+ *   - an explicit `null` engine removes that engine; a null property is stored.
+ *
+ * New engine IDs can be added; dispatch still gates unavailable catalog engines
+ * on isEngineAvailable().
+ *
+ * @param {unknown} stored the currently stored `compressionEngines` value
+ * @param {unknown} incoming the incoming `compressionEngines` value
+ * @returns {Record<string, unknown>} the merged map
+ */
+export function mergeCompressionEngines(stored, incoming) {
+  const base = isRecord(stored) ? stored : {};
+  // A non-map write carries no engine information: keep what is stored
+  // instead of replacing the map with something unreadable.
+  if (!isRecord(incoming)) return { ...base };
+  const merged = { ...base };
+  for (const [id, entry] of Object.entries(incoming)) {
+    if (entry === null) {
+      delete merged[id];
+      continue;
+    }
+    const baseEntry = isRecord(base[id]) ? base[id] : {};
+    merged[id] = isRecord(entry) ? { ...baseEntry, ...entry } : entry;
+  }
+  return merged;
+}
+
+/**
+ * Apply the compression-engines merge to a settings patch. Only a patch that
+ * actually carries `compressionEngines` is touched; every other key keeps the
+ * plain top-level replace semantics.
+ */
+function applyCompressionEnginesMerge(current, updates) {
+  if (!Object.prototype.hasOwnProperty.call(updates, "compressionEngines")) return updates;
+  return {
+    ...updates,
+    compressionEngines: mergeCompressionEngines(current?.compressionEngines, updates.compressionEngines),
+  };
+}
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -299,7 +354,10 @@ export async function updateSettings(updates) {
     const current = migrateObservabilityKeys(row ? parseJson(row.data, {}) : {});
     const resolved = isFunction(updates) ? updates(current) : updates;
     const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = resolved;
-    next = migrateObservabilityKeys({ ...current, ...sanitizedUpdates });
+    next = migrateObservabilityKeys({
+      ...current,
+      ...applyCompressionEnginesMerge(current, sanitizedUpdates),
+    });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)]
@@ -331,7 +389,10 @@ export async function updateSettingsWithPasswordEpoch(updates, expectedEpoch) {
       return;
     }
     matched = true;
-    next = migrateObservabilityKeys({ ...current, ...sanitizedUpdates });
+    next = migrateObservabilityKeys({
+      ...current,
+      ...applyCompressionEnginesMerge(current, sanitizedUpdates),
+    });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)]

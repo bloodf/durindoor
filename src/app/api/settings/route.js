@@ -17,7 +17,7 @@ import {
   canModifySecurityCriticalSettings,
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isRecord, isString } from "@/shared/utils/typeChecks.js";
 import { normalizeMediaRoutes } from "@/shared/constants/mediaRoutes.js";
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import { MAX_CUSTOM_PROMPT_CHARS } from "@/shared/constants/customPrompt.js";
@@ -338,6 +338,17 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid mediaRoutes" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       body.mediaRoutes = routes;
+    }
+
+    // The compression stack map is a partial patch: the persistence layer
+    // merges it per engine id (mergeCompressionEngines in settingsRepo), so a
+    // write that carries one engine never drops its siblings. A value that is
+    // not a map of per-engine records or null removals is rejected.
+    if (Object.prototype.hasOwnProperty.call(body, "compressionEngines")) {
+      const engines = body.compressionEngines;
+      if (!isRecord(engines) || Object.values(engines).some((entry) => entry !== null && !isRecord(entry))) {
+        return NextResponse.json({ error: "Invalid compressionEngines" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "enableProxyTimeline")

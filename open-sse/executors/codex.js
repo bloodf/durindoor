@@ -407,10 +407,10 @@ function normalizeCodexTools(body) {
     fn?.parameters && isObject(fn.parameters) && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} };
     // Preserve an explicit strict flag (flat or nested under .function) across the
     // in-place rewrite below; leave it unset when the caller never set one.
-    const strict = isBoolean(tool.strict) ? tool.strict : fn?.strict;
+    const strict = isBoolean(tool.strict) || tool.strict === null ? tool.strict : fn?.strict;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
-    if (isBoolean(strict)) tool.strict = strict;
+    if (isBoolean(strict) || strict === null) tool.strict = strict;
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = stripCodexUnsupportedPatterns(parameters);

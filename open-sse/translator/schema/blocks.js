@@ -26,6 +26,7 @@ export const CLAUDE_BLOCK = {
   TOOL_USE: "tool_use",
   TOOL_RESULT: "tool_result",
   TOOL_REFERENCE: "tool_reference",
+  TOOL_ADDITION: "tool_addition",
   SERVER_TOOL_USE: "server_tool_use",
   WEB_SEARCH_TOOL_RESULT: "web_search_tool_result",
   THINKING: "thinking",

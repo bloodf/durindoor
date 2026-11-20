@@ -119,8 +119,10 @@ export default function MediaProviderDetailPage() {
         <ConnectionsCard providerId={id} isOAuth={false} />
       )}
 
-      {/* Models are manually registered for custom nodes; no synthetic defaults. */}
-      {kind !== "tts" && kind !== "webSearch" && kind !== "webFetch" && (
+      {/* Models are manually registered for custom nodes; no synthetic defaults.
+          TTS keeps its ModelsCard so a custom (dashboard-added) TTS model id can
+          be registered on top of the built-in catalog. */}
+      {kind !== "webSearch" && kind !== "webFetch" && (
         <ModelsCard
           providerId={id}
           kindFilter={kind}

@@ -14,7 +14,7 @@ import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
-import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
+import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import {
   discoverOrcaRouterModels,
@@ -566,8 +566,8 @@ export const PROVIDER_MODELS_CONFIG = {
     customResolver: buildOAuthResolver({
       refreshFn: (conn, proxyOptions) => refreshGoogleToken(
         conn.refreshToken,
-        process.env.AGY_CLIENT_ID,
-        process.env.AGY_CLIENT_SECRET,
+        ANTIGRAVITY_OAUTH_CLIENT.clientId,
+        ANTIGRAVITY_OAUTH_CLIENT.clientSecret,
         proxyOptions
       ),
       fetchFn: (token, conn, proxyOptions) => {

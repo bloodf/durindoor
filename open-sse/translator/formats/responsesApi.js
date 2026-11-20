@@ -284,6 +284,15 @@ export function convertResponsesApiFormat(body) {
   // Group items by conversation turn
   let currentAssistantMsg = null;
   let pendingToolResults = [];
+  // Images carried by a tool output are handed to the model as real image
+  // blocks in a following user turn (upstream #4518). The tool message itself
+  // keeps this converter's JSON serialization, so the image reaches the
+  // provider twice: once as the serialized part and once as a block the model
+  // can actually read. The shared Chat pivot
+  // (translator/request/openai-responses.js) is the path that keeps the
+  // payload out of the tool text; this worker converter keeps its own
+  // serialization contract (tests/unit/responses-file-id-handler.test.js).
+  let pendingToolImages = [];
 
   const inputItems = repairMissingResponsesCallIds(normalizeResponsesInput(body.input));
   if (!inputItems) return body;
@@ -292,6 +301,18 @@ export function convertResponsesApiFormat(body) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
     // Fallback: if no type but has role property, treat as message
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
+
+    // A run of tool outputs ends here: flush the tool messages, then attach
+    // the images they carried as a user turn with image blocks. The tool
+    // messages stay contiguous after their assistant tool_calls.
+    if (pendingToolImages.length > 0 && itemType !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+      for (const tr of pendingToolResults) {
+        result.messages.push(tr);
+      }
+      pendingToolResults = [];
+      result.messages.push({ role: ROLE.USER, content: pendingToolImages });
+      pendingToolImages = [];
+    }
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
       // Flush any pending assistant message with tool calls
@@ -354,9 +375,16 @@ export function convertResponsesApiFormat(body) {
       if (item.call_id) {
         // This worker converter keeps its existing tool-output serialization,
         // but scoped image IDs must fail before their block type becomes text.
+        // The same parts are also lifted into real image blocks so the model
+        // receives the picture instead of only its serialized form (#4518).
+        const images = [];
         if (Array.isArray(item.output)) {
           for (const part of item.output) {
-            if (part?.type === RESPONSES_ITEM.INPUT_IMAGE) responsesImageUrl(part);
+            if (part?.type !== RESPONSES_ITEM.INPUT_IMAGE) continue;
+            // responsesImageUrl keeps the URL-over-file_id precedence and
+            // rejects a scoped file ID with HTTP 400.
+            const url = responsesImageUrl(part);
+            images.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: part.detail || "auto" } });
           }
         }
         pendingToolResults.push({
@@ -364,6 +392,7 @@ export function convertResponsesApiFormat(body) {
           tool_call_id: item.call_id,
           content: isString(item.output) ? item.output : JSON.stringify(item.output)
         });
+        if (images.length > 0) pendingToolImages.push(...images);
       }
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
@@ -380,6 +409,9 @@ export function convertResponsesApiFormat(body) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);
     }
+  }
+  if (pendingToolImages.length > 0) {
+    result.messages.push({ role: ROLE.USER, content: pendingToolImages });
   }
 
   // Cleanup Responses API specific fields

@@ -1210,13 +1210,13 @@ const PROVIDERS = {
         proxyOptions
       });
 
-      // Handle response properly - if not ok, try to get error as text first
+      // Read once so a non-JSON response can still be returned as an error.
+      // Adapted from OmniRoute src/lib/oauth/providers/github.ts.
+      const text = await response.text();
       let data;
       try {
-        data = await response.json();
-      } catch (e) {
-        // If response is not JSON, get as text
-        const text = await response.text();
+        data = JSON.parse(text);
+      } catch {
         data = { error: "invalid_response", error_description: text };
       }
 
@@ -1283,6 +1283,15 @@ const PROVIDERS = {
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";
       const registerClientUrl = `https://oidc.${region}.amazonaws.com/client/register`;
       const deviceAuthUrl = `https://oidc.${region}.amazonaws.com/device_authorization`;
+      const registration = {
+        clientName: config.clientName,
+        clientType: config.clientType,
+        scopes: config.scopes,
+        grantTypes: config.grantTypes
+      };
+      // OmniRoute src/lib/oauth/providers/kiro.ts: enterprise start URLs
+      // must not be bound to the fixed Builder ID issuer.
+      if (authMethod !== "idc") registration.issuerUrl = config.issuerUrl;
 
       const registerRes = await fetch(registerClientUrl, {
         method: "POST",
@@ -1290,13 +1299,7 @@ const PROVIDERS = {
           "Content-Type": "application/json",
           Accept: "application/json"
         },
-        body: JSON.stringify({
-          clientName: config.clientName,
-          clientType: config.clientType,
-          scopes: config.scopes,
-          grantTypes: config.grantTypes,
-          issuerUrl: config.issuerUrl
-        }),
+        body: JSON.stringify(registration),
         proxyOptions
       });
 

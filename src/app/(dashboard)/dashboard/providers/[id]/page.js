@@ -135,10 +135,6 @@ function ProviderDetail({ providerId }) {
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
-  // Measured capability verdicts, keyed by model id. Display evidence only —
-  // it never feeds routing or admission.
-  const [modelCapabilityChecks, setModelCapabilityChecks] = useState({});
-  const [checkingCapabilityModelId, setCheckingCapabilityModelId] = useState(null);
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [editingCustomModel, setEditingCustomModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
@@ -1548,47 +1544,6 @@ function ProviderDetail({ providerId }) {
     </Modal>;
 
 
-  // One user-triggered capability check for one model. It reuses the existing
-  // model probe route with `check: "tools"`, so the request runs against the
-  // same selected account as the reachability test and costs exactly one
-  // upstream request. Nothing is scheduled, retried or swept.
-  const handleCheckCapability = async (modelId) => {
-    if (checkingCapabilityModelId) return;
-    const requestGeneration = providerGenerationRef.current;
-    setCheckingCapabilityModelId(modelId);
-    try {
-      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
-      const res = await fetch("/api/models/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: `${providerStorageAlias}/${modelId}`,
-          kind: "llm",
-          connectionId,
-          check: "tools",
-        })
-      });
-      const data = await res.json();
-      if (providerGenerationRef.current !== requestGeneration) return;
-      if (!res.ok) {
-        setModelCapabilityChecks((prev) => ({
-          ...prev,
-          [modelId]: { check: "tools", evidence: "inconclusive", supported: null, detail: data?.error || "Capability check failed" },
-        }));
-        return;
-      }
-      setModelCapabilityChecks((prev) => ({ ...prev, [modelId]: data.capability || null }));
-    } catch {
-      if (providerGenerationRef.current !== requestGeneration) return;
-      setModelCapabilityChecks((prev) => ({
-        ...prev,
-        [modelId]: { check: "tools", evidence: "inconclusive", supported: null, detail: "Network error" },
-      }));
-    } finally {
-      if (providerGenerationRef.current === requestGeneration) setCheckingCapabilityModelId(null);
-    }
-  };
-
   const handleTestModel = async (modelId) => {
     const requestGeneration = providerGenerationRef.current;
     if (testingModelIds.has(modelId)) return;
@@ -1687,9 +1642,6 @@ function ProviderDetail({ providerId }) {
           testStatus={modelTestResults[model.id]}
           onTest={connections.length > 0 || (isFreeNoAuth && !isDevinAgentic) ? () => handleTestModel(model.id) : undefined}
           isTesting={testingModelIds.has(model.id)}
-          onCheckCapability={connections.length > 0 || (isFreeNoAuth && !isDevinAgentic) ? () => handleCheckCapability(model.id) : undefined}
-          capabilityCheck={modelCapabilityChecks[model.id]}
-          isCheckingCapability={checkingCapabilityModelId === model.id}
           isCustom
           isFree={false}
           declaredCaps={getDeclaredModelCapabilities(model)}
@@ -1726,9 +1678,6 @@ function ProviderDetail({ providerId }) {
               testStatus={modelTestResults[model.id]}
               onTest={connections.length > 0 || (isFreeNoAuth && !isDevinAgentic) ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
-              onCheckCapability={connections.length > 0 || (isFreeNoAuth && !isDevinAgentic) ? () => handleCheckCapability(model.id) : undefined}
-              capabilityCheck={modelCapabilityChecks[model.id]}
-              isCheckingCapability={checkingCapabilityModelId === model.id}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
               declaredCaps={getDeclaredModelCapabilities(model, customOverride)}

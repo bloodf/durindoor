@@ -16,19 +16,6 @@ The default response is an OpenAI list with model IDs in `data`. Provider models
 
 Provider detail shows catalog or configured models separately from connection operational status. Neither verifies authentication or inference. Manual model test results last only for the current page session; skipped tests are not successful inference. Tests can use provider quota or incur charges. Catalog source and degradation appear only when returned by the provider discovery response.
 
-A model's declared capabilities come from the capability catalog, so they describe what a model is supposed to support. **Check tools** on a provider model row measures the one case a declaration cannot answer: it sends a single chat request that carries a tool definition to the same account the model test uses, then reports what the provider actually did. The row shows the declared value and the measured value side by side.
-
-The measured result is one of four outcomes, and they are not interchangeable:
-
-| Measured | Meaning |
-| --- | --- |
-| confirmed | The provider answered with a `tool_call` |
-| rejected by provider | The provider refused the request that carried the tool definition |
-| no tool_call returned | The provider accepted the request but did not call the tool |
-| no evidence | The request failed for a reason unrelated to tools, such as a bad credential, a throttled account or a timeout |
-
-A rate limit, a credential failure or a timeout is **no evidence**, not a verdict that the model cannot call tools. The check sends exactly one upstream request against the selected account, costs the same as the model test it replaces, and is never scheduled, retried or swept. Its result is shown for diagnosis only: it does not change routing, admission or the stored capability metadata.
-
 Registry-backed Claude validation probes and OpenAI-compatible fallback probes report server errors as provider unavailability. Add and edit dialogs show **Unavailable** for these responses. Retry when the provider is available; these errors do not establish that the credential is invalid.
 
 The provider validation API returns `valid: false` and `unavailable: true` for server errors from registry-backed probes. An unavailable result does not identify an invalid credential.

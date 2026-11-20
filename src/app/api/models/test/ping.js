@@ -4,23 +4,8 @@ import { getProviderByAlias, WEB_COOKIE_PROVIDERS } from "@/shared/constants/pro
 import { resolveProviderAlias } from "open-sse/services/model.js";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
-import {
-  CAPABILITY_CHECK_COST,
-  CAPABILITY_CHECK_TOOLS,
-  buildCapabilityProbeRequest,
-  capabilityRequestSummary,
-  classifyCapabilityEvidence,
-  declaredCapability,
-} from "./capabilityCheck.js";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
-
-// 1024 tokens: reasoning models (ClinePass/kimi-k3, deepseek-v4-pro, etc.) spend
-// their budget on chain-of-thought before emitting an answer. A tiny probe like
-// max_tokens:16 starves the answer and yields a false "no choices" failure.
-// See issue #3010. The same budget is used for a capability check so a tools
-// probe costs no more than the plain reachability probe it replaces.
-const CHAT_PROBE_MAX_TOKENS = 1024;
 
 function createSilentWavFile() {
   const sampleRate = 16000;
@@ -71,7 +56,7 @@ function isConversationChatModel(model) {
   return Boolean(web && (!web.serviceKinds || web.serviceKinds.includes("llm")));
 }
 
-export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`, connectionId = null, opts = {}) {
+export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`, connectionId = null) {
   const headers = await getInternalHeaders();
   if (isString(connectionId) && connectionId.trim()) {
     headers["x-connection-id"] = connectionId.trim();
@@ -247,24 +232,19 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     };
   }
 
-  // A capability check is the same normal chat operation, carrying one tool
-  // definition so the provider's real answer to "can you call tools?" becomes
-  // observable. It stays ONE request: no second call, no sweep, no retry.
-  const capability = isString(opts?.check) && opts.check.trim() === CAPABILITY_CHECK_TOOLS
-    ? CAPABILITY_CHECK_TOOLS
-    : null;
-
   const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(capability
-      ? buildCapabilityProbeRequest(model, { maxTokens: CHAT_PROBE_MAX_TOKENS })
-      : {
-        model,
-        max_tokens: CHAT_PROBE_MAX_TOKENS,
-        stream: false,
-        messages: [{ role: "user", content: "hi" }]
-      }),
+    body: JSON.stringify({
+      model,
+      // 1024 tokens: reasoning models (ClinePass/kimi-k3, deepseek-v4-pro, etc.) spend
+      // their budget on chain-of-thought before emitting an answer. A tiny probe like
+      // max_tokens:16 starves the answer and yields a false "no choices" failure.
+      // See issue #3010.
+      max_tokens: 1024,
+      stream: false,
+      messages: [{ role: "user", content: "hi" }]
+    }),
     signal: AbortSignal.timeout(15000)
   });
   const latencyMs = Date.now() - start;
@@ -273,26 +253,9 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   let parsed = null;
   try {parsed = rawText ? JSON.parse(rawText) : null;} catch {}
 
-  // Attach the measured capability to the result. Without a requested check the
-  // response shape is exactly what it was before, so the existing callers of
-  // this probe keep their contract.
-  const withCapability = (result) => {
-    if (!capability) return result;
-    return {
-      ...result,
-      capability: {
-        check: capability,
-        ...classifyCapabilityEvidence({ status: result.status, error: result.error, parsed, ok: result.ok }),
-        declared: declaredCapability(model, capability),
-        request: capabilityRequestSummary(capability, CHAT_PROBE_MAX_TOKENS),
-        cost: CAPABILITY_CHECK_COST,
-      },
-    };
-  };
-
   if (!res.ok) {
     const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
-    return withCapability({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
+    return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
   }
 
   const providerStatus = parsed?.status;
@@ -302,34 +265,34 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   String(providerStatus) !== "200" &&
   String(providerStatus) !== "0";
   if (hasProviderErrorStatus) {
-    return withCapability({
+    return {
       ok: false,
       latencyMs,
       status: res.status,
       error: providerMsg ?
       `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}` :
       `Provider status ${providerStatus}`
-    });
+    };
   }
 
   if (parsed?.error) {
     const providerError = parsed?.error?.message || parsed?.error || "Provider returned an error";
-    return withCapability({
+    return {
       ok: false,
       latencyMs,
       status: res.status,
       error: String(providerError).slice(0, 240)
-    });
+    };
   }
 
   const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
   if (!hasChoices) {
-    return withCapability({
+    return {
       ok: false,
       latencyMs,
       status: res.status,
       error: "Provider returned no completion choices for this model"
-    });
+    };
   }
 
   // Soft-pass (issue #3010): a reasoning model may burn its whole budget on
@@ -346,24 +309,17 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   const contentEmpty = !String(firstChoice.message?.content || "").trim();
   const isReasoningOnlySoftPass = firstChoice.finish_reason === "length" && contentEmpty && hasReasoning;
   if (isReasoningOnlySoftPass) {
-    return withCapability({ ok: true, latencyMs, error: null, status: res.status, note: "reasoning-only response (length-limited)" });
+    return { ok: true, latencyMs, error: null, status: res.status, note: "reasoning-only response (length-limited)" };
   }
 
-  // A model that answers a tools request with a tool_call has no prose content.
-  // That is a successful answer, not an empty completion — but only for a
-  // capability check; the plain reachability probe sends no tools and keeps its
-  // existing empty-content verdict.
-  const toolCalls = firstChoice.message?.tool_calls;
-  const hasToolCall = Array.isArray(toolCalls) && toolCalls.length > 0;
-
-  if (contentEmpty && !(capability && hasToolCall)) {
-    return withCapability({
+  if (contentEmpty) {
+    return {
       ok: false,
       latencyMs,
       status: res.status,
       error: "Provider returned empty completion content for this model"
-    });
+    };
   }
 
-  return withCapability({ ok: true, latencyMs, error: null, status: res.status });
+  return { ok: true, latencyMs, error: null, status: res.status };
 }

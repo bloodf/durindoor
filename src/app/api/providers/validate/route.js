@@ -829,7 +829,7 @@ export async function POST(request) {
               error = "Vertex: ADC authorized_user credentials are refreshed on the first request. Set quota_project_id or a project ID on the connection.";
               isValid = false;
             } else {
-              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
+              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${encodeURIComponent(apiKey)}`,
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
               isValid = probeRes.status !== 401 && probeRes.status !== 403;
             }

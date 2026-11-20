@@ -23,6 +23,8 @@ import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
 import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { digestMemoryKey } from "../utils/memoryKey.js";
+import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -115,16 +117,16 @@ export function classifyVertexCredential(apiKey) {
   if (!isString(apiKey)) return { kind: VERTEX_CREDENTIAL.NONE, json: null, error: null };
   const trimmed = apiKey.trim();
   if (!trimmed) return { kind: VERTEX_CREDENTIAL.NONE, json: null, error: null };
-  if (!trimmed.startsWith("{")) return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+  if (!/^[\[{]/.test(trimmed)) return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
 
   let parsed;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+    return { kind: VERTEX_CREDENTIAL.UNSUPPORTED, json: null, error: "Vertex: malformed credential JSON" };
   }
   if (!isObject(parsed) || Array.isArray(parsed)) {
-    return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+    return { kind: VERTEX_CREDENTIAL.UNSUPPORTED, json: null, error: vertexUnsupportedCredentialMessage(null) };
   }
 
   if (parsed.type === "service_account") {
@@ -176,26 +178,26 @@ export function validateVertexSaKey(saJson) {
   null;
 }
 
-// Cache Vertex tokens keyed by service account email { token, expiresAt }
+// Cache only digests of the complete credential and effective egress route.
 const vertexTokenCache = new Map();
 
 export async function refreshVertexToken(saJson, log, proxyOptions = null) {
-  const cacheKey = saJson.client_email;
-  const cached = vertexTokenCache.get(cacheKey);
-
-  if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) {
-    return { accessToken: cached.token, expiresAt: cached.expiresAt };
-  }
-
   const keyError = validateVertexSaKey(saJson);
   if (keyError) {
     log?.error?.("TOKEN_REFRESH", keyError);
     return null;
   }
 
+  const cacheKey = digestMemoryKey("vertex-token", JSON.stringify(saJson), proxyRouteFingerprint(proxyOptions));
+  const cached = vertexTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) {
+    return { accessToken: cached.token, expiresAt: cached.expiresAt };
+  }
+  vertexTokenCache.delete(cacheKey);
+
   try {
     const { SignJWT, importPKCS8 } = await import("jose");
-    log?.debug?.("TOKEN_REFRESH", `Vertex minting token for ${saJson.client_email}`);
+    log?.debug?.("TOKEN_REFRESH", "Vertex minting token");
     const privateKey = await importPKCS8(saJson.private_key.replace(/\\n/g, "\n"), "RS256");
     const now = Math.floor(Date.now() / 1000);
 
@@ -217,20 +219,20 @@ export async function refreshVertexToken(saJson, log, proxyOptions = null) {
     }, proxyOptions);
 
     if (!res.ok) {
-      const err = await res.text();
-      log?.error?.("TOKEN_REFRESH", `Vertex token mint failed: ${sanitizeErrorMessage(err)}`);
+      log?.error?.("TOKEN_REFRESH", `Vertex token mint failed (HTTP ${res.status})`);
       return null;
     }
 
     const { access_token, expires_in } = await res.json();
     const expiresAt = Date.now() + (expires_in ?? 3600) * 1000;
 
+    if (vertexTokenCache.size >= 256) vertexTokenCache.delete(vertexTokenCache.keys().next().value);
     vertexTokenCache.set(cacheKey, { token: access_token, expiresAt });
-    log?.info?.("TOKEN_REFRESH", `Vertex token minted for ${saJson.client_email}`);
+    log?.info?.("TOKEN_REFRESH", "Vertex token minted");
 
     return { accessToken: access_token, expiresAt };
-  } catch (error) {
-    log?.error?.("TOKEN_REFRESH", `Vertex token error: ${sanitizeErrorMessage(error?.message || error)}`);
+  } catch {
+    log?.error?.("TOKEN_REFRESH", "Vertex token mint failed");
     return null;
   }
 }

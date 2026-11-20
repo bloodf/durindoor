@@ -1768,23 +1768,63 @@ const PROVIDERS = {
     })
   },
 
+  // Trae SOLO uses a user-approved session import. The token cannot be refreshed.
   trae: {
     config: TRAE_CONFIG,
     flowType: "import_token",
     buildAuthUrl: () => null,
-    mapTokens: (tokens) => ({
-      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
-      refreshToken: null,
-      expiresIn: tokens.expiresIn || TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
-      providerSpecificData: {
-        webId: tokens.webId || tokens.web_id || "",
-        bizUserId: tokens.bizUserId || tokens.biz_user_id || "",
-        userUniqueId: tokens.userUniqueId || tokens.user_unique_id || "",
-        scope: tokens.scope || "marscode-us",
-        tenant: tokens.tenant || "marscode",
-        region: tokens.region || "US-East"
-      }
-    })
+    mapTokens: (tokens, extra) => {
+      // `isObject` accepts null and arrays in this tree, so shape the two
+      // sources explicitly: only a plain object carries named fields.
+      const credential = tokens && isObject(tokens) && !Array.isArray(tokens) ? tokens : {};
+      const request = extra && isObject(extra) && !Array.isArray(extra) ? extra : {};
+      const pick = (...names) => {
+        for (const name of names) {
+          const value = credential[name] ?? request[name];
+          if (value === undefined || value === null || value === "") continue;
+          // The import route has no per-provider schema, so the value arrives
+          // as whatever the client sent. Keep the stored shape a string.
+          return isString(value) ? value.trim() : String(value);
+        }
+        return "";
+      };
+      const region = pick("region") || "US-East";
+      const userTimezone = pick("userTimezone", "user_timezone");
+      return {
+        accessToken:
+        credential.accessToken ||
+        credential.access_token ||
+        credential.token ||
+        request.accessToken ||
+        request.access_token ||
+        request.token ||
+        (isString(tokens) ? tokens : ""),
+        refreshToken: null,
+        expiresIn:
+        Number(credential.expiresIn) ||
+        Number(request.expiresIn) ||
+        TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
+        providerSpecificData: {
+          webId: pick("webId", "web_id"),
+          bizUserId: pick("bizUserId", "biz_user_id"),
+          userUniqueId: pick("userUniqueId", "user_unique_id"),
+          scope: pick("scope") || "marscode-us",
+          tenant: pick("tenant") || "marscode",
+          region,
+          aiRegion: pick("aiRegion", "ai_region") || region,
+          appLanguage: pick("appLanguage", "app_language") || "en",
+          appVersion: pick("appVersion", "app_version") || "1.0.0.1229",
+          // "US" stays the best-effort default so imports that omit the region
+          // keep behaving as before; a real account region (e.g. "SG") has to
+          // be supplied — it is not a universal replacement default
+          // (cheaper-inference/OmniRoute #12190, PR #13255).
+          userRegion: pick("userRegion", "user_region") || "US",
+          ...(userTimezone ? { userTimezone } : null),
+          userIdentity: pick("userIdentity", "user_identity") || "Free",
+          authMethod: "imported"
+        }
+      };
+    }
   },
 
   "devin-cli": {

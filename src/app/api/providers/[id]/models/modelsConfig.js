@@ -1,3 +1,4 @@
+import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
@@ -13,6 +14,12 @@ import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import {
+  ANTIGRAVITY_CATALOG_URL,
+  buildAntigravityCatalogBody,
+  classifyAntigravityCatalogStatus,
+  parseAntigravityCatalogModels
+} from "open-sse/services/antigravityCatalog.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -286,6 +293,30 @@ export const PROVIDER_MODELS_CONFIG = {
     parseResponse: (data) => data?.owner === "meta" && data?.name === "meta-llama-3-70b-instruct"
       ? [{ id: "meta/meta-llama-3-70b-instruct", name: "Llama 3 70B Instruct" }] : [],
   },
+  openference: {
+    customResolver: async (connection, proxyOptions) => {
+      if (!connection.accessToken) return { error: "No valid token found", status: 401 };
+      const fetchModels = (token) => proxyAwareFetch("https://api.openference.com/v1/models", {
+        headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000)
+      }, proxyOptions);
+      try {
+        let response = await fetchModels(connection.accessToken);
+        if (response.status === 401 && connection.refreshToken) {
+          const refreshed = await refreshOpenferenceToken(connection, null, proxyOptions);
+          if (refreshed?.accessToken) {
+            await updateProviderCredentials(connection.id, refreshed);
+            response = await fetchModels(refreshed.accessToken);
+          }
+        }
+        if (!response.ok) return { error: `Openference models request failed: ${response.status}`, status: response.status };
+        const data = await response.json();
+        if (!Array.isArray(data?.data)) return { error: "Invalid Openference models response", status: 502 };
+        return { models: data.data };
+      } catch {
+        return { error: "Openference models request failed", status: 502 };
+      }
+    }
+  },
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },
@@ -393,7 +424,7 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   antigravity: {
     // The per-account Hub catalog replaces the stale sandbox models endpoint.
-    url: "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    url: ANTIGRAVITY_CATALOG_URL,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -403,14 +434,17 @@ export const PROVIDER_MODELS_CONFIG = {
     },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => Object.entries(data?.models || {})
-      .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
-      .map(([id, info]) => ({
-        id, name: info?.displayName || id,
-        contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
-        supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
-      }))
+    // The catalog is account scoped: the request carries the signed-in
+    // account's validated project instead of an empty body. A connection
+    // without a usable project omits the field rather than sending a
+    // placeholder.
+    buildBody: (_token, connection) => buildAntigravityCatalogBody(connection),
+    // Tell an auth rejection apart from a transient upstream failure, so a
+    // dead credential is not read as a temporarily empty catalog.
+    classifyStatus: classifyAntigravityCatalogStatus,
+    // Returns null for a payload that is not a catalog, which keeps a known
+    // catalog in place instead of replacing it with an empty list.
+    parseResponse: parseAntigravityCatalogModels
   },
   // Enterprise discovery must use the connection's scoped token and tenant host.
   "ghe-copilot": {

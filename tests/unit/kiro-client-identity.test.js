@@ -12,6 +12,8 @@ describe("Kiro client identity", () => {
     const headers = new KiroExecutor().buildHeaders(credentials);
     const identity = `KiroIDE-1.4.154-${createHash("sha256").update("refresh").digest("hex")}`;
     expect(headers["User-Agent"]).toContain(identity);
+    expect(headers["User-Agent"]).toContain("api/codewhispererstreaming#1.0.0 m/E");
+    expect(buildKiroIdentityHeaders(credentials)["User-Agent"]).toContain("api/codewhispererruntime#1.0.0 m/N,E");
     expect(headers["x-amz-user-agent"]).toContain(identity);
     expect(headers.Authorization).toBe("Bearer access");
     expect(headers["User-Agent"]).not.toContain("refresh");

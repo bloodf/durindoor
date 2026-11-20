@@ -7,6 +7,7 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
+import { claudeDocumentToOpenAIPart } from "./claude-to-openai.js";
 
 function historicalToolResult(name, content) {
   return `[Historical tool result for ${name}]: ${content}`;
@@ -72,6 +73,11 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
           throw error;
         }
         if (block.type === CLAUDE_BLOCK.TEXT && block.text) parts.push({ text: block.text });else
+        if (block.type === CLAUDE_BLOCK.DOCUMENT) {
+          const part = claudeDocumentToOpenAIPart(block);
+          if (part?.text) parts.push({ text: part.text });
+          else if (part?.file?.file_data) parts.push({ inlineData: { mimeType: "application/pdf", data: block.source.data } });
+        } else
         if (block.type === CLAUDE_BLOCK.THINKING && block.thinking) parts.push({ thought: true, text: block.thinking });else
         if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });else
         if (urlImagePart(block)) parts.push(urlImagePart(block));else

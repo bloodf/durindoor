@@ -17,6 +17,7 @@ import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
+import { advancePendingSseLineBytes } from "./pendingSseLine.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -173,6 +174,7 @@ export function createSSEStream(options = {}) {
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
   const errorSecrets = credentialErrorSecrets(credentials);
   let buffer = "";
+  let pendingLineBytes = 0;
   // OpenAI SDK consumers can attempt to decode field-only SSE events as JSON.
   // Hold their framing until a data line proves the event has a payload.
   const filterEmptyOpenAIFrames = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI;
@@ -759,12 +761,24 @@ export function createSSEStream(options = {}) {
   const transformStream = new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
+      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
+      if (nextPendingLineBytes === null) {
+        buffer = "";
+        clearCompletionFlushTimer();
+        upstreamTerminal.fail();
+        const error = new Error("Upstream SSE line exceeded the size limit");
+        error.code = "invalid_sse_payload";
+        throw error;
+      }
+      pendingLineBytes = nextPendingLineBytes;
       const text = decoder.decode(chunk, { stream: true });
       buffer += text;
       reqLogger?.appendProviderChunk?.(text);
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      const lastNewline = text.lastIndexOf("\n");
+      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
+      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
+      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
 
       for (const line of lines) {
         const trimmed = line.trim();

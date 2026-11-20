@@ -82,7 +82,9 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
     provider,
     model,
     connectionId: credentials.connectionId || null,
-    modality: "moderation"
+    modality: "moderation",
+    // The stable id of the admitted key travels with the usage.
+    apiKeyId,
   });
 
   if (modelStr !== `${provider}/${model}`) {

@@ -158,7 +158,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       binaryOutput,
       signal: request.signal,
     });
-    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId ?? null, billingEpoch);
+    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId ?? null, billingEpoch, apiKeyId);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
@@ -203,7 +203,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       signal: request.signal,
       onStreamComplete: async (outcome, response) => {
         if (outcome.status === "success") {
-          await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch);
+          await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
         }
       },
       onCredentialsRefreshed: async (newCreds) => {
@@ -219,12 +219,12 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       }
     });
 
-    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch);
+    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
 
     // Client abort: no account cooldown and no fallthrough to other accounts.
     if (request.signal?.aborted) {
       if (!result.acceptedJob) return result.response;
-      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
       return markAcceptedJob(result.response);
     }
 
@@ -237,7 +237,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     // The provider may still run and bill the accepted job, so another account would
     // be a second billable job. The account health update above still applies.
     if (result.acceptedJob) {
-      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
       return markAcceptedJob(result.response);
     }
 
@@ -251,7 +251,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     return result.response;
   }
 }
-async function recordImageUsage(apiKey, result, request, provider, model, connectionId, billingEpoch) {
+async function recordImageUsage(apiKey, result, request, provider, model, connectionId, billingEpoch, apiKeyId = null) {
   // Streaming commits belong exclusively to the awaited parser callback.
   if (result.completion || result.accounting?.state !== "complete") return result.response;
   const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.accounting;
@@ -259,6 +259,8 @@ async function recordImageUsage(apiKey, result, request, provider, model, connec
     billingEpoch,
     usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
     endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+    // The stable id of the admitted key travels with the usage.
+    apiKeyId,
   });
 }
 
@@ -270,13 +272,15 @@ function markAcceptedJob(response) {
 }
 
 /** The request already ended without a result, so a ledger failure is logged and never replaces that outcome. */
-async function recordAcceptedImageJob(apiKey, accounting, request, provider, model, connectionId, billingEpoch) {
+async function recordAcceptedImageJob(apiKey, accounting, request, provider, model, connectionId, billingEpoch, apiKeyId = null) {
   const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = accounting;
   try {
     await recordApiKeyUsage(apiKey, {
       billingEpoch, status: "accepted",
       usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
       endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+      // The stable id of the admitted key travels with the usage.
+      apiKeyId,
     });
   } catch (error) {
     log.error("IMAGE_GENERATION", `[${provider}/${model}] accepted job not recorded: ${error.message}`);

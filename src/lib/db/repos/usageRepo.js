@@ -15,6 +15,7 @@ import {
   VALID_USAGE_STATS_PERIODS } from
 "../../usagePeriods.js";
 import { adjustApiKeyUsageSync, incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
+import { apiKeyUsageScope, hasStableApiKeyIdColumn, resolveUsageApiKeyIdSync } from "../helpers/apiKeyAttribution.js";
 import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
@@ -717,7 +718,11 @@ function addDayDeltaSync(db, row, delta, identitySalt) {
   db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 }
 
-const apiKeyIdForSync = (db, apiKey) => apiKey ? db.get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey])?.id || null : null;
+// The stable key id of one usage row. The id carried from admission wins,
+// because it survives a later secret change; the stored secret is the
+// fallback for rows written before the stable id was recorded.
+const apiKeyIdForSync = (db, apiKey, admittedApiKeyId = null) =>
+  resolveUsageApiKeyIdSync(db, apiKey, admittedApiKeyId);
 
 /* Upgrade an accepted row in place: one request, now with the terminal usage.
  * Accepted rows never carry tokens or cost, so the new values are the delta. */
@@ -734,7 +739,9 @@ function settleAcceptedRowSync(db, row, entry, costSplit, identitySalt) {
   ]);
   const unknownCostRequests = (entry.cost === null ? 1 : 0) - 1;
   addDayDeltaSync(db, row, { tokens, cost: entry.cost, requests: 0, unknownCostRequests, ...costSplit }, identitySalt);
-  adjustApiKeyUsageSync(db, apiKeyIdForSync(db, row.apiKey), { tokens: tokens.total_tokens, cost: entry.cost ?? 0, unknownCostRequests });
+  // The accepted row keeps its own attribution, so a request that started
+  // before a secret change still settles against the same key.
+  adjustApiKeyUsageSync(db, apiKeyIdForSync(db, row.apiKey, row.apiKeyId), { tokens: tokens.total_tokens, cost: entry.cost ?? 0, unknownCostRequests });
 }
 
 /** Preserve legacy event identities before history removal or portable export.
@@ -767,6 +774,12 @@ export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
  * usageEventId identifies retries, not identical payloads. Its durable kv receipt
  * commits with accounting and survives history resets. strict propagates
  * validation and storage errors; successful duplicates return true.
+ *
+ * apiKeyId is the stable id of the key that was admitted for this event. It
+ * is authoritative over the stored secret: only the id survives a later
+ * secret change, so the request stays attached to the key's budgets. The
+ * secret is still stored, and legacy rows without an id keep their existing
+ * scoped association through it.
  */
 export async function saveRequestUsage(entry) {
   entry = { ...entry };
@@ -779,6 +792,9 @@ export async function saveRequestUsage(entry) {
 
     if (entry.usageEventId != null && (!isString(entry.usageEventId) || !entry.usageEventId.trim())) {
       throw new TypeError("Usage event ID must be a nonempty string");
+    }
+    if (entry.apiKeyId != null && (!isString(entry.apiKeyId) || !entry.apiKeyId.trim())) {
+      throw new TypeError("Usage API key ID must be a nonempty string");
     }
     if (entry.timestamp === undefined) entry.timestamp = new Date().toISOString();
     if (!isString(entry.timestamp) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(entry.timestamp) ||
@@ -861,6 +877,8 @@ export async function saveRequestUsage(entry) {
 
     let inserted = false;
     let settled = false;
+    // The key this event was charged to, resolved inside the transaction.
+    let attributedApiKeyId = null;
 
     // Every request is a distinct event — never deduplicate on identical field
     // payloads, or parallel writes that share fields (same timestamp + provider +
@@ -887,6 +905,7 @@ export async function saveRequestUsage(entry) {
           // A terminal event with the job's identity settles its accepted row.
           if (existing.status === "accepted" && !accepted) {
             settleAcceptedRowSync(db, existing, entry, costSplit, identitySalt);
+            attributedApiKeyId = apiKeyIdForSync(db, existing.apiKey, existing.apiKeyId);
             setUsageEventReceiptSync(db, usageEventId, "1");
             settled = true;
             return;
@@ -911,16 +930,35 @@ export async function saveRequestUsage(entry) {
         }
       }
 
-      const insert = db.run(
-        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName, cachedTokens, reasoningTokens, cacheCreationTokens, latencyMs, ttftMs, ${USAGE_COST_FIELDS.join(", ")}) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
+      // The stable key id rides along with the row. It is the key's account,
+      // not its credential, so the row stays attached to the key's budgets
+      // even when the secret changes later.
+      const apiKeyId = apiKeyIdForSync(db, entry.apiKey, entry.apiKeyId);
+      attributedApiKeyId = apiKeyId;
+      const historyColumns = [
+        "timestamp", "provider", "model", "connectionId", "apiKey", "endpoint",
+        "promptTokens", "completionTokens", "cost", "status", "tokens", "meta",
+        "usageEventId", "comboId", "comboName",
+        "cachedTokens", "reasoningTokens", "cacheCreationTokens",
+        "latencyMs", "ttftMs", ...USAGE_COST_FIELDS,
+      ];
+      const historyValues = [
         entry.timestamp, entry.provider || null, entry.model || null,
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost, entry.status || "ok",
         stringifyJson(tokens), stringifyJson(entry.meta), usageEventId || null,
         entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens)),
-        latencyMs, ttftMs, ...USAGE_COST_FIELDS.map((field) => costSplit[field])]
-
+        latencyMs, ttftMs, ...USAGE_COST_FIELDS.map((field) => costSplit[field]),
+      ];
+      // A database that predates the stable id keeps its old shape; its rows
+      // stay attributed through the secret association alone.
+      if (hasStableApiKeyIdColumn(db)) {
+        historyColumns.splice(5, 0, "apiKeyId");
+        historyValues.splice(5, 0, apiKeyId);
+      }
+      const insert = db.run(
+        `INSERT OR IGNORE INTO usageHistory(${historyColumns.join(", ")}) VALUES(${historyColumns.map(() => "?").join(", ")})`,
+        historyValues
       );
       if ((insert?.changes ?? 0) === 0) return;
       upsertLastSeen(db, entry);
@@ -933,12 +971,6 @@ export async function saveRequestUsage(entry) {
       };
       aggregateEntryToDay(day, { ...entry, latencyMs, ttftMs, ...costSplit }, identitySalt);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
-
-      // Resolve the stored secret to its stable row id inside the same
-      // transaction. The secret is read-only and is never rotated or rewritten.
-      const apiKeyId = entry.apiKey ?
-      db.get(`SELECT id FROM apiKeys WHERE key = ?`, [entry.apiKey])?.id || null :
-      null;
 
       // Atomic counter increment in same transaction
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '1')
@@ -960,7 +992,7 @@ export async function saveRequestUsage(entry) {
       recentRing.items = recentRing.items.map((item) => item.storedEventId === usageEventId && item.status === "accepted" ?
         { ...item, cost: entry.cost, status: entry.status || "ok", tokens: entry.tokens, meta: entry.meta, completedAt: entry.timestamp } : item);
       scheduleStatsEvent("update", 250);
-      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, entry.provider === "mcp-gateway" && entry.status === "error" ? 0 : (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
+      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, entry.provider === "mcp-gateway" && entry.status === "error" ? 0 : (Number(promptTokens) || 0) + (Number(completionTokens) || 0), attributedApiKeyId);
     }
 
     if (inserted) {
@@ -973,7 +1005,7 @@ export async function saveRequestUsage(entry) {
       scheduleStatsEvent("update", 250);
       // Not debounced: per-key limit caches must see new usage immediately,
       // and the tokens-per-minute window is fed from this event.
-      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, entry.provider === "mcp-gateway" && entry.status === "error" ? 0 : (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
+      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, entry.provider === "mcp-gateway" && entry.status === "error" ? 0 : (Number(promptTokens) || 0) + (Number(completionTokens) || 0), attributedApiKeyId);
     }
     return true;
   } catch (e) {
@@ -1019,10 +1051,17 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
 // Usage totals for one API key: today and this month (used by per-key limits).
 // Today always falls inside this month, so one scan from monthStart covers both.
 // COALESCE preserves historical NULL provider/status rows; only explicit MCP errors are exempt.
-export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso) {
+//
+// The window belongs to the key, not to its secret. Rows carrying the stable
+// key id are counted directly; legacy rows without one keep their existing
+// scoped association through the stored secret. The two branches are disjoint,
+// so a row is never counted twice, and a later secret change cannot empty a
+// key's window.
+export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso, apiKeyId = null) {
   const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
-  if (!apiKey) return { day: empty(), month: empty() };
+  if (!apiKey && !apiKeyId) return { day: empty(), month: empty() };
   const db = await getAdapter();
+  const scope = apiKeyUsageScope(db, { apiKeyId, apiKey });
   const row = db.get(
     `SELECT
        COALESCE(SUM(CASE WHEN timestamp >= ? THEN promptTokens ELSE 0 END), 0) AS dayInput,
@@ -1035,9 +1074,9 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
        COUNT(*) AS monthRequests,
        COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS monthUnknown,
        COALESCE(SUM(cost), 0) AS monthCost
-     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?
+     FROM usageHistory WHERE ${scope.clause} AND timestamp >= ?
        AND NOT (COALESCE(provider, '') = 'mcp-gateway' AND COALESCE(status, '') = 'error')`,
-    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso]
+    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, ...scope.params, monthStartIso]
   );
   const n = (v) => Number(v) || 0;
   return {

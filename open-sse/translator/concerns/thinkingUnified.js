@@ -445,7 +445,8 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "gemini-level":{
-        let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        let level = none ? "minimal" :
+          (["antigravity", "ag", "agy"].includes(provider) && caps.thinkingEfforts?.includes("xhigh") && toLevel(eff) === "xhigh" ? "xhigh" : toGeminiThinkingLevel(eff));
         // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
         const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;

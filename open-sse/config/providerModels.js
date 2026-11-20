@@ -159,14 +159,16 @@ function budgetTier(budget) {
  * request suffix intent, then body effort, then thinking budget.
  * Returns null when nothing names a tier.
  */
-export function resolveRequestedModelTier(thinkingIntent, body = null) {
-  if (thinkingIntent?.mode === "level") return normalizeTier(thinkingIntent.level);
+export function resolveRequestedModelTier(thinkingIntent, body = null, provider = null) {
+  // Hydrogen has a registered Antigravity xhigh row; keep other providers unchanged.
+  const tier = (value) => value?.toLowerCase?.().trim() === "xhigh" && ["ag", "agy", "antigravity"].includes(provider) ? "xhigh" : normalizeTier(value);
+  if (thinkingIntent?.mode === "level") return tier(thinkingIntent.level);
   if (thinkingIntent?.mode === "budget") return budgetTier(thinkingIntent.budget);
   if (thinkingIntent) return null;
   if (body?.thinking?.type === "adaptive") return "high";
   if (body?.thinking?.type === "disabled" || body?.thinking?.type === "none") return "low";
   const effort = body?.reasoning_effort || body?.output_config?.effort || body?.reasoning?.effort;
-  if (isString(effort) && effort.trim()) return normalizeTier(effort);
+  if (isString(effort) && effort.trim()) return tier(effort);
   const budget = Number(body?.thinking?.budget_tokens);
   if (body?.thinking && Number.isFinite(budget) && budget === 0) return "low";
   return budgetTier(body?.thinking?.budget_tokens);
@@ -194,18 +196,20 @@ export function applyProviderThinkingOverride(body, providerThinking) {
 /** Upstream id chatCore will dispatch for this request (quota/cooldown keys). */
 export function getDispatchUpstreamModelId(aliasOrId, modelId, body = null, providerThinking = null) {
   const effectiveBody = body ? applyProviderThinkingOverride(body, providerThinking) : null;
-  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId, aliasOrId).override, effectiveBody));
+  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId, aliasOrId).override, effectiveBody, aliasOrId));
 }
 
 function findUpstreamModel(aliasOrId, modelId, tier) {
   const parsed = parseSuffix(modelId, aliasOrId);
   const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
-  const requestedTier = tier || resolveRequestedModelTier(parsed.override);
+  const requestedTier = tier || resolveRequestedModelTier(parsed.override, null, aliasOrId);
   // `<model>-<tier>` rows are tier variants only in catalogs that use thinking
   // presets (Antigravity today), including rows there without a preset; in
   // other catalogs (codex, grok) `<model>-<level>` ids are distinct models.
-  const tieredRow = requestedTier && isString(baseId) ? findModel(models, `${baseId}-${requestedTier}`, aliasOrId) : null;
+  const tieredRow = requestedTier && isString(baseId) ?
+    findModel(models, `${baseId}-${requestedTier}`, aliasOrId) ||
+      (requestedTier === "xhigh" && ["ag", "agy", "antigravity"].includes(aliasOrId) ? findModel(models, `${baseId}-high`, aliasOrId) : null) : null;
   const tiered = tieredRow && models.some((row) => parseSuffix(row.upstreamModelId).override) ? tieredRow : null;
   return { baseId, found: tiered || findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId) };
 }

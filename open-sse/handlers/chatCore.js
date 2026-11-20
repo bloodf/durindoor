@@ -477,7 +477,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when
   // nothing named a tier and neither the client nor the provider setting
   // controls thinking (`thinking` present, or mode none/off).
-  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body);
+  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body, provider);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
   const thinkingControlled = requestedModelTier || body.thinking ||
   providerThinking?.mode === "none" || providerThinking?.mode === "off";

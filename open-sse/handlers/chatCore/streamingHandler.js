@@ -20,7 +20,7 @@ import { SSE_DONE } from "../../utils/sseConstants.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-import { isFunction } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction, isRecord } from "../../../src/shared/utils/typeChecks.js";
 import { classifyStreamAbandonReason, isRequestScopedStreamError } from "../../utils/streamLifecycle.js";
 const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
@@ -40,16 +40,17 @@ function hasOutputTokens(usage) {
 /** Frame a complete OpenAI response for the normal streaming pipeline. */
 export function completionToStream(completion) {
   if (completion?.error || !Array.isArray(completion?.choices) || !completion.choices.length ||
-      !completion.choices.every((choice) => choice?.message && typeof choice.message === "object")) {
+      !completion.choices.every((choice) => isRecord(choice?.message))) {
     throw new Error("Invalid JSON completion for streaming request");
   }
   return sseChunk({
     ...completion,
     object: "chat.completion.chunk",
-    choices: completion.choices.map(({ message, ...choice }) => ({
-      ...choice,
-      delta: { ...message, ...(message.tool_calls ? { tool_calls: message.tool_calls.map((call, index) => ({ ...call, index })) } : {}) }
-    }))
+    choices: completion.choices.map(({ message, ...choice }) => {
+      const delta = { ...message };
+      if (message.tool_calls) delta.tool_calls = message.tool_calls.map((call, index) => ({ ...call, index }));
+      return { ...choice, delta };
+    })
   }) + SSE_DONE;
 }
 

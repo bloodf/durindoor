@@ -673,8 +673,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // Anthropic API keys reject the subscription-only Claude Code identity.
   // Remove only leading identity blocks or lines, preserving user instructions.
   if (provider === "anthropic" && body.system) {
-    const isIdentity = (text) => typeof text === "string" && /^(You are Claude Code|You are a Claude agent, built on Anthropic's Claude Agent SDK|x-anthropic-billing-header:)/.test(text.trim());
-    if (typeof body.system === "string") {
+    const isIdentity = (text) => isString(text) && /^(You are Claude Code|You are a Claude agent, built on Anthropic's Claude Agent SDK|x-anthropic-billing-header:)/.test(text.trim());
+    if (isString(body.system)) {
       const lines = body.system.split("\n");
       while (lines.length && isIdentity(lines[0])) lines.shift();
       if (lines.length) body.system = lines.join("\n"); else delete body.system;

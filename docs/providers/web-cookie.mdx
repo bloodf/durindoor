@@ -82,6 +82,15 @@ These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web t
 
 Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). See [Hidden and retired providers](./retired.mdx) for unsupported entries. You can save a connection for them, but no request will run until the executor ships.
 
+## Import from a browser extension
+
+A browser extension can send a signed-in session to DurinDoor instead of you pasting it. It works for ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web; the full-header providers such as HuggingChat are not supported.
+
+1. In the dashboard, an operator asks for a pairing for one provider, either for a new named connection or for one existing cookie connection. The pairing secret is shown once and expires after two minutes.
+2. The extension sends the provider's approved cookies, the exact provider origin and that secret to `/api/providers/cookie-import`, in the `x-durindoor-pairing-token` header.
+
+The secret works once, only for that provider and target, and only on that route; it is not an API key. Pair again after any failed attempt. The call must use HTTPS, except to `localhost`, `127.0.0.1` or `[::1]` for local development, and the body is limited to 32 KiB. Cookies the provider does not approve, such as `cf_clearance`, are rejected. DurinDoor checks the shape of the cookies and does not contact the provider, so use **Validate** afterwards. Replacing the cookie on an existing connection clears a pending sign-in-again state. The pairing is kept in server memory, so run a single DurinDoor process behind the address the extension uses.
+
 ## Validation
 
 **Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web and ZenMux Free skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.

@@ -595,6 +595,12 @@ async function getDispatcher(proxyUrl) {
   return proxyDispatchers.get(cacheKey);
 }
 
+// Allow high-latency links to extend the dual-stack connection attempt budget.
+export function parseEyeballsTimeoutMs(raw) {
+  const ms = Number(raw);
+  return Number.isInteger(ms) && ms >= 100 && ms <= 30000 ? ms : 1000;
+}
+
 /**
  * Build options for the shared direct undici pool. One Agent is reused across
  * calls and maintains a bounded pool per origin without changing route choice.
@@ -608,7 +614,7 @@ export function getDirectDispatcherOptionsForTest() {
     pipelining: PROXY_FETCH_POOL_CONFIG.pipelining,
     connect: {
       autoSelectFamily: true,
-      autoSelectFamilyAttemptTimeout: 1000
+      autoSelectFamilyAttemptTimeout: parseEyeballsTimeoutMs(process.env.DURINDOOR_HAPPY_EYEBALLS_TIMEOUT_MS)
     }
   };
 }

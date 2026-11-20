@@ -391,6 +391,10 @@ export class DefaultExecutor extends BaseExecutor {
 
 
     if (transformed && isObject(transformed)) {
+      // Cohere compatibility accepts only high when a reasoning effort is supplied.
+      if (this.provider === "cohere" && typeof transformed.reasoning_effort === "string") {
+        transformed.reasoning_effort = "high";
+      }
       // The official OpenAI transport is force-streamed even for JSON clients.
       // Keep the actual upstream body aligned with the executor's resolved mode;
       // chat core converts the SSE response back to JSON for those clients.

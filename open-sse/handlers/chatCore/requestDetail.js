@@ -1,6 +1,6 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
-import { canonicalizeUsage } from "../../utils/usageTracking.js";
+import { canonicalizeUsage, reasoningIsSubsetOfOutput } from "../../utils/usageTracking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
@@ -28,7 +28,13 @@ export function extractUsageFromResponse(responseBody) {
 
   const responseUsage = responseBody.usage;
   if (responseUsage?.input_tokens !== undefined || responseUsage?.prompt_tokens !== undefined) {
-    return canonicalizeUsage(responseUsage);
+    const canonical = canonicalizeUsage(responseUsage);
+    // OpenAI-shaped usage counts reasoning inside the output count, but a few
+    // OpenAI-compatible upstreams (xAI) report it on top instead.
+    if (canonical && !reasoningIsSubsetOfOutput(responseUsage)) {
+      canonical.reasoning_included_in_output = 0;
+    }
+    return canonical;
   }
 
   // Ollama non-stream bodies put prompt_eval_count / eval_count /
@@ -121,8 +127,16 @@ function reconcileReportedTotal(usage) {
   if (reported === expected) return { tokens: usage };
   if (reported < expected) console.warn(`[USAGE] reported total_tokens ${reported} is below input + output ${expected}; using the components`);
   const total = Math.max(reported, expected);
+  const completion = Math.ceil(usage.completion_tokens ?? 0) + total - expected;
+  const folded = { ...usage, completion_tokens: completion, total_tokens: total };
+  // Folding the excess into completion_tokens puts the reasoning slice back
+  // INSIDE the output count, so the additive marker no longer applies.
+  if (folded.reasoning_included_in_output === 0) {
+    const reasoning = Number(folded.reasoning_tokens) || 0;
+    if (reasoning > 0 && reasoning <= completion) delete folded.reasoning_included_in_output;
+  }
   return {
-    tokens: { ...usage, completion_tokens: Math.ceil(usage.completion_tokens ?? 0) + total - expected, total_tokens: total },
+    tokens: folded,
     reportedTotalTokens: usage.total_tokens,
   };
 }

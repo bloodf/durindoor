@@ -181,6 +181,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
 | `dahl` |  | apikey | `https://inference.dahl.global/v1/chat/completions` |
+| `daoxe` |  | apikey | `https://api.daoxe.com/v1/chat/completions` |
 | `databricks` |  | apikey | `https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints` |
 | `datarobot` |  | apikey | `https://app.datarobot.com/api/v2/genai/llmgw/chat/completions/` |
 | `deepai` |  | apikey | `` |

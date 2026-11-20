@@ -1701,7 +1701,16 @@ export async function handleComboChat({
             // A request-scoped refusal (invalid request, context too long) may
             // still fall to another model, but it says nothing about this
             // model's health (OmniRoute #14585).
-            if (comboStrategy === "smart-scoring" && !isRequestScopedStreamError(streamError)) {
+            const requestScoped = isRequestScopedStreamError(streamError);
+            if (requestScoped) {
+              // SSE envelopes have no HTTP status; these typed request errors
+              // project to 400 and remain a candidate if no member succeeds.
+              requestScopedResult ??= errorResponse(
+                getClientStatusFromError(HTTP_STATUS.BAD_REQUEST, streamError.message),
+                streamError.message
+              );
+            }
+            if (comboStrategy === "smart-scoring" && !requestScoped) {
               _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
             }
             releaseFailedAffinity(modelStr, i);

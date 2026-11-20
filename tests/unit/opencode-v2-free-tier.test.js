@@ -12,11 +12,11 @@ const noauth = { id: "noauth", connectionId: "noauth" };
 const sessionCounter = (session) => (~parseInt(session.slice(4, 16), 16) & 0xfff);
 
 describe("OpenCode v2 free-tier endpoint and headers (5bdcd5e7)", () => {
-  it("routes every wire format to /inference/v1", () => {
+  it("routes each wire format to its inference API family", () => {
     const executor = new OpenCodeExecutor();
-    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/inference/v1/chat/completions");
-    expect(executor.buildUrl("muse-spark-1.3-contributor-free")).toBe("https://opencode.ai/inference/v1/responses");
-    expect(executor.buildUrl("union-alpha")).toBe("https://opencode.ai/inference/v1/messages");
+    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/inference/openai/v1/chat/completions");
+    expect(executor.buildUrl("muse-spark-1.3-contributor-free")).toBe("https://opencode.ai/inference/openai/v1/responses");
+    expect(executor.buildUrl("union-alpha")).toBe("https://opencode.ai/inference/anthropic/v1/messages");
   });
 
   it("sends the session under all four v2 names and never x-opencode-request", () => {

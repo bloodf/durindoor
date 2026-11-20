@@ -11,6 +11,8 @@ import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
+import { updateProviderConnection } from "@/lib/localDb";
 import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
 import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -39,6 +41,12 @@ import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
 import { withCodexReviewModels } from "open-sse/providers/models/helpers.js";
+import {
+  DOTHOOSH_ANTHROPIC_MODELS_URL,
+  DOTHOOSH_OPENAI_MODELS_URL,
+  dotHooshListingHeaders,
+  mergeDotHooshListings
+} from "open-sse/providers/dothooshCatalog.js";
 
 const KIMI_WEB_MODELS_PATH = "/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels";
 
@@ -166,6 +174,48 @@ export const createOpenAIModelsConfig = (url) => ({
   authPrefix: "Bearer ",
   parseResponse: parseOpenAIStyleModels
 });
+
+/**
+ * Read one DotHoosh listing.
+ *
+ * The provider publishes two listings: the OpenAI path (/v1/models) and the
+ * Anthropic path (/anthropic/v1/models). A model is served on the paths it is
+ * verified for, so a model that only the Anthropic path lists never appears
+ * in the OpenAI listing. Both are read and merged.
+ *
+ * The key only ever travels to the provider host: the OpenAI listing takes
+ * the bearer scheme, the Anthropic listing takes x-api-key only (the
+ * provider rejects a request that carries both auth headers).
+ *
+ * @param {string} url - listing URL on the provider host
+ * @param {"openai"|"anthropic"} listing - which listing is being read
+ * @param {string} apiKey - the connection's key
+ * @param {object|null} proxyOptions
+ * @returns {Promise<{ rows: object[], error?: string, status?: number }>}
+ */
+export async function fetchDotHooshListing(url, listing, apiKey, proxyOptions = null) {
+  try {
+    const response = await proxyAwareFetch(url, {
+      method: "GET",
+      headers: dotHooshListingHeaders(listing, apiKey),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000)
+    }, proxyOptions);
+    if (!response.ok) {
+      const text = await response.text();
+      return {
+        rows: [],
+        error: sanitizeErrorMessage(text || response.statusText),
+        status: response.status
+      };
+    }
+    const body = await response.json();
+    const rows = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : []);
+    return { rows };
+  } catch (error) {
+    return { rows: [], error: sanitizeErrorMessage(error?.message), status: 502 };
+  }
+}
 
 export const resolveQwenModelsUrl = (connection) => {
   const fallback = "https://portal.qwen.ai/v1/models";
@@ -305,6 +355,63 @@ export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((m
   model && isString(model.id) &&
   (!Array.isArray(model.supported_operations) || model.supported_operations.length === 0 || model.supported_operations.includes("CHAT_COMPLETIONS"))
 );
+
+/**
+ * Attach Copilot's endpoint contract to one catalog row.
+ *
+ * The contract states which of Copilot's existing routes serves the model. A
+ * row that declares no endpoint keeps none, so the executor falls back to its
+ * current behavior for it.
+ */
+export function withCopilotEndpointContract(row) {
+  if (!isObject(row) || !isString(row.id)) return row;
+  const contract = readCopilotEndpointContract(row, row.id);
+  if (!contract.supportedEndpoints?.length) return row;
+  const enriched = { ...row, supportedEndpoints: contract.supportedEndpoints };
+  if (contract.targetFormat) enriched.targetFormat = contract.targetFormat;
+  return enriched;
+}
+
+/** Compare two stored contracts regardless of model order. */
+function sameCopilotEndpointContract(left, right) {
+  const normalize = (value) => {
+    if (!isObject(value) || !Array.isArray(value.models)) return null;
+    return JSON.stringify({
+      version: value.version,
+      models: [...value.models].sort((a, b) => String(a?.id).localeCompare(String(b?.id)))
+    });
+  };
+  return normalize(left) === normalize(right);
+}
+
+/**
+ * Persist the Copilot endpoint contract discovered for a connection.
+ *
+ * The contract is a per-account fact: it states which of Copilot's existing
+ * routes serves a model for THIS account. It is stored on the connection so
+ * the executor can read it without another catalog fetch, and so the account
+ * that serves a request stays the account that discovered its route.
+ *
+ * The model list is an array, so a refreshed catalog replaces the stored one
+ * instead of merging into it and keeping models Copilot stopped serving. The
+ * write is skipped when the stored contract already matches.
+ */
+export async function persistCopilotEndpointContract(connection, rows) {
+  if (!connection?.id) return null;
+  const contract = buildCopilotEndpointContract(rows);
+  const stored = connection.providerSpecificData?.copilotEndpointContract;
+  if (sameCopilotEndpointContract(stored, contract)) return contract;
+  try {
+    // Deep merge: the contract must not disturb the stored Copilot token or
+    // the enterprise host.
+    await updateProviderConnection(connection.id, {
+      providerSpecificData: { copilotEndpointContract: contract }
+    });
+  } catch (error) {
+    console.warn("Copilot endpoint contract not stored:", sanitizeErrorMessage(error?.message || error));
+  }
+  return contract;
+}
 
 export const PROVIDER_MODELS_CONFIG = {
   empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
@@ -490,7 +597,10 @@ export const PROVIDER_MODELS_CONFIG = {
         cache: "no-store"
       }, proxyOptions);
       if (!response.ok) return { error: `Enterprise Copilot models request failed: ${response.status}`, status: response.status };
-      return { models: parseOpenAIStyleModels(await response.json()) };
+      const rows = parseOpenAIStyleModels(await response.json());
+      const models = rows.map((row) => withCopilotEndpointContract(row));
+      await persistCopilotEndpointContract(connection, models);
+      return { models };
     }
   },
   github: {
@@ -512,7 +622,10 @@ export const PROVIDER_MODELS_CONFIG = {
           });
         }
       });
-      if (result?.models?.length) return { models: result.models };
+      if (result?.models?.length) {
+        await persistCopilotEndpointContract(connection, result.models);
+        return { models: result.models };
+      }
       return {
         models: [],
         warning: "GitHub Copilot returned no live models."
@@ -573,7 +686,7 @@ export const PROVIDER_MODELS_CONFIG = {
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
   nan: createOpenAIModelsConfig("https://api.nan.builders/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
-  paraloncloud: createOpenAIModelsConfig("https://paraloncloud.com/v1/models"),
+  paraloncloud: { ...createOpenAIModelsConfig("https://paraloncloud.com/v1/models"), apiKeyOnly: true },
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
@@ -582,6 +695,31 @@ export const PROVIDER_MODELS_CONFIG = {
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   hcnsec: createOpenAIModelsConfig("https://api.hcnsec.cn/v1/models"),
+  // DotHoosh publishes no static catalog: the model list is the provider's own
+  // listing, read per key. Both listings are merged so a model that only the
+  // Anthropic path serves is listed too.
+  dothoosh: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const apiKey = connection.apiKey;
+      if (!apiKey) return { error: "No valid token found", status: 401 };
+      const [openai, anthropic] = await Promise.all([
+        fetchDotHooshListing(DOTHOOSH_OPENAI_MODELS_URL, "openai", apiKey, proxyOptions),
+        fetchDotHooshListing(DOTHOOSH_ANTHROPIC_MODELS_URL, "anthropic", apiKey, proxyOptions)
+      ]);
+      const models = mergeDotHooshListings({ openai: openai.rows, anthropic: anthropic.rows });
+      if (!models.length) {
+        // One listing may be empty while the other answers; only a total
+        // failure is an error, and a rejected key is reported as such.
+        const failure = openai.error ? openai : anthropic;
+        const status = failure.status;
+        if (status === 401 || status === 403) {
+          return { error: "Invalid API key", status: 401 };
+        }
+        return { error: "DotHoosh returned no models", status: 502 };
+      }
+      return { models };
+    }
+  },
   kimchi: {
     customResolver: async (connection, proxyOptions = null) => {
       const result = await resolveKimchiModels({

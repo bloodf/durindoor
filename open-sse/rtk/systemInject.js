@@ -3,6 +3,7 @@
 
 import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
 import { FORMATS } from "../translator/formats.js";
+import { CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const SEP = "\n\n";
@@ -171,7 +172,7 @@ function appendToOpenAIMessage(msg, prompt, partType) {
 }
 
 // Claude shape: body.system as string | array of {type:"text", text}
-// Insert before the last cache_control block to keep injection inside the cached prefix.
+// Insert before the last cache boundary, except when that would displace the leading identity.
 function injectClaudeSystem(body, prompt) {
   if (isString(body.system) && body.system.length > 0) {
     if (isPromptAlreadyInjected(body.system, prompt)) return;
@@ -187,7 +188,9 @@ function injectClaudeSystem(body, prompt) {
       if (body.system[i]?.cache_control) {lastCacheIdx = i;break;}
     }
     tryMutate(() => {
-      if (lastCacheIdx >= 0) body.system.splice(lastCacheIdx, 0, block);
+      if (lastCacheIdx === 0 && body.system[0]?.text?.startsWith?.(CLAUDE_SYSTEM_PROMPT)) {
+        body.system.splice(1, 0, block);
+      } else if (lastCacheIdx >= 0) body.system.splice(lastCacheIdx, 0, block);
       else body.system.push(block);
     });
     return;

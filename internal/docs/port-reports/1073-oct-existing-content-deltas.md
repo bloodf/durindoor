@@ -1,0 +1,6 @@
+# 1073: existing OpenAI stream content
+
+- [OmniRoute #16614](https://github.com/cheaper-inference/OmniRoute/pull/16614), merged as `91e665b7b05bb7939c9684ee51b6de4157228a5c`: **ported** finite numeric `delta.content` conversion in the existing shared output normalizer. Zero is retained; non-finite numbers and other structures are not converted. JSON numbers cannot recover formatting already lost by the provider.
+- [OmniRoute #16540](https://github.com/cheaper-inference/OmniRoute/pull/16540), merged as `4fee5568d1219d54bddbae63eed5d66997f919f1`: **already present** for the supported `delta.images` shape. Gemini emits image chunks, and the OpenAI stream gate retains them. DurinDoor has no upstream streaming allow-list sanitizer: its response masking changes visible text while preserving image fields and metadata. No additional image operation or structured content type is introduced. The existing typed-content normalizer continues to discard unsupported parts.
+
+Offline evidence: `tests/unit/omni-oct-existing-content-deltas.test.js` covers numeric and ordinary frames, invalid structures, generated-image passthrough and masking, Gemini translation, and accompanying terminal and usage frames. Existing error, replay and terminal handling is unchanged.

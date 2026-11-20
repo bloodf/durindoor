@@ -229,7 +229,13 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { ch
   // passthrough the status value as finish_reason when not completed.
   const status = responseBody?.status;
   const responseDone = status === "completed" || status === "done";
-  const finishReason = toolCalls.length > 0 ? "tool_calls" : responseDone ? "stop" : status || "stop";
+  // Preserve known incomplete causes before considering tool calls; failed and
+  // unknown terminal statuses must continue to pass through as non-successes.
+  const incompleteReason = responseBody?.incomplete_details?.reason;
+  const finishReason = status === "incomplete" && incompleteReason === "max_output_tokens" ? OPENAI_FINISH.LENGTH :
+    status === "incomplete" && incompleteReason === "content_filter" ? OPENAI_FINISH.CONTENT_FILTER :
+    status && !responseDone ? status :
+    toolCalls.length > 0 ? OPENAI_FINISH.TOOL_CALLS : OPENAI_FINISH.STOP;
   return {
     id: responseBody?.id || `chatcmpl-${Date.now()}`,
     object: "chat.completion",

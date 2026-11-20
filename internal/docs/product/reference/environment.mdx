@@ -147,6 +147,8 @@ These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js`
 | `DISABLE_BACKGROUND_TOKEN_REFRESH` | unset | Truthy disables background refresh. | `src/sse/services/backgroundTokenRefresh.js` |
 | `ONBOARD_MAX_ATTEMPTS` | `2` | Gemini/Antigravity project-id onboard attempts. | `open-sse/services/projectId.js` |
 | `ONBOARD_RETRY_DELAY_MS` | `12000` | Delay between onboard attempts. | `open-sse/services/projectId.js` |
+| `ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS` | `10` | Cloud Code `onboardUser` polls during Antigravity sign-in. | `src/lib/oauth/providers.js` |
+| `ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS` | `5000` | Delay between those sign-in polls. | `src/lib/oauth/providers.js` |
 | `EAGER_PROJECT_ID_REFRESH` | unset | `true` refreshes Google project ids eagerly. | `src/sse/services/tokenRefresh.js` |
 
 ## Web fetch and search

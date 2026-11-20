@@ -6,7 +6,7 @@ Scope: turn the historical merged OmniRoute records in [#1073](https://github.co
 
 This is a documentation unit. No runtime code was added, no fixture was written, no provider was called, no credential was used, no network exposure was probed, and no upstream message was sent. Upstream access was limited to read-only GitHub API metadata.
 
-The prior unit in this series, [`1073-historical-source-provenance.md`](1073-historical-source-provenance.md), established the archive inventory (15,357 records, 8,409 merged PRs) and the window membership (266 merged PRs, 21 with local provenance, 245 with none). It did **not** read upstream diffs, so it could not say what the 245 uncovered rows actually changed. This unit closes that gap with source commit ids and static changed paths.
+The prior unit in this series, `1073-historical-source-provenance.md` (not present in this checkout; the surviving successor note is [`1073-historical-coverage-reconciled.md`](1073-historical-coverage-reconciled.md)), established the archive inventory (15,357 records, 8,409 merged PRs) and the window membership (266 merged PRs, 21 with local provenance, 245 with none). It did **not** read upstream diffs, so it could not say what the 245 uncovered rows actually changed. This unit closes that gap with source commit ids and static changed paths.
 
 ## 1. Headline result
 

@@ -225,7 +225,11 @@ export function canonicalizeUsage(usage) {
 
   if (hasExclusiveCache) {
     cached = num(usage.cache_read_input_tokens);
-    prompt = prompt + cached + cacheCreation;
+    // Claude-to-OpenAI translation can preserve cache fields while already
+    // folding them into prompt_tokens. Prefer Claude's exclusive input_tokens
+    // base when present so repeated normalization does not count cache twice.
+    const basePrompt = usage.input_tokens !== undefined ? num(usage.input_tokens) : prompt;
+    prompt = basePrompt + cached + cacheCreation;
   } else {
     // OpenAI/Gemini/Responses path: cache fields are subsets of inclusive input.
     cached = num(usage.cached_tokens ?? inputDetails?.cached_tokens);

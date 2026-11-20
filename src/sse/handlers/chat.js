@@ -463,7 +463,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   if (apiKey) {
     let limitStatus;
     try {
-      limitStatus = await getApiKeyUsageLimitStatus(apiKey);
+      limitStatus = await getApiKeyUsageLimitStatus(apiKey, new Date(), apiKeyAuth.apiKeyId);
     } catch (err) {
       if (err?.message?.includes("no such table: apiKeyUsageTotals")) {
         limitStatus = { enforced: false, exceeded: false };
@@ -1290,6 +1290,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         connectionId: credentials.connectionId,
         userAgent,
         apiKey,
+        apiKeyId,
         apiKeyName,
         billingEpoch,
         abortSignal: requestSignal,

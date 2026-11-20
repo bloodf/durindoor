@@ -538,20 +538,21 @@ export class DefaultExecutor extends BaseExecutor {
     return { ...body, tags: [...new Set(tags)] };
   }
 
-  // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.
+  // DeepSeek and compatible providers use json_object; carry any schema in the prompt.
   applyJsonSchemaFallback(body) {
-    if (!this.provider?.startsWith?.("openai-compatible-")) return body;
+    if (this.provider !== "deepseek" && !this.provider?.startsWith?.("openai-compatible-")) return body;
     const rf = body?.response_format;
-    if (rf?.type !== "json_schema" || !rf.json_schema?.schema) return body;
+    if (rf?.type !== "json_schema" || (!rf.json_schema?.schema && this.provider !== "deepseek")) return body;
 
-    const schemaJson = JSON.stringify(rf.json_schema.schema, null, 2);
-    const prompt = `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.`;
+    const schema = rf.json_schema?.schema;
+    const schemaJson = schema ? JSON.stringify(schema, null, 2) : null;
+    const prompt = schemaJson ? `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.` : "Respond with valid JSON only.";
 
     const messages = Array.isArray(body.messages) ? body.messages.map((m) => ({ ...m })) : [];
     const sys = messages.find((m) => m.role === "system");
     if (sys) {
       if (isString(sys.content)) sys.content = `${sys.content}\n\n${prompt}`;else
-      if (Array.isArray(sys.content)) sys.content.push({ type: "text", text: `\n\n${prompt}` });
+      if (Array.isArray(sys.content)) sys.content = [...sys.content, { type: "text", text: `\n\n${prompt}` }];
     } else {
       messages.unshift({ role: "system", content: prompt });
     }

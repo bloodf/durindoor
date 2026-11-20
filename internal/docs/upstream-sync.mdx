@@ -201,3 +201,6 @@ Upstream [`87190db`](https://github.com/decolua/9router/commit/87190db) for [#57
 - 9router #5709 is closed without merging and is not eligible for porting. No successor was identified in the open PR search for custom quota.
 - 9router #5727 adds WARP address rotation, proxy-pool controls and privileged host setup; adopting that network feature requires a product decision and is deferred.
 - 9router #5734: Antigravity discovery uses the Hub per-account catalog; the dashboard merges active account results and falls back to its existing catalog when no live models resolve.
+- 9router [#5667](https://github.com/decolua/9router/pull/5667) and [#5769](https://github.com/decolua/9router/pull/5769) closed without a GitHub merge and are not eligible for porting. Their closure comments report integration into upstream master; no successor PR was identified.
+- 9router [#5669](https://github.com/decolua/9router/pull/5669) is already covered by Responses wire normalization in `open-sse/executors/default.js` and `tests/unit/custom-responses-reasoning-port.test.js`.
+- 9router [#5728](https://github.com/decolua/9router/pull/5728) is deferred: the candidate changes cause `tests/unit/compression-chatcore-header.test.js` to return 502 instead of 200 for streaming and fail-open responses. The existing bypass and compression contracts remain unchanged.

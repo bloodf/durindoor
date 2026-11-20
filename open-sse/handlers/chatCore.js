@@ -3,7 +3,7 @@ import { translateRequest } from "../translator/index.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
-import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
+import { normalizeClaudePassthrough, anchorClaudeCache, dropClaudeCodeIdentitySystem } from "../translator/formats/claude.js";
 import { normalizeClaudeAssistantTail } from "../translator/concerns/claudeAssistantTail.js";
 import { validateInputAudio, validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
@@ -692,6 +692,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true, rawHeaders: clientRawRequest?.headers });
+    if (clientTool === "claude" && provider === "anthropic") dropClaudeCodeIdentitySystem(translatedBody);
     /**
      * Native OpenAI Responses and Claude Messages bodies carry top-level
      * `stream`; Gemini-family native bodies do not and reject an injected key.

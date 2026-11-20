@@ -727,6 +727,8 @@ export const PROVIDER_CAPABILITIES = {
   // models are exposed; sensenova-u1-fast advertises on /models but 404s on
   // chat completions, so it is omitted from the registry.
   sensenova: {
+    // Flash supports vision and OpenAI-style reasoning controls.
+    "sensenova-6.8-flash": { vision: true, reasoning: true, thinkingFormat: "openai" },
     "sensenova-6.7-flash-lite": {
       vision: true,
       tools: true,

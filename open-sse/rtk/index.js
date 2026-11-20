@@ -1,8 +1,9 @@
 // RTK port: compress tool_result content in LLM request bodies
 // Injected at the top of translateRequest (before any format translation)
-import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
+import { RAW_CAP, MIN_COMPRESS_SIZE, TOOL_OUTPUT_MAX_DEPTH, JSON_GUARD_MAX_LENGTH } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
+import { OPENAI_BLOCK, RESPONSES_ITEM } from "../translator/schema/index.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const RESPONSES_TOOL_OUTPUT_LAYOUT = {
@@ -28,10 +29,11 @@ function isResponsesErrorOutput(item) {
 }
 
 /** JSON documents and fenced code are structured payloads, never filtered. */
-function isProtectedPayload(text) {
+function isProtectedPayload(text, maxJsonLength = Infinity) {
   if (/```|~~~/.test(text)) return true;
   const t = text.trim();
   if (!(t.startsWith("{") || t.startsWith("["))) return false;
+  if (t.length > maxJsonLength) return t.startsWith("{") ? t.endsWith("}") : t.endsWith("]");
   try {
     JSON.parse(t);
     return true;
@@ -49,6 +51,10 @@ export function compressMessages(body, enabled) {
   if (body.conversationState) {
     return compressKiroFormat(body, enabled);
   }
+
+  // Gemini-family native function responses retain tool outputs after translation.
+  const contents = Array.isArray(body.request?.contents) ? body.request.contents : body.contents;
+  if (Array.isArray(contents)) return compressGeminiFormat(contents);
 
   // Support both OpenAI/Claude "messages" and OpenAI Responses "input"
   const items = Array.isArray(body.messages) ? body.messages :
@@ -438,4 +444,39 @@ export function aggregateTokenSaverEvents(events) {
     agg.totals.actualBytesSaved += toNonNeg(e.totals?.actualBytesSaved);
   }
   return agg;
+}
+// Compress Gemini / Antigravity / Gemini-CLI / Vertex format:
+// (request.)contents[].parts[].functionResponse.response
+function compressGeminiFormat(contents) {
+  const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  const visit = (object, key, depth = 0) => {
+    if (depth > TOOL_OUTPUT_MAX_DEPTH) return;
+    const value = object?.[key];
+    if (isString(value)) {
+      if (value.length >= MIN_COMPRESS_SIZE && value.length <= RAW_CAP &&
+          isProtectedPayload(value, JSON_GUARD_MAX_LENGTH)) return;
+      object[key] = compressText(value, stats, "gemini-tool-result");
+    } else if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) visit(value, i, depth + 1);
+    } else if (value && isObject(value)) {
+      if (value.error !== undefined || value.is_error === true || value.status === "error") return;
+      if (value.type && value.type !== OPENAI_BLOCK.TEXT && value.type !== RESPONSES_ITEM.INPUT_TEXT) return;
+      for (const field of ["result", "output", "content", "text"]) {
+        if (Object.hasOwn(value, field)) visit(value, field, depth + 1);
+      }
+    }
+  };
+
+  try {
+    for (const content of contents) {
+      if (!Array.isArray(content?.parts)) continue;
+      for (const part of content.parts) {
+        if (part?.functionResponse) visit(part.functionResponse, "response");
+      }
+    }
+  } catch (e) {
+    console.warn("[RTK] compressGeminiFormat error:", e.message);
+    return null;
+  }
+  return stats;
 }

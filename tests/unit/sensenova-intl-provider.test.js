@@ -133,3 +133,11 @@ describe("SenseNova `reasoning` field", () => {
     expect(msg.content[1]).toEqual({ type: CLAUDE_BLOCK.TEXT, text: "hi" });
   });
 });
+
+
+it("advertises SenseNova China Flash vision and reasoning", () => {
+  expect(getCapabilitiesForModel(CN, "sensenova-6.8-flash")).toMatchObject({
+    vision: true, reasoning: true, thinkingFormat: "openai",
+  });
+  expect(REGISTRY.find((entry) => entry.id === CN).display.notice.apiKeyUrl).toBe("https://platform.sensenova.cn/console/keys");
+});

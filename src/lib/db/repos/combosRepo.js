@@ -32,7 +32,7 @@ export function normalizeComboMembers(models, members) {
   const saved = new Map();
   for (const member of members) {
     if (!member || !isString(member.id) || !Number.isFinite(member.weight) || member.weight < 0) {
-      throw new ComboMemberError("Each combo member weight must be a non-negative finite number");
+      throw new ComboMemberError("Each combo member weight must be a positive finite number or zero");
     }
     const occurrences = saved.get(member.id) || [];
     occurrences.push(member.weight);

@@ -783,7 +783,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   );
 }
 
-function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWeightChange, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, weight = 1, requirePositiveWeight = false, isFirst, isLast, onEdit, onWeightChange, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -856,7 +856,7 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
       )}
 
       <div className="w-16 shrink-0">
-        <Field error={weight === "" || !Number.isFinite(Number(weight)) || Number(weight) < 0 ? "Use a non-negative weight" : undefined}>
+        <Field error={weight === "" || !Number.isFinite(Number(weight)) || Number(weight) < 0 || (requirePositiveWeight && Number(weight) === 0) ? "Use a positive weight" : undefined}>
           <Input
             aria-label="Weight"
             size="sm"
@@ -1120,6 +1120,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                         index={index}
                         model={model}
                         weight={weights[model] ?? 1}
+                        requirePositiveWeight={!models.some((id) => Number(weights[id] ?? 1) > 0)}
                         isFirst={index === 0}
                         isLast={index === modelItems.length - 1}
                         onEdit={(newVal) => handleEditModel(index, newVal)}

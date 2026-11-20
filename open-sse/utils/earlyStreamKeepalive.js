@@ -291,7 +291,10 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive"
+      Connection: "keep-alive",
+      // This slow-path response is what the client sees while the real turn is
+      // still starting; buffering proxies must not hold it.
+      "X-Accel-Buffering": "no"
     }
   }));
 }

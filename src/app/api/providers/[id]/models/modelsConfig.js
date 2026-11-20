@@ -291,6 +291,14 @@ export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((m
 );
 
 export const PROVIDER_MODELS_CONFIG = {
+  replicate: {
+    url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    redirect: "manual",
+    parseResponse: (data) => data?.owner === "meta" && data?.name === "meta-llama-3-70b-instruct"
+      ? [{ id: "meta/meta-llama-3-70b-instruct", name: "Llama 3 70B Instruct" }] : [],
+  },
   openference: {
     customResolver: async (connection, proxyOptions) => {
       if (!connection.accessToken) return { error: "No valid token found", status: 401 };

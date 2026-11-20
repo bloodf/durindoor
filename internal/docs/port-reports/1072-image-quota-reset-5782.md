@@ -1,0 +1,7 @@
+# 1072: image quota reset disposition
+
+Source: https://github.com/decolua/9router/pull/5782, pinned head `70c97b573158997921b1de8e1de4456d56d2fe5c` (base `1855aa44473e88feac9d3f131b9c0c5fc9706b68`).
+
+Ported the Codex reset propagation with DurinDoor's existing bounded 429 evidence classifier. The final upstream diff extracts executor resets on image failures and forwards them to the account lock. Here, Codex native image dispatch uses the Responses endpoint; the existing executor recognizes `usage_limit_reached` and both reset fields. The shared parser already bounds deadlines and classifies exhaustion. Only a classified exhaustion with a valid bounded deadline reaches account health; ordinary 429s, missing or rejected deadlines retain the prior fallback. This avoids extending cooldowns based solely on unrelated reset hints. Existing executor-delegated image errors retain their prior behavior.
+
+The credentialed image handler still performs quota preflight, selects and excludes accounts per attempt, and associates the health update with the selected connection and model. Accepted jobs and successful image accounting retain their existing paths. Account lock policy and classifier bounds are unchanged. The offline scoped test uses fake provider responses and checks absolute and relative reset hints, missing and out-of-bounds hints, unrelated rate limits, account fallback and a single successful charge. No provider or credentials are used.

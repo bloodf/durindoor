@@ -228,7 +228,8 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       return markAcceptedJob(result.response);
     }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.rateLimitEvidence?.resetAtMs ?? null, {
+      ...(result.rateLimitEvidence ? { rateLimitEvidence: result.rateLimitEvidence } : {}),
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
       usedCredential: credentials.accessToken || credentials.apiKey || null

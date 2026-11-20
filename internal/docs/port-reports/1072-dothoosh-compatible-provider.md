@@ -54,6 +54,8 @@ The observed protocol split at that time: `deepseek-*` on Chat Completions **and
 | `src/app/api/providers/[id]/models/modelsConfig.js` | `PROVIDER_MODELS_CONFIG.dothoosh`: a custom resolver that reads **both** provider listings with the connection's key and merges them, so a Claude-only model is listed too. |
 | `src/lib/providerRouteHandlers.js` | `canDiscoverModels`: the resolver precondition for DotHoosh (a key is required), matching the other custom-resolver providers. |
 | `open-sse/providers/registry/index.js`, `open-sse/AGENT-INDEX.md`, `docs/providers/catalog.mdx` | Regenerated with `node scripts/gen-registry-index.mjs`, `node scripts/gen-agent-index.mjs`, `node scripts/gen-provider-catalog.mjs` — not hand-edited. |
+| `src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx` | The review story fixture names every provider whose model list the dashboard may sync; `unit/v5-login-provider-redesign.test.js` pins it against the keys of `PROVIDER_MODELS_CONFIG`. DotHoosh added. |
+| `tests/e2e/storybook-surfaces.json` | Story surface inventory regenerated after the story change: `node scripts/gen-v5-stories.mjs` (no diff — the generated CSF re-exports the source), `npm run storybook:build` (built index), `node scripts/sync-storybook-inventory.mjs --write` (13 recorded source hashes). |
 | `tests/unit/dothoosh-compat-1072.test.js`, `tests/unit/fixtures/dothoosh-listings.json` | New fixture-backed listing and dispatch tests (synthetic rows in the documented shapes). |
 
 ## Per-source disposition
@@ -96,6 +98,31 @@ npm run lint          # eslint src + anti-slop: 0 errors, anti-slop gate OK (0 d
 ```
 
 Provider-surface regression checks (same tree): `unit/api-providers-id-models-registry-union`, `unit/api-providers-id-models`, `unit/provider-connection-payloads`, `unit/provider-model-cache`, `unit/provider-filters`, `unit/provider-validate-anthropic-v1`, `unit/provider-client-sanitize`, `unit/catalog-audit-2026-08`, `unit/model-catalog-consistency`, `unit/provider-test-utils`, `unit/tier-a-apikey-providers`, `unit/api-key-policy-catalog`, `unit/storybook-provider-metadata`, `unit/provider-display-split`, `unit/provider-detail-icon-paths` — 94 tests passed, no failure. The full suite stays with the integration gate.
+
+### Gate rejection and its correction
+
+The integration gate ran the full suite on the first head and rejected it: `unit/v5-login-provider-redesign.test.js` pins the review story fixture's provider list against the keys of `PROVIDER_MODELS_CONFIG`, and the new provider was missing from the story fixture (the suite otherwise passed: 18 055 passed, 1 failed).
+
+The correction, on the follow-up commit:
+
+- `src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx`: `dothoosh` added to `REVIEW_MODEL_LIST_PROVIDERS`, so the story fixture and the model-list configuration name the same providers again;
+- `tests/e2e/storybook-surfaces.json`: regenerated with the repository's own tooling — `node scripts/gen-v5-stories.mjs` (no diff; the generated CSF re-exports the source), `npm run storybook:build` for the built index, `node scripts/sync-storybook-inventory.mjs --write`. The regeneration moved exactly 13 recorded source hashes, the ones for the edited story source; no row was demoted, because every affected row was already `pending` and carries no approval to archive.
+
+Verification after the correction:
+
+```bash
+cd tests && node node_modules/vitest/vitest.mjs run --maxWorkers=2 \
+  unit/v5-login-provider-redesign.test.js unit/1300-v5-storybook-inventory.test.js \
+  unit/storybook-coverage.test.js unit/storybook-inventory-sync.test.js \
+  unit/storybook-provider-metadata.test.js unit/dothoosh-compat-1072.test.js \
+  unit/provider-model-listing.test.js unit/provider-can-discover-models.test.js
+# → 8 files passed, 168 tests passed
+
+node scripts/check-storybook-coverage.mjs --manifest tests/e2e/storybook-surfaces.json \
+  --index storybook-static/index.json --mode inventory
+# → Storybook inventory valid; pending rows remain unapproved and no coverage is claimed.
+```
+
 
 New test coverage (all offline, fixture-backed):
 

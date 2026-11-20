@@ -57,9 +57,9 @@ function stripSchemaNode(node) {
 
   let cleaned = node;
   for (const [key, value] of Object.entries(node)) {
-    if (key === "pattern" && isString(value) && UNICODE_PROPERTY_ESCAPE.test(value)) {
+    if (key === "uniqueItems" || (key === "pattern" && isString(value) && UNICODE_PROPERTY_ESCAPE.test(value))) {
       if (cleaned === node) cleaned = { ...node };
-      delete cleaned.pattern;
+      delete cleaned[key];
       continue;
     }
 
@@ -74,11 +74,11 @@ function stripSchemaNode(node) {
 }
 
 /**
- * Remove Unicode-property regex constraints unsupported by Codex `/responses`.
+ * Remove uniqueItems and Unicode-property regex constraints unsupported by Codex `/responses`.
  *
  * Codex rejects otherwise valid JSON Schema `pattern` values containing
  * `\p{...}` or `\P{...}`. This schema-aware, copy-on-write walk strips only
- * those constraints: schema-map keys remain names, annotation/data values are
+ * those constraints and uniqueItems: schema-map keys remain names, annotation/data values are
  * opaque, and compatible schemas retain their original reference.
  *
  * @param {unknown} schema Tool parameter schema.

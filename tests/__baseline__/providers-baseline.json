@@ -1279,6 +1279,13 @@
     },
     "format": "openai"
   },
+  "megabrain": {
+    "baseUrl": "https://getmegabrain.com/api/gateway/v1/chat/completions",
+    "validateUrl": "https://getmegabrain.com/api/gateway/v1/models",
+    "thinkingFormat": "openai",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "meganova-ai": {
     "baseUrl": "https://api.meganova.ai/v1/chat/completions",
     "validateUrl": "https://api.meganova.ai/v1/models",

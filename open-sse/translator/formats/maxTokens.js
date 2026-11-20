@@ -9,11 +9,11 @@ import { DEFAULT_MAX_TOKENS, DEFAULT_MIN_TOKENS } from "../../config/runtimeConf
  *   the conservative 64000 default before the model-aware step sees them.
  * @returns {number} Adjusted max_tokens
  */
-export function adjustMaxTokens(body, ceiling = DEFAULT_MAX_TOKENS) {
+export function adjustMaxTokens(body, ceiling = DEFAULT_MAX_TOKENS, honorExplicitCap = false) {
   let maxTokens = body.max_tokens || DEFAULT_MAX_TOKENS;
 
   // Auto-increase for tool calling to prevent truncated arguments (min never above max)
-  if (body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
+  if (!(honorExplicitCap && typeof body.max_tokens === "number" && body.max_tokens > 0) && body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
     if (maxTokens < DEFAULT_MIN_TOKENS) {
       maxTokens = DEFAULT_MIN_TOKENS;
     }

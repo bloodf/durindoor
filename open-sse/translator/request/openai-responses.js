@@ -640,7 +640,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
             parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name)),
-            strict: subtool.strict
+            ...(typeof subtool.strict === "boolean" ? { strict: subtool.strict } : {})
           }
         }));
       }
@@ -660,7 +660,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
               required: ["input"],
               additionalProperties: false
             },
-            strict: tool.strict
+            ...(typeof tool.strict === "boolean" ? { strict: tool.strict } : {})
           }
         };
       }
@@ -675,7 +675,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           name,
           description: String(tool.description || ""),
           parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name)),
-          strict: tool.strict
+          ...(typeof tool.strict === "boolean" ? { strict: tool.strict } : {})
         }
       };
     }).
@@ -964,7 +964,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           parameters: normalizeToolParameters(normalizeToolSchema(tool.function.parameters, name)),
           // The Responses API requires `strict` on every function tool; default to
           // false (non-strict) instead of forwarding an undefined field.
-          strict: tool.function.strict ?? false
+          strict: typeof tool.function.strict === "boolean" ? tool.function.strict : false
         };
       }
       // Chat nests custom tools under `custom`; Responses declares them flat (#1344).

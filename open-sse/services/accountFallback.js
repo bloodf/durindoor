@@ -123,6 +123,21 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     headers,
     resolveRuleMatchBody(provider, structuredError, errorText)
   );
+  // The endpoint marker is model capacity, unless the error message also
+  // supplies terminal billing or explicit exhausted-quota evidence.
+  if (providerRule?.endpointUnavailable) {
+    const message = extractErrorMessage(structuredError, errorText);
+    const billing = checkFallbackErrorByRules(status, message.toLowerCase(), backoffLevel, provider);
+    if (billing.terminal) return { ...billing, scope: null };
+    if (status === 429) {
+      const evidence = parseRateLimitEvidence({ status, bodyText: message, now: Date.now() });
+      if (evidence?.state === "exhausted") {
+        const cooldownMs = Number.isFinite(evidence.resetAtMs) ?
+          Math.max(0, Math.min(evidence.resetAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS)) : billing.cooldownMs;
+        return { ...billing, shouldFallback: true, cooldownMs, rateLimitEvidence: evidence, scope: null };
+      }
+    }
+  }
   if (providerRule?.reason === "quota_exhausted") {
     const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, lowerError, backoffLevel);
     return { ...ruleResult, scope: providerRule.scope ?? null };

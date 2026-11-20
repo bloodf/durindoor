@@ -143,6 +143,18 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     });
   }
 
+  // Fold typed content before emitting reasoning so each thinking part is emitted
+  // once. Preserve vendor reasoning fields that the fold would otherwise mask.
+  if (Array.isArray(delta.content)) {
+    const vendorReasoning = extractReasoningText({ ...delta, content: undefined });
+    if (isInternalReasoningPlaceholder(vendorReasoning)) {
+      delete delta.reasoning_content;
+    } else if (vendorReasoning && !delta.reasoning_content) {
+      delta.reasoning_content = vendorReasoning;
+    }
+    normalizeArrayContentDelta(delta);
+  }
+
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
   const reasoningText = extractReasoningText(delta);
   if (reasoningText && !isInternalReasoningPlaceholder(reasoningText)) {
@@ -153,24 +165,6 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   // Handle text content
   if (delta.content) {
     let content = delta.content;
-
-    // An OpenAI-compatible upstream may stream `delta.content` as typed part
-    // arrays (Mistral thinking chunks) instead of a string. Fold them into the
-    // string `content` / `reasoning_content` the chat-chunk contract requires,
-    // so `response.output_text.delta.delta` never carries an array that strict
-    // Responses clients reject (OmniRoute #15757).
-    if (Array.isArray(content)) {
-      normalizeArrayContentDelta(delta);
-      content = delta.content;
-      const foldedReasoning = delta.reasoning_content;
-      if (isString(foldedReasoning) && foldedReasoning) {
-        startReasoning(state, emit, idx);
-        emitReasoningDelta(state, emit, foldedReasoning);
-      }
-      // A thinking-only chunk folds to no text at all; the reasoning delta above
-      // is the whole payload, so there is nothing left to emit as content.
-      if (!content) return events;
-    }
 
     // Reasoning arrived via reasoning_content (not inline <think> tags) and now
     // normal text begins → the reasoning section is over. Close it here on the

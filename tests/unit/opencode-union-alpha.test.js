@@ -25,7 +25,7 @@ describe("OpenCode Free Union Alpha", () => {
   it("routes Union Alpha through the Messages endpoint with the Anthropic version header", () => {
     const executor = new OpenCodeExecutor();
     const url = executor.buildUrl("union-alpha");
-    expect(url).toBe("https://opencode.ai/inference/v1/messages");
+    expect(url).toBe("https://opencode.ai/inference/anthropic/v1/messages");
     expect(executor.buildHeaders({}, true, null, "union-alpha")).toMatchObject({
       "anthropic-version": "2023-06-01",
     });
@@ -34,8 +34,8 @@ describe("OpenCode Free Union Alpha", () => {
 
   it("leaves every other free model on its existing route", () => {
     const executor = new OpenCodeExecutor();
-    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/inference/v1/chat/completions");
-    expect(executor.buildUrl("muse-spark-1.2")).toBe("https://opencode.ai/inference/v1/responses");
+    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/inference/openai/v1/chat/completions");
+    expect(executor.buildUrl("muse-spark-1.2")).toBe("https://opencode.ai/inference/openai/v1/responses");
   });
 
   it("translates an OpenAI request into Claude wire format for Union Alpha", () => {

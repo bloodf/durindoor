@@ -15,6 +15,18 @@ Gemini CLI keeps its OAuth connection separate from Gemini API-key, Vertex and A
 
 Some providers pin a loopback callback port. If the dashboard is not on a loopback host, the OAuth modal may run the callback on the server instead of in the browser tab.
 
+### Vertex AI and Vertex Partner
+
+A Vertex AI or Vertex Partner connection takes one of three Google credentials:
+
+- A **Service Account JSON key** downloaded from the Cloud console. DurinDoor signs a short-lived assertion with the key's RSA private key, exchanges it for a bearer token, and sends the request to your project. The project comes from the key's own `project_id`.
+- An **ADC file** written by `gcloud auth application-default login` (`type` `authorized_user`). DurinDoor refreshes it against Google's token endpoint. Set `quota_project_id` in the file, or set a project ID on the connection, because the request path needs one.
+- A raw **API key** for Vertex AI Express mode. It is sent as a query parameter on the project-less publisher endpoint.
+
+The location on the connection selects the Vertex location inside that project; it does not change which project the request is billed to. The validation probe checks a Service Account key locally and reports a key that is too weak, but it cannot confirm that a project, quota, or service account is allowed to serve a model. Send one short request and check **Usage**.
+
+A credential that is a JSON document but not a Google Service Account or ADC file, such as an OAuth client JSON, is rejected with an explanation instead of being sent as an API key.
+
 OrcaRouter uses an out-of-band code. Sign in through the link and paste the code shown on its consent page into the modal. It issues a durable API key instead of refreshable OAuth tokens. Operators can configure its auth and API origins through the [environment variables](../reference/environment.mdx).
 
 ## Device code

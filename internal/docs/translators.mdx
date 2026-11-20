@@ -151,3 +151,5 @@ values are retained without coercion. A defined alias is removed afterward.
 This intentionally differs from top-level token-parameter renaming, whose
 explicit destination precedence includes zero and is undefined-only (#1394).
 The existing GLM top-level stripping and other vendors' drop rules remain.
+
+Gemini and Antigravity function declarations accept `parametersJsonSchema` as a fallback when `parameters` is absent; the v1beta bridge does the same.

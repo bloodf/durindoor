@@ -13,10 +13,10 @@ it("keeps the provider RPM control labeled and saves the edited value on blur", 
   const root = createRoot(container);
   function Fixture() {
     const [value, setValue] = useState("12");
-    return <ProviderRpmControl value={value} placeholder="60" max={100} onChange={setValue} onSave={save} />;
+    return React.createElement(ProviderRpmControl, { value, placeholder: "60", max: 100, onChange: setValue, onSave: save });
   }
   try {
-    await act(async () => root.render(<Fixture />));
+    await act(async () => root.render(React.createElement(Fixture)));
     const label = container.querySelector("label");
     const input = container.querySelector("input");
     expect(label.control).toBe(input);

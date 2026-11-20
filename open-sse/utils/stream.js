@@ -7,6 +7,7 @@ import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStream
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
@@ -181,6 +182,12 @@ export function createSSEStream(options = {}) {
   let pendingSSEFields = "";
   let sseFrameHasData = false;
   let sseFrameHasComment = false;
+  // Responses passthrough: the upstream speaks the Responses protocol and the
+  // client wants it unchanged, so the frames are forwarded as they arrive.
+  const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
+  // Replayed Responses events (a reconnect re-sending an already forwarded
+  // sequence_number) are dropped before they reach the client.
+  const responsesReplay = createResponsesSequenceReplayTracker();
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();
   let usage = null;
@@ -797,6 +804,12 @@ export function createSSEStream(options = {}) {
           currentUpstreamEvent = trimmed.slice(6).trim() || null;
           if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES) {
             currentOpenAIResponsesEvent = currentUpstreamEvent;
+          } else if (responsesPassthrough) {
+            // Hold the label until its frame is known to be forwarded: a replayed
+            // frame has to lose its label too, or the client sees an event
+            // label whose payload was dropped.
+            if (pendingSSEFields.length + line.length < 65536) pendingSSEFields += line + "\n";
+            continue;
           }
         }
 
@@ -840,6 +853,13 @@ export function createSSEStream(options = {}) {
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
+              // A replayed Responses frame re-sends a sequence_number that was
+              // already forwarded. Forwarding it again duplicates its content,
+              // and its held event label has to go with it.
+              if (responsesPassthrough && responsesReplay.isReplay(parsed)) {
+                pendingSSEFields = "";
+                continue;
+              }
               streamErrorPayload ??= extractStreamErrorPayload(parsed);
               const publicError = sanitizePublicErrorEnvelope(parsed, errorSecrets);
 
@@ -1173,6 +1193,11 @@ export function createSSEStream(options = {}) {
             sseFrameHasData = true;
             output = pendingSSEFields + output;
             pendingSSEFields = "";
+          } else if (responsesPassthrough) {
+            // The held Responses label belongs in front of the line it labels;
+            // a line that carries no frame of its own flushes it first.
+            output = pendingSSEFields + output;
+            pendingSSEFields = "";
           }
 
           reqLogger?.appendConvertedChunk?.(output);
@@ -1220,6 +1245,14 @@ export function createSSEStream(options = {}) {
         const openAIResponsesEventName = isOpenAIResponsesStream ?
         getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed) :
         currentUpstreamEvent;
+
+        // A replayed Responses event re-sends a sequence_number that was already
+        // forwarded. Forwarding it again glues duplicated text into the client
+        // stream and doubles its share of the completion accounting, so drop it
+        // before the terminal tracker, the summary and the translator see it.
+        if (isOpenAIResponsesStream && responsesReplay.isReplay(parsed)) {
+          continue;
+        }
 
         upstreamTerminal.observe({
           chunk: parsed,
@@ -1484,6 +1517,10 @@ export function createSSEStream(options = {}) {
                 const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
                 output = `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
+            } else if (responsesPassthrough && parsed && responsesReplay.isReplay(parsed)) {
+              // The unterminated final frame is a replay: drop it and the label
+              // it was holding.
+              pendingSSEFields = "";
             } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
@@ -1496,11 +1533,22 @@ export function createSSEStream(options = {}) {
             if (output && filterEmptyOpenAIFrames && trimmedBuffer.startsWith("data:")) {
               output = pendingSSEFields + output;
               pendingSSEFields = "";
+            } else if (output && responsesPassthrough) {
+              // The held Responses label belongs in front of the frame it labels.
+              output = pendingSSEFields + output;
+              pendingSSEFields = "";
             }
             if (output) {
               reqLogger?.appendConvertedChunk?.(output);
               controller.enqueue(sharedEncoder.encode(output));
             }
+          }
+
+          if (pendingSSEFields && responsesPassthrough) {
+            // A Responses label whose frame never arrived still belongs to the client.
+            reqLogger?.appendConvertedChunk?.(pendingSSEFields);
+            controller.enqueue(sharedEncoder.encode(pendingSSEFields));
+            pendingSSEFields = "";
           }
 
           emitPendingUsageEstimate(controller);

@@ -8,12 +8,17 @@
  *
  * Returns chat-capable models the account's policy allows. Embeddings and
  * disabled models are filtered out.
+ *
+ * Rows also carry Copilot's endpoint contract when the catalog declares one
+ * (`supportedEndpoints`, plus a `targetFormat` marker for models served only
+ * by /responses). See copilotEndpointContract.js.
  */
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { GITHUB_COPILOT } from "../config/appConstants.js";
 import { refreshCopilotToken } from "./tokenRefresh.js";
+import { readCopilotEndpointContract } from "./copilotEndpointContract.js";
 import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const MODELS_URL = "https://api.githubcopilot.com/models";
@@ -77,6 +82,14 @@ function expandCatalog(raw, includeMetadata = false) {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const model = { id, name: m.name || id };
+    // Copilot's own endpoint contract decides which of its routes serves this
+    // model (OmniRoute #15337). A model with no declared endpoint keeps no
+    // contract here, so the executor falls back to its current behavior.
+    const endpoint = readCopilotEndpointContract(m, id);
+    if (endpoint.supportedEndpoints?.length) {
+      model.supportedEndpoints = endpoint.supportedEndpoints;
+      if (endpoint.targetFormat) model.targetFormat = endpoint.targetFormat;
+    }
     if (includeMetadata) {
       model.version = m.version;
       model.capabilities = m.capabilities;

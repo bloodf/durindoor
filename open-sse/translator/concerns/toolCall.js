@@ -492,6 +492,15 @@ export function hasToolResults(msg, toolCallIds) {
   return false;
 }
 
+/**
+ * The established empty compatibility result for a tool call whose output never
+ * arrived. It states that no result was received instead of pretending the tool
+ * ran, so a repaired history never implies a tool execution that did not
+ * happen. Shared by the Chat-shaped synthesis below and the Responses-shaped
+ * counterpart in `request/openai-responses.js`.
+ */
+export const EMPTY_TOOL_RESULT_TEXT = "[No response received]";
+
 function syntheticToolResult(id, isClaudeFormat) {
   return isClaudeFormat ?
   {
@@ -499,13 +508,13 @@ function syntheticToolResult(id, isClaudeFormat) {
     content: [{
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: id,
-      content: "[No response received]"
+      content: EMPTY_TOOL_RESULT_TEXT
     }]
   } :
   {
     role: ROLE.TOOL,
     tool_call_id: id,
-    content: "[No response received]"
+    content: EMPTY_TOOL_RESULT_TEXT
   };
 }
 

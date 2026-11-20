@@ -9,6 +9,8 @@ import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
+import { updateProviderConnection } from "@/lib/localDb";
 import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
 import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -338,6 +340,63 @@ export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((m
   (!Array.isArray(model.supported_operations) || model.supported_operations.length === 0 || model.supported_operations.includes("CHAT_COMPLETIONS"))
 );
 
+/**
+ * Attach Copilot's endpoint contract to one catalog row.
+ *
+ * The contract states which of Copilot's existing routes serves the model. A
+ * row that declares no endpoint keeps none, so the executor falls back to its
+ * current behavior for it.
+ */
+export function withCopilotEndpointContract(row) {
+  if (!isObject(row) || !isString(row.id)) return row;
+  const contract = readCopilotEndpointContract(row, row.id);
+  if (!contract.supportedEndpoints?.length) return row;
+  const enriched = { ...row, supportedEndpoints: contract.supportedEndpoints };
+  if (contract.targetFormat) enriched.targetFormat = contract.targetFormat;
+  return enriched;
+}
+
+/** Compare two stored contracts regardless of model order. */
+function sameCopilotEndpointContract(left, right) {
+  const normalize = (value) => {
+    if (!isObject(value) || !Array.isArray(value.models)) return null;
+    return JSON.stringify({
+      version: value.version,
+      models: [...value.models].sort((a, b) => String(a?.id).localeCompare(String(b?.id)))
+    });
+  };
+  return normalize(left) === normalize(right);
+}
+
+/**
+ * Persist the Copilot endpoint contract discovered for a connection.
+ *
+ * The contract is a per-account fact: it states which of Copilot's existing
+ * routes serves a model for THIS account. It is stored on the connection so
+ * the executor can read it without another catalog fetch, and so the account
+ * that serves a request stays the account that discovered its route.
+ *
+ * The model list is an array, so a refreshed catalog replaces the stored one
+ * instead of merging into it and keeping models Copilot stopped serving. The
+ * write is skipped when the stored contract already matches.
+ */
+export async function persistCopilotEndpointContract(connection, rows) {
+  if (!connection?.id) return null;
+  const contract = buildCopilotEndpointContract(rows);
+  const stored = connection.providerSpecificData?.copilotEndpointContract;
+  if (sameCopilotEndpointContract(stored, contract)) return contract;
+  try {
+    // Deep merge: the contract must not disturb the stored Copilot token or
+    // the enterprise host.
+    await updateProviderConnection(connection.id, {
+      providerSpecificData: { copilotEndpointContract: contract }
+    });
+  } catch (error) {
+    console.warn("Copilot endpoint contract not stored:", sanitizeErrorMessage(error?.message || error));
+  }
+  return contract;
+}
+
 export const PROVIDER_MODELS_CONFIG = {
   replicate: {
     url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
@@ -520,7 +579,10 @@ export const PROVIDER_MODELS_CONFIG = {
         cache: "no-store"
       }, proxyOptions);
       if (!response.ok) return { error: `Enterprise Copilot models request failed: ${response.status}`, status: response.status };
-      return { models: parseOpenAIStyleModels(await response.json()) };
+      const rows = parseOpenAIStyleModels(await response.json());
+      const models = rows.map((row) => withCopilotEndpointContract(row));
+      await persistCopilotEndpointContract(connection, models);
+      return { models };
     }
   },
   github: {
@@ -542,7 +604,10 @@ export const PROVIDER_MODELS_CONFIG = {
           });
         }
       });
-      if (result?.models?.length) return { models: result.models };
+      if (result?.models?.length) {
+        await persistCopilotEndpointContract(connection, result.models);
+        return { models: result.models };
+      }
       return {
         models: [],
         warning: "GitHub Copilot returned no live models."

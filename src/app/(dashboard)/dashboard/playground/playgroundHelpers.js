@@ -144,6 +144,7 @@ export function normalizeStaticModel(model, connection) {
     requestModel,
     displayModel,
     prefix,
+    aliases: displayModel === requestModel ? [] : [displayModel],
     name: model.name || model.id,
     providerId,
     providerName: connection.providerName || getProviderLabel(connection),
@@ -154,9 +155,15 @@ export function normalizeStaticModel(model, connection) {
 /**
  * Build one Playground model row from a live-discovered model.
  *
- * A live id that already carries a provider segment is kept verbatim. A bare
- * id on a compatible provider is addressed by the node id and displayed under
- * the configured prefix.
+ * On an OpenAI-/Anthropic-compatible node every live id is addressed by the
+ * node id (`<node id>/<upstream id>`) and displayed under the configured
+ * prefix. The upstream id is kept whole, so a namespaced id such as
+ * `vendor/model` becomes `<node id>/vendor/model`: the server splits only at
+ * the first slash, so the namespace stays part of the model name and the
+ * request cannot be read as a different provider's address. The raw upstream
+ * id is kept as a legacy alias so a selection saved before this binding still
+ * resolves. On any other provider the id is already a gateway address and is
+ * kept verbatim.
  *
  * @param {object|string} model
  * @param {object} connection
@@ -174,21 +181,74 @@ export function normalizeLiveModel(model, connection) {
   let requestModel = rawId;
   let displayModel = rawId;
   let prefix = resolveConnectionPrefix(connection);
+  const aliases = [];
   const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
-  if (isCompatible && !rawId.includes("/")) {
+  if (isCompatible) {
     ({ requestModel, displayModel, prefix } = buildModelAddress(connection, providerId, rawId));
+    if (rawId.includes("/")) aliases.push(rawId);
   }
+  if (displayModel !== requestModel) aliases.push(displayModel);
 
   return {
     id: requestModel,
     requestModel,
     displayModel,
     prefix,
+    aliases,
     name: displayName,
     providerId,
     providerName: connection.providerName || getProviderLabel(connection),
     source: "live"
   };
+}
+
+/**
+ * Index normalized Playground rows by their canonical request id, and index
+ * every legacy alias (the display label, or a raw upstream id saved before a
+ * compatible node was bound by node id) separately.
+ *
+ * @param {Array<{models:Array}>} providerGroups
+ * @returns {{byId: Map<string, object>, byAlias: Map<string, object[]>}}
+ */
+export function buildModelIndex(providerGroups = []) {
+  const byId = new Map();
+  const byAlias = new Map();
+  for (const group of providerGroups) {
+    for (const model of group.models || []) {
+      const entry = { ...model, providerId: group.providerId, providerName: group.providerName };
+      byId.set(model.id, entry);
+    }
+  }
+  for (const entry of byId.values()) {
+    for (const alias of entry.aliases || []) {
+      if (byId.has(alias)) continue;
+      if (!byAlias.has(alias)) byAlias.set(alias, []);
+      byAlias.get(alias).push(entry);
+    }
+  }
+  return { byId, byAlias };
+}
+
+/**
+ * Resolve a saved model selection to one row.
+ *
+ * A canonical request id always wins. A legacy alias resolves only when it
+ * identifies exactly one row: when the saved provider id is known it must match
+ * the row's provider, and an alias shared by several providers (two nodes with
+ * the same prefix, or the same upstream id on two nodes) with no matching
+ * provider identity is left unresolved rather than guessed.
+ *
+ * @param {{byId: Map, byAlias: Map}} index
+ * @param {string} savedId
+ * @param {string} [savedProviderId]
+ * @returns {object|null}
+ */
+export function resolveSavedModel(index, savedId, savedProviderId = "") {
+  if (!savedId) return null;
+  if (index.byId.has(savedId)) return index.byId.get(savedId);
+  const candidates = index.byAlias.get(savedId) || [];
+  const scoped = savedProviderId ? candidates.filter((entry) => entry.providerId === savedProviderId) : candidates;
+  return scoped.length === 1 ? scoped[0] : null;
 }
 
 /**

@@ -29,6 +29,7 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const NODE_ID = "openai-compatible-chat-330c58ab-a28a-46ed-9baa-0e1c8510562c";
 const OTHER_NODE_ID = "openai-compatible-chat-11111111-2222-3333-4444-555555555555";
+const ANTHROPIC_NODE_ID = "anthropic-compatible-11111111-aaaa-bbbb-cccc-555555555555";
 const PREFIX = "mirai";
 const MODEL = "deepseek-v4-flash";
 
@@ -92,6 +93,8 @@ vi.mock("@/lib/usageDb.js", () => ({
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const { resolveProviderPrefix, isCustomProviderId } = await import("@/shared/utils/providerPrefix.js");
 const { normalizeLiveModel, normalizeStaticModel, groupModelsByProvider } =
+  await import("@/app/(dashboard)/dashboard/playground/playgroundHelpers.js");
+const { buildModelIndex, resolveSavedModel } =
   await import("@/app/(dashboard)/dashboard/playground/playgroundHelpers.js");
 const { buildDashboardCapsIndex } = await import("@/shared/hooks/useModelCaps.js");
 
@@ -217,8 +220,45 @@ describe("Playground model ids", () => {
   });
 
   it("keeps a live id that already carries a provider segment verbatim", () => {
-    const row = normalizeLiveModel({ id: "vendor/some-model" }, connection());
+    // Scoped to a built-in provider, where the id is already a gateway address.
+    const builtIn = { id: "conn-gateway", provider: "openrouter", name: "Gateway", isActive: true, providerSpecificData: {} };
+    const row = normalizeLiveModel({ id: "vendor/some-model" }, builtIn);
     expect(row.requestModel).toBe("vendor/some-model");
+  });
+
+  it("binds a namespaced live id on a compatible node to the node id and keeps the namespace", () => {
+    // Offline adapter fixture: ordinary namespaced upstream ids as a compatible
+    // node's model list returns them.
+    const ids = ["vendor/some-model", "team/sub/model-1", "acme/model:latest"];
+    for (const id of ids) {
+      const row = normalizeLiveModel({ id }, connection());
+      expect(row.requestModel).toBe(`${NODE_ID}/${id}`);
+      expect(row.id).toBe(row.requestModel);
+      expect(row.requestModel.startsWith(`${NODE_ID}/`)).toBe(true);
+      expect(row.requestModel.slice(NODE_ID.length + 1)).toBe(id);
+      expect(row.providerId).toBe(NODE_ID);
+    }
+    const anthropic = normalizeLiveModel(
+      { id: "vendor/some-model" },
+      { id: "conn-a", provider: ANTHROPIC_NODE_ID, name: "Claude Gateway", providerSpecificData: { prefix: "cg" } }
+    );
+    expect(anthropic.requestModel).toBe(`${ANTHROPIC_NODE_ID}/vendor/some-model`);
+  });
+
+  it("shows a namespaced live id under the prefix as a label, separate from the request id", () => {
+    const row = normalizeLiveModel({ id: "vendor/some-model", name: "Some Model" }, connection());
+    expect(row.prefix).toBe(PREFIX);
+    expect(row.displayModel).toBe(`${PREFIX}/vendor/some-model`);
+    expect(row.displayModel).not.toBe(row.requestModel);
+    expect(row.name).toBe("Some Model");
+  });
+
+  it("keeps same-named namespaced models on two nodes under distinct request ids", () => {
+    const a = normalizeLiveModel({ id: "vendor/some-model" }, connection());
+    const b = normalizeLiveModel({ id: "vendor/some-model" }, connection({ provider: OTHER_NODE_ID }));
+    expect(a.requestModel).toBe(`${NODE_ID}/vendor/some-model`);
+    expect(b.requestModel).toBe(`${OTHER_NODE_ID}/vendor/some-model`);
+    expect(a.requestModel).not.toBe(b.requestModel);
   });
 
   it("leaves a built-in provider on its own id", () => {
@@ -230,6 +270,29 @@ describe("Playground model ids", () => {
     // A stray prefix on a built-in connection never renames it.
     const stray = { ...codex, providerSpecificData: { prefix: "not-the-alias" } };
     expect(normalizeStaticModel({ id: "gpt-5.4" }, stray).displayModel).toBe("codex/gpt-5.4");
+  });
+
+  it("resolves a legacy saved alias through provider identity and never guesses an ambiguous one", () => {
+    const rowA = normalizeLiveModel({ id: "vendor/some-model" }, connection());
+    const rowB = normalizeLiveModel({ id: "vendor/some-model" }, connection({ provider: OTHER_NODE_ID }));
+    const solo = normalizeLiveModel({ id: "solo/model" }, connection());
+    const index = buildModelIndex([
+      { providerId: NODE_ID, providerName: "MiraiAPI", models: [rowA, solo] },
+      { providerId: OTHER_NODE_ID, providerName: "MiraiAPI", models: [rowB] }
+    ]);
+    // A canonical id always resolves to its own row.
+    expect(resolveSavedModel(index, rowA.id, OTHER_NODE_ID).providerId).toBe(NODE_ID);
+    // A raw namespaced id saved before node binding resolves by provider identity.
+    expect(resolveSavedModel(index, "vendor/some-model", NODE_ID).requestModel).toBe(rowA.requestModel);
+    expect(resolveSavedModel(index, "vendor/some-model", OTHER_NODE_ID).requestModel).toBe(rowB.requestModel);
+    // An alias shared by two nodes with no provider identity is not resolved.
+    expect(resolveSavedModel(index, "vendor/some-model")).toBeNull();
+    expect(resolveSavedModel(index, `${PREFIX}/vendor/some-model`)).toBeNull();
+    // A provider that does not own the alias does not resolve it.
+    expect(resolveSavedModel(index, "vendor/some-model", "unknown-node")).toBeNull();
+    // An alias held by exactly one row resolves.
+    expect(resolveSavedModel(index, "solo/model").requestModel).toBe(solo.requestModel);
+    expect(resolveSavedModel(index, "")).toBeNull();
   });
 
   it("keeps the group and ordering contract under the request id", () => {

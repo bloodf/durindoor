@@ -72,7 +72,7 @@ describe("buildModelsList exposeComboOnly", () => {
     // Output contract: deduped, kind-preserving combo rows.
     expect(models.map((model) => model.id)).toEqual(["chat-pool", "search-pool", "fetch-pool"]);
     expect(models.map((model) => model.owned_by)).toEqual(["combo", "combo", "combo"]);
-    expect(models.map((model) => model.kind)).toEqual([undefined, "webSearch", "webFetch"]);
+    expect(models.map((model) => model.kind)).toEqual(["llm", "webSearch", "webFetch"]);
     // Consumer contract: effective member-derived ∩ operator limits are
     // exposed once in both the capability object and the flat OpenAI fields.
     const chatPool = models.find((model) => model.id === "chat-pool");

@@ -178,6 +178,17 @@ for (const row of cases) describe(`nested fusion ${row.media} admission`, () => 
     expect(wire.some((sent) => sent.body.model === unavailableModel)).toBe(true);
     expect(JSON.stringify(textCalls[0].body.messages)).not.toContain(JSON.stringify(row.attachment));
   });
+
+  it("returns ordinary fallback's ACL denial without dispatching either model", async () => {
+    await db.updateApiKey("nested-key", { policy: { allowedModels: [TEXT] } });
+    const response = await invoke(`nested-${row.media}`, row.attachment);
+    const result = await response.json();
+    expect(response.status, JSON.stringify(result)).toBe(403);
+    expect(result.error.message).toContain(row.capable);
+    expect(result.error.code).toBe("permission_denied");
+    expect(result.choices).toBeUndefined();
+    expect(wire).toEqual([]);
+  });
 });
 
 

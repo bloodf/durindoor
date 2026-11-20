@@ -1808,17 +1808,18 @@ const PROVIDERS = {
           "X-No-User-Id": "true",
           "X-Product": "SaaS"
         },
-        body: "{}",
+        body: JSON.stringify({ platform: config.platform }),
         proxyOptions
       });
       if (!response.ok) throw new Error(`CodeBuddy state request failed: ${await response.text()}`);
       const data = await response.json();
-      if (data.code !== 0 || !data.data?.state || !data.data?.authUrl) {
+      const authUrl = data.data?.authUrl || data.data?.url;
+      if (data.code !== 0 || !data.data?.state || !authUrl) {
         throw new Error(`CodeBuddy state error: ${data.msg || "missing state/authUrl"}`);
       }
       return {
         device_code: data.data.state,
-        verification_uri: data.data.authUrl,
+        verification_uri: authUrl,
         user_code: "",
         interval: config.pollInterval / 1000,
         _isCodeBuddy: true

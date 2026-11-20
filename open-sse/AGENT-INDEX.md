@@ -106,6 +106,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `apmix` |  | apikey | `https://api.apmix.ai/v1/chat/completions` |
 | `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
+| `atlascloud` |  | apikey | `https://api.atlascloud.ai/v1/chat/completions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
 | `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |
 | `auto` |  | system | `` |

@@ -71,6 +71,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET | `/api/keys/policy-catalog` | Model ids valid for a key policy allowlist | session, CLI, key, loop |
 | GET | `/api/keys/usage` | Current usage against each key's windowed limits | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/keys/{id}` | Read, update, or delete a key (secret masked) | GET: session, CLI, key, loop; PUT, DELETE: session, CLI, open local dashboard (operator only) |
+| POST | `/api/keys/{id}/rotate` | Replace a key's secret (new secret once, `no-store`; the retired one stops working) | session, CLI, open local dashboard (operator only) |
 | GET | `/api/keys/{id}/reveal` | Return the raw DurinDoor key secret | session, CLI, key, loop; key refused on reveal |
 
 ### Key groups

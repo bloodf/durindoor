@@ -115,8 +115,9 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
   if (body.tools && Array.isArray(body.tools)) {
     const nativeTools = body.tools.filter((tool) => tool?.type && tool.type !== OPENAI_BLOCK.FUNCTION && tool.type !== "custom");
     if (nativeTools.length) Object.defineProperty(result, CLAUDE_NATIVE_TOOLS, { value: nativeTools, enumerable: false });
-    const functionTools = body.tools.filter((tool) => !tool?.type || tool.type === OPENAI_BLOCK.FUNCTION || tool.type === "custom");
+    const functionTools = body.tools.filter((tool) => !tool?.type || tool.type === OPENAI_BLOCK.FUNCTION || tool.type === "custom" || (opts.provider === "codex" && tool.type === "web_search_20250305"));
     if (functionTools.length) result.tools = functionTools.map((tool) => {
+      if (tool.type === "web_search_20250305") return { type: OPENAI_BLOCK.WEB_SEARCH };
       const fn = {
         name: tool.name,
         description: String(tool.description || ""),
@@ -129,7 +130,7 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
 
   // Tool choice
   if (body.tool_choice) {
-    result.tool_choice = convertToolChoice(body.tool_choice);
+    result.tool_choice = opts.provider === "codex" && body.tool_choice.type === "tool" && body.tools?.some(tool => tool.type === "web_search_20250305" && tool.name === body.tool_choice.name) ? { type: OPENAI_BLOCK.WEB_SEARCH } : convertToolChoice(body.tool_choice);
     // Anthropic's per-choice parallel ban is OpenAI's request-level flag.
     if (body.tool_choice.disable_parallel_tool_use === true && result.tools?.length) result.parallel_tool_calls = false;
   }
@@ -296,6 +297,12 @@ function convertClaudeMessage(msg, opts) {
           break;
         }
 
+        case CLAUDE_BLOCK.SERVER_TOOL_USE:
+          if (opts.provider === "codex" && block.name === OPENAI_BLOCK.WEB_SEARCH) parts.push({ type: OPENAI_BLOCK.TEXT, text: `Web search query: ${JSON.stringify(block.input || {})}` });
+          break;
+        case CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT:
+          if (opts.provider === "codex") parts.push({ type: OPENAI_BLOCK.TEXT, text: `Web search evidence: ${JSON.stringify(Array.isArray(block.content) ? block.content.map(({ title, url }) => ({ title, url })) : block.content)}` });
+          break;
         case CLAUDE_BLOCK.DOCUMENT: {
           // Only translate well-formed top-level sources; native Claude blocks
           // remain attached separately for a subsequent Claude-format hop.

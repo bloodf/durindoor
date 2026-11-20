@@ -1,3 +1,4 @@
+import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
@@ -81,8 +82,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   let customToolNames;
   // chatCore supplies an already-clean mapped model plus explicit context, but
   // public/direct translator callers may still pass `model(level)`. Keep that
-  // entry point safe by parsing here as a compatibility fallback.
-  const parsedModel = parseSuffix(model);
+  // entry point safe by parsing here as a compatibility fallback. The provider
+  // scopes the service-tier control, so a tier-shaped suffix on a provider
+  // without tier support stays part of the opaque model ID.
+  const parsedModel = parseSuffix(model, provider);
   const translationModel = parsedModel.cleanModel;
 
   // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
@@ -361,6 +364,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
+  if (targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.CLAUDE && state.searchEnabled) {
+    const converted = responsesToClaudeResponse(chunk, state);
+    return converted ? Array.isArray(converted) ? converted : [converted] : [];
+  }
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
     return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];

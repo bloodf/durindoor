@@ -32,10 +32,13 @@ const DOT_VERSION_PROVIDERS = KIRO_FAMILY_PROVIDERS;
  *
  * Match catalog metadata after removing only recognized request-only thinking controls.
  * Unknown parenthesized values remain part of opaque model IDs (decolua/9router#3332).
+ * Service-tier suffixes are provider-scoped: only OpenAI and Codex read
+ * `fast`/`standard` as a tier control, so on every other provider the suffix
+ * stays part of the opaque model ID and the catalog row is looked up by it.
  */
 function findModel(models, modelId, aliasOrId) {
   if (!models) return undefined;
-  const { cleanModel } = parseSuffix(modelId);
+  const { cleanModel } = parseSuffix(modelId, aliasOrId);
   const found = models.find((m) => m.id === cleanModel || m.aliases?.includes(cleanModel));
   if (found) return found;
   if (!DOT_VERSION_PROVIDERS.has(aliasOrId)) return undefined;
@@ -48,7 +51,7 @@ export function isValidModel(aliasOrId, modelId, passthroughProviders = new Set(
   if (passthroughProviders.has(aliasOrId)) return true;
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return false;
-  const baseId = parseSuffix(modelId).cleanModel;
+  const baseId = parseSuffix(modelId, aliasOrId).cleanModel;
   return !!(findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId));
 }
 
@@ -80,7 +83,7 @@ export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
   if (configuredTargetFormat) return configuredTargetFormat;
-  if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && MINIMAX_OPENAI_TOOL_MODELS.has(parseSuffix(modelId).cleanModel)) return "openai";
+  if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && MINIMAX_OPENAI_TOOL_MODELS.has(parseSuffix(modelId, aliasOrId).cleanModel)) return "openai";
   // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need
   // their native translators instead of the provider default Chat Completions route.
   if (aliasOrId === "opencode-zen") return getOpenCodeZenPassthroughTargetFormat(modelId);
@@ -191,11 +194,11 @@ export function applyProviderThinkingOverride(body, providerThinking) {
 /** Upstream id chatCore will dispatch for this request (quota/cooldown keys). */
 export function getDispatchUpstreamModelId(aliasOrId, modelId, body = null, providerThinking = null) {
   const effectiveBody = body ? applyProviderThinkingOverride(body, providerThinking) : null;
-  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId).override, effectiveBody));
+  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId, aliasOrId).override, effectiveBody));
 }
 
 function findUpstreamModel(aliasOrId, modelId, tier) {
-  const parsed = parseSuffix(modelId);
+  const parsed = parseSuffix(modelId, aliasOrId);
   const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
   const requestedTier = tier || resolveRequestedModelTier(parsed.override);
@@ -232,7 +235,7 @@ export function getModelUpstreamThinkingIntent(aliasOrId, modelId, tier = null) 
 
 export function getCanonicalModelId(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
-  const baseId = parseSuffix(modelId).cleanModel;
+  const baseId = parseSuffix(modelId, aliasOrId).cleanModel;
   return (findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId))?.id || null;
 }
 

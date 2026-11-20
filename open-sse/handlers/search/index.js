@@ -7,7 +7,13 @@
  *   provider.searchViaChat   → wrap chat-completions (chatSearch.js)
  */
 
-import { buildSearchRequest, getProviderSetting } from "./callers.js";
+import { buildSearchRequest } from "./callers.js";
+import {
+  assertSearchCredentialBinding,
+  assertSearchCredentialRedirectBinding,
+  requestCarriesSearchCredential,
+  resolveSearchBaseUrl
+} from "./baseUrl.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
@@ -19,6 +25,10 @@ import { mediaAccounting } from "../mediaAccounting.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
+
+// Redirect hops a credential-bearing request may follow on the trusted
+// (registry) path. Same bound the public path uses through `fetchPublic`.
+const MAX_SEARCH_REDIRECT_HOPS = 5;
 
 const CONTROL_CHAR_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
 
@@ -64,6 +74,42 @@ function successResult(data, accounting) {
 }
 
 /**
+ * Dispatch a request to a trusted (registry) destination.
+ *
+ * The trusted path deliberately skips the public-only egress guard — an
+ * administrator may point a provider at an internal service (a SearXNG
+ * container) — so the hops are followed here instead of by the platform fetch.
+ * Only a request that carries the stored credential needs that handling: it is
+ * the only case where a hop can move the credential somewhere else. A request
+ * without a credential keeps the platform's own redirect behavior.
+ *
+ * Every hop is dispatched through `dispatch`, which applies the credential
+ * binding before the hop leaves the gateway.
+ *
+ * @param {object} input
+ * @param {string} input.url Initial destination.
+ * @param {object} input.init Request init (already sanitized).
+ * @param {Function} input.dispatch Per-hop dispatcher.
+ * @param {boolean} input.credentialBearing Whether the request carries the stored credential.
+ * @param {boolean} [input.preventRedirects] The provider's no-redirect policy.
+ * @returns {Promise<Response>}
+ */
+async function dispatchTrustedSearchRequest({ url, init, dispatch, credentialBearing, preventRedirects }) {
+  if (!credentialBearing) return dispatch(url, init);
+  let currentUrl = url;
+  for (let hop = 0; ; hop++) {
+    const res = await dispatch(currentUrl, { ...init, redirect: "manual" });
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) return res;
+    // The no-redirect policy surfaces the redirect response instead of
+    // following it, exactly as the trusted path always did.
+    if (preventRedirects) return res;
+    if (hop >= MAX_SEARCH_REDIRECT_HOPS) throw new Error("Blocked URL: too many redirects");
+    currentUrl = new URL(location, currentUrl).toString();
+  }
+}
+
+/**
  * Run a single dedicated search provider attempt.
  * @returns {Promise<{success:boolean, status?:number, error?:string, data?:object}>}
  */
@@ -103,9 +149,18 @@ async function tryDedicatedProvider({
   // override is variable input and must stay behind the SSRF guard on every
   // redirect hop; the providerConfig default is administrator-controlled and
   // may intentionally target an internal service (e.g. a SearXNG container).
-  const requiresPublicUrl = Boolean(getProviderSetting(params, "baseUrl"));
+  // The operator's connection endpoint wins over a caller-supplied one, so a
+  // caller can never shadow the endpoint the administrator authorized.
+  let requiresPublicUrl = false;
+  const providerConfigWithId = { id: provider.id, ...providerConfig };
   try {
-    ({ url, init } = buildSearchRequest({ id: provider.id, ...providerConfig }, params));
+    requiresPublicUrl = resolveSearchBaseUrl(providerConfigWithId, params).source !== "registry";
+    ({ url, init } = buildSearchRequest(providerConfigWithId, params));
+    // Credential binding (OmniRoute #12620): a stored search credential may
+    // only travel to a destination the administrator authorized. A caller that
+    // names its own endpoint for a credential-bearing provider is refused
+    // before any request leaves the gateway.
+    assertSearchCredentialBinding({ config: providerConfigWithId, params, url, init });
   } catch (err) {
     return { success: false, status: 400, error: err?.message || `Invalid request for ${provider.id}` };
   }
@@ -129,15 +184,35 @@ async function tryDedicatedProvider({
       if (providerConfig.preventRedirects) options.redirect = "manual";
       return proxyAwareFetch(hopUrl, options, proxyOptions);
     };
-    const publicOptions = { fetchImpl: proxied };
+    // Credential binding on every hop (#1073): a redirect is a second
+    // destination the stored credential would travel to, so the same
+    // administrator-authorization decision that guards the built request
+    // guards each hop before it is dispatched. The built headers are reused
+    // on purpose — they are the headers that ride along with the hop.
+    const dispatch = async (hopUrl, hopInit) => {
+      assertSearchCredentialRedirectBinding({
+        config: providerConfigWithId,
+        params,
+        url: hopUrl,
+        init
+      });
+      return proxied(hopUrl, hopInit);
+    };
+    const requestInit = { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal };
+    const publicOptions = { fetchImpl: dispatch };
     if (providerConfig.preventRedirects) publicOptions.maxRedirects = 0;
     const resp = requiresPublicUrl ?
-    await fetchPublic(
+    await fetchPublic(url, requestInit, publicOptions) :
+    await dispatchTrustedSearchRequest({
       url,
-      { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal },
-      publicOptions
-    ) :
-    await proxied(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
+      init: requestInit,
+      dispatch,
+      // Only a request that actually carries the stored credential needs the
+      // hop-by-hop handling; a keyless request keeps the platform's own
+      // redirect behavior on the trusted path.
+      credentialBearing: requestCarriesSearchCredential(url, init.headers, params.token),
+      preventRedirects: providerConfig.preventRedirects
+    });
     clearTimeout(timer);
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");

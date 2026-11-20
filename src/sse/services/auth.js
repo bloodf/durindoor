@@ -1590,9 +1590,14 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const quotaFamily = getModelQuotaFamily(alias, model);
   const hasFamilyScope = Boolean(quotaFamily && getProviderQuotaConfig(provider)?.preflightScopes?.quotaFamilies?.[quotaFamily]);
+  // A caller that proved the exhaustion belongs to one capability (image
+  // generation) keeps it on the failed model; ordinary chat paths do not set
+  // this and retain the provider's account-wide exhaustion scope.
+  const modelScopedExhaustion = context?.exhaustionScope === "model";
   const accountWideRuntime = Number(status) === 429 &&
   evidenceState === "exhausted" &&
   !hasFamilyScope &&
+  !modelScopedExhaustion &&
   getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
   // #6888: only providers flagged `passthroughConnectionWideErrors` treat
   // connection-class failures (5xx, network) as account-wide. NVIDIA NIM is
@@ -1677,6 +1682,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         // compatibility breaker as a provider reset. Generic cooldown evidence
         // may use that bounded local deadline.
         resetAtMs: evidenceState === "exhausted" ? normalizedReset : normalizedReset || deadline,
+        ...(modelScopedExhaustion ? { exhaustionScope: "model" } : {}),
         signal
       });
     } catch (error) {

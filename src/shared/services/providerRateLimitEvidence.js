@@ -41,7 +41,7 @@ export function resetProviderAttemptClockForTests() {
   lastAttemptTimestamp = 0;
 }
 
-function resolveCatalogScope(provider, model, state = "cooldown") {
+function resolveCatalogScope(provider, model, state = "cooldown", { modelScoped = false } = {}) {
   if (!isString(provider) || !provider || !isString(model) || !model) return null;
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const config = getProviderQuotaConfig(provider);
@@ -49,10 +49,12 @@ function resolveCatalogScope(provider, model, state = "cooldown") {
   const familyResource = quotaFamily ? config?.preflightScopes?.quotaFamilies?.[quotaFamily] : null;
   const canonicalModel = getCanonicalModelId(alias, model);
   if (!canonicalModel) return null;
-  const accountWide = config?.runtimeScopes?.[state] === "account";
+  // `modelScoped` is an explicit caller proof (image capacity) that the
+  // exhaustion belongs to this catalog model, never the whole account.
+  const accountWide = !modelScoped && config?.runtimeScopes?.[state] === "account";
   // Durable quota exhaustion may apply to a configured family. A transient
   // cooldown remains model-scoped so one 429 cannot bench sibling models.
-  const resourceKey = (state === "exhausted" ? familyResource : null) || (
+  const resourceKey = (state === "exhausted" && !modelScoped ? familyResource : null) || (
   accountWide ? QUOTA_IDENTITY_DEFAULTS.resourceKey : quotaScopedKey("model", canonicalModel));
   const digest = createHash("sha256").
   update("durindoor-runtime-quota\0").
@@ -141,12 +143,13 @@ export function createProviderRateLimitEvidence({ repository = null, now = Date.
     attemptStartedAt,
     state = "cooldown",
     resetAtMs,
+    exhaustionScope = null,
     signal = null
   }) {
     if (state !== "cooldown" && state !== "exhausted") {
       return { persisted: false, reason: "invalid_state" };
     }
-    const scope = resolveCatalogScope(provider, model, state);
+    const scope = resolveCatalogScope(provider, model, state, { modelScoped: exhaustionScope === "model" });
     if (!scope) return { persisted: false, reason: "untrusted_scope" };
     const observedMs = Number(attemptStartedAt);
     const deadlineMs = resetAtMs == null ? null : Number(resetAtMs);

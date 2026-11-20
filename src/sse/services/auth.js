@@ -11,7 +11,7 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields, isRelayGatewayFailure, countEligibleAccounts } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
@@ -1479,6 +1479,28 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return { shouldFallback: true, cooldownMs: 0 };
   }
 
+  // A proven relay/hop failure is not evidence about this credential, and a
+  // cooldown buys nothing when at most one account in the request scope could
+  // serve it: there is nothing to rotate to, so the lock only turns one
+  // transient gateway blip into a 30s "all accounts locked" outage. The
+  // upstream error is returned to the client unchanged so it can retry.
+  //
+  // Multi-account deployments keep the cooldown — rotation depends on it — and
+  // a bare 502/503/504 without transport provenance is a provider failure, not
+  // a relay failure, so it keeps its cooldown too.
+  if (!context?.hasComboFallback && !context?.rateLimitEvidence &&
+      isRelayGatewayFailure(status, { transportFailure: context?.transportFailure ?? null })) {
+    const eligibleAccounts = countEligibleAccounts(connections, {
+      model,
+      excludedConnectionIds: context?.excludedConnectionIds ?? null,
+    });
+    if (eligibleAccounts === 1 && connections.some((connection) => connection.id === connectionId &&
+        countEligibleAccounts([connection], { model, excludedConnectionIds: context?.excludedConnectionIds ?? null }) === 1)) {
+      log.warn("AUTH", `${connectionId.slice(0, 8)} hit a relay/hop failure with ${eligibleAccounts} eligible account(s); skipping the credential cooldown [${status}]`);
+      return { shouldFallback: false, cooldownMs: 0 };
+    }
+  }
+
   // GitHub premium-request exhaustion is account-wide until the next UTC month.
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
 
@@ -1501,6 +1523,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     context?.headers ?? null,
     context?.errorBody ?? null
   );
+  // A request-scoped OpenRouter 404 must not inherit a reset hint and lock a
+  // healthy model for later requests.
+  if (Number(status) === 404 && fallbackResult.requestScoped) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its

@@ -15,6 +15,82 @@ import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
 
+/** Remove nameless assistant calls and their corresponding results in encounter order.
+ * Other blocks, including custom content and valid calls sharing an ID, survive.
+ */
+function removeNamelessToolHistory(messages) {
+  const pending = new Map();
+  const emptied = new Set();
+  for (const msg of messages) {
+    normalizeMessageContent(msg);
+    if (!Array.isArray(msg.content)) continue;
+    const previousLength = msg.content.length;
+    msg.content = msg.content.filter((block) => {
+      if (msg.role === ROLE.ASSISTANT && block?.type === CLAUDE_BLOCK.TOOL_USE) {
+        const valid = isString(block.name) && block.name.trim().length > 0;
+        if (block.id != null) {
+          const queue = pending.get(block.id) || [];
+          queue.push(valid);
+          pending.set(block.id, queue);
+        }
+        return valid;
+      }
+      if (msg.role === ROLE.USER && block?.type === CLAUDE_BLOCK.TOOL_RESULT) {
+        const queue = pending.get(block.tool_use_id);
+        if (queue?.length) return queue.shift();
+      }
+      return true;
+    });
+    if (previousLength && !msg.content.length) emptied.add(msg);
+  }
+  return messages.filter((msg) => !emptied.has(msg));
+}
+
+/** Remove malformed OpenAI calls before name aliasing or orphan-result repair. */
+export function removeNamelessOpenAIToolHistory(messages) {
+  const pending = new Map();
+  const record = (id, valid) => {
+    if (id == null) return;
+    const queue = pending.get(id) || [];
+    queue.push(valid);
+    pending.set(id, queue);
+  };
+  const consume = (id) => {
+    const queue = pending.get(id);
+    return queue?.length ? queue.shift() : true;
+  };
+  return messages.filter((msg) => {
+    if (msg.role === ROLE.TOOL) return consume(msg.tool_call_id);
+    if (msg.role === ROLE.ASSISTANT) {
+      let removed = false;
+      if (Array.isArray(msg.content)) {
+        msg.content = msg.content.filter((block) => {
+          if (block?.type !== CLAUDE_BLOCK.TOOL_USE) return true;
+          const valid = isString(block.name) && !!block.name.trim();
+          if (!valid) removed = true;
+          record(block.id, valid);
+          return valid;
+        });
+      }
+      if (Array.isArray(msg.tool_calls)) {
+        msg.tool_calls = msg.tool_calls.filter((call) => {
+          const valid = isString(call?.function?.name) && !!call.function.name.trim();
+          if (!valid) removed = true;
+          record(call?.id, valid);
+          return valid;
+        });
+      }
+      return !removed || !!(msg.content && (!Array.isArray(msg.content) || msg.content.length) || msg.tool_calls?.length || msg.reasoning_content);
+    }
+    if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
+      const length = msg.content.length;
+      msg.content = msg.content.filter((block) => block?.type !== CLAUDE_BLOCK.TOOL_RESULT || consume(block.tool_use_id));
+      return !length || msg.content.length > 0;
+    }
+    return true;
+  });
+}
+
 function lastCacheableToolIndex(tools) {
   for (let i = tools.length - 1; i >= 0; i--) {
     if (tools[i]?.defer_loading !== true) return i;
@@ -513,7 +589,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   // block-oriented validation so no meaningful turn is discarded.
   const originalLastRole = options?.clientLastRole ?? (Array.isArray(body.messages) ? body.messages[body.messages.length - 1]?.role : undefined);
   if (Array.isArray(body.messages)) {
-    for (const msg of body.messages) normalizeMessageContent(msg);
+    body.messages = removeNamelessToolHistory(body.messages);
   }
 
   if (Array.isArray(body.messages)) {
@@ -728,8 +804,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
   // 2. Messages: process in optimized passes
   if (body.messages && Array.isArray(body.messages)) {
+    const clientRole = clientLastRole ?? body.messages.at(-1)?.role;
+    body.messages = removeNamelessToolHistory(body.messages);
     const len = body.messages.length;
-    const originalLastRole = clientLastRole ?? body.messages[len - 1]?.role;
+    const originalLastRole = clientRole;
     let filtered = [];
 
     // Pass 1: remove cache_control + filter empty messages

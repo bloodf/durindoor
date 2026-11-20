@@ -3,7 +3,7 @@ import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
-import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
+import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest, removeNamelessOpenAIToolHistory } from "./formats/claude.js";
 import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
@@ -112,6 +112,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   { mode: "budget", budget: result.thinking.budget_tokens } :
   null;
 
+  if (sourceFormat === FORMATS.OPENAI && targetFormat === FORMATS.CLAUDE && Array.isArray(result?.messages)) {
+    result.messages = removeNamelessOpenAIToolHistory(result.messages);
+  }
   // Always ensure tool_calls have id (some providers require it). targetFormat
   // lets a target that validates its own tool-call arguments (e.g. CommandCode)
   // keep rejecting malformed JSON instead of having it silently coerced first.

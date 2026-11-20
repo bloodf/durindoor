@@ -15,33 +15,15 @@ export function parseDataUri(url) {
 
 import { lookup } from "node:dns/promises";
 import { Agent } from "undici";
-import { MAX_IMAGE_BYTES, FETCH_TIMEOUT_MS, IMAGE_SIGNATURES, BLOCKED_HOSTS } from "../../config/mediaConfig.js";
+import { MAX_IMAGE_BYTES, FETCH_TIMEOUT_MS, IMAGE_SIGNATURES } from "../../config/mediaConfig.js";
+import { isBlockedHost } from "../../../src/shared/utils/ssrfGuard.js";
 
-// True if an IPv4/IPv6 address is private/reserved (SSRF target).
-function isPrivateIp(ip) {
-  if (!ip) return true;
-  // IPv6 loopback / unique-local / link-local
-  if (ip === "::1" || ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80")) return true;
-  // IPv4-mapped IPv6 (::ffff:a.b.c.d) -> extract tail
-  const v4 = ip.includes(".") ? ip.split(":").pop() : ip;
-  const parts = v4.split(".").map((n) => Number.parseInt(n, 10));
-  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return ip.includes(":") ? false : true;
-  const [a, b] = parts;
-  if (a === 10 || a === 127 || a === 0) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 169 && b === 254) return true; // link-local + cloud metadata
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  return false;
-}
-
-// Resolve host once and return only public IPs (SSRF guard).
-// Rejects if any resolved record is private/reserved (defeats multi-A tricks).
+// Resolve once, reject any non-public record, and pin the approved connection.
 async function resolvePinnedIps(hostname) {
-  if (!hostname || BLOCKED_HOSTS.has(hostname.toLowerCase())) return null;
+  if (!hostname || isBlockedHost(hostname)) return null;
   try {
-    const records = await lookup(hostname, { all: true });
-    if (!records.length || records.some((r) => isPrivateIp(r.address))) return null;
+    const records = await lookup(hostname.replace(/^\[|\]$/g, ""), { all: true });
+    if (!records.length || records.some((r) => !r.address || isBlockedHost(r.address))) return null;
     return records;
   } catch {
     return null;
@@ -76,7 +58,7 @@ export function detectImageMime(buf) {
  */
 export async function fetchImageAsBase64(imageUrl, options = {}) {
   const { signal, timeoutMs = FETCH_TIMEOUT_MS, maxBytes = MAX_IMAGE_BYTES } = options;
-  if (!imageUrl || !imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
     return null;
   }
 

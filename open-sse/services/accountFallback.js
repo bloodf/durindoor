@@ -1,4 +1,4 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
@@ -63,6 +63,16 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // External/client HTTP 499 is terminal; combo-owned timeout fallback is handled in combo.js.
   if (Number(status) === 499) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
+  }
+
+  // OpenRouter capability and routing preferences describe this request, not
+  // model health. Keep ordinary missing-model 404s on their existing path.
+  if (Number(status) === 404 && provider === "openrouter" && (
+    /\bno endpoints found that support\b/i.test(normalizedText) ||
+    /\bno allowed providers\b/i.test(normalizedText) ||
+    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText)
+  )) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
 
   /** #3386: terminal client errors win before message-based transient rules. */
@@ -170,6 +180,66 @@ function extractErrorMessage(structuredError, errorText) {
   }
   const message = body?.error?.message ?? body?.message;
   return isString(message) ? message : "";
+}
+
+const RELAY_GATEWAY_STATUS_SET = new Set(RELAY_GATEWAY_STATUSES);
+const RELAY_TRANSPORT_FAILURE_SET = new Set(RELAY_TRANSPORT_FAILURES);
+
+/**
+ * True when the executor identifies a transport failure without a usable
+ * HTTP response. The origin might still have received the request.
+ *
+ * Proof is deliberately narrow, and never comes from upstream text:
+ * - `transportFailure` is the fork's OWN transport classification
+ *   ("connect_timeout" | "network", set in open-sse/executors/base.js): no HTTP
+ *   response was produced by any hop, without a usable HTTP response.
+ *
+ * A bare 502/503/504 is NOT proof: a provider application may answer 503
+ * (overload, model capacity) or 502 itself, and the fork cannot tell the two
+ * apart from the status alone. An upstream error body is never consulted.
+ *
+ * @param {number|string|null|undefined} status - Upstream status
+ * @param {object} [options]
+ * @param {string|null} [options.transportFailure] - The fork's transport-level
+ *   classification for this attempt ("connect_timeout" | "network")
+ * @returns {boolean}
+ */
+export function isRelayGatewayFailure(status, { transportFailure = null } = {}) {
+  const numericStatus = Number(status);
+  if (!RELAY_GATEWAY_STATUS_SET.has(numericStatus)) return false;
+  return RELAY_TRANSPORT_FAILURE_SET.has(transportFailure);
+}
+
+/**
+ * Count the accounts that could still serve THIS request.
+ *
+ * The request scope is narrower than "the provider's connections": an account
+ * that is inactive, quarantined for reauth, locked for the requested model, or
+ * already excluded by this request's own fallback chain cannot serve this
+ * request, so it must not be counted as an alternative.
+ *
+ * @param {Array} connections - Provider connections
+ * @param {object} [options]
+ * @param {string|null} [options.model] - Requested model for model-lock scope
+ * @param {Set<string>|string[]|string|null} [options.excludedConnectionIds] -
+ *   Connections this request already excluded
+ * @returns {number} How many accounts could still serve this request
+ */
+export function countEligibleAccounts(connections, { model = null, excludedConnectionIds = null } = {}) {
+  if (!Array.isArray(connections)) return 0;
+  const excluded = excludedConnectionIds instanceof Set ?
+  excludedConnectionIds :
+  new Set(Array.isArray(excludedConnectionIds) ?
+  excludedConnectionIds :
+  excludedConnectionIds ? [excludedConnectionIds] : []);
+  return connections.filter((connection) => {
+    if (!connection) return false;
+    if (connection.isActive === false) return false;
+    if (connection.testStatus === "reauth_required") return false;
+    if (excluded.has(connection.id)) return false;
+    if (isModelLockActive(connection, model)) return false;
+    return true;
+  }).length;
 }
 
 function checkFallbackErrorByRules(status, lowerError, backoffLevel, provider = null) {

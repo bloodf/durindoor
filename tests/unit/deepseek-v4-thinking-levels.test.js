@@ -10,9 +10,9 @@ describe("getThinkingLevels DeepSeek v4.* dotted releases", () => {
     expect(levels).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
   });
 
-  it("widens dotted ids under any provider (pattern has no provider filter)", () => {
+  it("uses OpenCode Go's narrower documented Flash efforts", () => {
     const levels = getThinkingLevels("opencode-go", "deepseek-v4.1-flash");
-    expect(levels).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+    expect(levels).toEqual(["low", "high", "max"]);
   });
 
   it("keeps codebuddy-cn's own effort set for a dotted id on that gateway", () => {

@@ -104,7 +104,7 @@ function normalizeSchemaTypes(schema) {
   for (const [key, value] of Object.entries(schema)) {
     if (key === "enumDescriptions") continue;
     if (key === "type" && isString(value)) { result[key] = value.toLowerCase(); continue; }
-    if (PROTOJSON_INT64_SCHEMA_KEYS.has(key) && typeof value === "string" && /^\d+$/.test(value.trim())) {
+    if (PROTOJSON_INT64_SCHEMA_KEYS.has(key) && isString(value) && /^\d+$/.test(value.trim())) {
       const parsed = Number(value);
       result[key] = Number.isSafeInteger(parsed) ? parsed : value;
       continue;

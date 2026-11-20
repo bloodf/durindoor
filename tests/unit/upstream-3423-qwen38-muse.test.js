@@ -133,6 +133,13 @@ describe("upstream #3423 ordered Qwen3.8 and Muse capabilities", () => {
     },
   );
 
+  it("keeps pre-3.8 Qwen Max on the legacy format and output limit", () => {
+    expect(getCapabilitiesForModel(null, "qwen3.7-max")).toMatchObject({
+      thinkingFormat: "qwen",
+      maxOutput: 65536,
+    });
+  });
+
   it("advertises Muse Spark, Glimmer, and family fallback capabilities", () => {
     expect(getCapabilitiesForModel(null, "muse-spark-1.2")).toMatchObject({
       vision: true,

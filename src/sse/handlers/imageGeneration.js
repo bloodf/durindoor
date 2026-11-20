@@ -305,10 +305,13 @@ function routeRateLimited(summary) {
   return Number(summary?.lastErrorCode) === 429;
 }
 
-/** A deadline in ISO form; a missing or unparseable value never wins. */
+/**
+ * A deadline in ISO-8601 form. Retry deadlines reach this handler as
+ * ISO-8601 strings: the selector summary and the account evidence both
+ * publish that shape. A missing or unparseable deadline never wins.
+ */
 function parseRetryDeadline(value) {
-  if (typeof value === "number" && Number.isFinite(value)) return new Date(value).toISOString();
-  const parsed = Date.parse(typeof value === "string" ? value : "");
+  const parsed = Date.parse(value ?? "");
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 

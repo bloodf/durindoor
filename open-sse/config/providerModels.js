@@ -94,6 +94,9 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 // endpoint restriction on their existing transport-selection path.
 export function getModelSupportedFormats(aliasOrId, modelId) {
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.supportedFormats || null;
+  // The Kimi Platform exposes both APIs for platform model IDs, including
+  // IDs discovered after the bundled catalog was published.
+  if (aliasOrId === "kimi") return ["openai", "claude"];
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   const model = findModel(models, modelId, aliasOrId);

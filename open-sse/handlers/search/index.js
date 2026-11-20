@@ -7,7 +7,8 @@
  *   provider.searchViaChat   → wrap chat-completions (chatSearch.js)
  */
 
-import { buildSearchRequest, getProviderSetting } from "./callers.js";
+import { buildSearchRequest } from "./callers.js";
+import { assertSearchCredentialBinding, resolveSearchBaseUrl } from "./baseUrl.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
@@ -103,9 +104,18 @@ async function tryDedicatedProvider({
   // override is variable input and must stay behind the SSRF guard on every
   // redirect hop; the providerConfig default is administrator-controlled and
   // may intentionally target an internal service (e.g. a SearXNG container).
-  const requiresPublicUrl = Boolean(getProviderSetting(params, "baseUrl"));
+  // The operator's connection endpoint wins over a caller-supplied one, so a
+  // caller can never shadow the endpoint the administrator authorized.
+  let requiresPublicUrl = false;
   try {
-    ({ url, init } = buildSearchRequest({ id: provider.id, ...providerConfig }, params));
+    const providerConfigWithId = { id: provider.id, ...providerConfig };
+    requiresPublicUrl = resolveSearchBaseUrl(providerConfigWithId, params).source !== "registry";
+    ({ url, init } = buildSearchRequest(providerConfigWithId, params));
+    // Credential binding (OmniRoute #12620): a stored search credential may
+    // only travel to a destination the administrator authorized. A caller that
+    // names its own endpoint for a credential-bearing provider is refused
+    // before any request leaves the gateway.
+    assertSearchCredentialBinding({ config: providerConfigWithId, params, url, init });
   } catch (err) {
     return { success: false, status: 400, error: err?.message || `Invalid request for ${provider.id}` };
   }

@@ -849,7 +849,12 @@ export function sanitizeErrorMessage(message) {
   // Complete non-HTTP credential URLs (db/redis/…): `scheme://[user:]<token>@host`.
   .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/(?:[^@\s/:]+:)?[^@\s/]+@/gi, "$1://[redacted]@").
   replace(/\bBearer\s+\S+/gi, "Bearer [redacted]").
-  replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]").
+  // Raw credential shapes that carry no `key=` label to key off — the token IS
+  // the whole match, so only the shape identifies it (OmniRoute #12620,
+  // GHSA-qv45-56jc-4wmj). The JWT alternative allows a clipped third segment
+  // so a JWT truncated by the 4096-char cap is still recognized. Quantifiers
+  // stay upper-bounded: this runs over untrusted upstream error bodies.
+  replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{8,400}\.[A-Za-z0-9_-]{8,800}\.[A-Za-z0-9_-]{1,800})\b/gi, "[redacted]").
   replace(
     /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*(?:"|$)/gi,
     '$1[redacted]"'
@@ -881,11 +886,11 @@ export function sanitizeErrorMessage(message) {
     if (firstLineCut && /^[^\s/?#@]*@/.test(full.slice(4096))) {
       out = out.replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/]+$/i, "$1://[redacted]@");
     }
-    // Standalone credential prefixes (ghp_, sk[-_], AIza, …) cut at the cap:
+    // Standalone credential prefixes (ghp_, sk[-_], AIza, eyJ…) cut at the cap:
     // if the omitted suffix continues the same token, the last word in the
     // capped text is a partial secret and must be redacted.
     if (firstLineCut && /^[A-Za-z0-9._-]/.test(full.slice(4096))) {
-      out = out.replace(/\b(?:sk[-_]|gh[pousr]_|github_pat_|glpat-|ya29\.|AIza)\S*$/i, "[redacted]");
+      out = out.replace(/\b(?:sk[-_]|gh[pousr]_|github_pat_|glpat-|ya29\.|AIza|eyJ)\S*$/i, "[redacted]");
     }
   }
   if (out.length > 4096 && out.endsWith("[redacted]")) {

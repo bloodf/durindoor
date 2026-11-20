@@ -1450,6 +1450,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finishActiveDashboardSession("error");
     const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });
     const wasClientAbort = terminalReason === "abort";
+    // The fork's own transport classification (set in open-sse/executors/base.js)
+    // is provenance the fork creates itself: "connect_timeout" and "network"
+    // both mean no usable HTTP response was received. Carry it to the
+    // account layer so a relay/hop failure can be told apart from a provider
+    // application that answered 502/503/504 itself.
+    const transportFailure = error?.errorKind === "connect_timeout" || error?.errorKind === "network" ?
+    error.errorKind :
+    null;
     const antigravityPreResponseTimeout = provider === "antigravity" && error?.antigravityPreResponseTimeout === true;
     const failureStatus = antigravityPreResponseTimeout ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
     await settleQuota(false, terminalReason);
@@ -1480,7 +1488,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
     finishTimeline("error", "error", errMsg);
-    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, attemptStartedAt: latestProviderAttemptStartedAt };
+    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   const parseAndRestateError = async (response) => {

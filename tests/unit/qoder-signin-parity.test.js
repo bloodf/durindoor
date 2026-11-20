@@ -41,3 +41,37 @@ describe("Qoder regional device sign-in", () => {
     }
   });
 });
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
+import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
+import { clearQoderCatalog, resolveQoderModels } from "../../open-sse/services/qoderModels.js";
+
+describe("Qoder catalog credential isolation", () => {
+  it("does not reuse a catalog for another credential with the same regional user ID", async () => {
+    clearQoderCatalog();
+    vi.mocked(proxyAwareFetch).mockReset();
+    vi.mocked(proxyAwareFetch)
+      .mockResolvedValueOnce(Response.json({ chat: [{ key: "account-a", display_name: "A" }] }))
+      .mockResolvedValueOnce(Response.json({ chat: [{ key: "account-b", display_name: "B" }] }));
+    const credentials = (accessToken) => ({ provider: "qoder", accessToken, providerSpecificData: { userId: "same-user" } });
+    const a = await resolveQoderModels(credentials("fake-token-a"));
+    const b = await resolveQoderModels(credentials("fake-token-b"));
+    expect(a.rawConfigs.has("account-a")).toBe(true);
+    expect(b.rawConfigs.has("account-b")).toBe(true);
+    expect(b.rawConfigs.has("account-a")).toBe(false);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+import { QoderExecutor } from "../../open-sse/executors/qoder.js";
+
+describe("Qoder device token refresh", () => {
+  it.each(["qoder", "qoder-cn"])("does not send a refresh request for %s", async (provider) => {
+    const fetchMock = vi.fn(() => { throw new Error("Unexpected outbound request"); });
+    vi.stubGlobal("fetch", fetchMock);
+    const executor = new QoderExecutor(provider);
+    expect(executor.needsRefresh({ accessToken: "fake", refreshToken: "fake-refresh" })).toBe(false);
+    expect(await executor.refreshCredentials({ accessToken: "fake", refreshToken: "fake-refresh" })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

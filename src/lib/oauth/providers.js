@@ -1303,6 +1303,7 @@ const PROVIDERS = {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
+        try { base64 = decodeURIComponent(base64); } catch { /* Keep an already-decoded or malformed code. */ }
         const padding = 4 - base64.length % 4;
         if (padding !== 4) base64 += "=".repeat(padding);
         const decoded = Buffer.from(base64, "base64").toString("utf-8");
@@ -1363,6 +1364,7 @@ const PROVIDERS = {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
+        try { base64 = decodeURIComponent(base64); } catch { /* Keep an already-decoded or malformed code. */ }
         const padding = 4 - base64.length % 4;
         if (padding !== 4) base64 += "=".repeat(padding);
         const decoded = Buffer.from(base64, "base64").toString("utf-8");

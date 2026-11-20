@@ -228,7 +228,10 @@ export async function handleImageGenerationCore({
     }
   }
 
-  let upstreamError = providerResponse.ok ? null : await parseUpstreamError(providerResponse);
+  // Codex's parser knows its relative reset field; the shared parser bounds it
+  // and classifies the response before any reset can reach account health.
+  const parseImageError = (response) => parseUpstreamError(response, provider === "codex" && response.status === 429 ? executor : null, { provider });
+  let upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
   const fallbackBody = upstreamError && adapter.buildFallbackBody?.(
     requestBody, upstreamError.statusCode, upstreamError.message
   );
@@ -243,7 +246,7 @@ export async function handleImageGenerationCore({
         signal,
         proxyOptions
       });
-      upstreamError = providerResponse.ok ? null : await parseUpstreamError(providerResponse);
+      upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
     } catch (error) {
       if (isAbort(error)) return abortedResult();
       const message = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
@@ -254,7 +257,9 @@ export async function handleImageGenerationCore({
     const { statusCode, message } = upstreamError;
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("IMAGE", `Provider error: ${errMsg}`);
-    return createErrorResult(statusCode, errMsg);
+    const evidence = upstreamError.rateLimitEvidence;
+    const provenReset = provider === "codex" && evidence?.state === "exhausted" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
+    return createErrorResult(statusCode, errMsg, provenReset?.resetAtMs, undefined, provenReset);
   }
 
   // Parse provider response — adapter may override (codex SSE / async polling / binary)

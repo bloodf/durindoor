@@ -1,3 +1,4 @@
+import { getProviderModels } from "open-sse/config/providerModels.js";
 import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
@@ -68,6 +69,14 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null } = {}) {
+  // T3 Chat publishes a curated catalog; model discovery sends no session cookie.
+  if (connection.provider === "t3-web") {
+    return {
+      provider: connection.provider, connectionId: connection.id,
+      models: getProviderModels(connection.provider), source: "local_catalog",
+    };
+  }
+
   if (connection.provider === "yuanbao-web") {
     return { provider: connection.provider, connectionId: connection.id, models: yuanbaoWebRegistry.models };
   }

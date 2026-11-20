@@ -33,7 +33,7 @@ Under Request Headers, copy the `Cookie` value. Some providers only want one nam
 In DurinDoor open **Providers**, pick the cookie provider, and click Add. The field is labelled **Cookie Value**. The hint under it is the provider's `authHint`.
 </Step>
 <Step>
-Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web`, `zenmux-free` and `adapta-web`: their chat endpoints create a real conversation per probe, risking account restrictions (OmniRoute #14780, #14818). Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
+Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web`, `zenmux-free`, `adapta-web` and `yuanbao-web`: their chat endpoints create a real conversation per probe, risking account restrictions (OmniRoute #14780, #14818). Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
 </Step>
 </Steps>
 
@@ -68,13 +68,15 @@ chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure
 
 These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
 
-Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
+Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `huggingchat`, `muse-spark-web`, `suno`, and `udio`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
 
 ## Validation
 
 **Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web and ZenMux Free skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
-A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
+T3 Chat Web accepts an authorized Cookie value containing `convex-session-id`. The connection model list is curated locally. A provider connection test checks reachability, while a chat request checks whether T3 Chat accepts the session.
+
+A successful authenticated probe applies to the session at the time of the check.
 
 ## Limits
 
@@ -109,7 +111,7 @@ These references describe repository behavior. They do not establish that a vend
 
 ### Verified corrections and boundaries
 
-The preserved snapshot lists ChatGPT Web as unsupported and claims cookies are never refreshed. Current executor selection supports ChatGPT Web, and `mergeRefreshedCookie` persists rotated NextAuth cookies. General cookie expiry still requires a fresh session when upstream revokes it. The current unsupported set excludes `chatgpt-web`. Validation intentionally skips conversation-creating probes for `grok-web`, `copilot-web`, `zenmux-free`, and `adapta-web`, reporting a skip rather than a pass. NextAuth chunks retain their names; `mergeRefreshedCookie` replaces stale plain and chunked session families. Kimi Web uses access/refresh-token JSON and retains its distinct refresh path. Dashboard-assisted sign-in uses the two-origin isolation described above and never replaces manual cookie entry. Grok Web, Perplexity Web, ChatGPT Web, HuggingChat, and Muse Spark Web use a dedicated HTTPS `DURINDOOR_WEB_LOGIN_ORIGIN` on a hostname distinct from the dashboard. The flow fails closed for missing, invalid, or same-hostname configuration, uses a separate host-only cookie, exposes captured names rather than values, and expires after 15 minutes. Iframe login falls back to popup, then manual paste; MiMo retains its separate flow. Its temporary jar removes expired cookies before save; readiness and final save recheck the provider/operator-bound session.
+The preserved snapshot lists ChatGPT Web as unsupported and claims cookies are never refreshed. Current executor selection supports ChatGPT Web, and `mergeRefreshedCookie` persists rotated NextAuth cookies. General cookie expiry still requires a fresh session when upstream revokes it. The current unsupported set excludes `chatgpt-web`. Validation intentionally skips conversation-creating probes for `grok-web`, `copilot-web`, `zenmux-free`, `adapta-web`, and `yuanbao-web`, reporting a skip rather than a pass. NextAuth chunks retain their names; `mergeRefreshedCookie` replaces stale plain and chunked session families. Kimi Web uses access/refresh-token JSON and retains its distinct refresh path. Dashboard-assisted sign-in uses the two-origin isolation described above and never replaces manual cookie entry. Grok Web, Perplexity Web, ChatGPT Web, HuggingChat, and Muse Spark Web use a dedicated HTTPS `DURINDOOR_WEB_LOGIN_ORIGIN` on a hostname distinct from the dashboard. The flow fails closed for missing, invalid, or same-hostname configuration, uses a separate host-only cookie, exposes captured names rather than values, and expires after 15 minutes. Iframe login falls back to popup, then manual paste; MiMo retains its separate flow. Its temporary jar removes expired cookies before save; readiness and final save recheck the provider/operator-bound session.
 
 ### Adapta Web
 

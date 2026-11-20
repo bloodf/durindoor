@@ -409,7 +409,8 @@ export function restoreResponsesToolName(state, name) {
  * Providers sometimes inject a prefix the client never declared (e.g. `functions.exec`
  * for a declared `exec`). Exactly one leading segment is stripped, and only when the
  * remainder is a name this request declared; nothing is matched against a guessed
- * alias table. Unresolvable names are logged once and forwarded unchanged.
+ * alias table. A current flat declaration wins over a historical namespace both
+ * before and after prefix removal. Unresolvable names are logged once and forwarded unchanged.
  */
 export function resolveResponsesToolName(state, name) {
   if (!isString(name)) return { name };
@@ -430,9 +431,9 @@ export function resolveResponsesToolName(state, name) {
 
   // The provider may prefix the upstream alias (`functions.<alias>`), so restore the remainder too.
   const rest = restoreResponsesToolName(state, name.slice(dot + 1));
+  if (isDeclaredFlatTool(state, rest)) return { name: rest };
   const injected = splitNamespacedName(state, rest);
   if (injected) return injected;
-  if (isDeclaredFlatTool(state, rest)) return { name: rest };
 
   warnUnresolvedToolName(state, name, "no declared tool name matches");
   return { name };

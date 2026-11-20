@@ -124,7 +124,7 @@ async function buildMultipartBody(body) {
     target.append(key, String(value));
   });
 
-  let image = typeof body.image === "string" ? body.image.trim() : body.image;
+  let image = isString(body.image) ? body.image.trim() : body.image;
   if (image != null && image !== "") {
     if (Array.isArray(image)) {
       for (const byte of image) {
@@ -133,7 +133,7 @@ async function buildMultipartBody(body) {
         }
       }
     }
-    if (typeof image === "string" && /^https?:\/\//i.test(image)) {
+    if (isString(image) && /^https?:\/\//i.test(image)) {
       const fetched = await fetchImageAsBase64(image);
       if (!fetched) throw invalidReference("Unable to fetch reference image safely");
       image = fetched.url;

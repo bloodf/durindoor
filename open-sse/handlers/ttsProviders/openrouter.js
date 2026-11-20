@@ -30,10 +30,12 @@ function splitModelVoice(input, fallbackModel) {
 const TTS_ONLY_MODEL_RE = /text-to-speech model/i;
 
 async function synthesizeViaSpeechEndpoint(text, ttsModel, voice, headers, opts) {
+  const speechBody = { model: ttsModel, input: text };
+  if (voice) speechBody.voice = voice;
   const res = await fetch(`${BASE}/audio/speech`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ model: ttsModel, input: text, ...(voice ? { voice } : {}) }),
+    body: JSON.stringify(speechBody),
     signal: opts.signal,
   });
   if (!res.ok) {

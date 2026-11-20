@@ -128,6 +128,10 @@
       "why": "muse-spark-1.3-contributor + Responses parallel-tool-call item_id keying folded into 'port(upstream): #3820 - muse-spark-1.2 and Responses tool fixes' (fork PR #819); both upstream test files present in tests/unit/"
     },
     {
+      "pr": 4601,
+      "why": "Responses namespace tool calls are preserved here by an independent implementation, not by a cherry-pick. open-sse/translator/request/openai-responses.js expands a type:'namespace' tool into its declared subtools and re-qualifies replayed {name, namespace} calls; open-sse/translator/response/openai-responses.js restores the namespace plus the nested tool name on the stream, non-stream and forced-SSE-to-JSON routes; qualifyNamespacedChoice normalizes a namespaced tool_choice. Covered by tests/unit/openai-responses-tool-name-map-4200.test.js, tests/translator/port-3241-namespace-tools.test.js and tests/unit/grok-cli-namespace-tools.test.js."
+    },
+    {
       "pr": 15589,
       "source": "diegosouzapw/OmniRoute",
       "why": "25ff0ea: Token Saver settings previews the exact CAVEMAN_PROMPTS block used by injectCaveman, with full boundaries and selected-intensity updates. CavemanOutputPreview.jsx and tests/unit/caveman-output-preview.test.js."

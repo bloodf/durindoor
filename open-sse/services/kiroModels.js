@@ -39,7 +39,7 @@ import {
   buildKiroModelVariants,
   stripKiroSyntheticSuffixes } from
 "../providers/models/kiroVariants.js";
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
@@ -468,7 +468,7 @@ export async function resolveKiroModels(credentials, options = {}) {
     if (!upstreamId) continue;
     const display = formatDisplayName(m.modelName, upstreamId, m.rateMultiplier);
     const inputLimit = m?.tokenLimits?.maxInputTokens;
-    const ctx = typeof inputLimit === "number" || typeof inputLimit === "string" ? Number(inputLimit) : NaN;
+    const ctx = isNumber(inputLimit) || isString(inputLimit) ? Number(inputLimit) : NaN;
     const maxOutputTokens = Number(m?.tokenLimits?.maxOutputTokens) || null;
     for (const v of buildVariants(upstreamId, display)) {
       expanded.push({

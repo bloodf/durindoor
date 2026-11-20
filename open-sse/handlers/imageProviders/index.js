@@ -31,6 +31,7 @@ const ADAPTERS = {
   nan: createOpenAIAdapter("nan"),
   recraft: createOpenAIAdapter("recraft"),
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
+  uberllm: createOpenAIAdapter("uberllm"),
   together,
   xai: createOpenAIAdapter("xai"),
   gemini,

@@ -115,11 +115,14 @@ export function canDiscoverModels(connection) {
       case "agy":
         return Boolean(connection.accessToken);
       case "ollama-local":
+      case "devin-cli-agentic":
         return true;
       default:
         return false;
     }
   }
+
+  if (config.apiKeyOnly) return Boolean(connection.apiKey);
 
   // route.js:153-156 — plain config path requires a resolvable token.
   return Boolean(connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey);
@@ -241,6 +244,14 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    if (provider === "devin-cli-agentic") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "Devin CLI connections require an operator" }, { status: 403 });
+      }
+      if (apiKey) {
+        return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+      }
     }
     const usesAwsCredentials = AI_PROVIDERS[provider]?.credentialForm === "aws";
     const awsProfile = usesAwsCredentials ? checkBedrockProfileInput(body.providerSpecificData) : { profile: "" };

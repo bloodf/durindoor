@@ -101,6 +101,11 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     }, proxyOptions);
   }
 
+  // NLP Cloud publishes its chatbot catalog in documentation, not a model-list API.
+  if (connection.provider === "nlpcloud") {
+    return { models: getProviderModels("nlpcloud"), source: "static" };
+  }
+
   const config = PROVIDER_MODELS_CONFIG[connection.provider];
   if (!config) {
     // Generic fallback for registry providers that declare a modelsFetcher
@@ -124,7 +129,8 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     return payload;
   }
 
-  const token = connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey;
+  const token = config.apiKeyOnly ? connection.apiKey :
+    connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey;
   if (!token) return { error: "No valid token found", status: 401 };
 
   let url = config.url;
@@ -152,6 +158,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
   }
 
   const fetchOptions = { method: config.method || "GET", headers, cache: "no-store" };
+  if (config.redirect) fetchOptions.redirect = config.redirect;
   if (config.body && config.method === "POST") fetchOptions.body = JSON.stringify(config.body);
 
   // Cursor-paginated list endpoints (Gemini models.list: pageSize<=1000 +

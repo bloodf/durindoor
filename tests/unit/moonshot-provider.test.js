@@ -72,19 +72,24 @@ describe("Kimi platform Chat Completions", () => {
     expect(await fetchConnectionModels(connection)).toMatchObject({ status: 401 });
   });
 
-  it("validates new and saved platform keys through the read-only model list", async () => {
+  it("validates a new platform key through the read-only model list", async () => {
     fetch.mockResolvedValueOnce(Response.json({ data: [] }));
     const request = new Request("http://localhost/api/providers/validate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "kimi", apiKey: key }) });
     expect(await (await validate(request)).json()).toMatchObject({ valid: true });
     expect(fetch.mock.calls[0][0]).toBe("https://api.moonshot.ai/v1/models");
     expect(fetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${key}`);
+  });
+
+  it.each([[200, true], [400, true], [401, false], [403, false]])("preserves saved connection probe behavior for HTTP %i", async (status, valid) => {
     getProviderConnectionById.mockResolvedValue({ ...connection, authType: "apikey" });
-    const probe = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    const probe = vi.fn(async () => new Response("fixture", { status }));
     const restore = __setProviderTestFetchForTesting(probe);
     try {
-      expect(await testSingleConnection("fixture")).toMatchObject({ valid: false });
-      expect(probe.mock.calls[0][0]).toBe("https://api.moonshot.ai/v1/models");
+      expect(await testSingleConnection("fixture")).toMatchObject({ valid });
+      expect(probe.mock.calls[0][0]).toBe("https://api.moonshot.ai/v1/chat/completions");
       expect(probe.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${key}`);
+      expect(probe.mock.calls[0][1].method).toBe("POST");
+      expect(JSON.parse(probe.mock.calls[0][1].body)).toMatchObject({ model: "kimi-for-coding", max_tokens: 1 });
     } finally { restore(); }
   });
 

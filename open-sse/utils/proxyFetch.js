@@ -13,7 +13,7 @@ import {
   runProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 let originalFetch = globalThis.fetch;
 const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
@@ -774,10 +774,10 @@ export async function serializeBypassRequestBody(body) {
 // A failed proxy dispatch may already have consumed these bodies. Inspect only
 // their shape; never read, clone, or otherwise disturb the request body.
 function hasNonReplayableBody(input, body) {
-  if (body != null && (typeof body === "object" || typeof body === "function") &&
+  if (body != null && (isObject(body) || isFunction(body)) &&
     (isFunction(body.getReader) || isFunction(body.pipe) || isFunction(body.stream) ||
       isFunction(body[Symbol.asyncIterator]))) return true;
-  return typeof Request !== "undefined" && input instanceof Request &&
+  return !isUndefined(globalThis.Request) && input instanceof globalThis.Request &&
     (input.bodyUsed || input.body !== null);
 }
 

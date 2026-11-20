@@ -2,7 +2,7 @@
 
 ## Snapshot and method
 
-Comparison recorded 2026-11-20. Upstream is `cheaper-inference/OmniRoute` branch `release/v3.8.55` at **`ab180e32fcdf1f78c96f98a617e17c86e34bf5aa`**. DurinDoor comparison `HEAD` is **`fd3a0f959a5eca082d8f042634d38b7005228e5c`**. The upstream ref is a moving branch; the SHA pins this inventory. Public source entry points: [upstream provider registry](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/index.ts), [upstream registry contract and legacy adapter](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86f98a617e17c86e34bf5aa/open-sse/config/providerRegistry.ts), [DurinDoor registry](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/registry/index.js).
+Comparison recorded 2026-11-20. Upstream is `cheaper-inference/OmniRoute` branch `release/v3.8.55` at **`ab180e32fcdf1f78c96f98a617e17c86e34bf5aa`**. DurinDoor comparison `HEAD` is **`fd3a0f959a5eca082d8f042634d38b7005228e5c`**. The upstream ref is a moving branch; the SHA pins this inventory. Every upstream link below was confirmed to resolve at the pinned revision. Public source entry points: [upstream provider registry](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/index.ts), [upstream registry contract and legacy adapter](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providerRegistry.ts), [DurinDoor registry](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/registry/index.js).
 
 Scope is outbound inference/media providers registered in the runtime provider registry. Inbound `/v1` API compatibility and client setup are listed separately; neither is an outbound upstream provider. Model availability is a combination of static provider registry entries, provider-specific model files, and (where configured) live discovery/passthrough. Catalog presence alone does not prove successful live service. No live provider APIs or credentials were used.
 
@@ -14,16 +14,17 @@ Sign-in method is contract-specific: `apikey` means user-supplied API key; `oaut
 
 ### Upstream provider identities, aliases and auth modes
 
-The rows below identify all 282 registry module contracts (module names are the source path under `open-sse/config/providers/registry/`; `*` denotes nested module). Alias and auth are from each `RegistryEntry` when literal; `—` means default/inherited alias/auth, not proof that no credential is needed. The registry and shared auth policy are authoritative for computed values. Source files follow each identity as `registry/<module>/index.ts`.
+The rows below identify all 282 registry module contracts (module names are the source path under `open-sse/config/providers/registry/`; nested modules are listed under their upstream identity name, for example `glm-cn`, `kimi-coding` and `opencode-go`). Alias and auth are from each `RegistryEntry` when literal; `—` means default/inherited alias/auth, not proof that no credential is needed. The registry and shared auth policy are authoritative for computed values. Source files follow each identity as `registry/<module>/index.ts`.
 
 | Identity | Alias | Sign-in | Identity | Alias | Sign-in |
 |---|---|---|---|---|---|
 | adapta-web | adp-web | API key | agentrouter | agentrouter | API key |
-| agnes | — | API key | agy | agy | OAuth |
-| ai21 | ai21 | API key | aihorde | — | inherited |
-| aimlapi | aiml | API key | ainative | — | inherited |
-| ainetcafe | ainetcafe | inherited | aion | — | inherited |
-| alibaba | ali | API key | ant-ling | ling | API key |
+| agnes | — | API key | agnes-cn | agnescn | API key |
+| agy | agy | OAuth | ai21 | ai21 | API key |
+| aihorde | — | inherited | aimlapi | aiml | API key |
+| ainative | — | inherited | ainetcafe | ainetcafe | inherited |
+| aion | — | inherited | alibaba | ali | API key |
+| alibaba-cn | ali-cn | API key | ant-ling | ling | API key |
 | anthropic | anthropic | API key | antigravity | — | OAuth |
 | anyapi | anyapi | inherited | api-airforce | af | API key |
 | apmix | apmix | API key | arcee-ai | arcee | inherited |
@@ -122,29 +123,30 @@ The rows below identify all 282 registry module contracts (module names are the 
 | opencode-zen | opencode-zen | API key | opencode-server | ocs | API key |
 | openference | of | OAuth | openference-api | ofa | inherited |
 | openrouter | openrouter | API key | openvecta | openvecta | inherited |
-| opper | opper | inherited | ovhcloud | ovh | optional |
-| paraloncloud | paralon | inherited | perplexity | pplx | API key |
-| perplexity-agent | pplx-agent | API key | perplexity-web | pplx-web | API key/session |
-| pioneer | pn | API key | plamo | plamo | API key |
-| poe | poe | API key/session | poixe-ai | poixe-ai | inherited |
-| pollinations | pol | optional | poolside | poolside | inherited |
-| predibase | predibase | API key | promptql | pql | API key |
-| publicai | publicai | API key | qianfan | qianfan | API key |
-| qiniu | qiniu | API key | qoder | if | API key |
-| qwen-cloud | qwc | API key | qwen-cloud-token-plan | qct | API key |
-| regolo | regolo | inherited | reka | reka | API key |
-| replicate | replicate | API key | requesty | requesty | inherited |
-| routeway | — | inherited | runcrate | runcrate | API key |
-| sambanova | samba | API key | sarvam | sarvam | API key |
-| scaleway | scw | API key | sealion | — | inherited |
-| seekai | ska | inherited | sensenova | sensenova | API key |
-| siliconflow | siliconflow | inherited | snowflake | snowflake | API key |
-| sparkdesk | sparkdesk | API key | speka | speka | inherited |
-| stepfun | stepfun | API key | sumopod | sumopod | API key |
-| synthetic | synthetic | API key | syntx | stx | API key |
-| t3-web | t3chat | API key/session | tabitoken | tabitoken | API key |
-| tencent | tencent | API key | tencent-aistudio-web | tasw | API key/session |
-| tinycms | tcw | API key/session | token-kiosk | tk | API key |
+| opper | opper | inherited | orcarouter | orcarouter | API key |
+| ovhcloud | ovh | optional | paraloncloud | paralon | inherited |
+| perplexity | pplx | API key | perplexity-agent | pplx-agent | API key |
+| perplexity-web | pplx-web | API key/session | pioneer | pn | API key |
+| plamo | plamo | API key | poe | poe | API key/session |
+| poixe-ai | poixe-ai | inherited | pollinations | pol | optional |
+| poolside | poolside | inherited | predibase | predibase | API key |
+| promptql | pql | API key | publicai | publicai | API key |
+| qianfan | qianfan | API key | qiniu | qiniu | API key |
+| qoder | if | API key | qwen-cloud | qwc | API key |
+| qwen-cloud-token-plan | qct | API key | regolo | regolo | inherited |
+| reka | reka | API key | replicate | replicate | API key |
+| requesty | requesty | inherited | routeway | — | inherited |
+| runcrate | runcrate | API key | sambanova | samba | API key |
+| sarvam | sarvam | API key | scaleway | scw | API key |
+| sealion | — | inherited | seekai | ska | inherited |
+| sensenova | sensenova | API key | siliconflow | siliconflow | inherited |
+| snowflake | snowflake | API key | sparkdesk | sparkdesk | API key |
+| speka | speka | inherited | stepfun | stepfun | API key |
+| sumopod | sumopod | API key | synthetic | synthetic | API key |
+| syntx | stx | API key | t3-web | t3chat | API key/session |
+| tabitoken | tabitoken | API key | tencent | tencent | API key |
+| tencent-aistudio-web | tasw | API key/session | tinycms | tcw | API key/session |
+| together | together | API key | token-kiosk | tk | API key |
 | tokenharbor | tokenharbor | inherited | tokenmarket | tokenmarket | inherited |
 | tokenreply | tokenreply | inherited | tokenrouter | trk | API key |
 | trae | tr | OAuth | twinmind | tm | API key |
@@ -169,11 +171,11 @@ The rows below identify all 282 registry module contracts (module names are the 
 | zenmux-free | zmf | API key | zerolimitai | zerolimitai | inherited |
 | zylo-api | zylo | inherited | | | |
 
-Some upstream module exports represent multiple contracts (for example media providers, an API key variant, or a provider-specific plan); the table is the registered identity surface, not a count of modules. Aliases and auth markers are abbreviated from static source. Dynamic/shared auth, cookies and cloud identity can add requirements; verify the individual source before implementation.
+Some upstream module exports represent multiple contracts (for example media providers, an API key variant, or a provider-specific plan); the table lists each registry module once and is a module inventory rather than a count of registered identities. A module that registers several identities is represented by its module row: `cursor` also registers `cursor-api`, `mlx` also registers `mlx-gemma`/`mlx-qwen`, `tinycms` also registers `tinycms-web`, and `xai` also registers `xai-oauth`. Aliases and auth markers are abbreviated from static source. Dynamic/shared auth, cookies and cloud identity can add requirements; verify the individual source before implementation.
 
 ## DurinDoor runtime comparison
 
-DurinDoor has 326 provider registry modules and generated registration wiring. Its active runtime contract is spread across `open-sse/providers/registry/`, `open-sse/providers/schema.js`, auth executors in `open-sse/auth/`, provider-specific executors in `open-sse/executors/`, and dispatch/model discovery in `open-sse/handlers/` and `open-sse/services/`. There are more registry files than upstream contracts, in part because DurinDoor has dedicated aliases and families (local inference, media, search, speech, image/video, OmniRoute-compatible and provider-specific plans). Provider IDs that overlap are not proof of parity: endpoint, credential acquisition, headers, request translation, model discovery and capabilities can differ.
+DurinDoor has 326 provider registry modules and generated registration wiring. Its active runtime contract is spread across `open-sse/providers/registry/`, `open-sse/providers/schema.js`, provider-specific executors and OAuth flows in `open-sse/executors/`, credential helpers in `open-sse/services/` and `open-sse/shared/`, and dispatch/model discovery in `open-sse/handlers/` and `open-sse/services/`. There are more registry files than upstream contracts, in part because DurinDoor has dedicated aliases and families (local inference, media, search, speech, image/video, OmniRoute-compatible and provider-specific plans). Provider IDs that overlap are not proof of parity: endpoint, credential acquisition, headers, request translation, model discovery and capabilities can differ.
 
 ### Existing provider deltas (not missing providers)
 
@@ -192,14 +194,15 @@ These upstream IDs are absent as exact IDs from DurinDoor registry files at the 
 
 | Missing identity | Upstream sign-in/source | Suggested mock acceptance test | Issues / uncertainty |
 |---|---|---|---|
-| `arcee-ai`, `cerebrium`, `chat-oripe`, `chatgpt`, `chatgpt-web-codex`, `chatplayground`, `cloudflare-playground`, `codebuddy-intl`, `conol-web`, `daoxe` | Registry modules under [upstream registry](https://github.com/cheaper-inference/OmniRoute/tree/ab180e32fcdf1f78d8f042634d38b7005228e5c/open-sse/config/providers/registry); auth markers range inherited, API key, OAuth and none. | Per-ID fixture: register identity, provide fake credentials where required, capture URL/headers/body and validate normalized response. | `chatgpt` is distinct OAuth contract; DurinDoor OpenAI API-key support is not equivalent. |
+| `arcee-ai`, `cerebrium`, `chat-oripe`, `chatgpt`, `chatgpt-web-codex`, `chatplayground`, `cloudflare-playground`, `codebuddy-intl`, `conol-web`, `daoxe` | Registry modules under [upstream registry](https://github.com/cheaper-inference/OmniRoute/tree/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/registry); auth markers range inherited, API key, OAuth and none. | Per-ID fixture: register identity, provide fake credentials where required, capture URL/headers/body and validate normalized response. | `chatgpt` is distinct OAuth contract; DurinDoor OpenAI API-key support is not equivalent. |
 | `demonroute`, `devin-cli-agentic`, `devin-desktop`, `empiriolabs`, `freebuff`, `g4f-gemini`, `g4f-groq`, `g4f-nvidia`, `g4f-ollama`, `g4f-pollinations` | Same pinned provider registry; mixed inherited, OAuth, none and optional auth. | For optional/anonymous routes test both absent and configured key; for OAuth test fake refresh; assert proper executor selection. | Agentic/desktop route behavior may depend on installed client or delegated service. |
 | `gisoo`, `grokified`, `helyxai`, `hetzner`, `hyperagent`, `lmarena`, `maxai`, `megabrain`, `minimax-code`, `mnn-ai` | Same pinned provider registry; mix API key, OAuth, no-key and inherited contracts. | Fake each provider protocol with success/error fixtures; assert auth, retry and error mapping. | `minimax-code` is an agent/client-style path and should not be equated with MiniMax API-key chat. |
 | `monsterapi`, `moonshot`, `naga-ai`, `nan`, `nlpcloud`, `notion-web`, `notrack-web`, `ollama-cloud`, `opencode-server`, `openference` | Same pinned provider registry; mixed API key, OAuth, inherited or session auth. | Assert server-vs-web endpoint path and model translation against a local fake endpoint; reject missing required auth. | `moonshot` overlaps conceptually with Kimi but is a separate identity/endpoint. `openference` OAuth differs from `openference-api`. |
 | `paraloncloud`, `poe`, `predibase`, `promptql`, `replicate`, `runcrate`, `seekai`, `syntx`, `tabitoken`, `tencent-aistudio-web` | Same pinned provider registry; inherited, API key or web/session contracts. | Test configured credential insertion, URL/path, stream parsing and provider error conversion with recorded fixtures. | `poe` and Tencent web use web/session-like behavior, not generic hosted inference. |
-| `tinycms`, `tokenharbor`, `twinmind`, `uc`, `workbuddy`, `xkiro`, `y-api`, `zai-web`, `zcode`, `zed-hosted` | Same pinned provider registry; API-key/inherited/none or OAuth. | Fake endpoint plus missing/valid credential cases; for OAuth assert callback exchange and refresh; for no-key routes assert no auth header. | `zed-hosted` is OAuth; `uc`/`zcode` are marked none; inherited auth requires source-level confirmation. |
+| `tinycms-web`, `tokenharbor`, `twinmind`, `uc`, `workbuddy`, `xkiro`, `y-api`, `zai-web`, `zcode`, `zed-hosted` | Same pinned provider registry; API-key/inherited/none or OAuth. | Fake endpoint plus missing/valid credential cases; for OAuth assert callback exchange and refresh; for no-key routes assert no auth header. | `zed-hosted` is OAuth; `uc`/`zcode` are marked none; inherited auth requires source-level confirmation. |
+| `blackbox-web`, `claude-web`, `cursor-api`, `deepseek-web`, `doubao-web`, `gemini-web`, `mlx-gemma`, `mlx-qwen`, `xai-oauth` | Registry modules under [upstream registry](https://github.com/cheaper-inference/OmniRoute/tree/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/registry); API-key web/session contracts, local MLX endpoints and an OAuth variant. | Per-ID fixture: register identity, provide fake credentials where required, capture URL/headers/body and validate normalized response. | Web/session variants are not generic hosted inference; `mlx-gemma`/`mlx-qwen` are local endpoints and `xai-oauth` is a separate OAuth contract. |
 
-There are 60 upstream IDs with no exact DurinDoor ID. Before treating this table as complete gap analysis, resolve renamed/aliased equivalents against endpoint, auth and executor behavior. Issue markers found in source are provider-specific context rather than proof of a reported defect; no source:omniroute issue is attributed to these deltas unless linked in the cited source. Search issue tracker at review time for active reports.
+There are 69 upstream IDs with no exact DurinDoor ID. Before treating this table as complete gap analysis, resolve renamed/aliased equivalents against endpoint, auth and executor behavior. Issue markers found in source are provider-specific context rather than proof of a reported defect; no source:omniroute issue is attributed to these deltas unless linked in the cited source. Search issue tracker at review time for active reports.
 
 ## Antigravity observations (report only)
 
@@ -207,8 +210,8 @@ Both repositories register Antigravity as a distinct provider with OAuth and a d
 
 ## Primary source locations
 
-- Upstream registry composition and shared contract: [`open-sse/config/providers/index.ts`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78d8f042634d38b7005228e5c/open-sse/config/providers/index.ts), [`open-sse/config/providers/shared.ts`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78d8f042634d38b7005228e5c/open-sse/config/providers/shared.ts), and [`open-sse/config/providerRegistry.ts`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78d8f042634d38b7005228e5c/open-sse/config/providerRegistry.ts).
-- Upstream routing/auth/model contracts: [`open-sse/config/providers/registry/`](https://github.com/cheaper-inference/OmniRoute/tree/ab180e32fcdf1f78d8f042634d38b7005228e5c/open-sse/config/providers/registry), `open-sse/auth/`, `open-sse/executors/`, and `open-sse/handlers/` at the same pinned commit.
-- DurinDoor registration: [`open-sse/providers/registry/index.js`](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/registry/index.js), generated [provider registry index](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/registry/index.js), [`open-sse/providers/schema.js`](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/schema.js), `open-sse/auth/`, `open-sse/executors/`, `open-sse/handlers/`, and `open-sse/services/` at the comparison SHA.
-- Upstream client setup: [`bin/cli/api-commands/setup.mjs`](https://github.com/cheaper-inference/OmniRoute/tree/ab180e32fcdf1f78d8f042634d38b7005228e5c/bin/cli) and setup guides under `docs/guides/`.
+- Upstream registry composition and shared contract: [`open-sse/config/providers/index.ts`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/index.ts), [`open-sse/config/providers/shared.ts`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/shared.ts), and [`open-sse/config/providerRegistry.ts`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providerRegistry.ts).
+- Upstream routing/auth/model contracts: [`open-sse/config/providers/registry/`](https://github.com/cheaper-inference/OmniRoute/tree/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/open-sse/config/providers/registry), `open-sse/executors/`, `open-sse/handlers/`, and the OAuth/auth surface under `src/lib/oauth/`, `src/server/auth/` and `src/app/api/oauth/` at the same pinned commit.
+- DurinDoor registration: [`open-sse/providers/registry/index.js`](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/registry/index.js), generated [provider registry index](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/registry/index.js), [`open-sse/providers/schema.js`](https://github.com/bloodf/durindoor/blob/fd3a0f959a5eca082d8f042634d38b7005228e5c/open-sse/providers/schema.js), `open-sse/executors/`, `open-sse/handlers/`, `open-sse/services/` and `open-sse/shared/` at the comparison SHA.
+- Upstream client setup: [`bin/cli/commands/setup.mjs`](https://github.com/cheaper-inference/OmniRoute/blob/ab180e32fcdf1f78c96f98a617e17c86e34bf5aa/bin/cli/commands/setup.mjs) and setup guides under `docs/guides/`.
 - Public issues: [OmniRoute issue tracker](https://github.com/cheaper-inference/OmniRoute/issues). Issue association is intentionally not guessed from keyword similarity.

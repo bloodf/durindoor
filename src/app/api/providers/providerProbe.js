@@ -207,6 +207,10 @@ export function buildProviderProbeHeaders(cfg, apiKey) {
 }
 
 export function buildRegistryProviderProbe(provider, apiKey, providerSpecificData = {}) {
+  // The International chat endpoint requires a full streamed request. A generic
+  // malformed chat probe can return 400 before checking the key, so it cannot
+  // establish credential validity.
+  if (provider === "codebuddy-intl") return null;
   if (provider === "cerebrium") {
     const base = cerebriumBaseUrl(providerSpecificData?.baseUrl);
     if (!base || !apiKey) return null;

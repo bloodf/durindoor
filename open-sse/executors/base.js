@@ -437,6 +437,9 @@ export class BaseExecutor {
           const field = findOffendingField(errorText);
           if (
           field &&
+          // Azure negotiates token-limit spellings in its executor. Dropping
+          // either field here would silently remove the caller's output cap.
+          !(this.provider === "azure" && (field === "max_tokens" || field === "max_completion_tokens")) &&
           requestBody && isObject(
             requestBody) &&
           !Array.isArray(requestBody) &&

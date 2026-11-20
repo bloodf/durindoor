@@ -121,6 +121,8 @@ export function canDiscoverModels(connection) {
     }
   }
 
+  if (config.apiKeyOnly) return Boolean(connection.apiKey);
+
   // route.js:153-156 — plain config path requires a resolvable token.
   return Boolean(connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey);
 }

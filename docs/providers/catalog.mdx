@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 334 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 335 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -134,6 +134,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |
 | Gemini | `gemini` | freeTier | 31 | [site](https://ai.google.dev) |
 | Gemini CLI | `gemini-cli` | oauth | 7 | [site](https://github.com/google-gemini/gemini-cli) |
+| Gemini Interactions | `gemini-interactions` | apikey | 3 | [site](https://aistudio.google.com/docs/interactions-overview) |
 | GoAPI | `getgoapi` | apikey | 0 | [site](https://api.getgoapi.com) |
 | GitHub Enterprise Copilot | `ghe-copilot` | oauth | 40 | [site](https://docs.github.com/en/enterprise-cloud@latest/copilot) |
 | GigaChat | `gigachat` | apikey | 3 | [site](https://developers.sber.ru/portal/products/gigachat-api) |

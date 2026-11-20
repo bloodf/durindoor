@@ -137,3 +137,19 @@ Pioneer is now Fastino: `api.pioneer.ai` is retired and the API lives at `https:
 
 - No live call was made. Whether `/v1/chat/completions` serves the listed decoder model IDs without a `schema`, and the contents of the authenticated `/v1/models`, are unconfirmed.
 - Model IDs and context windows come from `docs.fastino.ai` only.
+
+## Gemini Interactions
+
+In **Dashboard → Providers → Gemini Interactions**, choose **Add API Key** and paste a Google AI Studio API key. Connection validation and model discovery use Google's model list. Discovery shows the supported text subset available to that key.
+
+Send a single text turn to `POST /v1beta/interactions` with your **DurinDoor** key in `x-goog-api-key`. For example:
+
+```json
+{"model":"gemini-interactions/gemini-4-hydrogen","input":"Explain how a sundial works.","store":false,"stream":true}
+```
+
+Omit `stream` or set it to `false` for JSON. In SSE, read text from `step.delta` and token usage from `interaction.completed`. A provider failure after the stream opens arrives as an `error` event. DurinDoor chooses an eligible Gemini Interactions connection and sends its stored Google key upstream.
+
+The same provider-qualified model works on `POST /v1/chat/completions` with one text-only user message. DurinDoor always sends `store: false`. Interaction IDs identify the current response only. This integration supports foreground creation with text input and output. The existing **Gemini** connection still serves GenerateContent and the Gemini media endpoints.
+
+See the [Google Interactions overview](https://aistudio.google.com/docs/interactions-overview) and [streaming guide](https://aistudio.google.com/docs/streaming).

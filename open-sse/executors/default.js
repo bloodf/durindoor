@@ -13,6 +13,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
+import { refreshOpenferenceToken } from "../services/openferenceAuth.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
@@ -692,6 +693,7 @@ export class DefaultExecutor extends BaseExecutor {
     if (!credentials.refreshToken) return null;
 
     const refreshers = {
+      openference: () => refreshOpenferenceToken(credentials, log, proxyOptions),
       claude: () => this.refreshFromGrant(credentials, proxyOptions),
       codex: () => this.refreshFromGrant(credentials, proxyOptions),
       qwen: () => this.refreshWithForm(OAUTH_ENDPOINTS.qwen.token, { grant_type: "refresh_token", refresh_token: credentials.refreshToken, client_id: PROVIDERS.qwen.clientId }, proxyOptions),

@@ -301,7 +301,9 @@ async function beginAuthorization(provider, input) {
   const redirectUri = input.redirectUri || input.redirect_uri ||
   defaultOAuthRedirectUri(provider) ||
   "http://localhost:8080/callback";
-  const meta = input.meta && isObject(input.meta) ? input.meta : undefined;
+  const meta = provider === "openference" ?
+  { clientId: process.env.OPENFERENCE_OAUTH_CLIENT_ID?.trim() || "" } :
+  input.meta && isObject(input.meta) ? input.meta : undefined;
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(
     provider,
@@ -450,9 +452,9 @@ async function completeAuthorization(provider, input) {
 
   const claim = claimBoundOAuthFlow({ flowId, state, provider, kind: "authorization" });
   try {
-    // OrcaRouter codes are only ever exchanged: storing a pasted JWT-shaped
-    // code as a raw credential would skip the key exchange entirely.
-    if (provider !== ORCAROUTER_ID && code.startsWith("eyJ") && code.includes(".")) {
+    // OrcaRouter and Openference codes must be exchanged, including JWT-shaped
+    // codes; treating one as a token would bypass the authorization grant.
+    if (provider !== ORCAROUTER_ID && provider !== "openference" && code.startsWith("eyJ") && code.includes(".")) {
       const resolvedProxy = await resolveOAuthProxySelection(claim.payload.proxySelection);
       // Await before finally consumes the claim so the DB's shouldCommit guard
       // remains active through the actual write.

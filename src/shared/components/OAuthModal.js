@@ -543,6 +543,12 @@ export default function OAuthModal({
       }
 
       const url = new URL(input);
+      if (provider === "openference") {
+        const expected = new URL(buildOAuthRedirectUri(window.location, provider));
+        if (url.origin !== expected.origin || url.pathname !== expected.pathname) {
+          throw new Error("OAuth callback URL did not match this login attempt");
+        }
+      }
       const code = url.searchParams.get("code");
       const token = url.searchParams.get("token");
       const state = url.searchParams.get("state") || (

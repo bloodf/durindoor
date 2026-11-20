@@ -44,7 +44,12 @@ export function openaiToAntigravityResponse(chunk, state) {
   // Accumulate tool calls silently (no emit until finish)
   if (delta.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const idx = tc.index ?? 0;
+      const indexes = Object.keys(state._toolCallAccum).map(Number);
+      const latest = indexes.length ? Math.max(...indexes) : 0;
+      const known = tc.id ? indexes.find((i) => state._toolCallAccum[i].id === tc.id) : undefined;
+      // Indexless continuations belong to the last call; a new ID starts another.
+      const idx = Number.isInteger(tc.index) ? tc.index : known !== undefined ? known :
+        tc.id && state._toolCallAccum[latest]?.id && tc.id !== state._toolCallAccum[latest].id ? latest + 1 : latest;
       if (!state._toolCallAccum[idx]) {
         state._toolCallAccum[idx] = { id: "", name: "", arguments: "" };
       }

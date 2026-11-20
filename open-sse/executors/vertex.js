@@ -1,34 +1,28 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelMeta } from "../config/providerModels.js";
-import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken } from "../services/tokenRefresh.js";
+import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken, classifyVertexCredential, VERTEX_CREDENTIAL } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
-import { isString } from "../../src/shared/utils/typeChecks.js";
 const projectIdCache = new Map();
 
 /**
- * Parse Google ADC user credential JSON from apiKey string.
- * This is the format produced by `gcloud auth application-default login`.
+ * Resolve the Google credential a connection carries.
+ *
+ * Service Account JSON, ADC `authorized_user` JSON and opaque Express-mode API
+ * keys are all supported. A JSON document that is none of those is rejected
+ * here instead of being demoted to a raw API key: a raw key travels in the URL
+ * query string, so the demotion would put a private key, a client secret or a
+ * refresh token into the outbound URL and in front of the egress proxy.
  */
-function parseVertexAdcJson(apiKey) {
-  if (!isString(apiKey)) return null;
-  try {
-    const parsed = JSON.parse(apiKey);
-    if (
-    parsed.type === "authorized_user" &&
-    parsed.client_id &&
-    parsed.client_secret &&
-    parsed.refresh_token)
-    {
-      return parsed;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+function resolveVertexCredential(apiKey) {
+  const credential = classifyVertexCredential(apiKey);
+  if (credential.error) throw new Error(credential.error);
+  const saJson = credential.kind === VERTEX_CREDENTIAL.SERVICE_ACCOUNT ? credential.json : null;
+  const adcJson = credential.kind === VERTEX_CREDENTIAL.ADC ? credential.json : null;
+  return { credential, saJson, adcJson };
 }
 
 /**
@@ -73,8 +67,7 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
-    const saJson = parseVertexSaJson(credentials?.apiKey);
-    const adcJson = parseVertexAdcJson(credentials?.apiKey);
+    const { saJson, adcJson } = resolveVertexCredential(credentials?.apiKey);
     const usesOAuth = !!saJson || !!adcJson || !!credentials?.accessToken;
     const rawKey = !usesOAuth ? credentials?.apiKey : null;
     const projectId =
@@ -148,8 +141,7 @@ export class VertexExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
     const effectiveCredentials = credentials ? { ...credentials } : credentials;
-    const saJson = parseVertexSaJson(effectiveCredentials?.apiKey);
-    const adcJson = parseVertexAdcJson(effectiveCredentials?.apiKey);
+    const { saJson, adcJson } = resolveVertexCredential(effectiveCredentials?.apiKey);
 
     // SA JSON flow: mint Bearer token via JWT assertion (cached)
     if (saJson) {

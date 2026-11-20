@@ -16,6 +16,10 @@
 // thinking inside one message. On exhaustion an {error:{...}} event is emitted
 // in-stream — the gemini translator turns it into the client-facing error
 // finish, which Anthropic clients treat as retryable.
+//
+// A provider terminal completes the response. Some upstreams hold the socket
+// open after it instead of sending EOF, so the attempt closes the client
+// stream itself once a short trailing-byte drain window expires (#1073).
 import { GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../../translator/schema/finishReasons.js";
 import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
@@ -25,6 +29,14 @@ import { advancePendingSseLineBytes } from "../../utils/pendingSseLine.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export const EMPTY_STREAM_MAX_RETRIES = 2;
 export const EMPTY_STREAM_BASE_DELAY_MS = 500;
+
+// A confirmed provider terminal completes the response: the upstream is not
+// required to send EOF after it (some Antigravity relays hold the socket
+// open). The attempt still gets a short, bounded window to deliver trailing
+// usage bytes, then the stream closes as a normal completion instead of
+// failing with a raw-byte stall. Never longer than the raw-byte stall budget,
+// so a completed attempt can never wait longer than it did before.
+export const TERMINAL_DRAIN_TIMEOUT_MS = 1000;
 
 // A part is meaningful when it carries output the client can act on: a tool
 // call, inline data, or non-whitespace visible text. Thought-only parts are
@@ -94,6 +106,14 @@ function classifyEvent(parsed, meaningfulSeen) {
 /**
  * Wrap the upstream SSE body so empty attempts are retried in-stream.
  *
+ * A confirmed provider terminal (finish reason, content filter, prompt
+ * feedback or an in-stream error after content) completes the response: the
+ * attempt closes the client stream normally once the trailing-byte drain
+ * window expires, so an upstream that never sends EOF after its terminal
+ * cannot turn a finished turn into a stall error (#1073). A stalled attempt
+ * that never confirmed a terminal stays a status-neutral failure: it settles
+ * its dispatch reservation, is not retried and does not cool the account.
+ *
  * @param {ReadableStream} options.body       attempt 1's body
  * @param {() => Promise<ReadableStream>} options.reexecute  re-issue the
  *   identical request; resolves to the new attempt's body, throws on failure
@@ -120,6 +140,9 @@ export function createEmptyRetryStream({
   let currentReader = null;
   let currentBody = body;
   let downstreamGone = false;
+  // Trailing-byte budget for an attempt that already confirmed a provider
+  // terminal. It can never exceed the raw-byte stall budget.
+  const terminalDrainTimeoutMs = Math.min(stallTimeoutMs, TERMINAL_DRAIN_TIMEOUT_MS);
 
   return new ReadableStream({
     async start(controller) {
@@ -168,6 +191,7 @@ export function createEmptyRetryStream({
         let pendingLineBytes = 0;
         let held = null; // this attempt's withheld terminal
         let terminalForwarded = false;
+        let terminalDrainDeadline = null; // set once the provider confirmed its terminal
         let endReason = "empty";
 
         readAttempt: while (true) {
@@ -175,11 +199,18 @@ export function createEmptyRetryStream({
 
           let readResult;
           let stallTimer;
+          // Before the terminal the read is bounded by the raw-byte stall
+          // budget. After it, only the trailing-byte drain budget is left: the
+          // response is already complete, so the remaining wait must not
+          // stretch to the full stall timeout.
+          const readBudgetMs = terminalForwarded ?
+          Math.max(0, terminalDrainDeadline - Date.now()) :
+          stallTimeoutMs;
           try {
             // Defensive stall escape: a byte-silent upstream must not hang the pipe.
             readResult = await Promise.race([
             currentReader.read(),
-            new Promise((resolve) => {stallTimer = setTimeout(() => resolve({ __stalled: true }), stallTimeoutMs);})]
+            new Promise((resolve) => {stallTimer = setTimeout(() => resolve({ __stalled: true }), readBudgetMs);})]
             );
           } catch {
             // A client abort rejects the pending read — never treat it as an
@@ -194,6 +225,13 @@ export function createEmptyRetryStream({
             try {currentReader.cancel().catch(() => {});} catch {/* already closed */}
             if (held?.kind === "error_object") {
               endReason = "stall";
+              break readAttempt;
+            }
+            if (terminalForwarded) {
+              // The provider already confirmed its terminal, so the response is
+              // complete even though the upstream never sent EOF. Close it as a
+              // normal completion: no stall error, and no failed dispatch for a
+              // turn that actually answered.
               break readAttempt;
             }
             // A stalled request says nothing about account health. Settle its
@@ -249,7 +287,14 @@ export function createEmptyRetryStream({
               lastHeld = held;
               continue;
             }
-            if (decision.terminal) terminalForwarded = true;
+            if (decision.terminal) {
+              terminalForwarded = true;
+              // The response is complete from here on. Start the trailing-byte
+              // drain window: trailing usage bytes may still arrive in the
+              // provider framing, but the attempt no longer waits for an
+              // upstream EOF that may never come.
+              terminalDrainDeadline = Date.now() + terminalDrainTimeoutMs;
+            }
             emit(line + "\n");
           }
         }

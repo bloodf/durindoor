@@ -73,6 +73,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xai` | XaiExecutor | `./xai.js` |
 | `xiaomi-mimo` | XiaomiMimoExecutor | `./xiaomi-mimo.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
+| `ybw` | YuanbaoWebExecutor | `./yuanbao-web.js` |
+| `yuanbao-web` | YuanbaoWebExecutor | `./yuanbao-web.js` |
 | `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 | `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 

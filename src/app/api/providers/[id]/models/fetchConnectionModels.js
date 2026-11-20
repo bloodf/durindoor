@@ -1,4 +1,5 @@
 import { getProviderModels } from "open-sse/config/providerModels.js";
+import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -74,6 +75,10 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
       provider: connection.provider, connectionId: connection.id,
       models: getProviderModels(connection.provider), source: "local_catalog",
     };
+  }
+
+  if (connection.provider === "yuanbao-web") {
+    return { provider: connection.provider, connectionId: connection.id, models: yuanbaoWebRegistry.models };
   }
 
   // Model discovery is connection traffic too. Resolve the durable OAuth

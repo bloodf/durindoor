@@ -49,6 +49,7 @@ import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
 import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+import { YuanbaoWebExecutor } from "./yuanbao-web.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
@@ -129,6 +130,8 @@ const executors = {
   m365copilot: new CopilotM365WebExecutor(),
   "veoaifree-web": new VeoAIFreeWebExecutor(),
   "veo-free": new VeoAIFreeWebExecutor(),
+  "yuanbao-web": new YuanbaoWebExecutor(),
+  ybw: new YuanbaoWebExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
   zmf: new ZenmuxFreeExecutor(),
   ...Object.fromEntries(

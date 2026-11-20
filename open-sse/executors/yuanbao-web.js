@@ -53,8 +53,8 @@ export function buildYuanbaoCookie(rawApiKey = "") {
   const raw = stripCookieInputPrefix(rawApiKey);
   const hyUser = extractCookieValue(raw, "hy_user");
   const hyToken = extractCookieValue(raw, "hy_token");
-  if (hyUser && hyToken) return { cookie: `hy_source=web; hy_user=${hyUser}; hy_token=${hyToken}`, hasToken: true };
-  return { cookie: raw, hasToken: raw.includes("hy_token=") };
+  if (/^[^\s;]+$/.test(hyUser) && /^[^\s;]+$/.test(hyToken)) return { cookie: `hy_source=web; hy_user=${hyUser}; hy_token=${hyToken}`, hasToken: true };
+  return { cookie: "", hasToken: false };
 }
 
 async function readUpstreamErrorDetails(response) {
@@ -154,6 +154,10 @@ export class YuanbaoWebExecutor extends BaseExecutor {
     super("yuanbao-web", { id: "yuanbao-web", baseUrl: CHAT_URL });
   }
 
+  // Generic translation must not expose this session credential.
+  buildHeaders() { throw new Error("Yuanbao requires its specialized executor"); }
+  buildUrl() { throw new Error("Yuanbao requires its specialized executor"); }
+
   async execute(input) {
     const { model, body, stream, credentials = {}, signal, log, upstreamExtraHeaders, proxyOptions = null } = input;
     const messages = body?.messages;
@@ -179,7 +183,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
     const baseHeaders = { Cookie: cookie, "User-Agent": USER_AGENT, Origin: YUANBAO_BASE, Referer: `${YUANBAO_BASE}/chat/${DEFAULT_AGENT_ID}`, "X-Agentid": DEFAULT_AGENT_ID };
     let conversationId;
     try {
-      const createRes = await fetchWithTimeout(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal }, { proxyOptions });
+      const createRes = await fetchWithTimeout(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal, redirect: "error" }, { proxyOptions });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
         let message = createRes.status === 401 || createRes.status === 403 ? "Yuanbao auth failed; hy_user/hy_token may be expired." : createRes.status === 429 ? "Yuanbao rate limited. Wait and retry." : `Yuanbao conversation creation failed (HTTP ${createRes.status})`;
@@ -193,7 +197,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
       return { response: errorJson(502, `Yuanbao connection failed: ${err?.message || err}`), url: CREATE_URL, headers: baseHeaders, transformedBody: body };
     }
 
-    const messageUrl = `${CHAT_URL}/${conversationId}`;
+    const messageUrl = `${CHAT_URL}/${encodeURIComponent(conversationId)}`;
     const chatBody = {
       model: "gpt_175B_0404",
       prompt,
@@ -210,10 +214,14 @@ export class YuanbaoWebExecutor extends BaseExecutor {
     if (modelSpec.supportFunctions) chatBody.supportFunctions = modelSpec.supportFunctions;
     const chatHeaders = { ...baseHeaders, "Content-Type": "application/json", Accept: "text/event-stream" };
     mergeUpstreamExtraHeaders(chatHeaders, upstreamExtraHeaders);
+    for (const key of Object.keys(chatHeaders)) {
+      if (key.toLowerCase() === "cookie" && key !== "Cookie") delete chatHeaders[key];
+    }
+    chatHeaders.Cookie = cookie;
 
     let upstreamResponse;
     try {
-      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal }, { proxyOptions });
+      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal, redirect: "error" }, { proxyOptions });
     } catch (err) {
       log?.error?.("YUANBAO-WEB", `Message send failed: ${err?.message || err}`);
       return { response: errorJson(502, `Yuanbao connection failed: ${err?.message || err}`), url: messageUrl, headers: chatHeaders, transformedBody: chatBody };

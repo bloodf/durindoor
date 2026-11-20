@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   auth: { ok: true, apiKeyId: "key", billingEpoch: null },
   policy: null, credentials: null, fetch: vi.fn(), begin: vi.fn(), settle: vi.fn(),
+  policyCheck: vi.fn(async () => mocks.policy), lifecycle: vi.fn(() => ({ beginDispatch: mocks.begin, settle: mocks.settle })),
   select: vi.fn(async () => mocks.credentials), mark: vi.fn(), clear: vi.fn(), usage: vi.fn(async (_key, response) => response),
 }));
 vi.mock("@/lib/localDb", () => ({ getSettings: async () => ({ requireApiKey: true }) }));
@@ -14,8 +15,8 @@ vi.mock("@/sse/services/auth.js", () => ({
 }));
 vi.mock("@/sse/services/model.js", () => ({ getModelInfo: async (value) => ({ provider: value.startsWith("cx/") ? "codex" : "openai", model: value.split("/").slice(1).join("/") }) }));
 vi.mock("@/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: async (_provider, credential) => credential }));
-vi.mock("@/sse/services/apiKeyPolicy.js", () => ({ enforceApiKeyModelPolicy: async () => mocks.policy, recordApiKeyUsageForResponse: mocks.usage }));
-vi.mock("@/shared/services/quotaSelection", () => ({ createQuotaReservationLifecycle: () => ({ beginDispatch: mocks.begin, settle: mocks.settle }) }));
+vi.mock("@/sse/services/apiKeyPolicy.js", () => ({ enforceApiKeyModelPolicy: mocks.policyCheck, recordApiKeyUsageForResponse: mocks.usage }));
+vi.mock("@/shared/services/quotaSelection", () => ({ createQuotaReservationLifecycle: mocks.lifecycle }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.fetch }));
 
 const { POST } = await import("../../src/app/api/v1/alpha/search/route.js");
@@ -45,7 +46,7 @@ describe("Codex Alpha Search routes", () => {
     expect(options.headers["ChatGPT-Account-Id"]).toBe("stored-account");
     expect(JSON.parse(options.body).model).toBe("gpt-5.4");
     expect(mocks.settle).toHaveBeenCalledWith({ success: true, reason: "success" });
-    expect(mocks.select).toHaveBeenCalledWith("codex", expect.any(Set), "gpt-5.4", { apiKeyId: "key" });
+    expect(mocks.select).toHaveBeenCalledWith("codex", expect.any(Set), "websearch:codex", { apiKeyId: "key", webSearch: true, modelCandidates: ["gpt-5.4"] });
   });
   it.each(["missing", "invalid"])("denies %s gateway authentication before dispatch", async (reason) => {
     mocks.auth = { ok: false, reason };
@@ -128,4 +129,19 @@ it("routes /v1 through the existing versioned rewrite", async () => {
   const { default: config } = await import("../../next.config.mjs");
   const rewrites = await config.rewrites();
   expect(rewrites).toContainEqual({ source: "/v1/:path*", destination: "/api/v1/:path*" });
+});
+
+
+it("isolates search cooldowns while preserving model policy and quota identity", async () => {
+  const req = request();
+  expect((await POST(req)).status).toBe(200);
+  expect(mocks.policyCheck).toHaveBeenCalledWith(req, "codex/gpt-5.4", "gateway");
+  expect(mocks.lifecycle).toHaveBeenCalledWith(expect.objectContaining({ routeKey: "codex/gpt-5.4" }));
+  expect(mocks.select).toHaveBeenCalledWith("codex", expect.any(Set), "websearch:codex", { apiKeyId: "key", webSearch: true, modelCandidates: ["gpt-5.4"] });
+  expect(mocks.clear).toHaveBeenCalledWith("one", mocks.credentials, "websearch:codex", { provider: "codex", webSearch: true });
+  expect(mocks.mark).not.toHaveBeenCalled();
+  mocks.fetch.mockResolvedValueOnce(new Response("failed", { status: 429 }));
+  expect((await POST(request())).status).toBe(429);
+  expect(mocks.mark).toHaveBeenCalledWith("one", 429, "Codex search failed", "codex", "websearch:codex", null, { usedCredential: "stored-token", webSearch: true });
+  expect(mocks.clear).toHaveBeenCalledTimes(1);
 });

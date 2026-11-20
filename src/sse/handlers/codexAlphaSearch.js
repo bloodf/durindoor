@@ -40,7 +40,9 @@ export async function handleCodexAlphaSearch(request) {
   if (provider !== "codex" || !model) return errorResponse(400, "A Codex model is required");
   const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError) return policyError;
-  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, new Set(), model, { apiKeyId: auth.apiKeyId });
+  // Search cooldowns must neither block nor clear this account’s chat traffic.
+  const searchLockKey = `websearch:${provider}`;
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, new Set(), searchLockKey, { apiKeyId: auth.apiKeyId, webSearch: true, modelCandidates: [model] });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) return errorResponse(credentials?.providerDisabled ? 403 : 503, "Codex account unavailable");
   if (credentials.authType !== "oauth") return errorResponse(403, "A valid Codex OAuth account is required");
   let selected;
@@ -62,7 +64,7 @@ export async function handleCodexAlphaSearch(request) {
     if (!upstream.ok) {
       await upstream.body?.cancel();
       const status = upstream.status >= 400 && upstream.status <= 599 ? upstream.status : 502;
-      await markAccountUnavailable(credentials.connectionId, status, "Codex search failed", provider, model, null, { usedCredential: selected.accessToken });
+      await markAccountUnavailable(credentials.connectionId, status, "Codex search failed", provider, searchLockKey, null, { usedCredential: selected.accessToken, webSearch: true });
       return errorResponse(status, "Codex search failed");
     }
     const bytes = await readBounded(upstream.body, RESPONSE_LIMIT, signal, 502);
@@ -70,7 +72,7 @@ export async function handleCodexAlphaSearch(request) {
     try { data = JSON.parse(bytes.toString("utf8")); } catch { return errorResponse(502, "Invalid Codex search response"); }
     if (!data || !isObject(data) || Array.isArray(data) || !isString(data.output) || (data.results != null && !Array.isArray(data.results)) || (data.encrypted_output != null && !isString(data.encrypted_output))) return errorResponse(502, "Invalid Codex search response");
     success = true;
-    await clearAccountError(credentials.connectionId, selected, model);
+    await clearAccountError(credentials.connectionId, selected, searchLockKey, { provider, webSearch: true });
     return await recordApiKeyUsageForResponse(apiKey, Response.json(data), {
       billingEpoch: auth.billingEpoch, usageEventId: `${getRequestId(request)}:codex-alpha-search`, provider, model,
       connectionId: credentials.connectionId, endpoint: "/v1/alpha/search", modality: "webSearch", tokens: {}, nativeUnits: { operations: 1 }, cost: null, costStatus: "unknown", costSource: "unavailable",

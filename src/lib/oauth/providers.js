@@ -1142,13 +1142,13 @@ const PROVIDERS = {
         proxyOptions
       });
 
-      // Handle response properly - if not ok, try to get error as text first
+      // Read once so a non-JSON response can still be returned as an error.
+      // Adapted from OmniRoute src/lib/oauth/providers/github.ts.
+      const text = await response.text();
       let data;
       try {
-        data = await response.json();
-      } catch (e) {
-        // If response is not JSON, get as text
-        const text = await response.text();
+        data = JSON.parse(text);
+      } catch {
         data = { error: "invalid_response", error_description: text };
       }
 

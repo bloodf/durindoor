@@ -34,7 +34,13 @@ export default {
       toolNameMaxLength: 64,
     },
   },
+  // NVIDIA-hosted chat endpoints documented in the model catalog (#1072).
   models: [
+    { id: "stepfun-ai/step-5-preview", name: "Step 5 Preview" },
+    { id: "minimaxai/minimax-m3.1-flash", name: "MiniMax M3.1 Flash" },
+    { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash" },
+    { id: "nvidia/nemotron-3.5-super-vl-120b-a12b", name: "Nemotron 3.5 Super VL" },
+    { id: "mistralai/mistral-large-4-1t-a52b", name: "Mistral Large 4" },
     { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct" },
     { id: "nvidia/riva-translate-4b-instruct-v2", name: "Riva Translate 4B v2" },
     { id: "poolside/laguna-xs-2.1", name: "Laguna XS 2.1" },

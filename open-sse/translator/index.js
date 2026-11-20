@@ -82,8 +82,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   let customToolNames;
   // chatCore supplies an already-clean mapped model plus explicit context, but
   // public/direct translator callers may still pass `model(level)`. Keep that
-  // entry point safe by parsing here as a compatibility fallback.
-  const parsedModel = parseSuffix(model);
+  // entry point safe by parsing here as a compatibility fallback. The provider
+  // scopes the service-tier control, so a tier-shaped suffix on a provider
+  // without tier support stays part of the opaque model ID.
+  const parsedModel = parseSuffix(model, provider);
   const translationModel = parsedModel.cleanModel;
 
   // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)

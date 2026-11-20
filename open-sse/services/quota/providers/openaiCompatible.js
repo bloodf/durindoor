@@ -23,6 +23,15 @@
  *     }
  *   }
  *
+ * A provider that publishes only what is left — a credit balance with no
+ * total — maps `remaining` instead of `total`:
+ *
+ *   "quotas": { "credits": { "remaining": "$.credits" } }
+ *
+ * `total` wins when both are mapped: a known scale is the stronger statement.
+ * A remaining-only mapping is reported as a balance with an unknown scale, so
+ * it carries no utilization ratio and only reads as exhausted at exactly zero.
+ *
  * Paths are dot/bracket paths rather than full JSONPath (`$.a.b[0].c`), so the
  * mapping stays dependency-free and readable in a config field. Anything a
  * path cannot resolve is treated as absent, never as zero: a quota that
@@ -35,7 +44,8 @@ import {
   parseQuotaTimestamp,
   quotaMetadata,
   quotaScopedKey,
-  quotaRow } from
+  quotaRow,
+  remainingQuotaRow } from
 "../normalize.js";
 import {
   connectionCredential,
@@ -75,25 +85,52 @@ function buildAuthHeaders(endpoint, secret) {
 /** One `quotas.<name>` mapping resolved against the response body. */
 function buildQuotaRow(body, name, mapping) {
   if (!isObject(mapping)) return null;
-  const limit = mapping.total === undefined ? null : finiteQuotaNumber(resolveQuotaPath(body, mapping.total));
-  // Absent axis stays absent (never coerced to 0): a mapping that cannot
-  // resolve a total has no scale to report a quota against.
-  if (limit === null) return null;
-  const used = mapping.used === undefined ? null : finiteQuotaNumber(resolveQuotaPath(body, mapping.used));
+  const unit = isString(mapping.currency) && mapping.currency.trim() ? mapping.currency.trim() : null;
   const resetAt = mapping.resetAt === undefined ?
   null :
   parseQuotaTimestamp(resolveQuotaPath(body, mapping.resetAt));
-  const unit = isString(mapping.currency) && mapping.currency.trim() ? mapping.currency.trim() : null;
-  return quotaRow({
-    resourceKey: quotaScopedKey("credits", name),
-    dimensionKey: quotaScopedKey("credits", name),
-    limitKind: "bounded",
-    limit,
-    used,
-    unit,
-    resetAt,
-    metadata: quotaMetadata({ displayName: name })
-  });
+  const dimensionKey = quotaScopedKey("credits", name);
+
+  // A mapped `total` is the scale. When it cannot be resolved the mapping
+  // stays unresolved rather than degrading into a balance row: the operator
+  // asked for a bounded quota and did not get one.
+  if (mapping.total !== undefined) {
+    const limit = finiteQuotaNumber(resolveQuotaPath(body, mapping.total));
+    // Absent axis stays absent (never coerced to 0): a mapping that cannot
+    // resolve a total has no scale to report a quota against.
+    if (limit === null) return null;
+    const used = mapping.used === undefined ? null : finiteQuotaNumber(resolveQuotaPath(body, mapping.used));
+    return quotaRow({
+      resourceKey: dimensionKey,
+      dimensionKey,
+      limitKind: "bounded",
+      limit,
+      used,
+      unit,
+      resetAt,
+      metadata: quotaMetadata({ displayName: name })
+    });
+  }
+
+  // No scale was mapped. A provider that reports only what is left — a
+  // credit balance — still has a readable quota, and it is reported as a
+  // balance with an unknown scale (no utilization ratio) rather than as an
+  // exhausted 0/0. It reads as exhausted only at exactly zero.
+  if (mapping.remaining !== undefined) {
+    const remaining = finiteQuotaNumber(resolveQuotaPath(body, mapping.remaining));
+    if (remaining === null) return null;
+    return remainingQuotaRow({
+      resourceKey: dimensionKey,
+      dimensionKey,
+      remaining,
+      exhausted: remaining === 0,
+      unit,
+      resetAt,
+      metadata: quotaMetadata({ displayName: name })
+    });
+  }
+
+  return null;
 }
 
 export async function fetchOpenAiCompatibleQuota(context) {

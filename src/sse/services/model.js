@@ -10,7 +10,10 @@ import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 export function resolveCustomCapabilities(provider, model, requestPrefix, customModels, inheritedCaps = null, kind = "llm") {
   if (!Array.isArray(customModels) || !model) return null;
-  const { cleanModel } = parseSuffix(model);
+  // Provider-scoped: a custom model id that ends in a tier-shaped suffix keeps
+  // that suffix on providers without tier support, so the row is matched by the
+  // id the operator stored.
+  const { cleanModel } = parseSuffix(model, provider);
   const cleanModelId = String(cleanModel).replace(/^\//, "");
   const registeredProvider = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider || entry.aliases?.includes(provider));
   const canonicalAlias = registeredProvider?.alias || PROVIDER_ID_TO_ALIAS[provider] || provider;
@@ -105,7 +108,7 @@ export function materializeRequestModel(provider, model, requestPrefix = null, s
 // Cache-only metadata is enrichment, not a new model-access/routability check.
 export async function loadCustomCapabilities(provider, model, requestPrefix) {
   if (!isString(model) || !model) return null;
-  const { cleanModel } = parseSuffix(model);
+  const { cleanModel } = parseSuffix(model, provider);
   const modelId = String(cleanModel).replace(/^\//, "");
   const registered = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider || entry.aliases?.includes(provider));
   const providerId = registered?.id || provider;
@@ -146,7 +149,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
 /** Cached OpenRouter flags/limits participate without starting chat-path I/O. */
 function resolveOpenRouterCapabilities(provider, model, custom) {
   if (provider !== "openrouter" || !isString(model)) return custom;
-  const { cleanModel } = parseSuffix(model);
+  const { cleanModel } = parseSuffix(model, provider);
   const live = getOpenRouterModelCapabilities(String(cleanModel));
   if (!live) return custom;
   const keys = custom?.customKeys instanceof Set ? custom.customKeys : new Set();

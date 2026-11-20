@@ -85,6 +85,14 @@ describe("upstream #3423 ordered Qwen3.8 and Muse capabilities", () => {
     expect(body.thinking_budget).toBeUndefined();
   });
 
+  it("resolves dashed Bedrock Claude ids to adaptive thinking and always-on policy", () => {
+    expect(getCapabilitiesForModel("bedrock", "us.anthropic.claude-opus-4-7").thinkingFormat).toBe("claude-adaptive");
+    expect(getCapabilitiesForModel("bedrock", "us.anthropic.claude-opus-4-8").thinkingFormat).toBe("claude-adaptive");
+    for (const model of ["us.anthropic.claude-fable-5-1", "us.anthropic.claude-mythos-5-1"]) {
+      expect(getCapabilitiesForModel("bedrock", model)).toMatchObject({ thinkingFormat: "claude-adaptive", thinkingCanDisable: false });
+    }
+  });
+
   it("keeps Muse specializations ahead of the generic Muse fallback", () => {
     const spark = patternIndex(PATTERN_CAPABILITIES, "*muse-spark*");
     const glimmer = patternIndex(PATTERN_CAPABILITIES, "*muse-glimmer*");

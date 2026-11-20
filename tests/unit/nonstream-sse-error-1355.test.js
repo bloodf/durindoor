@@ -73,7 +73,11 @@ describe.each([
     opts.providerResponse = new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } });
     const result = await handle(opts);
     expect(result).toMatchObject({ success: false, status: 502 });
-    expect(opts.appendLog).toHaveBeenCalledWith({ status: "FAILED 502" });
+    expect(opts.appendLog).toHaveBeenCalledExactlyOnceWith({ status: "FAILED 502" });
+    expect(opts.trackDone).toHaveBeenCalledOnce();
+    expect(opts.onRequestSuccess).not.toHaveBeenCalled();
+    expect(saveUsageStats).not.toHaveBeenCalled();
+    expect(saveRequestDetail).not.toHaveBeenCalled();
   });
 
   it("uses 502 for an OpenRouter-style envelope with code but no status", async () => {

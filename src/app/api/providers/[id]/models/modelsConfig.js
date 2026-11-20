@@ -286,6 +286,20 @@ export function buildClaudeModelsHeaders(token) {
   };
 }
 
+// The catalog includes media and embedding models; only advertise chat endpoints.
+export const parseEmpirioLabsChatModels = (data) => {
+  if (!Array.isArray(data?.data)) return [];
+  return data.data.filter((model) => isString(model?.id) && model.id &&
+    Array.isArray(model.supported_endpoints) && model.supported_endpoints.includes("POST /v1/chat/completions"))
+    .map((model) => {
+      const result = { id: model.id, name: model.display_name || model.id };
+      if (model.context_window) result.contextLength = model.context_window;
+      if (model.max_output_tokens) result.outputTokenLimit = model.max_output_tokens;
+      if (Array.isArray(model.input_modalities) && model.input_modalities.includes("image")) result.supportsVision = true;
+      return result;
+    });
+};
+
 /** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
 export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
   model && isString(model.id) &&
@@ -293,6 +307,7 @@ export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((m
 );
 
 export const PROVIDER_MODELS_CONFIG = {
+  empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {
     url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",

@@ -95,7 +95,15 @@ Monthly budgets use the estimated costs saved with request usage. They are not p
 
 ## Rotation
 
-There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the key and its account-scope assignments.
+`POST /api/keys/{id}/rotate` replaces a key's secret. The dashboard does the same from **Dashboard → API Keys → Rotate**, which asks for confirmation and then shows the new secret once, with a copy button, exactly like a freshly created key.
+
+The key keeps its id, name, scopes, policy, quota, groups, provider connections, expiry and history: the row is the account and the secret is only the credential that opens it. A rotation therefore hands out no fresh budget, and the key's usage stays attached to it. The retired secret stops validating as soon as the rotation returns.
+
+Rotation needs the same permission as the other key changes: an operator session, or an API key with the admin scope. It is a management change, so a key without the admin scope is refused.
+
+Two rotations of the same key that race cannot both install their secret. The one that reaches the row second changes nothing and reports `409`, so a caller never receives a secret that is not installed. A failed rotation leaves the previous secret working.
+
+The rotation itself keeps no copy of the retired secret. It is not written to a ledger, an archive, a log or a cache, and it is never part of a response.
 
 A new key starts with an empty budget. Reusing a key's row with a different secret keeps that row's usage and its remaining budget, because usage is attributed to the key id rather than to the secret.
 

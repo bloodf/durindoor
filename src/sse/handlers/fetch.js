@@ -229,7 +229,9 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
       modality: "webFetch",
       cost: priced ? cost : accounting.cost,
       costStatus: priced ? "estimated" : accounting.costStatus,
-      costSource: priced ? "pricing" : accounting.costSource
+      costSource: priced ? "pricing" : accounting.costSource,
+      // The stable id of the admitted key travels with the usage.
+      apiKeyId,
     });
   };
 

@@ -1,3 +1,4 @@
+import { buildKiroIdentityHeaders } from "../../../open-sse/shared/kiroHeaders.js";
 import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
 import { ANTHROPIC_API_VERSION, CLAUDE_OAUTH_BETA } from "../../../open-sse/providers/shared.js";
 import { isBoolean, isString } from "../../shared/utils/typeChecks.js";
@@ -65,6 +66,7 @@ export async function fetchKiroProfileArn(accessToken, region = "us-east-1", pro
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+        ...buildKiroIdentityHeaders({ accessToken }),
         Accept: "application/json",
         Authorization: `Bearer ${accessToken}`
       },

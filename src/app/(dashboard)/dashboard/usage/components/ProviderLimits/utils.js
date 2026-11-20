@@ -986,6 +986,12 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "nan":
+        for (const [name, quota] of Object.entries(data.quotas || {})) {
+          normalizedQuotas.push({ name, used: quota.used, total: quota.total, resetAt: quota.resetAt || null, unit: quota.unit });
+        }
+        break;
+
       case "ollama":
         // Session (5h) / Weekly (7d) / Monthly usage from ollama.com/api/usage. Carries
         // remainingPercentage only — the API reports a ratio, not an absolute

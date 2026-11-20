@@ -1,0 +1,16 @@
+---
+title: Openference OAuth
+description: Configure an approved OAuth client and connect an Openference account.
+---
+
+# Openference OAuth
+
+Openference OAuth (`openference`, alias `of`) and Openference API key (`openference-api`, alias `ofa`) are separate providers and connections. Existing API-key connections continue to use `ofa`. The new `of` prefix is reserved for OAuth; rename any custom compatible node already using `of` before enabling this provider.
+
+An operator must obtain an Openference-approved OAuth client and set `OPENFERENCE_OAUTH_CLIENT_ID` in the DurinDoor server environment. Register the dashboard's callback URI with that client: `http://localhost:<port>/callback` for a local dashboard or `<public dashboard URL>/callback` for a hosted dashboard. Restart DurinDoor after changing the setting. The client must support authorization code with S256 PKCE, the scopes `openid profile email model:invoke offline_access`, and refresh tokens. Configure the public dashboard URL as described in the deployment guide. Do not paste client secrets into a connection.
+
+Choose **Openference** in Providers and connect the account. Complete the provider's consent and return to the dashboard; if needed, paste the full callback URL. The callback must match the login's state and redirect. Use the connection's model refresh action to discover the models available to that account, then address them as `of/<model-id>`. Requests use OpenAI-compatible chat completions, including streaming and tools, when the selected upstream model supports them. No static model availability or price is assumed.
+
+An expired access token is refreshed using the client ID captured when that connection was authorized and its configured outbound route. If refresh fails, reconnect the same OAuth connection. Changing the environment client ID affects new logins; reconnect existing accounts with the newly approved client when necessary. Connection credentials remain subject to DurinDoor's existing storage and egress settings.
+
+This integration is covered by offline mocks only; account-backed OAuth, model entitlements, prices and runtime behavior have not been verified. Obtain current terms and client registration details from Openference before use. The public Openference documentation currently describes API-key authentication; OAuth details follow the OmniRoute implementation cited in the repository's provider notes.

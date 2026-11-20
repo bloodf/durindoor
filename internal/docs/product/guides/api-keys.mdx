@@ -95,6 +95,8 @@ The daily total stays in `dailyLimitTokens`. An over-limit request gets HTTP 429
 
 RPM and TPM are counted in memory per process: RPM when a request is admitted, TPM when its usage is recorded. Token, request and budget windows sum `usageHistory`, which is written after a response finishes, so requests already in flight can go slightly over. Only endpoints that record usage move the token and budget windows.
 
+Every window belongs to the key, not to the secret it stores. The stable key id admitted with a request is carried into the recorded usage (`usageHistory.apiKeyId`), so the daily and monthly totals, the in-memory request and token rates, and the lifetime caps all follow the key. Replacing a key's secret therefore does not hand the key a fresh budget, and two keys never share one. Rows written before that column existed keep their scoped association through the stored secret, and a row is never counted twice.
+
 `usageHistory` is also the per-request cost record: every row carries the key, provider, model, token counts, the estimated `cost` and its split by rate (`inputCost`, `cachedCost`, `cacheCreationCost`, `outputCost`, `reasoningCost`). The monthly budget sums that column, so spend is tracked in one place.
 
 `PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key; the Keys page and the Usage overview poll it.
@@ -102,6 +104,8 @@ RPM and TPM are counted in memory per process: RPM when a request is admitted, T
 ## Rotation
 
 There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the row (join-table scope rows cascade).
+
+A new key starts with an empty budget. Reusing a key's row with a different secret keeps that row's usage and its remaining budget, because usage is attributed to the key id rather than to the secret.
 
 `POST /api/keys` requires a non-empty `name` and the install's `machineId`. The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` and `GET /api/keys/[id]` return `maskedKey` instead of `key`. `GET /api/keys/[id]/reveal` returns `{ key }` for a dashboard session. `PUT /api/keys/[id]` patches name, `isActive`, expiry, combos, policy, daily limit, provider connections, and groups in one transaction.
 

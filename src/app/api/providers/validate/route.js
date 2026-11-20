@@ -1,3 +1,5 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
+import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -5,6 +7,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
 import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
@@ -12,7 +15,7 @@ import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connect
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
-import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
+import { validateVertexSaKey, classifyVertexCredential, VERTEX_CREDENTIAL } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
@@ -114,8 +117,10 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
     body = JSON.stringify({ query: "ping", q: "ping", url: "https://example.com" });
   }
 
-  const res = await fetchValidationProbe(url, { method: cfg.method, headers, body });
-  return res.ok;
+  const options = { method: cfg.method, headers, body };
+  if (cfg.preventRedirects) options.redirect = "error";
+  const res = await fetchValidationProbe(url, options);
+  return res.ok || provider === "parallel" && res.status === 422;
 }
 
 // Probe a media provider (tts/embedding/stt/image/video) using *Config.
@@ -212,6 +217,10 @@ export async function POST(request) {
 
     const providerInfo = AI_PROVIDERS[provider] || {};
     const isNoAuth = providerInfo.noAuth === true;
+    if (provider === "devin-cli-agentic") {
+      if (apiKey) return NextResponse.json({ valid: false, error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+      return NextResponse.json({ valid: false, skipped: true, error: "Verify the local Devin CLI with a model request" });
+    }
     if (providerInfo.credentialForm === "aws") {
       // Validating a profile makes the AWS SDK resolve it as the server user, which can run a
       // credential_process. Same operator-only gate as creating one.
@@ -233,8 +242,23 @@ export async function POST(request) {
     if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
+    if (provider === "opencode-server") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "OpenCode Server validation requires an operator" }, { status: 403 });
+      }
+      const result = await fetchOpenCodeServerModels({ apiKey, providerSpecificData });
+      return NextResponse.json({ valid: !result.error, error: result.error ?? null });
+    }
     if (isNoAuth && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
+    }
+
+    if (provider === "t3-web") {
+      return NextResponse.json(await validateT3Session({ apiKey }));
+    }
+
+    if (provider === "yuanbao-web" && !buildYuanbaoCookie(apiKey).hasToken) {
+      return NextResponse.json({ valid: false, error: "Paste a Yuanbao cookie containing hy_user and hy_token" });
     }
 
     // Skipping chat must not accept a cookie that could never authenticate.
@@ -590,10 +614,17 @@ export async function POST(request) {
           isValid = openrouterRes.ok;
           break;
 
+        case "kimi": {
+            const res = await fetchValidationProbe(providerInfo.modelsFetcher.url, {
+              method: "GET",
+              headers: { Authorization: `Bearer ${apiKey}` },
+            });
+            isValid = res.ok;
+            break;
+          }
         case "glm":
         case "glm-cn":
         case "bigmodel":
-        case "kimi":
         case "minimax":
         case "minimax-cn":
         case "alicode-intl":
@@ -661,6 +692,8 @@ export async function POST(request) {
         case "novita":
         case "siliconflow":
         case "hyperbolic":
+        case "nan":
+        case "paraloncloud":
         case "ollama":
         case "ollama-local":
         case "assemblyai":
@@ -790,28 +823,28 @@ export async function POST(request) {
             break;
           }
 
-        case "vertex":{
+        case "vertex":
+        case "vertex-partner":{
             // Raw key: probe global endpoint (always 404 for unknown model, never 401)
             // SA JSON: validate its signing key locally
-            const saJson = (() => {try {const p = JSON.parse(apiKey);return p.type === "service_account" ? p : null;} catch {return null;}})();
-            if (saJson) {
-              error = validateVertexSaKey(saJson);
-              isValid = !error;
-            } else {
-              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-              isValid = probeRes.status !== 401 && probeRes.status !== 403;
+            // ADC JSON: refreshed on the first request, never probed as a raw key
+            const credential = classifyVertexCredential(apiKey);
+            if (credential.error) {
+              error = credential.error;
+              isValid = false;
+              break;
             }
-            break;
-          }
-
-        case "vertex-partner":{
-            const saJson = (() => {try {const p = JSON.parse(apiKey);return p.type === "service_account" ? p : null;} catch {return null;}})();
-            if (saJson) {
-              error = validateVertexSaKey(saJson);
+            if (credential.kind === VERTEX_CREDENTIAL.SERVICE_ACCOUNT) {
+              error = validateVertexSaKey(credential.json);
               isValid = !error;
+            } else if (credential.kind === VERTEX_CREDENTIAL.ADC) {
+              // An ADC file carries a refresh token and a client secret. Probing it
+              // as a raw key would put both in the probe URL, so it is validated by
+              // the first request instead.
+              error = "Vertex: ADC authorized_user credentials are refreshed on the first request. Set quota_project_id or a project ID on the connection.";
+              isValid = false;
             } else {
-              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
+              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${encodeURIComponent(apiKey)}`,
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
               isValid = probeRes.status !== 401 && probeRes.status !== 403;
             }

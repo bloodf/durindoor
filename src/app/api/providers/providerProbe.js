@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
@@ -206,6 +207,15 @@ export function buildProviderProbeHeaders(cfg, apiKey) {
 }
 
 export function buildRegistryProviderProbe(provider, apiKey, providerSpecificData = {}) {
+  // The International chat endpoint requires a full streamed request. A generic
+  // malformed chat probe can return 400 before checking the key, so it cannot
+  // establish credential validity.
+  if (provider === "codebuddy-intl") return null;
+  if (provider === "cerebrium") {
+    const base = cerebriumBaseUrl(providerSpecificData?.baseUrl);
+    if (!base || !apiKey) return null;
+    return { url: `${base}/models`, options: { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8000) }, accepts: "standard" };
+  }
   const cfg = PROVIDERS[provider];
   if (!cfg?.baseUrl) return null;
 
@@ -218,6 +228,16 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
 
   const headers = buildProviderProbeHeaders(cfg, apiKey);
   if (cfg.noAuth && !apiKey) return { url: cfg.validateUrl || baseUrl, options: { headers }, accepts: "always" };
+
+  // NLP Cloud has no documented key-only probe; a successful chatbot request
+  // verifies the key, while payload and quota errors are not proof of validity.
+  if (provider === "nlpcloud") {
+    return {
+      url: `${baseUrl}/chatdolphin/chatbot`,
+      options: { method: "POST", headers, body: JSON.stringify({ input: "Hello" }), signal: AbortSignal.timeout(10000) },
+      accepts: "ok",
+    };
+  }
 
   if (cfg.format === "claude") {
     return {
@@ -281,7 +301,7 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
       options: { headers, signal: AbortSignal.timeout(8000) },
       accepts: "ok",
     };
-    if (cfg.format === "openai") {
+    if (cfg.format === "openai" && cfg.quirks?.validationChatFallback !== false) {
       probe.fallback = {
         url: baseUrl,
         options: {

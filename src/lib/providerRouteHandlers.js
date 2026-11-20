@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -13,9 +14,18 @@ import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { isFunction, isString } from "@/shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
+import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
+import {
+  compatibleNodeConflictMessage,
+  resolveCompatibleNodeIdentity
+} from "@/lib/providers/compatibleNodeIdentity";
+import {
+  encryptedEnvelopeCredentialMessage,
+  looksLikeEncryptedEnvelope
+} from "@/shared/utils/credentialEnvelope";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "managementApiKey",
@@ -67,6 +77,8 @@ function sanitizeProviderConnection(connection) {
 // never more permissive than what each resolver actually consumes.
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
+  if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
+  if (provider === "t3-web") return true; // Curated local catalog.
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
     // Compatible servers may expose their catalog without credentials.
@@ -90,6 +102,8 @@ export function canDiscoverModels(connection) {
     // request so the client never spends an HTTP round-trip on a call
     // the resolver would refuse or refuse meaningfully.
     switch (provider) {
+      case "opencode-server":
+        return !resolveOpenCodeServer(connection).error;
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
@@ -106,11 +120,15 @@ export function canDiscoverModels(connection) {
       case "agy":
         return Boolean(connection.accessToken);
       case "ollama-local":
+      case "mlx":
+      case "devin-cli-agentic":
         return true;
       default:
         return false;
     }
   }
+
+  if (config.apiKeyOnly) return Boolean(connection.apiKey);
 
   // route.js:153-156 — plain config path requires a resolvable token.
   return Boolean(connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey);
@@ -203,6 +221,14 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
     const proxyPoolId = proxyPoolResult.proxyPoolId;
 
+    // A credential that is already an encrypted envelope would be stored as a
+    // ciphertext of a ciphertext and could never decrypt back to a usable key.
+    // Reject it here, where the operator can still paste the real key
+    // (OmniRoute #15932).
+    if (looksLikeEncryptedEnvelope(apiKey)) {
+      return NextResponse.json({ error: encryptedEnvelopeCredentialMessage() }, { status: 400 });
+    }
+
     // Validation
     const isNoAuthProvider = AI_PROVIDERS[provider]?.noAuth === true || FREE_PROVIDERS[provider]?.noAuth === true;
     const isWebCookieProvider = !!WEB_COOKIE_PROVIDERS[provider];
@@ -224,6 +250,18 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    if (provider === "cerebrium") {
+      if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Cerebrium connections require an operator" }, { status: 403 });
+      if (!cerebriumBaseUrl(body.providerSpecificData?.baseUrl) || !isString(apiKey) || !apiKey.trim()) return NextResponse.json({ error: "Cerebrium requires a deployment /run URL and project API key" }, { status: 400 });
+    }
+    if (provider === "devin-cli-agentic") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "Devin CLI connections require an operator" }, { status: 403 });
+      }
+      if (apiKey) {
+        return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+      }
     }
     const usesAwsCredentials = AI_PROVIDERS[provider]?.credentialForm === "aws";
     const awsProfile = usesAwsCredentials ? checkBedrockProfileInput(body.providerSpecificData) : { profile: "" };
@@ -252,6 +290,14 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
+    if (provider === "opencode-server") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "OpenCode Server connections require an operator" }, { status: 403 });
+      }
+      const endpoint = resolveOpenCodeServer({ providerSpecificData, apiKey });
+      if (endpoint.error) return NextResponse.json({ error: endpoint.error }, { status: endpoint.status });
+      providerSpecificData = { ...providerSpecificData, baseUrl: endpoint.baseUrl };
+    }
     if (requiresProviderAccountId(provider)) {
       try {
         providerSpecificData = {
@@ -269,37 +315,40 @@ export async function createProvider(request, { shouldCommit } = {}) {
     // Compatible/embedding nodes — no longer enforce single-connection limit.
     // Multiple API keys per node are allowed; downstream auth logic handles
     // round-robin/fill-first/fallback across connections (src/sse/services/auth.js).
+    // A node owns its identity: a connection that carries a different endpoint
+    // than its node would send the stored API key to a different host, so a
+    // conflicting value is rejected instead of silently overwritten
+    // (OmniRoute #15987).
     if (isOpenAICompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
       if (!node) {
         return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
-      providerSpecificData = {
-        prefix: node.prefix,
-        apiType: node.apiType,
-        baseUrl: node.baseUrl,
-        nodeName: node.name
-      };
+      const identity = resolveCompatibleNodeIdentity(node, providerSpecificData, true);
+      if (identity.conflict) {
+        return NextResponse.json({ error: compatibleNodeConflictMessage(identity.conflict) }, { status: 400 });
+      }
+      providerSpecificData = identity.data;
     } else if (isAnthropicCompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
       if (!node) {
         return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
       }
-      providerSpecificData = {
-        prefix: node.prefix,
-        baseUrl: node.baseUrl,
-        nodeName: node.name
-      };
+      const identity = resolveCompatibleNodeIdentity(node, providerSpecificData, false);
+      if (identity.conflict) {
+        return NextResponse.json({ error: compatibleNodeConflictMessage(identity.conflict) }, { status: 400 });
+      }
+      providerSpecificData = identity.data;
     } else if (isCustomEmbeddingProvider(provider)) {
       const node = await getProviderNodeById(provider);
       if (!node) {
         return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
       }
-      providerSpecificData = {
-        prefix: node.prefix,
-        baseUrl: node.baseUrl,
-        nodeName: node.name
-      };
+      const identity = resolveCompatibleNodeIdentity(node, providerSpecificData, false);
+      if (identity.conflict) {
+        return NextResponse.json({ error: compatibleNodeConflictMessage(identity.conflict) }, { status: 400 });
+      }
+      providerSpecificData = identity.data;
     }
     else if (isSystemoneCompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
@@ -322,6 +371,10 @@ export async function createProvider(request, { shouldCommit } = {}) {
 
     if (proxyPoolId !== null) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
+    }
+    if (provider === "opencode-server" &&
+      (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {
+      return NextResponse.json({ error: "OpenCode Server requires a direct connection" }, { status: 400 });
     }
     if ((provider === "laya" || isSystemoneCompatibleProvider(provider)) &&
       (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {

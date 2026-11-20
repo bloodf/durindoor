@@ -54,3 +54,46 @@ Self-hosted Firecrawl (`firecrawl_custom`) follows the same selection: with an a
 After saving a connection, list the gateway's models and send a short prompt. Confirm the account on **Usage**. Passthrough can accept an upstream ID that is absent from the saved list; it does not prove that the upstream serves the ID.
 
 If two servers use the same default port, override one connection's base URL. If a local request fails from Docker, use a host gateway or compose service name. If a Zen Gemini model fails, choose another family: the Gemini-compatible Zen transport is not implemented.
+
+## OpenCode Server
+
+Add **OpenCode Server** in the dashboard as an operator. Enter the explicit server
+base URL (for example, `http://127.0.0.1:4096`) and its HTTP Basic credential as
+`username:password` in the credential field. OpenCode defaults to the
+`opencode` username. Use HTTPS when credentials travel
+over an untrusted network. Each connection uses its saved URL and credential
+directly. DurinDoor uses the running server's configured inference providers.
+
+Use an OpenCode build that exposes the experimental `GET /api/model` and
+`POST /api/experimental/generate/text` routes described in the
+[OpenCode API reference](https://opencode.ai/docs/api). The published contract
+does not identify a minimum OpenCode release. A successful connection check
+verifies the catalog and credentials. A 404 during generation can mean the server
+build lacks the stateless route or the selected model is unavailable.
+
+Discovery lists enabled chat models as `ocs/<providerID>/<model.id>`. Pass this
+ID to `/v1/chat/completions` or `/v1/responses` with text. A single user message
+becomes the prompt verbatim. Multiple text messages become a role-labelled
+transcript. OpenCode's server configuration controls generation settings.
+
+The [stateless Generate API](https://opencode.ai/docs/build/plugins/server/#generate-experimental)
+returns completed text as JSON and omits token usage. DurinDoor wraps the completed
+reply in SSE for streaming clients after generation finishes. Tools, media,
+session continuation and conversation storage are unsupported. OmniRoute's
+OpenCode Server transport uses session turns and event subscriptions. DurinDoor
+sends one stateless generation request and uses the server's catalog for discovery.
+
+### Two MLX servers
+
+Create two MLX connections and set their Base URL independently. For the OmniRoute
+Gemma and Qwen examples, use `http://localhost:11435/v1` with
+`mlx-community/gemma-4-26B-A4B-it-qat-q4_0-mlx-aligned` and
+`http://localhost:11436/v1` with `maglun/Qwen3.8-27B-MLX-Mixed-3.80bpw`,
+respectively. Each connection discovers its own server's `/models`; the server
+must have the requested model available. Select the intended connection with
+`x-connection-id` on chat requests (or `connectionId` in the request body)
+and use the `mlx/` prefix with the full model ID. The connection ID pins the
+request, preventing a failed server from rotating to the other connection.
+Model capabilities, context limits, and tool support depend on the server and
+model; these example IDs do not add verified capability metadata. MLX streaming
+usage requires `stream_options: {"include_usage": true}` in the request.

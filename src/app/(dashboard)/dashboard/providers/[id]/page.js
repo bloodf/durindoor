@@ -27,6 +27,7 @@ import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import VisibleModelsModal from "./VisibleModelsModal";
 import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
+import { loadLiveAntigravityModels } from "./liveAntigravityModels";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import NetworkNodeStatus from "./NetworkNodeStatus";
@@ -186,6 +187,7 @@ function ProviderDetail({ providerId }) {
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   // Effective auto-synced model list (ModelAutoSyncPanel); null = registry defaults.
   const [syncedModels, setSyncedModels] = useState(null);
+  const [liveAntigravityModels, setLiveAntigravityModels] = useState(null);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
@@ -210,6 +212,15 @@ function ProviderDetail({ providerId }) {
       oneByOneRunRef.current = null;
     };
   }, [providerId]);
+
+  useEffect(() => {
+    if (providerId !== "antigravity") return;
+    const controller = new AbortController();
+    loadLiveAntigravityModels(connections, { signal: controller.signal }).then((models) => {
+      if (!controller.signal.aborted) setLiveAntigravityModels(models);
+    });
+    return () => controller.abort();
+  }, [providerId, connections]);
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -284,9 +295,10 @@ function ProviderDetail({ providerId }) {
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth") || FREE_PROVIDERS[providerId]?.oauth;
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
-  const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
+  const isDevinAgentic = providerId === "devin-cli-agentic";
+  const isStoredNoAuth = isFreeNoAuth && (providerId === "mimocode" || isDevinAgentic);
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
-  const models = syncedModels || getModelsByProviderId(providerId);
+  const models = liveAntigravityModels || syncedModels || getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
 
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
@@ -793,8 +805,9 @@ function ProviderDetail({ providerId }) {
       const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/models?refresh=1`, {
         cache: "no-store"
       });
-      const data = response.ok ? await response.json() : null;
+      const data = await response.json();
       if (providerGenerationRef.current !== requestGeneration) return;
+      if (!response.ok) { alert(data.error || "Failed to fetch models"); return; }
       setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
       setCatalogEvidence(data ? { source: data.source, degraded: data.degraded } : null);
       setModelsFetchedAt(new Date());
@@ -1628,7 +1641,7 @@ function ProviderDetail({ providerId }) {
             }
           }}
           testStatus={modelTestResults[model.id]}
-          onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
+          onTest={connections.length > 0 || (isFreeNoAuth && !isDevinAgentic) ? () => handleTestModel(model.id) : undefined}
           isTesting={testingModelIds.has(model.id)}
           isCustom
           isFree={false}
@@ -1664,7 +1677,7 @@ function ProviderDetail({ providerId }) {
               onSetAlias={(alias) => handleSetAlias(model.id, alias, providerStorageAlias)}
               onDeleteAlias={() => handleDeleteAlias(existingAlias)}
               testStatus={modelTestResults[model.id]}
-              onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
+              onTest={connections.length > 0 || (isFreeNoAuth && !isDevinAgentic) ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
@@ -1699,7 +1712,7 @@ function ProviderDetail({ providerId }) {
           </button>
         }
 
-        {(OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher &&
+        {(providerId === "cerebrium" || (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher) &&
         <button
           onClick={handleSyncModels}
           disabled={syncingModels}
@@ -1812,9 +1825,19 @@ function ProviderDetail({ providerId }) {
         </Link>
         <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-dd-lg bg-dd-surface-2">
+            {/* Configured URLs take precedence; compatible nodes otherwise try their own asset before the generic icon. */}
             {providerInfo.iconUrl ? (
               <ProviderIcon
                 src={providerInfo.iconUrl}
+                alt={providerInfo.name}
+                size={48}
+                className="max-h-12 max-w-12 rounded-dd object-contain"
+                fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
+              />
+            ) : isCompatible ? (
+              <ProviderIcon
+                src={`/providers/${providerId}.png`}
+                fallbackSrc={isAnthropicCompatible ? "/providers/anthropic-m.png" : providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png"}
                 alt={providerInfo.name}
                 size={48}
                 className="max-h-12 max-w-12 rounded-dd object-contain"
@@ -1948,7 +1971,7 @@ function ProviderDetail({ providerId }) {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              {connections.length > 0 && proxyPools.length > 0 &&
+              {!isDevinAgentic && connections.length > 0 && proxyPools.length > 0 &&
             <Button
               size="sm"
               variant="secondary"

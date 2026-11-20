@@ -87,13 +87,27 @@ The daily total stays in `dailyLimitTokens`. An over-limit request gets HTTP 429
 
 RPM and TPM are counted in memory per process: RPM when a request is admitted, TPM when its usage is recorded. Token, request and budget windows sum `usageHistory`, which is written after a response finishes, so requests already in flight can go slightly over. Only endpoints that record usage move the token and budget windows.
 
+Every window belongs to the key, not to the secret it stores. The key id admitted with a request is carried into the recorded usage, so the daily and monthly totals, the request and token rates, and the lifetime caps all follow the key. Replacing a key's secret therefore does not hand the key a fresh budget, and two keys never share one.
+
 Monthly budgets use the estimated costs saved with request usage. They are not provider billing limits. Unpriced models add nothing and never trip a budget; see [Prices](./usage-and-quota.mdx#prices) for how free, subscription and unpriced models count. Deleting usage history can affect usage-derived limits.
 
 `PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key. The API key limits card below the key list on **Dashboard → API Keys** polls it; that card is no longer on Usage.
 
 ## Rotation
 
-There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the key and its account-scope assignments.
+`POST /api/keys/{id}/rotate` replaces a key's secret. The dashboard does the same from **Dashboard → API Keys → Rotate**, which asks for confirmation and then shows the new secret once, with a copy button, exactly like a freshly created key.
+
+The key keeps its id, name, scopes, policy, quota, groups, provider connections, expiry and history: the row is the account and the secret is only the credential that opens it. A rotation therefore hands out no fresh budget, and the key's usage stays attached to it. The retired secret stops validating as soon as the rotation returns.
+
+Rotation needs the same permission as the other key changes: an operator session, or an API key with the admin scope. It is a management change, so a key without the admin scope is refused.
+
+Two rotations of the same key that race cannot both install their secret. The one that reaches the row second changes nothing and reports `409`, so a caller never receives a secret that is not installed. A failed rotation leaves the previous secret working.
+
+The answer always matches the write. The new secret is delivered exactly once, by the rotation that installed it: a failure never leaves a half-done swap behind, so the retired secret and the replacement can never disagree about which one is live. When a rotation fails, nothing is written and the previous secret keeps working, and the response is `no-store`, so the new secret is never cached.
+
+The rotation itself keeps no copy of the retired secret. It is not written to a ledger, an archive, a log or a cache, and it is never part of a response.
+
+A new key starts with an empty budget. Reusing a key's row with a different secret keeps that row's usage and its remaining budget, because usage is attributed to the key id rather than to the secret.
 
 `POST /api/keys` requires a non-empty `name` and the install's `machineId`. The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` and `GET /api/keys/[id]` return `maskedKey` instead of `key`. `GET /api/keys/[id]/reveal` returns `{ key }` for a dashboard session. `PUT /api/keys/[id]` patches name, `isActive`, expiry, combos, policy, daily limit, provider connections, and groups in one transaction.
 

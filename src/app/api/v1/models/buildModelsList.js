@@ -1,3 +1,4 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { createHash } from "node:crypto";
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { KIMI_CODING_MODELS_URL } from "../../../../../open-sse/providers/shared.js";
@@ -299,6 +300,7 @@ const LIVE_MODEL_RESOLVERS = {
     map((m) => ({ id: m.id, ...(isString(m.name) ? { name: m.name } : null) }));
     return models.length ? { models } : null;
   },
+  "opencode-server": fetchOpenCodeServerModels,
   "ollama-local": async (conn, guard) => {
     const host = resolveOllamaLocalHost(conn);
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
@@ -482,16 +484,15 @@ function comboMatchesKinds(combo, kindFilter) {
 }
 
 /**
- * Project a combo into the public OpenAI model shape. Web kind stays explicit
- * because search and fetch clients share the models endpoint.
+ * Project a combo into the public OpenAI model shape with its resolved kind.
  */
 function comboToEntry(combo) {
   const entry = {
     id: combo.name,
     object: "model",
-    owned_by: "combo"
+    owned_by: "combo",
+    kind: combo.kind ?? LLM_KIND,
   };
-  if (combo.kind === "webSearch" || combo.kind === "webFetch") entry.kind = combo.kind;
   return entry;
 }
 
@@ -553,7 +554,7 @@ async function buildComboOnlyModels(kindFilter, hidePaidModels) {
     const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
     if (hidePaidModels && visibleMembers.length === 0) continue;
     const entry = comboToEntry(combo);
-    if (!entry.kind) {
+    if (entry.kind !== "webSearch" && entry.kind !== "webFetch") {
       const derived = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
       const effective = overlayComboCapabilities(derived, isObject(combo.capabilities) ? combo.capabilities : null);
       if (effective) {
@@ -801,6 +802,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         id: `${alias}/${model.id}`,
         object: "model",
         owned_by: alias,
+        kind: modelKind(model),
         capabilities: caps,
         ...(thinkingLevels?.length ? { thinking_levels: thinkingLevels } : null),
         ...projectModelPresentation({ model, modelId: model.id, providerId, outputAlias: alias }),
@@ -862,6 +864,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           id: `${alias}/${modelId}`,
           object: "model",
           owned_by: alias,
+          kind,
           capabilities: caps,
           ...projectModelPresentation({ model: liveModel, modelId, providerId, outputAlias: alias }),
         });
@@ -901,7 +904,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
     if (hidePaidModels && visibleMembers.length === 0) continue;
     const entry = comboToEntry(combo);
-    if (!entry.kind) {
+    if (entry.kind !== "webSearch" && entry.kind !== "webFetch") {
       const comboCaps = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) {
         const explicitCap = isObject(combo.capabilities) ? combo.capabilities : null;
@@ -984,7 +987,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       ...projectModelPresentation({
         model: { ...inherited, ...customModel }, modelId, providerId, outputAlias: providerAlias,
       }),
-      ...(kind !== LLM_KIND ? { kind } : null),
+      kind,
     };
     if (kind === LLM_KIND) attachModelLimits(entry, providerId, modelId, customCaps, inheritedCaps);
     Object.defineProperty(entry.capabilities, "customKeys", { value: customKeys, enumerable: false });
@@ -1280,6 +1283,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             id: `${outputAlias}/${modelId}`,
             object: "model",
             owned_by: outputAlias,
+            kind,
             capabilities: caps,
             ...presentation,
           };

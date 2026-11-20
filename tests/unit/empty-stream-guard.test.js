@@ -75,6 +75,32 @@ async function runWrapper(attemptLists, { signal, onExhausted, reexecute, chunkS
 }
 
 describe("createEmptyRetryStream", () => {
+  it("settles a stalled attempt without retrying or cooling the account", async () => {
+    const reexecute = vi.fn();
+    const onExhausted = vi.fn();
+    const onAttemptDiscarded = vi.fn();
+    const cancel = vi.fn();
+    const body = new ReadableStream({ cancel });
+    const stream = createEmptyRetryStream({ body, reexecute, onExhausted, onAttemptDiscarded, stallTimeoutMs: 5 });
+    await expect(drain(stream)).rejects.toThrow("stream stall timeout");
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(onAttemptDiscarded).toHaveBeenCalledWith(body, "stall", { final: true });
+    expect(reexecute).not.toHaveBeenCalled();
+    expect(onExhausted).not.toHaveBeenCalled();
+  });
+
+  it("retains quota-error retry and cooldown policy if an error precedes a stall", async () => {
+    const quota = wrap({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } });
+    const body = new ReadableStream({ start(controller) { controller.enqueue(encoder.encode(sseText([quota]))); } });
+    const reexecute = vi.fn(async () => sseBody([quota]));
+    const onExhausted = vi.fn();
+    const stream = createEmptyRetryStream({ body, reexecute, onExhausted, stallTimeoutMs: 5, baseDelayMs: 1 });
+    const result = await drain(stream);
+    expect(onExhausted.mock.calls[0][1].upstreamError.status).toBe("RESOURCE_EXHAUSTED");
+    expect(result).toContain("RESOURCE_EXHAUSTED");
+    expect(reexecute).toHaveBeenCalledTimes(2);
+    expect(onExhausted).toHaveBeenCalledOnce();
+  });
   it("streams thought-only chunks live and byte-faithfully before any answer", async () => {
     const events = [thought("let me think"), thought("still thinking"), text("Answer"), finish("STOP")];
     const { out, retries } = await runWrapper([events]);

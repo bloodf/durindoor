@@ -58,7 +58,7 @@ openAiProvider({
 openAiProvider({
   id: "arcee-ai",
   alias: "arcee",
-  name: "Arcee AI",
+  name: "Arcee Conductor",
   baseUrl: "https://conductor.arcee.ai/v1/chat/completions",
   validateUrl: "https://conductor.arcee.ai/v1/models",
   icon: "auto_awesome",
@@ -158,6 +158,7 @@ openAiProvider({
     headers: {},
     auth: bearerAuth
   },
+  modelsFetcher: { url: "http://127.0.0.1:8317/v1/models", type: "openai" },
   models: [],
   passthroughModels: true
 },

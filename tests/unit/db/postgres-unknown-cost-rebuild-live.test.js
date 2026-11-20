@@ -222,12 +222,12 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
       expect(await rows()).toEqual(before);
       expect(await markers()).toEqual(beforeMarkers);
       await sql.query(`DROP TRIGGER fail_second_repair ON "apiKeyUsageTotals"`);
-      expect((await state.call('migrate')).value).toMatchObject({ applied: 1, from: 27, to: 28 });
+      expect((await state.call('migrate')).value).toMatchObject({ applied: 2, from: 27, to: 30 });
       const repaired = await rows();
       expect(repaired.map(({ unknownCostRequests, ...row }) => row))
         .toEqual(before.map(({ unknownCostRequests, ...row }) => row));
       expect(repaired.map((row) => Number(row.unknownCostRequests))).toEqual([1, 1]);
-      expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28]);
+      expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28, 30]);
       // With repaired rows present, any repeat UPDATE would now throw.
       await sql.query(`CREATE TRIGGER fail_second_repair BEFORE UPDATE OF "unknownCostRequests" ON "apiKeyUsageTotals"
         FOR EACH ROW EXECUTE FUNCTION fail_second_repair()`);
@@ -235,8 +235,8 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
       const again = await worker('upgrade-reopen');
       try {
         expect(await rows()).toEqual(repaired);
-        expect((await markers()).find((row) => row.key === 'schemaVersion').value).toBe('28');
-        expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28]);
+        expect((await markers()).find((row) => row.key === 'schemaVersion').value).toBe('30');
+        expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28, 30]);
       } finally {
         await closeWorker(again);
       }
@@ -256,6 +256,20 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
       expect(state.identity.execArgv).toEqual([]);
       expect(state.identity.nodeOptions).toBeNull();
       expect(Number(state.identity.backend)).toBeGreaterThan(0);
+    } finally {
+      await closeWorker(state);
+    }
+  });
+
+  it('preserves explicit null metadata in the worker fixture', async () => {
+    await reset();
+    const state = await worker('null-meta');
+    try {
+      await state.call('seedHistory', [{ timestamp, provider: 'openai', apiKey, cost: 0, status: 'ok', meta: null }]);
+      const result = await sql.query('SELECT meta FROM "usageHistory" WHERE "apiKey" = $1', [apiKey]);
+      expect(result.rows).toEqual([{ meta: null }]);
+      await state.call('repair');
+      expect(await totals(keyId)).toBeNull();
     } finally {
       await closeWorker(state);
     }

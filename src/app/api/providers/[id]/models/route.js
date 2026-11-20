@@ -15,9 +15,14 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
-    const result = await fetchConnectionModels(connection, { requestUrl: request.url });
+    const result = await fetchConnectionModels(connection, { requestUrl: request.url, signal: request.signal });
     if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: result.status || 500 });
+      // A provider that classifies its probe outcome reports it, so a caller
+      // can tell an auth rejection from a transient upstream failure.
+      return NextResponse.json({
+        error: result.error,
+        ...(result.classification ? { classification: result.classification } : null)
+      }, { status: result.status || 500 });
     }
     return NextResponse.json(result);
   } catch (error) {

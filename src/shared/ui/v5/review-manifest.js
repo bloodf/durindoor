@@ -711,14 +711,16 @@ export const REVIEW_SURFACES = [
       "Empty",
       "KeyLimits",
       "RevocationRejectedAndRetry",
-      "RevocationPending"
+      "RevocationPending",
+      "Rotation"
     ],
     "storyIds": [
       "v5-review-pages-api-keys--default",
       "v5-review-pages-api-keys--empty",
       "v5-review-pages-api-keys--key-limits",
       "v5-review-pages-api-keys--revocation-rejected-and-retry",
-      "v5-review-pages-api-keys--revocation-pending"
+      "v5-review-pages-api-keys--revocation-pending",
+      "v5-review-pages-api-keys--rotation"
     ],
     "pathname": "/dashboard/keys",
     "routePattern": "/dashboard/keys",

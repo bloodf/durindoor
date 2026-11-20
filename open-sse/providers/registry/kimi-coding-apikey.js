@@ -53,6 +53,9 @@ export default {
   models: [
     /** K3 reaches 1M only for Allegretto+ accounts; lower tiers are server-gated to 256K. */
     { id: "k3", name: "Kimi K3", supportedFormats: KIMI_CODE_FORMATS, aliases: ["k3[1m]"], contextLength: 1048576, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    // Kimi Code K3.1 identifiers use a 1M context window.
+    { id: "k3.1-pro", name: "Kimi K3.1 Pro", contextLength: 1048576 },
+    { id: "k3.1-pro-highspeed", name: "Kimi K3.1 Pro Highspeed", contextLength: 1048576 },
     { id: "k3-256k", name: "Kimi K3 256K", supportedFormats: KIMI_CODE_FORMATS, contextLength: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
     { id: "kimi-for-coding", name: "Kimi K2.8 Preview", supportedFormats: KIMI_CODE_FORMATS, contextLength: 1048576, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
     { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed", supportedFormats: KIMI_CODE_FORMATS, contextLength: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },

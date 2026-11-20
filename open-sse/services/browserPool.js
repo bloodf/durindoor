@@ -96,9 +96,18 @@ function isPoolEnabled() {
   return flag !== "off" && flag !== "0" && flag !== "false";
 }
 
+// Warmup pages are retained between requests; other open pages are active work.
+function hasActivePages(pooled) {
+  return pooled.context.pages().some(page => page !== pooled.warmupPage && !page.isClosed());
+}
+
 function resetIdleTimer() {
   if (state.idleTimer) clearTimeout(state.idleTimer);
   state.idleTimer = setTimeout(() => {
+    if ([...state.contexts.values()].some(hasActivePages)) {
+      resetIdleTimer();
+      return;
+    }
     void shutdownPool("idle-timeout");
   }, POOL_IDLE_TIMEOUT_MS);
   state.idleTimer.unref?.();
@@ -107,7 +116,7 @@ function resetIdleTimer() {
 function evictStaleContexts() {
   const now = Date.now();
   for (const [key, pooled] of state.contexts) {
-    if (now - pooled.lastUsed > CONTEXT_TTL_MS) {
+    if (now - pooled.lastUsed > CONTEXT_TTL_MS && !hasActivePages(pooled)) {
       console.log(
         "[BrowserPool] Evicted stale context",
         "(idle",

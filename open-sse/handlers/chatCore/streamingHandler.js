@@ -1,4 +1,5 @@
 import { FORMATS } from "../../translator/formats.js";
+import { isDeepSeekFamilyModel } from "../../utils/dsmlToolCalls.js";
 import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
@@ -9,16 +10,19 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
+import { createEmptyTerminalGuard } from "../../utils/emptyStreamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
+import { sseChunk } from "../../utils/sse.js";
+import { SSE_DONE } from "../../utils/sseConstants.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-import { isFunction } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction, isRecord } from "../../../src/shared/utils/typeChecks.js";
 import { classifyStreamAbandonReason, isRequestScopedStreamError } from "../../utils/streamLifecycle.js";
 const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
@@ -33,6 +37,31 @@ function hasOutputTokens(usage) {
     usage?.completion_tokens ?? usage?.output_tokens ?? usage?.candidatesTokenCount ?? 0
   );
   return Number.isFinite(count) && count > 0;
+}
+
+// Match the existing cooldown classification; a previously reported error is
+// already visible to the client and must not be replaced by an empty error.
+function isEmptyCompletion(content, usage, summary) {
+  return !content?.upstreamError && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
+    !content?.content?.trim?.() && !content?.hadToolCalls &&
+    !content?.thinking?.trim?.() && !hasOutputTokens(usage);
+}
+
+/** Frame a complete OpenAI response for the normal streaming pipeline. */
+export function completionToStream(completion) {
+  if (completion?.error || !Array.isArray(completion?.choices) || !completion.choices.length ||
+      !completion.choices.every((choice) => isRecord(choice?.message))) {
+    throw new Error("Invalid JSON completion for streaming request");
+  }
+  return sseChunk({
+    ...completion,
+    object: "chat.completion.chunk",
+    choices: completion.choices.map(({ message, ...choice }) => {
+      const delta = { ...message };
+      if (message.tool_calls) delta.tool_calls = message.tool_calls.map((call, index) => ({ ...call, index }));
+      return { ...choice, delta };
+    })
+  }) + SSE_DONE;
 }
 
 /**
@@ -61,7 +90,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
     };
   }
 
-  if (needsTranslation(targetFormat, sourceFormat)) {
+  if (needsTranslation(targetFormat, sourceFormat) || targetFormat === FORMATS.OPENAI && isDeepSeekFamilyModel(providerBody?.model || model, provider)) {
     return {
       stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked),
       emittedFormat: sourceFormat
@@ -103,6 +132,21 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // ollamaToOpenAIResponse, see translator/response/ollama-to-openai.js), so
   // it must not be treated as an upstream error page (issue #2386).
   const upstreamContentType = (providerResponse.headers.get('content-type') || '').toLowerCase();
+  if (upstreamContentType.includes("application/json") && targetFormat === FORMATS.OPENAI) {
+    try {
+      const text = await readBoundedResponseText(providerResponse, { signal, maxBytes: 16 * 1024 * 1024, timeoutMs: 30_000 });
+      signal?.throwIfAborted();
+      const framed = completionToStream(JSON.parse(text));
+      const headers = new Headers(providerResponse.headers);
+      headers.set("content-type", "text/event-stream");
+      headers.delete("content-length");
+      providerResponse = new Response(framed, { headers });
+    } catch (error) {
+      streamController?.handleError?.(error);
+      failTimeline(error?.name === "AbortError" ? "aborted" : "error");
+      return createErrorResult(error?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, error?.name === "AbortError" ? "Request aborted" : "Invalid JSON completion for streaming request");
+    }
+  }
   const isExpectedOllamaNdjson = targetFormat === FORMATS.OLLAMA && upstreamContentType.includes('application/x-ndjson');
   if (upstreamContentType && !isExpectedOllamaNdjson && !upstreamContentType.includes('text/event-stream') && !upstreamContentType.includes('application/json')) {
     let bodyText = "";
@@ -141,7 +185,15 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  let emptyVerdict = null;
+  const observeCompletion = (...args) => {
+    emptyVerdict = isEmptyCompletion(args[0], args[1], args[3]);
+    onStreamComplete?.(...args);
+  };
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  const emptyTerminalGuard = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(emittedFormat)
+    ? createEmptyTerminalGuard(emittedFormat, () => emptyVerdict, () => transformStream.getEmptyStreamSnapshot?.())
+    : null;
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
@@ -185,7 +237,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   });
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
-    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard,
   );
 
   saveRequestDetail(buildRequestDetail({
@@ -223,7 +275,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.credentials] - selected credentials redacted from the persisted stream error.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -292,7 +344,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     // The TTFT fallback above keeps request logs readable, but stored usage
     // needs one "not measured" value: 0, as the other handlers write.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     // A streamed Claude refusal (stop_reason "refusal") never accumulates delta
@@ -354,7 +406,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

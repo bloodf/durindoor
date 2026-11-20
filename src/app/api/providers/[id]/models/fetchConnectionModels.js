@@ -1,3 +1,7 @@
+import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
+import { getProviderModels } from "open-sse/config/providerModels.js";
+import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -62,14 +66,36 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * auth headers, proxy route and response parser.
  *
  * @param {object} connection - stored provider connection
- * @param {{ requestUrl?: string|null }} [options] - the incoming request URL,
- *   read by capability-scoped resolvers (OrcaRouter) for their query string
- * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number }>}
+ * @param {{ requestUrl?: string|null, signal?: AbortSignal|null }} [options] - the
+ *   incoming request URL, read by capability-scoped resolvers (OrcaRouter) for
+ *   their query string, and the request's abort signal
+ * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
-export async function fetchConnectionModels(connection, { requestUrl = null } = {}) {
+export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
+  // T3 Chat publishes a curated catalog; model discovery sends no session cookie.
+  if (connection.provider === "t3-web") {
+    return {
+      provider: connection.provider, connectionId: connection.id,
+      models: getProviderModels(connection.provider), source: "local_catalog",
+    };
+  }
+
+  if (connection.provider === "yuanbao-web") {
+    return { provider: connection.provider, connectionId: connection.id, models: yuanbaoWebRegistry.models };
+  }
+
   // Model discovery is connection traffic too. Resolve the durable OAuth
   // egress contract once and reuse it for initial, refresh, and retry calls.
   const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+
+  if (connection.provider === "cerebrium") {
+    const baseUrl = cerebriumBaseUrl(connection.providerSpecificData?.baseUrl);
+    if (!baseUrl || !connection.apiKey) return { error: "Cerebrium requires a deployment /run URL and project API key", status: 400 };
+    const res = await guardedProbeFetch(`${baseUrl}/models`, { headers: { Authorization: `Bearer ${connection.apiKey}` }, signal: AbortSignal.timeout(8000) }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
+    if (!res.ok) return { error: `Model discovery failed: ${res.status}`, status: res.status };
+    const data = await res.json();
+    return { models: parseOpenAIStyleModels(data) };
+  }
 
   if (isOpenAICompatibleProvider(connection.provider)) {
     return fetchCompatibleModels(connection, (token) => {
@@ -87,8 +113,15 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     }, proxyOptions);
   }
 
+  // NLP Cloud publishes its chatbot catalog in documentation, not a model-list API.
+  if (connection.provider === "nlpcloud") {
+    return { models: getProviderModels("nlpcloud"), source: "static" };
+  }
+
   const config = PROVIDER_MODELS_CONFIG[connection.provider];
   if (!config) {
+    // Platform model discovery must never borrow a Coding OAuth token.
+    if (connection.provider === "kimi" && !connection.apiKey) return { error: "No valid token found", status: 401 };
     // Generic fallback for registry providers that declare a modelsFetcher
     // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
     const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;
@@ -110,7 +143,8 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     return payload;
   }
 
-  const token = connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey;
+  const token = config.apiKeyOnly ? connection.apiKey :
+    connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey;
   if (!token) return { error: "No valid token found", status: 401 };
 
   let url = config.url;
@@ -138,7 +172,21 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
   }
 
   const fetchOptions = { method: config.method || "GET", headers, cache: "no-store" };
-  if (config.body && config.method === "POST") fetchOptions.body = JSON.stringify(config.body);
+  if (config.redirect) fetchOptions.redirect = config.redirect;
+  if (signal) fetchOptions.signal = signal;
+  // A provider whose request body depends on the connection builds it per
+  // call: the Antigravity catalog carries the signed-in account's project.
+  const requestBody = isFunction(config.buildBody) ? config.buildBody(token, connection) : config.body;
+  if (requestBody && config.method === "POST") fetchOptions.body = JSON.stringify(requestBody);
+
+  // A provider may declare how its probe outcome is classified, so a caller
+  // can tell an auth rejection (the credential is the problem) from a
+  // transient upstream failure (the catalog is temporarily unavailable).
+  const classificationOf = (httpStatus) => {
+    if (!isFunction(config.classifyStatus)) return null;
+    const classification = config.classifyStatus(httpStatus);
+    return classification ? { classification } : null;
+  };
 
   // Cursor-paginated list endpoints (Gemini models.list: pageSize<=1000 +
   // nextPageToken) declare `pageSize` and `nextPageToken`; all others are one request.
@@ -152,10 +200,35 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     const response = await proxyAwareFetch(pageUrl, fetchOptions, proxyOptions);
     if (!response.ok) {
       const text = await response.text();
-      return { error: sanitizeErrorMessage(text || response.statusText), status: response.status };
+      return {
+        error: sanitizeErrorMessage(text || response.statusText),
+        status: response.status,
+        ...classificationOf(response.status)
+      };
     }
-    const data = await response.json();
-    models.push(...(config.parseResponse(data) || []));
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      // An unreadable body is a transient upstream failure, not an empty
+      // catalog: returning an empty list here would replace a known catalog.
+      return {
+        error: `Invalid model catalog response from ${connection.provider}`,
+        status: 502,
+        ...classificationOf(502)
+      };
+    }
+    const parsed = config.parseResponse(data);
+    if (parsed === null) {
+      // The provider parser could not classify this payload. Treat it as a
+      // transient upstream failure so the caller keeps its known catalog.
+      return {
+        error: `Unrecognized model catalog from ${connection.provider}`,
+        status: 502,
+        ...classificationOf(502)
+      };
+    }
+    models.push(...(parsed || []));
     pageToken = isFunction(config.nextPageToken) ? config.nextPageToken(data) : null;
     if (!pageToken) return { models };
     // A repeated cursor would loop forever; a truncated list must not pass as complete.

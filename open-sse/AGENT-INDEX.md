@@ -66,6 +66,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
+| `replicate` | ReplicateExecutor | `./replicate.js` |
 | `t3-web` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
@@ -331,6 +332,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode` |  | free | `https://opencode.ai` |
 | `opencode-go` |  | apikey | `https://opencode.ai/inference/go/openai/v1/chat/completions` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
+| `openference` | openai | oauth | `https://api.openference.com/v1/chat/completions` |
 | `openference-api` |  | apikey | `https://api.openference.com/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
 | `openvecta` |  | apikey | `https://api.openvecta.com/v1/chat/completions` |
@@ -362,6 +364,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `recraft` |  | apikey | `` |
 | `regolo` |  | apikey | `https://api.regolo.ai/v1/chat/completions` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |
+| `replicate` | openai | apikey | `https://api.replicate.com/v1` |
 | `requesty` |  | freeTier | `https://router.requesty.ai/v1/chat/completions` |
 | `routeway` |  | apikey | `https://api.routeway.ai/v1/chat/completions` |
 | `runwayml` |  | apikey | `` |

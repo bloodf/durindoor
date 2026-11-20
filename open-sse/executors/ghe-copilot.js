@@ -9,6 +9,13 @@ const ENDPOINT_PATHS = {
   messagesUrl: "/v1/messages"
 };
 
+/** Model ids may arrive prefixed with the provider alias. */
+const PROVIDER_PREFIX = /^(?:ghe-copilot|ghe)\//;
+
+function stripProviderPrefix(model) {
+  return String(model || "").replace(PROVIDER_PREFIX, "");
+}
+
 /**
  * GitHub Enterprise Copilot executor.
  *
@@ -31,6 +38,30 @@ export class GheCopilotExecutor extends GithubExecutor {
       throw new Error("GitHub Enterprise Copilot connection is missing its enterprise URL; reconnect it");
     }
     return `${base}${path}`;
+  }
+
+  /**
+   * Enterprise GPT-6 models use the existing enterprise /responses route.
+   *
+   * The enterprise catalog does not publish a per-model endpoint contract for
+   * the GPT-6 family, so those models would stay on /chat/completions and
+   * fail with Copilot's own "not accessible via the /chat/completions
+   * endpoint" error. The enterprise route already serves /responses
+   * (ENDPOINT_PATHS.responsesUrl), so the family uses it there — the same
+   * route the codex models already reach through the provider's own error.
+   *
+   * A discovered contract still wins: when the account's catalog states the
+   * route for a model, that statement is used instead of the family rule.
+   * Models Copilot's Responses endpoint does not serve (Claude, Gemini) are
+   * excluded either way.
+   */
+  copilotEndpointRoute(model, credentials) {
+    const stated = super.copilotEndpointRoute(model, credentials);
+    if (stated) return stated;
+    const bare = stripProviderPrefix(model);
+    if (!/^gpt-6/i.test(bare)) return null;
+    if (!this.supportsResponsesEndpoint(bare)) return null;
+    return "responses";
   }
 
   async refreshCredentials(credentials, log, proxyOptions = null) {

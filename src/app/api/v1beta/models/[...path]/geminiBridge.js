@@ -52,7 +52,7 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
           function: {
             name: func.name || "",
             description: func.description || "",
-            parameters: normalizeGeminiSchemaTypes(func.parameters) || { type: "object", properties: {} }
+            parameters: normalizeGeminiSchemaTypes(func.parameters || func.parametersJsonSchema) || { type: "object", properties: {} }
           }
         });
       }

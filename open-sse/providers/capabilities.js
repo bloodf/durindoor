@@ -399,6 +399,9 @@ const GEMINI_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoIn
 
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
+const AG_HYDROGEN_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high", "xhigh"], contextWindow: 1048576, maxOutput: 65536 };
+const AG_HYDROGEN_ROWS = Object.fromEntries(["gemini-4-hydrogen", "gemini-4-hydrogen-low", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"].map((id) => [id, AG_HYDROGEN_CAPABILITIES]));
+
 export const PROVIDER_CAPABILITIES = {
   nan: {
     "deepseek-v4-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
@@ -417,7 +420,11 @@ export const PROVIDER_CAPABILITIES = {
     "sensenova-6.8-flash-lite": SENSENOVA_INTL_CHAT,
     "sensenova-6.7-flash-lite": SENSENOVA_INTL_CHAT,
   },
-  antigravity: Object.fromEntries(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.7", "gemini-3.6"].map((id) => [id, ANTIGRAVITY_FLASH_TIER_CAPABILITIES])),
+  antigravity: {
+    ...AG_HYDROGEN_ROWS,
+    ...Object.fromEntries(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.7", "gemini-3.6"].map((id) => [id, ANTIGRAVITY_FLASH_TIER_CAPABILITIES])),
+  },
+  agy: AG_HYDROGEN_ROWS,
   // Native API metadata is separate from OAuth and reseller contracts.
   openai: AUDITED_PROVIDER_CAPABILITIES.openai,
   codex: { ...CODEX_ONLY_CAPABILITIES, ...AUDITED_PROVIDER_CAPABILITIES.codex },

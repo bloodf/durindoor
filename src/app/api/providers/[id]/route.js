@@ -411,6 +411,19 @@ export async function PUT(request, { params }) {
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    // Re-importing a web session is how an expired cookie is recovered (#2034): the
+    // Edit dialog sends the fresh cookie in `apiKey`, and the connection keeps its
+    // identity. Failure state recorded against the old cookie (model cooldowns, 401
+    // backoff) is not evidence about the new one, so it is cleared with the swap.
+    if (isString(apiKey) && apiKey.trim() && existing.authType === "cookie" && apiKey !== existing.apiKey) {
+      updateData.apiKey = apiKey;
+      updateData.rateLimitedUntil = null;
+      updateData.backoffLevel = 0;
+      updateData.errorCode = null;
+      for (const field of Object.keys(existing)) {
+        if (field.startsWith("modelLock_")) updateData[field] = null;
+      }
+    }
     // An empty string is meaningful here: it clears a token left over from temporary keys.
     if (usesAwsCredentials && isString(sessionToken)) updateData.sessionToken = sessionToken.trim();
     if (testStatus !== undefined) updateData.testStatus = testStatus;

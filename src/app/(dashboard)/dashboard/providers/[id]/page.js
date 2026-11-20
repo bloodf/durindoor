@@ -1823,10 +1823,19 @@ function ProviderDetail({ providerId }) {
         </Link>
         <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-dd-lg bg-dd-surface-2">
-            {providerInfo.iconUrl || isCompatible ? (
+            {/* Configured URLs take precedence; compatible nodes otherwise try their own asset before the generic icon. */}
+            {providerInfo.iconUrl ? (
               <ProviderIcon
-                src={providerInfo.iconUrl || `/providers/${providerId}.png`}
-                fallbackSrc={isAnthropicCompatible ? "/providers/anthropic-m.png" : isOpenAICompatible ? (providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png") : undefined}
+                src={providerInfo.iconUrl}
+                alt={providerInfo.name}
+                size={48}
+                className="max-h-12 max-w-12 rounded-dd object-contain"
+                fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
+              />
+            ) : isCompatible ? (
+              <ProviderIcon
+                src={`/providers/${providerId}.png`}
+                fallbackSrc={isAnthropicCompatible ? "/providers/anthropic-m.png" : providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png"}
                 alt={providerInfo.name}
                 size={48}
                 className="max-h-12 max-w-12 rounded-dd object-contain"

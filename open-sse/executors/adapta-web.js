@@ -80,6 +80,18 @@ function messagesFor(messages) {
   }
   return output;
 }
+/**
+ * Adapta reports no token counts. Estimate them the way the other web-cookie
+ * transports do (about four characters per token) so a non-streamed reply
+ * still reaches Usage. The streaming path is estimated by the gateway.
+ */
+function estimatedUsage(messages, content) {
+  const promptChars = messages.reduce((total, message) =>
+    total + message.parts.reduce((sum, part) => sum + String(part.text ?? "").length, 0), 0);
+  const promptTokens = Math.ceil(promptChars / 4);
+  const completionTokens = Math.ceil(String(content ?? "").length / 4);
+  return { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens };
+}
 async function* events(stream) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -161,6 +173,6 @@ export class AdaptaWebExecutor extends BaseExecutor {
     } } catch { return chatResult(error(502, "Adapta upstream error")); }
     const parsed = hasTools ? buildToolAwareResult(content, requestedTools, "adp") : { content, finishReason: "stop" };
     const message = parsed.toolCalls ? { role: "assistant", content: null, tool_calls: parsed.toolCalls } : { role: "assistant", content: parsed.content };
-    return chatResult(Response.json({ id, object: "chat.completion", created, model, choices: [{ index: 0, message, finish_reason: parsed.finishReason }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }));
+    return chatResult(Response.json({ id, object: "chat.completion", created, model, choices: [{ index: 0, message, finish_reason: parsed.finishReason }], usage: estimatedUsage(payload.messages, content) }));
   }
 }

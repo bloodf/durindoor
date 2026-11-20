@@ -73,7 +73,11 @@ beforeEach(async () => {
   const { getExecutor } = await import("../../open-sse/executors/index.js");
   chatgptExecutor = getExecutor("chatgpt-web");
   originalDeps = chatgptExecutor.deps;
-});
+  // The setup builds a fresh sqlite database and imports ten route modules.
+  // Under a loaded machine that can outlast Vitest's default 10 second hook
+  // ceiling, so the hook carries the same explicit budget the other
+  // database-backed suites in this package use.
+}, 60_000);
 
 afterEach(async () => {
   chatgptExecutor.deps = originalDeps;
@@ -84,7 +88,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await disposeLoadedRequestDetailsRepo();
   fs.rmSync(root, { recursive: true, force: true });
-});
+}, 60_000);
 
 describe("Grok Web saved cookie lifecycle", () => {
   it("saves, skips conversation probes, discovers models and dispatches JSON and stream per account", async () => {

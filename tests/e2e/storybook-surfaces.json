@@ -21848,7 +21848,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "58c944d6e3bd5559c2162d474cab0fe6f3302178d78e52c1144e721c2a0f0560",
+      "sourceSha256": "25a16d84d84ab6f51c87db94441b97dfac31bc03191956753289f5386e068558",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -21872,7 +21872,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "58c944d6e3bd5559c2162d474cab0fe6f3302178d78e52c1144e721c2a0f0560",
+            "src/app/(dashboard)/dashboard/profile/page.js": "25a16d84d84ab6f51c87db94441b97dfac31bc03191956753289f5386e068558",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -21888,7 +21888,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "58c944d6e3bd5559c2162d474cab0fe6f3302178d78e52c1144e721c2a0f0560",
+            "src/app/(dashboard)/dashboard/profile/page.js": "25a16d84d84ab6f51c87db94441b97dfac31bc03191956753289f5386e068558",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
           },
           "proposedSourceEvidence": "page.stories.jsx#OidcAndProxy",
@@ -21903,7 +21903,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "58c944d6e3bd5559c2162d474cab0fe6f3302178d78e52c1144e721c2a0f0560",
+            "src/app/(dashboard)/dashboard/profile/page.js": "25a16d84d84ab6f51c87db94441b97dfac31bc03191956753289f5386e068558",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
           },
           "proposedSourceEvidence": "page.stories.jsx#ShutdownConfirm",
@@ -21919,7 +21919,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "58c944d6e3bd5559c2162d474cab0fe6f3302178d78e52c1144e721c2a0f0560",
+            "src/app/(dashboard)/dashboard/profile/page.js": "25a16d84d84ab6f51c87db94441b97dfac31bc03191956753289f5386e068558",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
           },
           "proposedSourceEvidence": "Play opens export prompt."
@@ -21934,7 +21934,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "58c944d6e3bd5559c2162d474cab0fe6f3302178d78e52c1144e721c2a0f0560",
+            "src/app/(dashboard)/dashboard/profile/page.js": "25a16d84d84ab6f51c87db94441b97dfac31bc03191956753289f5386e068558",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
           },
           "proposedSourceEvidence": "Play opens transfer branch."
@@ -50633,7 +50633,7 @@
       "id": "src/shared/components/Sidebar.js#Sidebar",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "Sidebar",
-      "sourceSha256": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+      "sourceSha256": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50656,7 +50656,7 @@
             "update-dialog-final"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "GroupsAndUpdate opens Token Saver, confirms Statistics, then clicks Update now; final play leaves Sidebar's Update available modal visible.",
@@ -50671,7 +50671,7 @@
             "expanded-by-route"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "MediaExpanded pathname /dashboard/media-providers/embedding makes renderMediaGroup active and open, rendering media children.",
@@ -50686,7 +50686,7 @@
             "current-page"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "TokenSaverActiveHierarchy pathname /dashboard/token-saver opens Token Saver and final play verifies Statistics aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50705,7 +50705,7 @@
             "geometry"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "CollapsibleRail collapses then expands controlled Sidebar. Final state restores full rail and Usage link after measured 44px row geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50821,7 +50821,7 @@
       "id": "src/shared/components/Sidebar.js#SidebarTooltip",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "SidebarTooltip",
-      "sourceSha256": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+      "sourceSha256": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50843,7 +50843,7 @@
           ],
           "sourceHashes": {
             "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "CollapsedTooltip renders controlled Sidebar initially collapsed, hovers real Expand sidebar control, and final play waits for SidebarTooltip's visible Expand sidebar bubble.",
@@ -50964,7 +50964,7 @@
       "id": "src/shared/components/Sidebar.js#renderGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderGroup",
-      "sourceSha256": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+      "sourceSha256": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50985,7 +50985,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "renderGroup creates Token Saver button and child links. TokenSaverActiveHierarchy final play verifies expanded parent and Statistics current-page child. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -51047,7 +51047,7 @@
       "id": "src/shared/components/Sidebar.js#renderItem",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderItem",
-      "sourceSha256": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+      "sourceSha256": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51067,7 +51067,7 @@
             "active-link"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "renderGroup maps Token Saver children through renderItem. At /dashboard/token-saver, renderItem renders Statistics with aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -51128,7 +51128,7 @@
       "id": "src/shared/components/Sidebar.js#renderMediaGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderMediaGroup",
-      "sourceSha256": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+      "sourceSha256": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51149,7 +51149,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "22fa6663ba3e241cef6e2fc529e966a773c9bdb1b6e3a19937370978109b08ec",
+            "src/shared/components/Sidebar.js": "2e5e47585c8bd63c642499ff38bdb2aa12d4b99fb3c9bfda7e2aa36a43b266f4",
             "src/shared/components/Sidebar.stories.jsx": "1686317e8b3518a9250b697090a11bf7e05472bf220a031415fc765ce491a2d9"
           },
           "proposedSourceEvidence": "MediaExpanded pathname starts with /dashboard/media-providers. renderMediaGroup builds visible kinds and renders Embedding active in opened Media Providers group. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -92248,7 +92248,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "3699121fb7398088db57d5e131b188207c0bea2e7aa673be53f77679d3755688",
-    "sourceCensusSha256": "0a87d2572d3a04851e6a3c9400e5338fa64c44be8157137dcf0fc216a8bb2000",
+    "sourceCensusSha256": "1ba3fd55a16644e8deb9948f093ca0f73b49cda225c93871a962e25342b94125",
     "pendingRows": 340,
     "retainedApprovedRows": 273,
     "pendingReferences": 1273,

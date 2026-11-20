@@ -103,6 +103,8 @@ Rotation needs the same permission as the other key changes: an operator session
 
 Two rotations of the same key that race cannot both install their secret. The one that reaches the row second changes nothing and reports `409`, so a caller never receives a secret that is not installed. A failed rotation leaves the previous secret working.
 
+The answer always matches the write. The new secret is delivered exactly once, by the rotation that installed it: a failure never leaves a half-done swap behind, so the retired secret and the replacement can never disagree about which one is live. When a rotation fails, nothing is written and the previous secret keeps working, and the response is `no-store`, so the new secret is never cached.
+
 The rotation itself keeps no copy of the retired secret. It is not written to a ledger, an archive, a log or a cache, and it is never part of a response.
 
 A new key starts with an empty budget. Reusing a key's row with a different secret keeps that row's usage and its remaining budget, because usage is attributed to the key id rather than to the secret.

@@ -464,14 +464,97 @@ export function extractUsage(chunk) {
   return null;
 }
 
+// Token-count fields an estimate can stand in for. A report that carries none
+// of them (Kiro meters in credits only) says nothing about token counts, so an
+// estimate still supplies them.
+const TOKEN_COUNT_FIELDS = [
+  "prompt_tokens", "completion_tokens", "total_tokens",
+  "input_tokens", "output_tokens",
+  "cached_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
+  "reasoning_tokens"
+];
+
+function hasTokenCounts(usage) {
+  if (!usage || !isObject(usage)) return false;
+  return TOKEN_COUNT_FIELDS.some((field) => isNumber(usage[field]) && Number.isFinite(usage[field]));
+}
+
+// Copy the token counts of `donor` onto `base`, keeping every other field of
+// `base` (provider credits, unit label, cost receipts) untouched.
+function mergeTokenCounts(base, donor) {
+  const merged = { ...base };
+  for (const field of TOKEN_COUNT_FIELDS) {
+    if (isNumber(donor?.[field]) && Number.isFinite(donor[field])) merged[field] = donor[field];
+  }
+  if (merged.total_tokens === undefined) {
+    const prompt = merged.prompt_tokens ?? merged.input_tokens;
+    const completion = merged.completion_tokens ?? merged.output_tokens;
+    if (Number.isFinite(prompt) && Number.isFinite(completion)) merged.total_tokens = prompt + completion;
+  }
+  // The counts came from an estimate, so they stay marked as estimates.
+  if (donor?.estimated === true) merged.estimated = true;
+  return merged;
+}
+
+// A real report replaces the token counts of the estimate it follows. The
+// estimate's other fields (credits, unit) survive; its inflated total does not.
+function replaceEstimatedTokens(prev, next) {
+  const merged = { ...prev };
+  for (const [k, v] of Object.entries(next)) {
+    if (k === "estimated") continue; // the marker is sticky, handled below
+    if (isNumber(v) && Number.isFinite(v)) {
+      merged[k] = v;
+    } else if (v && isObject(v)) {
+      merged[k] = v; // nested details objects: take latest
+    } else if (isString(v) && k === "kiro_credit_unit") {
+      merged[k] = v; // Kiro credit unit label: take latest
+    }
+  }
+  // The real report may omit total_tokens; recompute from the real counts
+  // instead of keeping the estimate's inflated total.
+  if (next.total_tokens === undefined) {
+    const prompt = merged.prompt_tokens ?? merged.input_tokens;
+    const completion = merged.completion_tokens ?? merged.output_tokens;
+    if (Number.isFinite(prompt) && Number.isFinite(completion)) merged.total_tokens = prompt + completion;
+  }
+  // Estimation marker: once estimated, stays estimated (a real value never
+  // downgrades an estimate to authoritative).
+  if (prev.estimated === true) merged.estimated = true;
+  return merged;
+}
+
 // Field-wise max-merge of two usage objects. Anthropic splits usage across
 // events: message_start has real input+cache (output is a placeholder 1),
 // message_delta has the real cumulative output (input/cache absent). Max keeps
 // the meaningful value from each without clobbering. Idempotent for other
 // providers that emit a single complete usage object.
+//
+// An estimate (estimateUsage(), flagged `estimated:true`) is a placeholder,
+// never a floor: a real upstream report replaces it outright, and a late
+// estimate never overwrites real usage. Max-merge only applies between partial
+// REAL reports — otherwise the persisted prompt_tokens became
+// max(estimate, real), inflated whenever the estimate exceeded reality.
 export function mergeUsage(prev, next) {
   if (!prev) return next || null;
   if (!next) return prev;
+
+  const prevEstimated = prev.estimated === true;
+  const nextEstimated = next.estimated === true;
+
+  if (prevEstimated !== nextEstimated) {
+    if (nextEstimated) {
+      // A late estimate never overwrites real usage. It still supplies the
+      // token counts when the real report carries none (Kiro meters in credits
+      // only), because then the estimate is the only count there is.
+      if (!hasTokenCounts(prev)) return mergeTokenCounts(prev, next);
+      return prev;
+    }
+    // prev was the estimate; the real report replaces its token counts — unless
+    // it carries none, in which case the estimate still supplies them.
+    if (!hasTokenCounts(next)) return mergeTokenCounts(next, prev);
+    return replaceEstimatedTokens(prev, next);
+  }
+
   const merged = { ...prev };
   for (const [k, v] of Object.entries(next)) {
     // typeof NaN === "number" — guard with Number.isFinite so one malformed

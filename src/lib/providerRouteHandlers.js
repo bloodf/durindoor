@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -75,6 +76,7 @@ function sanitizeProviderConnection(connection) {
 // never more permissive than what each resolver actually consumes.
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
+  if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (provider === "t3-web") return true; // Curated local catalog.
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
@@ -244,6 +246,10 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    if (provider === "cerebrium") {
+      if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Cerebrium connections require an operator" }, { status: 403 });
+      if (!cerebriumBaseUrl(body.providerSpecificData?.baseUrl) || !isString(apiKey) || !apiKey.trim()) return NextResponse.json({ error: "Cerebrium requires a deployment /run URL and project API key" }, { status: 400 });
     }
     if (provider === "devin-cli-agentic") {
       if (!(await isOperatorRequest(request))) {

@@ -49,6 +49,7 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { DevinCliAgenticExecutor } from "./devin-cli-agentic.js";
 import { WindsurfExecutor } from "./windsurf.js";
+import { CerebriumExecutor } from "./cerebrium.js";
 import { DefaultExecutor } from "./default.js";
 import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
@@ -79,6 +80,7 @@ const executors = {
   "azure-openai": new AzureOpenAIExecutor(),
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
+  cerebrium: new CerebriumExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   "gemini-interactions": new GeminiInteractionsExecutor(),
   github: new GithubExecutor(),

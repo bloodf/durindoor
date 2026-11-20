@@ -1645,30 +1645,33 @@ export function createSSEStream(options = {}) {
 
         if (buffer.trim()) {
           const trimmedBuffer = buffer.trim();
-          currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
           const parsed = parseSSELine(trimmedBuffer, targetFormat);
-          // Nested response.failed EOF tails re-parse here; keep raw diagnostics
-          // and redact the public envelope before translation.
-          streamErrorPayload ??= extractStreamErrorPayload(parsed);
-          sanitizePublicErrorEnvelope(parsed, errorSecrets);
-          /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
-          if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
-          if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
-            const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
+          const replay = targetFormat === FORMATS.OPENAI_RESPONSES && responsesReplay.isReplay(parsed);
+          if (!replay) {
+            currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
+            // Nested response.failed EOF tails re-parse here; keep raw diagnostics
+            // and redact the public envelope before translation.
+            streamErrorPayload ??= extractStreamErrorPayload(parsed);
+            sanitizePublicErrorEnvelope(parsed, errorSecrets);
+            /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
+            if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
+            if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
+              const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 
-            if (translated?._openaiIntermediate) {
-              for (const item of translated._openaiIntermediate) {
-                const openaiOutput = formatSSE(item, FORMATS.OPENAI);
-                reqLogger?.appendOpenAIChunk?.(openaiOutput);
+              if (translated?._openaiIntermediate) {
+                for (const item of translated._openaiIntermediate) {
+                  const openaiOutput = formatSSE(item, FORMATS.OPENAI);
+                  reqLogger?.appendOpenAIChunk?.(openaiOutput);
+                }
               }
-            }
 
-            if (translated?.length > 0) {
-              for (const item of translated) {
-                if (item === null || item === undefined) continue;
-                const output = formatSSE(item, sourceFormat);
-                reqLogger?.appendConvertedChunk?.(output);
-                controller.enqueue(sharedEncoder.encode(output));
+              if (translated?.length > 0) {
+                for (const item of translated) {
+                  if (item === null || item === undefined) continue;
+                  const output = formatSSE(item, sourceFormat);
+                  reqLogger?.appendConvertedChunk?.(output);
+                  controller.enqueue(sharedEncoder.encode(output));
+                }
               }
             }
           }

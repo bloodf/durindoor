@@ -70,7 +70,7 @@ export default {
     { id: "@cf/black-forest-labs/flux-2-dev", name: "FLUX.2 Dev", params: ["size"], kind: "image" },
     { id: "@cf/leonardo/lucid-origin", name: "Lucid Origin", params: ["size"], kind: "image" },
     { id: "@cf/leonardo/phoenix-1.0", name: "Phoenix 1.0", params: ["size"], kind: "image" },
-    { id: "@cf/black-forest-labs/flux-1-schnell", name: "FLUX.1 Schnell", params: ["size"], kind: "image" },
+    { id: "@cf/black-forest-labs/flux-1-schnell", name: "FLUX.1 Schnell", params: [], kind: "image" },
   ],
   serviceKinds: ["llm","embedding","image"],
   embeddingConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/embeddings" },

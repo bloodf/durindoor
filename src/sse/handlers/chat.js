@@ -85,7 +85,7 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject, isString } from "../../shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -1064,6 +1064,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const refreshedQuotaConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let antigravityTimeoutResponse = null;
   let antigravityCapacitySweeps = 0;
   let totalAttempts = 0;
   let requestReplayConnectionId = null;
@@ -1129,21 +1130,25 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return response;
       }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+        if (antigravityTimeoutResponse && !credentials?.providerDisabled) return antigravityTimeoutResponse;
         if (earlyEofOriginal) return earlyEofOriginal;
         if (credentials?.providerDisabled) {
           log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
           return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
         }
         if (credentials?.allRateLimited) {
-          const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+          const rawStatus = credentials.lastErrorCode;
+          const parsedStatus = isNumber(rawStatus) || isString(rawStatus) ? Number(rawStatus) : NaN;
+          const validStoredStatus = Number.isInteger(parsedStatus) && parsedStatus >= 400 && parsedStatus <= 599;
+          const storedStatus = validStoredStatus ? parsedStatus : HTTP_STATUS.SERVICE_UNAVAILABLE;
           const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
             status: storedStatus,
             retryAt: credentials.retryAfter || null,
             retryAtKnown: Boolean(credentials.retryAfter)
           });
           const status = combinedRateLimit?.status || (
-          storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
-          const errorMsg = status === storedStatus ?
+          validStoredStatus && storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
+          const errorMsg = status === storedStatus && (validStoredStatus || !lastStatus) ?
           credentials.lastError || "Unavailable" :
           lastError || credentials.lastError || "Unavailable";
           const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
@@ -1194,6 +1199,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
         excludeConnectionIds.add(credentials.connectionId);
         if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+          if (antigravityTimeoutResponse) return antigravityTimeoutResponse;
           if (earlyEofOriginal) return earlyEofOriginal;
           log.warn("FALLBACK", "Provider fallback attempt bound reached");
           const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
@@ -1426,6 +1432,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         excludeConnectionIds.add(credentials.connectionId);
         continue;
       }
+      if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       // Process-local admission pressure is terminal for this request. Retrying a
       // sibling would hit the same queue and must not cool a healthy account.
       if (result.localAdmissionRejected === true) {
@@ -1438,6 +1445,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // local stream lifecycle event, NOT a provider failure. Return without cooling
       // down the account or accruing fallback state (OmniRoute #7907/#7908).
       if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
+      if (result.antigravityPreResponseTimeout === true ||
+          (provider === "antigravity" && result.status === HTTP_STATUS.GATEWAY_TIMEOUT)) {
+        // Internal metadata stays on the Response, never in the client payload.
+        result.response.skipAntigravityTimeoutReplay = true;
+        if (preferredConnectionId) return result.response;
+        antigravityTimeoutResponse ??= result.response;
+        requestReplayConnectionId = null;
+        excludeConnectionIds.add(credentials.connectionId);
+        lastError = result.error;
+        lastStatus = result.status;
+        continue;
+      }
       if (!requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
         requestReplayAttempted = true;
         requestReplayConnectionId = credentials.connectionId;
@@ -1476,6 +1495,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           statusText: result.response.statusText,
           headers: responseHeaders,
         });
+        if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);

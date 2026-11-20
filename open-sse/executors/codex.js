@@ -927,6 +927,17 @@ export class CodexExecutor extends BaseExecutor {
     const normalized = normalizeResponsesInput(body.input);
     if (normalized) body.input = normalized;
 
+    // A translated Chat system prompt belongs in the cacheable input prefix.
+    // Native Responses instructions keep their original semantics.
+    if (requestContext?.translatedToCodex) {
+      const neutralInstructions = "You are a helpful assistant.";
+      if (isString(body.instructions) && body.instructions.trim() && body.instructions !== neutralInstructions) {
+        const instruction = { type: "message", role: "developer", content: [{ type: "input_text", text: body.instructions }] };
+        body.input = [instruction, ...(Array.isArray(body.input) ? body.input : [])];
+      }
+      body.instructions = neutralInstructions;
+    }
+
     // Ensure input is present and non-empty (Codex API rejects empty input)
     if (!body.input || Array.isArray(body.input) && body.input.length === 0) {
       body.input = [{ type: "message", role: "user", content: [{ type: "input_text", text: "..." }] }];

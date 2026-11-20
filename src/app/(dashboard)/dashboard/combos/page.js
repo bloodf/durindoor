@@ -783,7 +783,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   );
 }
 
-function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWeightChange, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, weight = 1, requirePositiveWeight = false, isFirst, isLast, onEdit, onWeightChange, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -856,17 +856,17 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
       )}
 
       <div className="w-16 shrink-0">
-        <Field error={!Number.isFinite(Number(weight)) || Number(weight) <= 0 ? "Use a positive weight" : undefined}>
+        <Field error={weight === "" || !Number.isFinite(Number(weight)) || Number(weight) < 0 || (requirePositiveWeight && Number(weight) === 0) ? "Use a positive weight" : undefined}>
           <Input
             aria-label="Weight"
             size="sm"
             type="number"
-            min="0.01"
+            min="0"
             step="0.01"
             value={weight}
             onChange={(event) => onWeightChange(event.target.value)}
             className="px-1.5 text-center dd-tnum"
-            title="Positive finite selection weight for Weighted strategy"
+            title="Selection weight; zero is fallback-only for round robin"
           />
         </Field>
       </div>
@@ -1007,7 +1007,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
   const handleWeightChange = (model, value) => {
     const weight = Number(value);
-    setWeights((current) => ({ ...current, [model]: Number.isFinite(weight) && weight > 0 ? weight : value }));
+    setWeights((current) => ({ ...current, [model]: value !== "" && Number.isFinite(weight) && weight >= 0 ? weight : value }));
   };
   const handleEditModel = (index, newModel) => {
     if (models.some((model, modelIndex) => modelIndex !== index && model === newModel)) {
@@ -1026,7 +1026,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   const handleSave = async () => {
     if (!validateName(name)) return;
     const members = models.map((id) => ({ id, weight: Number(weights[id] ?? 1) }));
-    if (members.some((member) => !Number.isFinite(member.weight) || member.weight <= 0)) return;
+    if (invalidWeights) return;
     setSaveError("");
     setSaving(true);
     try {
@@ -1040,7 +1040,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   const isEdit = !!combo;
   // Keep invalid weight drafts editable, explain the blocked save, and retain
   // the same input node/focus as feedback appears (matching the V5 review form).
-  const invalidWeights = models.some((id) => !Number.isFinite(Number(weights[id] ?? 1)) || Number(weights[id] ?? 1) <= 0);
+  const invalidWeights = models.some((id) => weights[id] === "" || !Number.isFinite(Number(weights[id] ?? 1)) || Number(weights[id] ?? 1) < 0) || (models.length > 0 && !models.some((id) => Number(weights[id] ?? 1) > 0));
 
   // Layout contract (mirrors KeysPageClient and shared/components/ComboFormModal):
   // Cancel/Save live in the Modal `footer` slot so the primitive owns padding,
@@ -1057,6 +1057,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
         pending={saving}
         footer={
           <>
+            {models.length > 0 && !models.some((id) => Number(weights[id] ?? 1) > 0) && <p role="alert">At least one member must have a positive weight.</p>}
             <Button onClick={onClose} variant="ghost" disabled={saving}>
               Cancel
             </Button>
@@ -1119,6 +1120,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                         index={index}
                         model={model}
                         weight={weights[model] ?? 1}
+                        requirePositiveWeight={!models.some((id) => Number(weights[id] ?? 1) > 0)}
                         isFirst={index === 0}
                         isLast={index === modelItems.length - 1}
                         onEdit={(newVal) => handleEditModel(index, newVal)}

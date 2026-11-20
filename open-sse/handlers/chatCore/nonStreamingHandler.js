@@ -1,3 +1,4 @@
+import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
@@ -23,6 +24,7 @@ import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
+import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
@@ -36,39 +38,6 @@ import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fa
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
-}
-
-/**
- * Check the emitted response shape for client-usable text, reasoning, or tools.
- * Translation can emit a shape other than the client's source dialect, so the
- * body itself—not sourceFormat—selects the content fields inspected here.
- */
-function hasNonemptyResponseValue(value) {
-  return isString(value) ? value.trim().length > 0 :
-  value !== null && isObject(value) && !Array.isArray(value) && Object.keys(value).length > 0;
-}
-
-function hasResponsesContentItem(item) {
-  if (!item || !isObject(item)) return false;
-  if (item.type === "image_generation_call") return hasNonemptyResponseValue(item.result);
-  if (item.type === "mcp_approval_request") {
-    const id = item.id || item.approval_request_id;
-    return isString(id) && id.trim().length > 0 &&
-    hasNonemptyResponseValue(item.name || item.server_label || item.arguments);
-  }
-  if (["function_call", "custom_tool_call", "computer_call", "shell_call", "local_shell_call", "apply_patch_call"].includes(item.type)) {
-    const id = item.call_id || item.id;
-    return isString(id) && id.trim().length > 0 &&
-    hasNonemptyResponseValue(item.name || item.action || item.operation || item.command || item.arguments || item.input);
-  }
-  if (item.type === "reasoning") {
-    return isString(item.reasoning) && item.reasoning.trim() ||
-    Array.isArray(item.summary) && item.summary.some((part) => isString(part?.text) && part.text.trim());
-  }
-  if (item.type !== "message" || !Array.isArray(item.content)) return false;
-  return item.content.some((part) =>
-  isString(part?.text) && part.text.trim() ||
-  isString(part?.refusal) && part.refusal.trim());
 }
 
 /** Check the emitted response shape for client-usable text, reasoning, or tools. */
@@ -93,7 +62,7 @@ function hasUsefulContent(response) {
   }
 
   // Background Responses acknowledge acceptance with an empty output array.
-  if (response?.object === "response" && isString(response.id) && response.id.trim() && ["queued", "in_progress"].includes(response.status)) return true;
+  if (isResponsesReceipt(response)) return true;
   if (Array.isArray(response?.output)) return response.output.some(hasResponsesContentItem);
 
   const candidates = response?.candidates ?? response?.response?.candidates;
@@ -276,6 +245,7 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
  * handles non-streaming JSON bodies.
  */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, options = {}) {
+  if (targetFormat === FORMATS.OPENAI) normalizeDsmlCompletion(responseBody, options.effectiveModel || options.model, options.provider);
   /** Upstream PR #3373: request translators emit arrays; projection uses Set membership. */
   const customToolNames = options.customToolNames instanceof Set ?
   options.customToolNames :
@@ -620,7 +590,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       responseBody,
       targetFormat,
       sourceFormat,
-      { claudeCompat, model, customToolNames, toolNameMap, requestBody: body }
+      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
     );
 
     /**

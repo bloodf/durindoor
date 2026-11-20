@@ -312,6 +312,12 @@ Database routes require a dashboard session or CLI token plus the dashboard pass
 | GET | `/api/headroom/status` | Headroom process status; URL userinfo redacted for a key | session, CLI, key, loop |
 | POST | `/api/headroom/stop` | Stop the managed Headroom process | session, CLI; local |
 
+Headroom dashboard HTML routes supported asset links and `fetch`/`fetchJson` calls
+for Headroom endpoints through the local authenticated proxy. Existing coverage
+includes [proxy response handling](../../tests/unit/headroom-proxy-route.test.js),
+[managed venv ownership](../../tests/unit/headroom-managed-venv.test.js), and
+[managed process shutdown](../../tests/unit/headroom-process.test.js).
+
 ### PxPipe
 
 | Method | Path | Does | Auth |

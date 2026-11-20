@@ -437,6 +437,9 @@ export class BaseExecutor {
           const field = findOffendingField(errorText);
           if (
           field &&
+          // Azure negotiates token-limit spellings in its executor. Dropping
+          // either field here would silently remove the caller's output cap.
+          !(this.provider === "azure" && (field === "max_tokens" || field === "max_completion_tokens")) &&
           requestBody && isObject(
             requestBody) &&
           !Array.isArray(requestBody) &&
@@ -506,7 +509,9 @@ export class BaseExecutor {
           }
         }
 
-        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
+        // Antigravity 504s move to the account layer without replaying this URL.
+        const antigravityGatewayTimeout = this.provider === "antigravity" && response.status === HTTP_STATUS.GATEWAY_TIMEOUT;
+        if (!antigravityGatewayTimeout && await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
 
         // A skip-rule matched this HTTP failure → abandon this account now; do NOT
         // fall through to shouldRetry()/other base URLs on the same account. The
@@ -526,7 +531,7 @@ export class BaseExecutor {
           };
         }
 
-        if (this.shouldRetry(response.status, urlIndex)) {
+        if (!antigravityGatewayTimeout && this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -561,6 +566,16 @@ export class BaseExecutor {
           error.errorKind = "aborted";
           error.providerAttemptStartedAt = providerAttemptStartedAt;
           throw error;
+        }
+
+        // A confirmed Antigravity header deadline has consumed the account's
+        // full budget. Preserve the original reason for account-level failover.
+        if (isConnectTimeout && this.provider === "antigravity") {
+          const timeout = connectCtrl.signal.reason;
+          timeout.errorKind = "connect_timeout";
+          timeout.antigravityPreResponseTimeout = true;
+          timeout.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw timeout;
         }
 
         // connect_timeout / network → retryable per resolveAttempts (default: connect_timeout=0 retries)

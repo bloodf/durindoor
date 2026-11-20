@@ -100,11 +100,9 @@ describe("#2068 — relay-failure provenance", () => {
     }
   });
 
-  it("treats HTTP 524 as relay proof without any transport classification", () => {
-    // 524 is invented by an edge and is defined by no provider API contract
-    // the fork serves, so the responding hop was a relay.
-    expect(isRelayGatewayFailure(524)).toBe(true);
-    expect(isRelayGatewayFailure(524, { transportFailure: null })).toBe(true);
+  it("requires transport provenance for HTTP 524", () => {
+    expect(isRelayGatewayFailure(524)).toBe(false);
+    expect(isRelayGatewayFailure(524, { transportFailure: "network" })).toBe(true);
   });
 
   it("does not treat a bare 502/503/504 as relay proof", () => {
@@ -171,17 +169,27 @@ describe("#2068 — a proven relay failure does not cool the only eligible accou
     expect(dbMocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
-  it("writes no cooldown for a single eligible account on HTTP 524", async () => {
-    const result = await markAccountUnavailable(
-      "acc-a",
-      524,
-      "[524]: Bad gateway",
-      PROVIDER,
-      MODEL,
-    );
+  it("keeps a cooldown for an unproven HTTP 524 and preserves its status", async () => {
+    const result = await markAccountUnavailable("acc-a", 524, "[524]: timeout", PROVIDER, MODEL);
+    expect(result.shouldFallback).toBe(true);
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalled();
+  });
 
-    expect(result).toEqual({ shouldFallback: false, cooldownMs: 0 });
-    expect(dbMocks.updateProviderConnection).not.toHaveBeenCalled();
+  it("preserves combo fallback and explicit rate-limit evidence", async () => {
+    for (const context of [
+      { transportFailure: "network", hasComboFallback: true },
+      { transportFailure: "network", rateLimitEvidence: { state: "exhausted" } },
+    ]) {
+      dbMocks.updateProviderConnection.mockClear();
+      await markAccountUnavailable("acc-a", 502, "failure", PROVIDER, MODEL, null, context);
+      expect(dbMocks.updateProviderConnection).toHaveBeenCalled();
+    }
+  });
+
+  it("does not skip a cooldown when the failing account is absent", async () => {
+    dbMocks.getProviderConnections.mockResolvedValue([]);
+    const result = await markAccountUnavailable("acc-a", 502, "failure", PROVIDER, MODEL, null, { transportFailure: "network" });
+    expect(result.shouldFallback).toBe(true);
   });
 
   it("still cools the failing account when another account can be tried", async () => {
@@ -207,7 +215,7 @@ describe("#2068 — a proven relay failure does not cool the only eligible accou
     expect(Object.keys(update).some((key) => key.startsWith("modelLock_"))).toBe(true);
   });
 
-  it("keeps the cooldown when the request already excluded the only sibling", async () => {
+  it("skips the cooldown when the request already excluded the only sibling", async () => {
     // acc-b is still active but this request already excluded it, so it cannot
     // serve the request: the failing account really is the last candidate.
     dbMocks.getProviderConnections.mockResolvedValue([

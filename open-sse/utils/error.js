@@ -601,9 +601,7 @@ function isMissingModelError(errorText) {
  * statuses remain unchanged. Non-integer or out-of-range statuses fall back
  * to 503.
  *
- * HTTP 524 is the one exception: it is invented by an edge and is defined by
- * no provider API contract the fork serves, so it is outside the OpenAI error
- * contract a client speaks. Only the client-facing projection is normalized to
+ * HTTP 524 is the one exception: only the client-facing projection is normalized to
  * 502 — the internal status stays 524, so account-fallback classification and
  * the persisted lock keep the original evidence.
  *

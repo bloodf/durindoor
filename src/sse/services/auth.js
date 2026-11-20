@@ -1488,12 +1488,14 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // Multi-account deployments keep the cooldown — rotation depends on it — and
   // a bare 502/503/504 without transport provenance is a provider failure, not
   // a relay failure, so it keeps its cooldown too.
-  if (isRelayGatewayFailure(status, { transportFailure: context?.transportFailure ?? null })) {
+  if (!context?.hasComboFallback && !context?.rateLimitEvidence &&
+      isRelayGatewayFailure(status, { transportFailure: context?.transportFailure ?? null })) {
     const eligibleAccounts = countEligibleAccounts(connections, {
       model,
       excludedConnectionIds: context?.excludedConnectionIds ?? null,
     });
-    if (eligibleAccounts <= 1) {
+    if (eligibleAccounts === 1 && connections.some((connection) => connection.id === connectionId &&
+        countEligibleAccounts([connection], { model, excludedConnectionIds: context?.excludedConnectionIds ?? null }) === 1)) {
       log.warn("AUTH", `${connectionId.slice(0, 8)} hit a relay/hop failure with ${eligibleAccounts} eligible account(s); skipping the credential cooldown [${status}]`);
       return { shouldFallback: false, cooldownMs: 0 };
     }

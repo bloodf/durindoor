@@ -1433,7 +1433,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     const wasClientAbort = terminalReason === "abort";
     // The fork's own transport classification (set in open-sse/executors/base.js)
     // is provenance the fork creates itself: "connect_timeout" and "network"
-    // both mean no HTTP response was produced by any hop. Carry it to the
+    // both mean no usable HTTP response was received. Carry it to the
     // account layer so a relay/hop failure can be told apart from a provider
     // application that answered 502/503/504 itself.
     const transportFailure = error?.errorKind === "connect_timeout" || error?.errorKind === "network" ?

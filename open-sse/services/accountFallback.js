@@ -176,17 +176,13 @@ const RELAY_GATEWAY_STATUS_SET = new Set(RELAY_GATEWAY_STATUSES);
 const RELAY_TRANSPORT_FAILURE_SET = new Set(RELAY_TRANSPORT_FAILURES);
 
 /**
- * True when the failure is a PROVEN relay/hop failure: the hop in front of
- * the origin never produced an application-level answer, so the credential was
- * never evaluated and a credential cooldown would say nothing about it.
+ * True when the executor identifies a transport failure without a usable
+ * HTTP response. The origin might still have received the request.
  *
  * Proof is deliberately narrow, and never comes from upstream text:
  * - `transportFailure` is the fork's OWN transport classification
  *   ("connect_timeout" | "network", set in open-sse/executors/base.js): no HTTP
- *   response was produced by any hop, so the origin never saw the request.
- * - HTTP 524 is invented by an edge and is defined by no provider API
- *   contract the fork serves (the client-facing contract in ERROR_TYPES and
- *   DEFAULT_ERROR_MESSAGES stops at 504), so the responding hop was a relay.
+ *   response was produced by any hop, without a usable HTTP response.
  *
  * A bare 502/503/504 is NOT proof: a provider application may answer 503
  * (overload, model capacity) or 502 itself, and the fork cannot tell the two
@@ -201,8 +197,7 @@ const RELAY_TRANSPORT_FAILURE_SET = new Set(RELAY_TRANSPORT_FAILURES);
 export function isRelayGatewayFailure(status, { transportFailure = null } = {}) {
   const numericStatus = Number(status);
   if (!RELAY_GATEWAY_STATUS_SET.has(numericStatus)) return false;
-  if (RELAY_TRANSPORT_FAILURE_SET.has(transportFailure)) return true;
-  return numericStatus === 524;
+  return RELAY_TRANSPORT_FAILURE_SET.has(transportFailure);
 }
 
 /**

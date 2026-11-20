@@ -1583,7 +1583,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           transportFailure: result.transportFailure ?? null,
           // Accounts this request already excluded cannot serve it again, so
           // they are not alternatives for the cooldown decision.
-          excludeConnectionIds,
+          excludedConnectionIds: excludeConnectionIds,
+          hasComboFallback: comboRouting !== null,
           signal: requestSignal
         }
       );

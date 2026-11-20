@@ -31,7 +31,7 @@ The HTTP route is `POST /api/oauth/cursor/import` with `accessToken`, `machineId
 
 ## No refresh
 
-Cursor publishes no refresh endpoint. The connection is saved with no refresh token and an expiry 24 hours out. When requests start failing with auth errors, sign in to the IDE again and repeat the import. Signing out of the IDE usually ends the imported session too.
+DurinDoor has no supported Cursor sign-in or refresh contract for this connection. The imported connection is saved with no refresh token and an estimated expiry 24 hours out; that estimate does not verify the session. When requests start failing with auth errors, sign in to the IDE again and repeat the import. Signing out of the IDE usually ends the imported session too.
 
 ## Choose and verify a model
 

@@ -1577,6 +1577,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           // The credential this attempt actually presented, so a durable-key
           // provider can mark exactly the generation that was rejected.
           usedCredential: credentials.accessToken || credentials.apiKey || null,
+          // Proven relay/hop provenance from the fork's own transport layer.
+          // Null for an ordinary upstream HTTP response, which is a provider
+          // answer rather than a hop failure.
+          transportFailure: result.transportFailure ?? null,
+          // Accounts this request already excluded cannot serve it again, so
+          // they are not alternatives for the cooldown decision.
+          excludeConnectionIds,
           signal: requestSignal
         }
       );

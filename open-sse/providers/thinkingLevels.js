@@ -33,6 +33,7 @@ const FORMAT_LEVELS = {
   "gemini-budget": L.base,
   zai: L.onOff,
   qwen: L.base,
+  "qwen-effort": ["none", "low", "medium", "xhigh"],
   kimi: L.levelMax,
   deepseek: L.hi,
   minimax: L.onOff,

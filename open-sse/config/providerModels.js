@@ -129,7 +129,7 @@ export function getModelType(aliasOrId, modelId) {
 function findModelAlias(models, modelId) {
   return models?.find((model) => model.aliases?.includes(modelId));
 }
-const TIER_ALIASES = { xhigh: "high", max: "high", minimal: "low" };
+const TIER_ALIASES = { xhigh: "high", max: "high", auto: "high", minimal: "low", none: "low", disabled: "low", off: "low" };
 
 function normalizeTier(level) {
   if (!isString(level) || !level.trim()) return null;
@@ -145,15 +145,20 @@ function budgetTier(budget) {
 
 /**
  * Requested catalog tier for `<model>-<tier>` rows (upstream 9router 82aeb907).
- * Precedence: request suffix intent, then body effort, then thinking budget.
+ * Adaptive/auto select high; disabled/none/zero budget select low. Other precedence:
+ * request suffix intent, then body effort, then thinking budget.
  * Returns null when nothing names a tier.
  */
 export function resolveRequestedModelTier(thinkingIntent, body = null) {
   if (thinkingIntent?.mode === "level") return normalizeTier(thinkingIntent.level);
   if (thinkingIntent?.mode === "budget") return budgetTier(thinkingIntent.budget);
   if (thinkingIntent) return null;
+  if (body?.thinking?.type === "adaptive") return "high";
+  if (body?.thinking?.type === "disabled" || body?.thinking?.type === "none") return "low";
   const effort = body?.reasoning_effort || body?.output_config?.effort || body?.reasoning?.effort;
   if (isString(effort) && effort.trim()) return normalizeTier(effort);
+  const budget = Number(body?.thinking?.budget_tokens);
+  if (body?.thinking && Number.isFinite(budget) && budget === 0) return "low";
   return budgetTier(body?.thinking?.budget_tokens);
 }
 

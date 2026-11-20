@@ -107,7 +107,8 @@ export const RESET_COOLDOWN_CAP_MS = {
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,
-  short: 5 * 1000
+  short: 5 * 1000,
+  day: 24 * 60 * 60 * 1000
 };
 
 /**
@@ -156,6 +157,9 @@ export const ERROR_RULES = [
 // --- Text-based rules (checked first, order = priority) ---
 { text: "no credentials", cooldownMs: COOLDOWN.long },
 { text: "request not allowed", cooldownMs: COOLDOWN.short },
+// Explicit Antigravity account suspension/validation responses need a daily probe instead of the generic 2-minute 403 retry.
+{ provider: ["antigravity", "ag"], text: "tos_violation", cooldownMs: COOLDOWN.day },
+{ provider: ["antigravity", "ag"], text: "validation_required", cooldownMs: COOLDOWN.day },
 
 // Terminal billing/credit states. Some providers report these as 429 (Z.AI/GLM
 // code 1113 is a Chinese-language "insufficient balance" body), so without an

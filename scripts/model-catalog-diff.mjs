@@ -187,18 +187,23 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
     // is what the alias mechanism is for, and a typo would otherwise route to a
     // model that does not exist.
     //
-    // Exception: a few providers expose a *wire-only* name that is deliberately
-    // not a catalog entry, e.g. Antigravity's tiered flash models are requested
-    // as `gemini-3.6-flash-tiered(high|medium|low)`. Those carry a parenthesised
-    // tier suffix that no catalog id ever uses, so allow exactly that shape
-    // rather than weakening the check for genuine typos.
+    // Exceptions: some providers expose *wire-only* tier names that are
+    // deliberately not catalog entries. Antigravity's tiered flash aliases use
+    // a parenthesised high/medium/low tier; Hydrogen's supported XHigh wire ID
+    // is the one exact additional form (runtime maps its XHigh intent to Gemini
+    // `thinkingLevel: "high"`). Keep this exact and provider-scoped so malformed
+    // or unresolved aliases still fail the audit.
     const WIRE_ONLY_UPSTREAM_ID = /\((?:high|medium|low)\)$/;
     for (let i = 0; i < models.length; i++) {
       const raw = models[i];
       const m = isString(raw) ? { id: raw } : raw || {};
+      const isHydrogenXhighWireId = ["antigravity", "agy"].includes(provider) &&
+        m.id === "gemini-4-hydrogen-xhigh" &&
+        m.upstreamModelId === "gemini-4-hydrogen-xhigh(xhigh)";
       if (m.upstreamModelId != null &&
       !idSet.has(m.upstreamModelId) &&
-      !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId)) {
+      !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId) &&
+      !isHydrogenXhighWireId) {
         addFinding(
           `${provider}:${m.id}`,
           `[${provider}] model "${m.id}" upstreamModelId "${m.upstreamModelId}" resolves to no id in this provider`

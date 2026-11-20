@@ -277,6 +277,14 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  replicate: {
+    url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    redirect: "manual",
+    parseResponse: (data) => data?.owner === "meta" && data?.name === "meta-llama-3-70b-instruct"
+      ? [{ id: "meta/meta-llama-3-70b-instruct", name: "Llama 3 70B Instruct" }] : [],
+  },
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),

@@ -61,6 +61,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
+| `replicate` | ReplicateExecutor | `./replicate.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
@@ -342,6 +343,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `recraft` |  | apikey | `` |
 | `regolo` |  | apikey | `https://api.regolo.ai/v1/chat/completions` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |
+| `replicate` | openai | apikey | `https://api.replicate.com/v1` |
 | `requesty` |  | freeTier | `https://router.requesty.ai/v1/chat/completions` |
 | `routeway` |  | apikey | `https://api.routeway.ai/v1/chat/completions` |
 | `runwayml` |  | apikey | `` |

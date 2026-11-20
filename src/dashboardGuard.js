@@ -206,7 +206,7 @@ export function isLocalRequest(request) {
 }
 
 function isPublicLlmApi(pathname) {
-  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return pathname === "/backend-api/codex/alpha/search" || PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 function extractApiKey(request) {

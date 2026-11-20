@@ -52,6 +52,9 @@ async function addConnection(provider, name, apiKey, providerSpecificData, prior
 const chat = (model, extra = {}) =>
   handleChat(json("/v1/chat/completions", { model, messages: [{ role: "user", content: "hello" }], ...extra }));
 
+// The first case transforms every route and the gateway cold, which outlasts the 10s hook default.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
+
 const usage = (id) => routes.usage.GET(json(`/api/usage/${id}`, null, "GET"), { params: Promise.resolve({ connectionId: id }) });
 
 beforeEach(async () => {
@@ -79,7 +82,7 @@ beforeEach(async () => {
     usage: await import("../../src/app/api/usage/[connectionId]/route.js"),
   };
   ({ handleChat } = await import("../../src/sse/handlers/chat.js"));
-});
+}, 60_000);
 
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();

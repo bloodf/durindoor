@@ -2,7 +2,7 @@
 
 Reviewed 2026-11-20 against DurinDoor `936cb835b` (branch `orq/tornf6/audit-omni-merged-path-coverage-a1-l2`), with `main` at `ba573d0e7`.
 
-Scope: turn the historical merged OmniRoute records in [#1073](https://github.com/bloodf/durindoor/issues/1073) into a repeatable, read-only **mapping from each upstream merged source commit to its changed source paths and to the local DurinDoor code that already covers that path**. The unit covers the pinned reviewed window of 2026-09-30 → 2026-10-06 and reports four outcomes per row: directly evidenced already-covered, out-of-lane, unmapped, and uncertain.
+Scope: turn the historical merged OmniRoute records in [#1073](https://github.com/bloodf/durindoor/issues/1073) into a repeatable, read-only **mapping from each upstream merged source commit to its changed source paths and to the local DurinDoor code that already covers that path**. The unit covers the pinned reviewed window of 2026-09-30 → 2026-10-06 and reports four outcomes per row: directly evidenced already-covered, out-of-lane, unmapped, and uncertain. The OIDC dashboard sign-in row #15049 is classified under the separate **Provider Sign-in** owner lane and is not proposed for implementation here; the remaining in-lane candidates retain their static evidence below.
 
 This is a documentation unit. No runtime code was added, no fixture was written, no provider was called, no credential was used, no network exposure was probed, and no upstream message was sent. Upstream access was limited to read-only GitHub API metadata.
 
@@ -154,7 +154,7 @@ Upstream separates `cline/openrouter/<model>` (another provider reached through 
 
 ### 6.3 Unmapped — behavioural path, no local counterpart
 
-63 rows. The largest of them are upstream refactors into modules the fork never split out (`open-sse/services/combo/*`, `open-sse/executors/opencode*`, `src/lib/db/*`), which is why they are unmapped at path level but still require a behaviour read before any port. §7 draws its five fixes from two places: two rows that are unmapped at path level (#15231, #15337) and three rows whose upstream path maps but whose line-level check shows the change is absent (#15049, #15499, #15510). Those five are the rows whose behaviour was actually read in the fork.
+63 rows. The largest of them are upstream refactors into modules the fork never split out (`open-sse/services/combo/*`, `open-sse/executors/opencode*`, `src/lib/db/*`), which is why they are unmapped at path level but still require a behaviour read before any port. The in-lane candidates below draw on two rows that are unmapped at path level (#15231, #15337) and two rows whose upstream path maps but whose line-level check shows the change is absent (#15499, #15510). #15049 is retained as static evidence but belongs to Provider Sign-in.
 
 ### 6.4 Uncertain
 
@@ -179,23 +179,13 @@ One of the 23 is a security row: **#15324** (`8489c9f49`, `fix(security): never 
 
 These are fixes to features the fork **already has**. Each is stated with the local surface it touches, the upstream source commit it comes from, and acceptance conditions that can be checked without a live provider, a paid API, a credential, or network access. They are ordered by severity; they are not a selection list and require no owner choice to begin.
 
-### 7.1 Fail closed when the OIDC subject allowlist is empty
+### 7.1 Provider Sign-in lane disposition: #15049
 
 **Upstream:** #15049, `3efc28ea0`, `fix(auth): never sign anyone in through OIDC without an allowlist`.
 **Upstream paths:** `src/app/api/auth/oidc/callback/route.ts`, `src/app/api/settings/route.ts`.
 **Local surface:** `src/app/api/auth/oidc/callback/route.js:21-87`; settings persistence at `src/lib/db/repos/settingsRepo.js:65-69`.
 
-**Evidence of the gap.** The fork ships OIDC dashboard login and an OIDC settings surface (`oidcIssuerUrl`, `oidcClientId`, `oidcClientSecret`, `oidcScopes`, `oidcLoginLabel`). `git grep oidcAllowedSubjects` over `src/` and `open-sse/` returns **nothing**. The callback verifies the ID token (`src/app/api/auth/oidc/callback/route.js:67-73`) and then unconditionally mints the dashboard session (`route.js:76-81`); there is no subject or email allowlist check on any path, and no settings field to hold one. Upstream makes the empty allowlist mean *not configured* and refuses the login before contacting the identity provider, and makes the settings route reject any update that would leave OIDC enabled with an empty allowlist.
-
-**Acceptance conditions.**
-
-1. Settings persist an `oidcAllowedSubjects` string array, default `[]`, through the existing settings repo and the existing dashboard settings surface.
-2. `GET /api/auth/oidc/callback` with OIDC enabled and an allowlist that is empty or contains only blank entries redirects to the login page with the fork's existing error convention (`/login?error=oidc_not_configured`, the string already used at `route.js:48`), and issues **zero** outbound requests to the identity provider (assert outbound call count is 0).
-3. A token whose `sub` is absent from the allowlist and whose `email` is absent from the allowlist is refused with a distinct subject-not-allowed code under the same `error=` convention.
-4. An `email` claim is honoured only when `email_verified === true`; a listed but unverified email is refused.
-5. `PATCH /api/settings` returns 400 with `OIDC_ALLOWED_SUBJECTS_REQUIRED` when an update would leave `oidcEnabled: true` with an empty or blank-only allowlist — including emptying an existing non-empty list — and accepts emptying the list while OIDC is disabled.
-6. The existing password login path, the 30-day session cookie, the nonce and PKCE state checks, and the `timingSafeCompare` state comparison are unchanged.
-7. Synthetic coverage (no network): empty list, blank-only list, listed `sub` accepted, listed but unverified email refused.
+**Disposition.** #15049 (`3efc28ea0`) changes the dashboard OIDC sign-in flow and is owned by the **Provider Sign-in** lane. The local callback and settings paths cited above remain useful static evidence for that lane. This report makes no implementation proposal or acceptance plan for the row.
 
 ### 7.2 Pair an unpaired Responses `function_call` instead of forwarding it bare
 
@@ -269,7 +259,7 @@ These are fixes to features the fork **already has**. Each is stated with the lo
 ### Out of this tranche
 
 - New providers, new endpoints and new integrations. A new provider is a catalogue addition, not a fix to an existing feature.
-- Sign-in and OAuth flows other than §7.1, which is scoped to an existing login path that is already deployed.
+- Sign-in and OAuth flows, including #15049, which belongs to the Provider Sign-in lane.
 - The dashboard and i18n surface of the upstream rows.
 - The 65 partially-mapped rows and the 23 same-stem rows: each needs an individual behaviour read before it can be called a gap, and none has been read here.
 - #12620 and any other row with a separate defensive unit already open.
@@ -343,7 +333,7 @@ The recommended shape for the earlier pages is a two-tier sweep, and it is the s
 
 - **Nothing was ported.** No runtime code was added or changed; no fixture was written; no upstream merge was performed.
 - **No provider was called and no behaviour was observed at runtime.** Every coverage statement is a static comparison of upstream patch lines against local source lines. "Already covered" means the upstream change is present in the local file, not that a request was observed to behave that way.
-- **The 63 unmapped rows are not 63 gaps.** Unmapped means no local counterpart file exists for the upstream path. The fork's architecture differs from upstream's in many places, so an unmapped row frequently corresponds to behaviour the fork implements in a different module. §7 draws its five fixes from two unmapped rows and three partially-covered rows whose behaviour was actually read in the fork; the other 58 unmapped rows were not read.
+- **The 63 unmapped rows are not 63 gaps.** Unmapped means no local counterpart file exists for the upstream path. The fork's architecture differs from upstream's in many places, so an unmapped row frequently corresponds to behaviour the fork implements in a different module. The in-lane candidates draw on two unmapped rows and two partially-covered rows whose behaviour was actually read in the fork; the other 59 unmapped rows were not read. #15049 remains Provider Sign-in lane evidence, not an in-lane candidate.
 - **The 100 uncertain rows are not evidence of anything in either direction.** They need a read of the same-stem local alternative, or of the upstream diff, before they can be classified.
 - **No title was treated as a disposition.** Titles appear in this report only as labels for rows a human will read.
 - **Two rows that the path classifier flags as unmapped are closed by a dated behavioural review** — #15543 and #15566, both dispositioned in `1073-existing-provider-request-residuals.md` as already-addressed and inapplicable respectively. The disagreement between the two methods is recorded in §5; neither method overrides the other, and neither row is carried forward as a gap.

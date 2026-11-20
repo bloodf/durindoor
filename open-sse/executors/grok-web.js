@@ -136,7 +136,7 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
     if (resp.modelResponse) {
       const mr = resp.modelResponse;
       const message = mr.message;
-      if (message != null && typeof message !== "string") {
+      if (message != null && !isString(message)) {
         yield { error: "Invalid Grok final message", done: true };
         return;
       }

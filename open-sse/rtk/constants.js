@@ -1,6 +1,8 @@
 // RTK port constants (mirror Rust defaults)
 export const RAW_CAP = 10 * 1024 * 1024;      // 10 MiB
 export const MIN_COMPRESS_SIZE = 500;          // bytes; skip tiny blobs
+export const TOOL_OUTPUT_MAX_DEPTH = 8;         // bound native tool-output traversal
+export const JSON_GUARD_MAX_LENGTH = 64 * 1024; // bound Gemini tool-output JSON parsing
 export const DETECT_WINDOW = 1024;             // autodetect peeks first N chars
 export const GIT_DIFF_HUNK_MAX_LINES = 100;    // per-hunk line cap
 export const GIT_DIFF_CONTEXT_KEEP = 3;        // context lines around changes

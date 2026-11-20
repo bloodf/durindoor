@@ -19,7 +19,8 @@
  * kill, so a recycled pid cannot be hit either.
  */
 
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
+const path = require("path");
 const fs = require("fs");
 
 const PS_TIMEOUT_MS = 5000;
@@ -156,6 +157,26 @@ function ownProcessChain(startPid = process.pid, parentLookup = parentOf) {
   return chain;
 }
 
+/** Fail closed when a Next worker cannot be tied to this installation. */
+function ownsNextServer(pid, appDir, command, platform = process.platform) {
+  if (!appDir) return false;
+  if (platform === "win32") {
+    const normalize = value => String(value).replace(/\//g, "\\").toLowerCase();
+    const target = normalize(appDir).replace(/\\+$/, "");
+    // Require a path boundary, not a similarly prefixed installation.
+    return normalize(command).includes(target + "\\");
+  }
+  try {
+    const cwd = platform === "linux"
+      ? fs.readlinkSync(`/proc/${pid}/cwd`)
+      : execFileSync("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"],
+        { encoding: "utf8", timeout: 3000 }).split("\n").find(line => line.startsWith("n"))?.slice(1);
+    if (!cwd) return false;
+    const relative = path.relative(fs.realpathSync(appDir), fs.realpathSync(cwd));
+    return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative));
+  } catch { return false; }
+}
+
 /**
  * Pids of this app's leftovers, verified: the pid is alive and its command line
  * still looks like ours (so a recycled pid is not mistaken for one of them).
@@ -177,6 +198,8 @@ function collectAppPids(options = {}) {
     if (!isAppProcess(row.command) || exclude.has(row.pid)) continue;
     const live = readCommandImpl(row.pid);
     if (live === null || !isAppProcess(live)) continue;
+    if (live.toLowerCase().includes("next-server") &&
+        !(options.ownsNextServer || ownsNextServer)(row.pid, options.appDir, live)) continue;
     pids.push(row.pid);
   }
   return pids;
@@ -216,6 +239,7 @@ function killAppPids(pids) {
 
 module.exports = {
   isAppProcess,
+  ownsNextServer,
   looksLikeNode,
   parseProcessTable,
   parseWindowsProcessTable,

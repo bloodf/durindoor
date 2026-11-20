@@ -50,6 +50,7 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "github",
 "kiro",
 "kimi-coding",
+"kimi-ai",
 "kilocode",
 "codebuddy-cn",
 "qoder",
@@ -70,6 +71,8 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set([
 "kiro",
 "amazon-q",
 "ghe-copilot",
+"kimi-coding",
+"kimi-ai",
 // The Codex device poll needs the user code next to the device handle.
 "codex"
 ]);
@@ -77,7 +80,6 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set([
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
 "muse-code",
-"kimi-coding",
 "kilocode",
 "codebuddy-cn"]
 );
@@ -744,11 +746,18 @@ async function importToken(provider, body) {
   const rawToken = body.accessToken ?? body.token ?? body.authJson ?? body;
   let tokenData;
   try {
-    tokenData = providerData.mapTokens(rawToken);
+    // The pasted credential stays the first argument, so the approved import
+    // contract is unchanged. The request body is the second argument so a
+    // provider can pick up optional identity fields the credential itself does
+    // not carry — Trae's userRegion and userTimezone, for example. Both are
+    // stored on the connection and never echoed back.
+    tokenData = providerData.mapTokens(rawToken, body);
   } catch (error) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Invalid token payload", error);
   }
-  if (!tokenData?.accessToken) {
+  // The credential must be a token string. A non-string payload would be
+  // stored as the access token and then sent verbatim in an auth header.
+  if (!isString(tokenData?.accessToken) || !tokenData.accessToken.trim()) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing accessToken");
   }
   return createProviderConnection({

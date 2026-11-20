@@ -31,3 +31,15 @@ Provider groups containing prepaid credit rows always render per account, even
 when a merged-view preference was saved. Their merge toggle is unavailable.
 Connections can share a team balance, so credit amounts must not be summed or
 converted to a percentage window. Zero credit follows the same rule.
+
+## Preserved PR #1778 disposition
+
+Commit `37098746d2e15b5db2d7c3fa5b9f4905531e7bdb` proposed
+custom Gemini and xAI endpoints, nested xAI management credentials, and
+several guessed balance shapes. Those are not adopted: the current adapters
+keep custom URLs offline, require the separate encrypted management credential,
+and accept the documented signed `total.val` only. The preserved no-guessing,
+credential separation, zero-balance, and fixed-endpoint intent is covered by
+`tests/unit/quota-documented-snapshot-1110.test.js` under the current dashboard
+usage contract. A successful malformed response remains malformed with no
+quota, and zero prepaid credit does not establish inference readiness.

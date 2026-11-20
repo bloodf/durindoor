@@ -69,8 +69,10 @@ function addOptionalFields(target, body, append) {
   }
 }
 
-async function buildJsonBody(body) {
-  const req = { prompt: body.prompt, ...getDimensions(body) };
+// FLUX.1 Schnell rejects dimensions in its closed input schema.
+async function buildJsonBody(model, body) {
+  const req = { prompt: body.prompt };
+  if (model !== "@cf/black-forest-labs/flux-1-schnell") Object.assign(req, getDimensions(body));
 
   addOptionalFields(req, body, (target, key, value) => {
     target[key] = value;
@@ -200,7 +202,7 @@ export default {
   buildBody: async (model, body) =>
   MULTIPART_MODELS.has(model) ?
   await buildMultipartBody(body) :
-  await buildJsonBody(body),
+  await buildJsonBody(model, body),
 
 
   async parseResponse(response) {

@@ -8,6 +8,7 @@ export default meta;
 export const Inventory = { ...reviewStory(original.Inventory, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };
 export const StatusFiltering = { ...reviewStory(original.StatusFiltering, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };
 export const AllStatusScenarios = { ...reviewStory(original.AllStatusScenarios, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };
+export const BatchProviderUnavailable = { ...reviewStory(original.BatchProviderUnavailable, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };
 export const LoadFailureAndRetry = { ...reviewStory(original.LoadFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };
 export const MalformedResponseAndRetry = { ...reviewStory(original.MalformedResponseAndRetry, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };
 export const NetworkFailureAndRetry = { ...reviewStory(original.NetworkFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/providers/page.stories.jsx","standalone":false}) };

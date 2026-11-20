@@ -27,11 +27,15 @@ Amazon Q uses AWS Builder ID or IAM Identity Center device login. It does not of
 
 Muse Code uses Meta device login or a pasted `META_API_KEY`. Device login can mint an inference key before the first request. If the durable login token is revoked, sign in again.
 
+Choose **Kimi Coding (International)** for a `kimi.ai` account and use a model such as `kimi-ai/k3`. Existing `kimi-coding` connections use the `kimi.com` account service and keep the `kmc` model prefix. The Kimi platform and Kimi Coding API-key cards have their own credentials.
+
 Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an array / `accounts` object. Imports stay serial so connection priorities keep the input order.
 
 ## Import token and cookie OAuth
 
 Cursor, Windsurf, Trae, and Devin CLI do not start a browser authorize step from the dashboard. You import a token the IDE or CLI already issued. Cursor has no public refresh endpoint; reconnect with a fresh import when the session dies. See [Cursor](./cursor.mdx).
+
+Trae accepts a user-approved Cloud-IDE-JWT import. DurinDoor uses a default expiry of 14 days and requires a fresh import when the session expires. The dashboard form accepts the token. Clients using `POST /api/oauth/trae/import-token` can also provide `userRegion` and `userTimezone` for the connection. The region defaults to `US`. The response omits the credential.
 
 iFlow can take a browser cookie instead of the PKCE path. `POST /api/oauth/iflow/cookie` requires a `BXAuth=` field.
 
@@ -90,6 +94,8 @@ Xiaomi MiMo takes an `sk-` API key for the cloud API, or a Xiaomi account for th
 
 - **Local credentials.** When MiMo Desktop is installed on the DurinDoor host, `GET /api/oauth/xiaomi-mimo/auto-import` reads `~/.local/share/mimocode/auth.json` and the Desktop cookie store. That route is local-only and needs dashboard auth. The import stores the key plus the account `passToken`. Desktop locks its cookie database while it runs, so close it first if the token is missing.
 - **Browser login.** No Desktop needed. Pick the account cluster (`cn`, `sgp`, `ams`, `ru`, or `in`). `POST /api/oauth/xiaomi-mimo/login/start` opens the real Xiaomi login page in a popup, served through DurinDoor on your own origin. The temporary browser login session forwards Xiaomi account pages through the gateway. Only a request with management access gets through, and the dashboard's own credentials are never forwarded. Once the page yields a `passToken`, the modal saves a session-only connection on that cluster. Non-CN clusters use `MIMO_LOGIN_PROXY` for the login egress when it is set; otherwise a local HTTP proxy on a common port is used if one answers. CN always connects directly.
+
+Model discovery for API-key connections queries the cloud `/v1/models` endpoint through the connection proxy. Token Plan discovery uses its own key and regional endpoint. Session-only connections do not send their account token to the cloud catalog; they retain the static models.
 
 With a `passToken`, `mimo-v2.6-pro`, `mimo-v2.6-flash`, and `mimo-v2.6-pro-ultraspeed` run on the cluster's account route (`mimo-server-<cluster>.xiaomimimo.com`) and bill the account's weekly quota. DurinDoor swaps the token for a service cookie through MiMo Desktop's two-step `serviceLogin` handshake and caches the cookie for 30 minutes per token and cluster. When the handshake fails, those models fall back to the cloud API with the key. Other models always use the cloud API. The connection test and the usage card use the same handshake.
 

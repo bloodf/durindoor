@@ -127,6 +127,7 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS` | `45000` | Gemini native TTS header timeout. |
 | `CONCURRENCY_GATE_TIMEOUT_MS` | `120000` | Wait for a provider concurrency slot. |
 | `TRAE_STREAM_TIMEOUT_MS` | `300000` | Trae stream timeout. |
+| `TRAE_WEB_ORIGIN` | `https://work.trae.ai` | Origin and Referer sent with Trae requests. Set it when Trae moves its web client host. A single connection can override it with `providerSpecificData.refererOrigin`. |
 | `VIDEO_FETCH_TIMEOUT_MS` | `120000` | Video fetch timeout. |
 | `CODEX_REFRESH_SPACING_MS` | `2000` | Gap between sibling OAuth refreshes. `0` opts out. |
 | `BG_REFRESH_DELAY_MS` | `1500` | Background token refresh delay (normal). |

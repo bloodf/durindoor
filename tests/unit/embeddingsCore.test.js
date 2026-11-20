@@ -145,6 +145,16 @@ describe("buildEmbeddingsBody", () => {
     expect(sent.input_type).toBe("query");
   });
 
+  it("defaults NVIDIA asymmetric embeddings to query input_type", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeProviderResponse(VALID_EMBEDDING_RESPONSE)));
+    await handleEmbeddingsCore(makeOptions({
+      body: { model: "nvidia/nvidia/nemotron-3.5-embed-8b", input: "fixture" },
+      modelInfo: { provider: "nvidia", model: "nvidia/nemotron-3.5-embed-8b" },
+      credentials: { apiKey: "nvapi-test" },
+    }));
+    expect(JSON.parse(fetch.mock.calls[0][1].body).input_type).toBe("query");
+  });
+
   it("no encoding_format in body → defaults to float", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(makeProviderResponse(VALID_EMBEDDING_RESPONSE));
 

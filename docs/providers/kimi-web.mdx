@@ -62,3 +62,5 @@ A 401 that refresh cannot fix, and any 403, cools the connection down for two mi
 Kimi Web does not report quota. The [Quota Tracker](../features/quota-tracking.mdx) covers the Kimi and Kimi Coding providers, not the web session.
 
 After saving, send a short chat using `kimi-web/k3` or the exact ID shown by your instance, then confirm **Usage**. A successful model-list probe checks the session at that moment; it does not verify tool support or keep the session alive.
+
+Rotated sessions are bound to both the pasted refresh token and the web origin. After upgrading from a version that stored a rotation without its origin, an existing connection may need a fresh paste if its original tokens have expired. Streaming error messages redact the current access token.

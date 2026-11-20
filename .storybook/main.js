@@ -79,7 +79,6 @@ const config = {
               const pair = new RegExp(`(<span[^>]*>${label}</span>\\s*<Toggle[\\s\\S]*?onChange=\\{${handler}\\} />)`);
               code = code.replace(pair, '<div className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "inline-flex items-center gap-2 whitespace-nowrap" : "contents"}>$1</div>');
             }
-            code = code.replace('className="hidden text-xs text-dd-muted sm:inline">RPM / account', 'className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "text-xs text-dd-muted" : "hidden text-xs text-dd-muted sm:inline"}>RPM / account');
             const panel = code.match(/\{!isCompatible &&\s*<ModelAutoSyncPanel[\s\S]*?\/>\s*\}/)?.[0];
             if (!panel) throw new Error("Provider auto-sync placement changed");
             code = code.replace(panel, `{globalThis.document?.documentElement.dataset.v5Review !== "true" && (${panel.slice(1, -1)})}`)

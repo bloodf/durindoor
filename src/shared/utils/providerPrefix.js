@@ -29,13 +29,17 @@ export function isCustomProviderId(providerId) {
 }
 
 /**
- * Resolve the prefix a provider is addressed by in a published model id.
+ * Resolve the prefix a provider is labelled with in a published model id.
  *
- * A custom provider node is addressed by the short prefix the operator
- * configured on it ("mirai"), not by its internal node id. The node id is not
- * usable in a client: the dashboard advertises the prefix, `/v1/models`
- * publishes it, and a client that copies a model id out of the dashboard has
- * to be able to send it back.
+ * A custom provider node is labelled with the short prefix the operator
+ * configured on it ("mirai"), not by its internal node id. The dashboard
+ * advertises the prefix and `/v1/models` publishes it.
+ *
+ * A prefix is a label, not a stable request id: an operator can edit it, and
+ * two nodes can carry the same one. Where a caller must keep a request bound
+ * to one selected node (the Playground), it sends the node id and uses this
+ * prefix only for display. The server accepts both forms and resolves each to
+ * the node.
  *
  * Precedence:
  *   1. `providerSpecificData.prefix` — written onto the connection when it is
@@ -50,9 +54,9 @@ export function isCustomProviderId(providerId) {
  * A built-in provider is never remapped: a stray `prefix` field on a built-in
  * connection must not rename its models.
  *
- * The prefix is display-only. It never selects an upstream credential and
- * never builds an upstream URL — routing still resolves a prefix back to the
- * node id through the provider-nodes lookup.
+ * The prefix never selects an upstream credential and never builds an
+ * upstream URL — routing still resolves a prefix back to the node id through
+ * the provider-nodes lookup.
  *
  * @param {object} input
  * @param {string} [input.providerId] Provider id or node id.

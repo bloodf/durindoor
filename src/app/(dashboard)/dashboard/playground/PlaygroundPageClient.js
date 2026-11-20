@@ -17,7 +17,7 @@ import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/sha
 import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { getConnectionOptions, getModelReasoningOptions, getProviderLabel, groupModelsByProvider, normalizeLiveModel, normalizeReasoningEffort, normalizeStaticModel, paginateSessions } from "./playgroundHelpers";
+import { buildModelIndex, getConnectionOptions, getModelReasoningOptions, getProviderLabel, groupModelsByProvider, normalizeLiveModel, normalizeReasoningEffort, normalizeStaticModel, paginateSessions, resolveSavedModel } from "./playgroundHelpers";
 import { isBrowser, isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const STORAGE_KEYS = {
@@ -309,39 +309,29 @@ export default function PlaygroundPageClient() {
   // navigation away mid-stream can't setState on an unmounted tree.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const modelIndex = useMemo(() => {
-    const map = new Map();
-    for (const group of providerGroups) {
-      for (const model of group.models) {
-        const entry = {
-          ...model,
-          providerId: group.providerId,
-          providerName: group.providerName
-        };
-        map.set(model.id, entry);
-        // The row is addressed by the node id; the configured prefix is the
-        // published label. A selection saved under either form resolves to the
-        // same row.
-        if (model.displayModel && model.displayModel !== model.id && !map.has(model.displayModel)) {
-          map.set(model.displayModel, entry);
-        }
-      }
-    }
-    return map;
-  }, [providerGroups]);
+  // Rows are addressed by the node id; the configured prefix (and a raw
+  // upstream id saved before node binding) are legacy aliases. A saved
+  // selection resolves through its provider identity and never through an
+  // ambiguous alias.
+  const modelLookup = useMemo(() => buildModelIndex(providerGroups), [providerGroups]);
+  const modelIndex = modelLookup.byId;
+  const findSavedModel = (savedId, savedProviderId) => resolveSavedModel(modelLookup, savedId, savedProviderId);
 
   const activeProviderGroup = useMemo(() => {
     return providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0] || null;
   }, [providerGroups, activeProviderId]);
 
   const activeModel = useMemo(() => {
-    if (activeModelId && modelIndex.has(activeModelId)) return modelIndex.get(activeModelId);
+    const active = findSavedModel(activeModelId, activeProviderId);
+    if (active) return active;
     if (activeSessionId) {
       const session = sessions.find((item) => item.id === activeSessionId);
-      if (session?.modelId && modelIndex.has(session.modelId)) return modelIndex.get(session.modelId);
+      const saved = findSavedModel(session?.modelId, session?.providerId);
+      if (saved) return saved;
     }
     return activeProviderGroup?.models?.[0] || null;
-  }, [activeModelId, modelIndex, activeProviderGroup, sessions, activeSessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeModelId, activeProviderId, modelLookup, activeProviderGroup, sessions, activeSessionId]);
 
   const reasoningOptions = useMemo(() => {
     if (!activeModel) return null;
@@ -392,15 +382,11 @@ export default function PlaygroundPageClient() {
     if (providerGroups.length === 0) return;
 
     const savedProvider = providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0];
-    const savedModel = activeModelId && modelIndex.has(activeModelId) ?
-    modelIndex.get(activeModelId) :
-    savedProvider.models[0];
+    const savedModel = findSavedModel(activeModelId, activeProviderId) || savedProvider.models[0];
 
     if (sessions.length > 0) {
       const session = sessions.find((item) => item.id === activeSessionId) || sessions[0];
-      const sessionModel = session?.modelId && modelIndex.has(session.modelId) ?
-      modelIndex.get(session.modelId) :
-      savedModel;
+      const sessionModel = findSavedModel(session?.modelId, session?.providerId) || savedModel;
       initializedRef.current = true;
       setActiveSessionId(session.id);
       setActiveProviderId(sessionModel?.providerId || savedProvider.providerId);
@@ -425,7 +411,8 @@ export default function PlaygroundPageClient() {
     setActiveSessionId(session.id);
     setActiveProviderId(savedProvider.providerId);
     setActiveModelId(savedModel.id);
-  }, [isHydrated, loadingData, providerGroups, modelIndex, sessions, activeSessionId, activeProviderId, activeModelId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, loadingData, providerGroups, modelLookup, sessions, activeSessionId, activeProviderId, activeModelId]);
 
   const updateSession = (sessionId, updater) => {
     setSessions((prev) => prev.map((session) => session.id === sessionId ? updater(cloneSession(session)) : session));

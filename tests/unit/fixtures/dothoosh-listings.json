@@ -1,0 +1,128 @@
+{
+  "_comment": "Synthetic DotHoosh listings. The row shapes follow the provider's own documentation (https://gateway.dothoosh.com/docs/models): the OpenAI listing carries protocols[], context_window, max_output_tokens, architecture.input_modalities and top_provider; the Anthropic listing carries the Anthropic row shape (type, id, display_name, created_at). The model ids are fixtures, not the provider's live catalog.",
+  "openai": {
+    "object": "list",
+    "data": [
+      {
+        "id": "gpt-fixture-astra",
+        "object": "model",
+        "created": 1774000000,
+        "owned_by": "dothoosh",
+        "name": "GPT Fixture Astra",
+        "status": "active",
+        "capabilities": ["text", "streaming", "tools"],
+        "protocols": [
+          { "protocol": "openai-chat-completions", "conformance_status": "verified" },
+          { "protocol": "openai-responses", "conformance_status": "verified" }
+        ],
+        "context_window": 400000,
+        "max_output_tokens": 128000,
+        "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"] },
+        "top_provider": { "context_length": 400000, "max_completion_tokens": 128000, "is_moderated": false }
+      },
+      {
+        "id": "gpt-fixture-terra",
+        "object": "model",
+        "created": 1774000000,
+        "owned_by": "dothoosh",
+        "name": "GPT Fixture Terra",
+        "status": "active",
+        "capabilities": ["text", "streaming"],
+        "protocols": [
+          { "protocol": "openai-responses", "conformance_status": "verified" }
+        ],
+        "context_window": 200000,
+        "max_output_tokens": 64000,
+        "architecture": { "modality": "text+image->text", "input_modalities": ["text", "image"], "output_modalities": ["text"] },
+        "top_provider": { "context_length": 200000, "max_completion_tokens": 64000, "is_moderated": false }
+      },
+      {
+        "id": "deepseek-fixture-flash",
+        "object": "model",
+        "created": 1774000000,
+        "owned_by": "dothoosh",
+        "name": "DeepSeek Fixture Flash",
+        "status": "active",
+        "capabilities": ["text", "streaming", "tools", "reasoning"],
+        "protocols": [
+          { "protocol": "openai-chat-completions", "conformance_status": "verified" },
+          { "protocol": "anthropic-messages", "conformance_status": "verified" }
+        ],
+        "context_window": 128000,
+        "max_output_tokens": 32768,
+        "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"] },
+        "top_provider": { "context_length": 128000, "max_completion_tokens": 32768, "is_moderated": false }
+      },
+      {
+        "id": "gemini-fixture-flash",
+        "object": "model",
+        "created": 1774000000,
+        "owned_by": "dothoosh",
+        "name": "Gemini Fixture Flash",
+        "status": "active",
+        "capabilities": ["text", "streaming"],
+        "protocols": [
+          { "protocol": "openai-chat-completions", "conformance_status": "verified" }
+        ],
+        "context_window": 1000000,
+        "max_output_tokens": 8192,
+        "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"] },
+        "top_provider": { "context_length": 1000000, "max_completion_tokens": 8192, "is_moderated": false }
+      },
+      {
+        "id": "kimi-fixture-k3",
+        "object": "model",
+        "created": 1774000000,
+        "owned_by": "dothoosh",
+        "name": "Kimi Fixture K3",
+        "status": "active",
+        "capabilities": ["text", "streaming"],
+        "protocols": [
+          { "protocol": "openai-chat-completions", "conformance_status": "verified" }
+        ],
+        "context_window": 262144,
+        "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"] }
+      },
+      {
+        "id": "",
+        "object": "model",
+        "name": "Row without a usable id"
+      },
+      {
+        "id": "no-limits-fixture",
+        "object": "model",
+        "name": "No Limits Fixture",
+        "status": "active",
+        "protocols": [
+          { "protocol": "openai-chat-completions", "conformance_status": "verified" }
+        ]
+      }
+    ]
+  },
+  "anthropic": {
+    "object": "list",
+    "has_more": false,
+    "data": [
+      {
+        "type": "model",
+        "id": "claude-fixture-opus-9",
+        "display_name": "Claude Fixture Opus 9",
+        "created_at": "2026-08-28T00:00:00Z",
+        "name": "Claude Fixture Opus 9",
+        "context_length": 1000000,
+        "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"] },
+        "top_provider": { "context_length": 1000000, "max_completion_tokens": 64000, "is_moderated": false }
+      },
+      {
+        "type": "model",
+        "id": "deepseek-fixture-flash",
+        "display_name": "DeepSeek Fixture Flash",
+        "created_at": "2026-08-28T00:00:00Z",
+        "name": "DeepSeek Fixture Flash",
+        "context_length": 128000,
+        "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"] },
+        "top_provider": { "context_length": 128000, "max_completion_tokens": 32768, "is_moderated": false }
+      }
+    ]
+  }
+}

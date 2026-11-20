@@ -132,6 +132,8 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `DISABLE_BACKGROUND_TOKEN_REFRESH` | unset | Truthy disables background refresh. |
 | `ONBOARD_MAX_ATTEMPTS` | `2` | Gemini/Antigravity project-id onboard attempts. |
 | `ONBOARD_RETRY_DELAY_MS` | `12000` | Delay between onboard attempts. |
+| `ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS` | `10` | Cloud Code `onboardUser` polls during Antigravity sign-in. |
+| `ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS` | `5000` | Delay between those sign-in polls. |
 | `EAGER_PROJECT_ID_REFRESH` | unset | `true` refreshes Google project ids eagerly. |
 
 ## Web fetch and search

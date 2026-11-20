@@ -44,6 +44,8 @@ Onboarding is a long-running Google operation, so the sign-in can wait for it. T
 
 Send `ag/<model>`, for example `ag/gemini-3.8-flash`. Available models include thinking variants and image models; use discovery rather than a fixed count. Image models never stream. `GET /v1/models` shows what your connections actually expose.
 
+The dashboard reads each account's model list from Google using that account's own Cloud Code project, so the list is the one Google reports for the signed-in account rather than a shared default. If Google refuses the credential, or answers with a list DurinDoor cannot read, the provider page keeps the built-in list and shows the failure instead of an empty list. An account whose project was never provisioned is discovered without one; finish onboarding for that account to get its own list.
+
 ## Quota
 
 The [Quota Tracker](../features/quota-tracking.mdx) shows one row per model from Cloud Code's available-models call, plus two weekly rows: Gemini Weekly and Claude & GPT Weekly. When Google answers 429 with a reset timestamp or delay, DurinDoor uses that value for the cooldown instead of guessing.

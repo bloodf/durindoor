@@ -41,6 +41,8 @@ Difference from the upstream premise: upstream states its central response-heade
 - early keepalive slow path: header present; other headers preserved; the keepalive frame is read first, then the upstream bytes, then end of stream; the fast path and the disabled wrapper return the handler response by identity without the header;
 - local MCP routes keep their existing literal.
 
-Against the unmodified product files, the bypass and keepalive-slow-path tests fail and the rest pass; with the change all 8 pass. Existing `bypass-response`, `bypass-handler` and `messages-early-stream-keepalive` suites still pass (30 tests across the four files). Dependencies were installed with `pnpm install --frozen-lockfile --ignore-scripts` in the checkout and `tests/`. No whole-suite, e2e, browser or Docker run was done.
+Against the unmodified product files, the bypass and keepalive-slow-path tests fail and the rest pass; with the change all 8 pass. Existing `bypass-response`, `bypass-handler` and `messages-early-stream-keepalive` suites still pass (30 tests across the four files). Dependencies were installed with `pnpm install --frozen-lockfile --ignore-scripts` in the checkout and `tests/`. The gate's full run found one pinned expectation: `tests/unit/operational-metrics-admission.test.js` asserts the exact header set of the early-keepalive slow-path response for `/v1/messages` and `/v1/responses`. Its expected set now includes `x-accel-buffering: no`; nothing else in that assertion changed. The suite passes (285 tests) with the new test file (293 together).
+
+No e2e, browser or Docker run was done locally.
 
 No public documentation changes: the header is an infrastructure hint and no endpoint contract changes.

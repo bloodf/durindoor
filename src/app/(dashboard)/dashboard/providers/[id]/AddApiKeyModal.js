@@ -186,6 +186,32 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     }
   };
 
+  const [cliImportError, setCliImportError] = useState("");
+  const importCommandCode = async () => {
+    setSaving(true);
+    setCliImportError("");
+    try {
+      const response = await fetch("/api/oauth/commandcode/auto-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId
+        })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || "Could not import the CLI connection");
+      }
+      onBulkDone?.();
+      onClose();
+    } catch (failure) {
+      setCliImportError(failure.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!provider) return;
     // Self-hosted providers are keyless and auto-named, so neither an API key
@@ -573,6 +599,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           Legacy manual proxy fields are still accepted by API for backward compatibility.
         </p>
 
+        {provider === "commandcode" ? (
+          <div>
+            <Button variant="secondary" onClick={importCommandCode} disabled={saving}>Import local Command Code CLI connection</Button>
+            {cliImportError ? <p role="alert" className="text-xs text-dd-danger">{cliImportError}</p> : null}
+          </div>
+        ) : null}
         <div className="flex gap-2">
           <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
             {saving ? "Saving..." : "Save"}

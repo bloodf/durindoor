@@ -1,3 +1,4 @@
+import { listTtsVoices } from "@/lib/ttsVoices.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
@@ -48,17 +49,23 @@ async function GETHandler(request) {
       );
     }
 
-    const baseUrl = PROVIDER_API[provider](serverOrigin());
-    const url = new URL(baseUrl);
-    if (lang) url.searchParams.set("lang", lang);
-    if (searchParams.get("key")) url.searchParams.set("key", searchParams.get("key"));
-    const res = await fetch(url, { cache: "no-store", headers: credentialHeaders(request) });
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      return Response.json(
-        { error: { message: data.error || `Upstream ${res.status}`, type: "server_error" } },
-        { status: res.status, headers: { "Access-Control-Allow-Origin": "*" } },
-      );
+    let data;
+    if (provider === "edge-tts" || provider === "local-device") {
+      data = await listTtsVoices(provider, lang);
+    } else {
+      const baseUrl = PROVIDER_API[provider](serverOrigin());
+      const url = new URL(baseUrl);
+      if (lang) url.searchParams.set("lang", lang);
+      if (searchParams.get("key")) url.searchParams.set("key", searchParams.get("key"));
+      const res = await fetch(url, { cache: "no-store", headers: credentialHeaders(request) });
+      data = await res.json();
+      if (!res.ok || data.error) {
+        return Response.json(
+          { error: { message: data.error || `Upstream ${res.status}`, type: "server_error" } },
+          { status: res.status, headers: { "Access-Control-Allow-Origin": "*" } },
+        );
+      }
+
     }
 
     // Internal API shape: { voices } when lang filter, else { byLang, languages }

@@ -148,6 +148,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const resolvedTranslationContext = Object.freeze({
     ...(translationContext || {}),
     provider,
+    preserveCacheControl: targetFormat === FORMATS.OPENAI && PROVIDERS[provider]?.quirks?.preserveCacheControl === true,
     thinkingIntent,
     clientSessionId
   });

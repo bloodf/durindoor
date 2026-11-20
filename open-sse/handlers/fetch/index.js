@@ -146,6 +146,14 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
 
   const fmt = format || getDefaultFormat();
+  const formats = providerConfig?.formats;
+  if (Array.isArray(formats) && formats.length && !formats.includes(fmt)) {
+    return {
+      success: false,
+      status: 400,
+      error: `Unsupported format for ${provider}. Supported: ${formats.join(", ")}`
+    };
+  }
   const timeoutMs = providerConfig?.timeoutMs || getDefaultTimeoutMs();
   const apiKey = credentials?.apiKey || credentials?.key || credentials?.token || "";
   const costPerQuery = providerConfig?.costPerQuery ?? null;
@@ -296,7 +304,7 @@ async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuer
   const upstreamStart = Date.now();
   const r = await tryFetch(target, {
     method: "GET",
-    headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {}
+    headers: { "x-respond-with": fmt, ...(apiKey ? { authorization: `Bearer ${apiKey}` } : null) }
   }, timeoutMs);
 
   if (!r.ok) {
@@ -329,7 +337,7 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
       "content-type": "application/json",
       ...(apiKey ? { authorization: `Bearer ${apiKey}` } : null)
     },
-    body: JSON.stringify({ urls: [url], extract_depth: "basic" })
+    body: JSON.stringify({ urls: [url], extract_depth: "basic", format: fmt })
   }, timeoutMs);
 
   if (!r.ok) {

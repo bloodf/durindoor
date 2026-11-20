@@ -134,10 +134,11 @@ export async function handleImageGenerationCore({
   let url;
   let headers;
   let requestBody;
+  const adapterOptions = { streamToClient };
 
   try {
-    url = adapter.buildUrl(model, credentials);
-    requestBody = await adapter.buildBody(model, body);
+    url = adapter.buildUrl(model, credentials, body, adapterOptions);
+    requestBody = await adapter.buildBody(model, body, adapterOptions);
     headers = adapter.buildHeaders(credentials, requestBody, model, body);
   } catch (error) {
     // An adapter may tag a pre-dispatch rejection with an explicit HTTP status
@@ -188,13 +189,13 @@ export async function handleImageGenerationCore({
       if (onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
 
       try {
-        const retryBody = await adapter.buildBody(model, body);
-        const retryHeaders = adapter.buildHeaders(credentials, retryBody, model, body);
-        const retryUrl = adapter.buildUrl(model, credentials);
-        providerResponse = await fetch(retryUrl, {
+        requestBody = await adapter.buildBody(model, body, adapterOptions);
+        headers = adapter.buildHeaders(credentials, requestBody, model, body);
+        url = adapter.buildUrl(model, credentials, body, adapterOptions);
+        providerResponse = await fetch(url, {
           method: "POST",
-          headers: retryHeaders,
-          body: serializeRequestBody(retryBody),
+          headers,
+          body: serializeRequestBody(requestBody),
           signal,
           proxyOptions
         });
@@ -207,8 +208,30 @@ export async function handleImageGenerationCore({
     }
   }
 
-  if (!providerResponse.ok) {
-    const { statusCode, message } = await parseUpstreamError(providerResponse);
+  let upstreamError = providerResponse.ok ? null : await parseUpstreamError(providerResponse);
+  const fallbackBody = upstreamError && adapter.buildFallbackBody?.(
+    requestBody, upstreamError.statusCode, upstreamError.message
+  );
+  if (fallbackBody) {
+    try {
+      requestBody = fallbackBody;
+      headers = adapter.buildHeaders(credentials, requestBody, model, body);
+      providerResponse = await fetch(url, {
+        method: "POST",
+        headers,
+        body: serializeRequestBody(requestBody),
+        signal,
+        proxyOptions
+      });
+      upstreamError = providerResponse.ok ? null : await parseUpstreamError(providerResponse);
+    } catch (error) {
+      if (isAbort(error)) return abortedResult();
+      const message = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, message);
+    }
+  }
+  if (upstreamError) {
+    const { statusCode, message } = upstreamError;
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("IMAGE", `Provider error: ${errMsg}`);
     return createErrorResult(statusCode, errMsg);

@@ -3,6 +3,7 @@
  * Claude clients lose configured built-ins shadowed by MCP tools; DeepSeek
  * models retain only the first exact-name definition because duplicates 400.
  */
+import { CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEDUP_RULES = [
@@ -37,14 +38,33 @@ function isDeepSeekModel(model) {
   return /^deepseek-/i.test(model.slice(model.lastIndexOf("/") + 1));
 }
 
+function cleanStrippedToolReferences(messages, strippedNames) {
+  if (!Array.isArray(messages) || strippedNames.size === 0) return;
+  for (const msg of messages) {
+    const content = msg?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block?.type !== CLAUDE_BLOCK.TOOL_RESULT || !Array.isArray(block.content)) continue;
+      const removed = block.content.filter(
+        (p) => p?.type === CLAUDE_BLOCK.TOOL_REFERENCE && strippedNames.has(p.tool_name)
+      );
+      if (removed.length === 0) continue;
+      const kept = block.content.filter((p) => !removed.includes(p));
+      block.content = kept.length
+        ? kept
+        : [{ type: CLAUDE_BLOCK.TEXT, text: removed.map((p) => `[Tool ${p.tool_name} is unavailable]`).join("\n") }];
+    }
+  }
+}
+
 /**
  * Apply client- and model-specific tool deduplication from upstream PR #3333.
  *
  * @param {Array} tools Translated outbound tools.
- * @param {{ clientTool?: string | null, model?: string | null }} [options]
+ * @param {{ clientTool?: string | null, model?: string | null, messages?: Array }} [options]
  * @returns {{ tools: Array, stripped: string[] }}
  */
-function dedupeTools(tools, { clientTool, model } = {}) {
+function dedupeTools(tools, { clientTool, model, messages } = {}) {
   if (!Array.isArray(tools) || tools.length === 0) return { tools, stripped: [] };
   const names = tools.map(getToolName);
   const toStrip = new Set();
@@ -70,6 +90,7 @@ function dedupeTools(tools, { clientTool, model } = {}) {
   }
 
   if (toStrip.size === 0 && toDrop.size === 0) return { tools, stripped: [] };
+  cleanStrippedToolReferences(messages, toStrip);
   return {
     tools: tools.filter((tool, index) => !toDrop.has(index) && !toStrip.has(getToolName(tool))),
     stripped: [...toDrop].map((index) => names[index]).concat([...toStrip])

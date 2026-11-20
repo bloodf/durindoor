@@ -24,6 +24,26 @@ describe("proxyFetch connection pooling", () => {
     vi.restoreAllMocks();
   });
 
+  it("honors an explicit proxy adapter and never replays its failure directly", async () => {
+    const direct = vi.fn();
+    const proxy = "http://selected-proxy.example.test:8080";
+    const url = "https://provider.example.test/";
+    direct.withProxy = vi.fn(async (_url, _options, _proxy, dispatch) =>
+      dispatch(async () => new Response("proxied"))
+    );
+    const config = { connectionProxyEnabled: true, connectionProxyUrl: proxy, strictProxy: true };
+    const response = await proxyAwareFetch(url, { directFetch: direct }, config);
+    expect(await response.text()).toBe("proxied");
+    expect(direct.withProxy).toHaveBeenCalledWith(url, expect.objectContaining({ redirect: "error" }), proxy, expect.any(Function));
+    expect(direct).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    direct.withProxy.mockRejectedValueOnce(new Error("connection failed"));
+    await expect(proxyAwareFetch(url, { directFetch: direct }, config)).rejects.toThrow("strictProxy=true");
+    expect(direct).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("reuses one direct dispatcher beyond the configured connection cap", async () => {
     const requestCount = PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin + 1;
 

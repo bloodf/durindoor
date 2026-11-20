@@ -57,4 +57,10 @@ export default {
     options: ["auto", "on", "off"],
     defaultMode: "auto",
   },
+  usage: { url: "https://api.cline.bot/api/v1/users/me/plan/usage-limits" },
+  features: {
+    usage: true,
+    // API-key connections use the same usage-limits endpoint (plain Bearer).
+    usageApikey: true,
+  },
 };

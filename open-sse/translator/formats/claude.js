@@ -731,7 +731,11 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     // Check if thinking is enabled AND last message is from user
     const lastMessage = filtered[filtered.length - 1];
     const lastMessageIsUser = lastMessage?.role === ROLE.USER;
-    const thinkingEnabled = body.thinking?.type === "enabled" && lastMessageIsUser;
+    const isGoDeepSeek = provider === "opencode-go" &&
+      /^deepseek-/i.test(String(body.model || "").split("/").at(-1));
+    const isDeepSeek = provider === "deepseek" || isGoDeepSeek;
+    const thinkingEnabled = lastMessageIsUser &&
+      (body.thinking?.type === "enabled" || (isDeepSeek && body.thinking?.type === "adaptive"));
 
     // Pass 2 (reverse): add cache_control to last assistant + handle thinking for Anthropic
     let lastAssistantProcessed = false;
@@ -762,7 +766,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
         }
 
         // Handle thinking blocks for Anthropic-compatible endpoints.
-        if (handlesThinkingBlocks(provider)) {
+        if (handlesThinkingBlocks(provider) || isGoDeepSeek) {
           let hasToolUse = false;
           let hasKeptThinking = false;
 
@@ -771,7 +775,6 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           // DeepSeek: keep existing thinking as-is; add an unsigned placeholder only if missing.
           const isClaudeNative = provider === "claude";
           const preservesNativeThinkingBlocks = provider === "ollama" || provider === "ollama-local";
-          const isDeepSeek = provider === "deepseek";
           const isAdaptiveModel = isAdaptiveThinkingModel(body.model);
           const kept = [];
           for (const block of msg.content) {
@@ -813,7 +816,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
           // Add thinking block if thinking enabled + has tool_use but no thinking
           if (thinkingEnabled && !hasKeptThinking && hasToolUse && !isAdaptiveModel) {
-            msg.content.unshift(buildThinkingPlaceholder(provider));
+            msg.content.unshift(buildThinkingPlaceholder(isDeepSeek ? "deepseek" : provider));
           }
         }
       }

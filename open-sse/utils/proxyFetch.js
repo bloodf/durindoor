@@ -878,6 +878,18 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   }
 
   if (proxyUrl) {
+    if (isFunction(directTransport?.withProxy)) {
+      try {
+        const response = await directTransport.withProxy(url, options, proxyUrl, runProviderAttemptDispatch);
+        if (response) return response;
+      } catch (proxyError) {
+        if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
+        rethrowTransportAbort(proxyError, options.signal);
+        throw new Error(proxyOptions?.strictProxy === true
+          ? "[ProxyFetch] Proxy required but failed (strictProxy=true)"
+          : "[ProxyFetch] Proxied transport failed");
+      }
+    }
     try {
       const dispatcher = await getDispatcher(proxyUrl);
       return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));

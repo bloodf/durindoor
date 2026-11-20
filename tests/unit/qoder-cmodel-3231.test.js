@@ -82,7 +82,15 @@ describe("Qoder cmodel catalog fallback (#3231)", () => {
 
     const resolved = await resolveQoderModels(credentials);
 
-    expect(resolved.models).toEqual([]);
+    expect(resolved.models).toEqual([{
+      id: "cmodel",
+      name: "Upstream Cantus",
+      contextLength: 99,
+      maxOutputTokens: 11,
+      isVL: true,
+      isReasoning: true,
+      description: "Upstream config",
+    }]);
     await expect(getQoderModelConfig(credentials, "cmodel")).resolves.toEqual(upstreamCmodel);
   });
 

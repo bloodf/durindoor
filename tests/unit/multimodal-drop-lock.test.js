@@ -73,4 +73,10 @@ describe("openai→gemini: input_audio is mapped to inlineData", () => {
     const parts = convertOpenAIContentToParts([{ type: "image_url", image_url: { url: "data:image/png;base64,AAAB", detail: "high" } }]);
     expect(parts).toEqual([{ inlineData: { mimeType: "image/png", data: "AAAB" } }]);
   });
+
+  it("uses a concrete MIME type for remote images", () => {
+    const url = "https://files.example.com/reference/photo.jpg?token=abc";
+    const parts = convertOpenAIContentToParts([{ type: "image_url", image_url: { url } }]);
+    expect(parts).toEqual([{ fileData: { fileUri: url, mimeType: "image/jpeg" } }]);
+  });
 });

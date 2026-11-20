@@ -65,8 +65,9 @@ function isProtectedResponsesEvent(payload, eventType) {
  * watermark was already forwarded and is a reconnect/retry replay.
  *
  * The watermark is scoped to one upstream response: a different
- * `response.id` starts a fresh numbering and resets the watermark, so a second
- * response in the same stream is never mistaken for a replay.
+ * `response.id` on a non-protected event starts fresh numbering. A late
+ * terminal or usage frame for another response is forwarded without changing
+ * the active response or its watermark.
  *
  * @returns {{isReplay: (payload: unknown) => boolean}} The tracker.
  */
@@ -86,6 +87,7 @@ export function createResponsesSequenceReplayTracker() {
 
     const eventResponseId = payload.response?.id;
     if (isString(eventResponseId) && eventResponseId && eventResponseId !== responseId) {
+      if (responseId !== null && isProtectedResponsesEvent(payload, eventType)) return false;
       responseId = eventResponseId;
       lastSequence = -1;
     }

@@ -136,7 +136,16 @@ function toClaudeUsage(usage) {
 
   // Extract cache tokens from prompt_tokens_details
   const cacheReadTokens = firstNumber(usage.prompt_tokens_details?.cached_tokens, usage.input_tokens_details?.cached_tokens);
-  const cacheCreateTokens = firstNumber(usage.prompt_tokens_details?.cache_creation_tokens, usage.input_tokens_details?.cache_creation_tokens);
+  // Cache-write accepts the same aliases as the shared normalizer: the
+  // canonical top-level field, the top-level `cache_write_tokens` alias and
+  // both nested spellings. Canonical fields win over aliases and an explicitly
+  // reported zero is kept as "nothing was written" rather than being read as
+  // an omission. A present-but-non-numeric value counts as no cache write,
+  // matching how the canonical field is treated elsewhere in this path.
+  const cacheWriteRaw = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
+    usage.prompt_tokens_details?.cache_creation_tokens ?? usage.prompt_tokens_details?.cache_write_tokens ??
+    usage.input_tokens_details?.cache_creation_tokens ?? usage.input_tokens_details?.cache_write_tokens;
+  const cacheCreateTokens = isNumber(cacheWriteRaw) ? cacheWriteRaw : 0;
 
   // input_tokens = prompt_tokens - cached_tokens - cache_creation_tokens
   // Because OpenAI's prompt_tokens includes all prompt-side tokens

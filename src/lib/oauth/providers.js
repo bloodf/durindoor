@@ -474,8 +474,8 @@ const PROVIDERS = {
 
       const data = await response.json();
       // OmniRoute #7358 validates device authorization data before presenting links.
-      if (typeof data?.device_code !== "string" || typeof data?.user_code !== "string" ||
-          typeof data?.verification_uri !== "string") {
+      if (!isString(data?.device_code) || !isString(data?.user_code) ||
+          !isString(data?.verification_uri)) {
         throw new Error("Grok device authorization response is incomplete");
       }
       if (!/^[A-Za-z0-9-]+$/.test(data.user_code)) {
@@ -483,7 +483,7 @@ const PROVIDERS = {
       }
       for (const value of [data.verification_uri, data.verification_uri_complete]) {
         if (value === undefined) continue;
-        if (typeof value !== "string" || /[\x00-\x1f\x7f]/.test(value)) {
+        if (!isString(value) || /[\x00-\x1f\x7f]/.test(value)) {
           throw new Error("Grok returned an invalid verification URL");
         }
         let url;

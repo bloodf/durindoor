@@ -207,7 +207,8 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   }
 
   const baseUrl = validateCustomBaseUrl(provider, resolveFirecrawlBaseUrl(provider, providerConfig, credentials));
-  const endpoint = isCustom ? "/v2/scrape" : "/v1/scrape";
+  // Both the hosted API and DurinDoor's custom Firecrawl integration use v2.
+  const endpoint = "/v2/scrape";
 
   const rawHeaders = isCustom ? credentials?.firecrawlHeaders : null;
   let customHeaders = null;

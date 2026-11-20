@@ -50,7 +50,7 @@ describe("Firecrawl providers", () => {
 
       expect(res.success).toBe(true);
       expect(global.fetch).toHaveBeenCalledWith(
-        "https://api.firecrawl.dev/v1/scrape",
+        "https://api.firecrawl.dev/v2/scrape",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({

@@ -129,7 +129,7 @@ describe("SenseNova `reasoning` field", () => {
       choices: [{ index: 0, message: { role: "assistant", content: "hi", reasoning: "think" }, finish_reason: "stop" }],
       usage: { prompt_tokens: 1, completion_tokens: 1 },
     });
-    expect(msg.content[0]).toEqual({ type: CLAUDE_BLOCK.THINKING, thinking: "think", signature: "" });
+    expect(msg.content[0]).toEqual({ type: CLAUDE_BLOCK.THINKING, thinking: "think" });
     expect(msg.content[1]).toEqual({ type: CLAUDE_BLOCK.TEXT, text: "hi" });
   });
 });

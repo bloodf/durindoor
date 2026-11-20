@@ -33,7 +33,7 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
   // block instead of a bare "(empty response)" that detectMalformed rejects (502).
   const reasoningText = extractReasoningText(msg);
   if (reasoningText.length > 0) {
-    content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoningText, signature: "" });
+    content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoningText });
   }
   if (isString(msg.content) && msg.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: msg.content });

@@ -3,7 +3,6 @@ import { describe, it, expect } from "vitest";
 import { openaiResponsesToOpenAIResponse } from "../../open-sse/translator/response/openai-responses.js";
 import { openaiToClaudeResponse } from "../../open-sse/translator/response/openai-to-claude.js";
 import { geminiToClaudeResponse } from "../../open-sse/translator/response/gemini-to-claude.js";
-import { translateOpenAIToClaudeIfNeeded } from "../../open-sse/translator/response/openai-to-claude-json.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
 import { applyResponseMasking } from "../../open-sse/services/responseMasking.js";
 import { openaiToAntigravityResponse } from "../../open-sse/translator/response/openai-to-antigravity.js";
@@ -36,7 +35,6 @@ describe("Responses text and native parts", () => {
     const gemini = geminiToClaudeResponse({ candidates: [{ content: { parts: [{ thought: true, text: "plan" }] } }] }, {});
     expect(openai.find(e => e.content_block?.type === "thinking").content_block.signature).toBe("");
     expect(gemini.find(e => e.content_block?.type === "thinking").content_block.signature).toBe("");
-    expect(translateOpenAIToClaudeIfNeeded({ choices: [{ message: { reasoning_content: "plan" } }] }).content[0].signature).toBe("");
   });
 
   it("keeps consecutive indexless tool calls distinct", () => {
@@ -58,6 +56,9 @@ describe("Responses text and native parts", () => {
     const parts = new AntigravityExecutor().transformRequest("gemini-3.8-flash-tiered", input, true, {}).request.contents[0].parts;
     expect(parts.filter(p => p.inlineData)).toEqual([image, image]);
     expect(parts.map(p => p.text || "").join("")).toContain("question");
+    expect(parts.map(p => p.inlineData ? "image" : p.text)).toEqual([
+      "[System Instructions]\n", "x".repeat(4001), "image", "\n\n[User Message]\n", "question", "image",
+    ]);
   });
 
   it("leaves opaque reasoning records intact while masking split visible text", async () => {

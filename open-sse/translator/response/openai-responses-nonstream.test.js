@@ -79,7 +79,7 @@ test("preserves Responses reasoning as Claude thinking", () => {
   });
 
   assert.deepEqual(out.content, [
-    { type: "thinking", thinking: "thinking", signature: "" },
+    { type: "thinking", thinking: "thinking" },
     { type: "text", text: "answer" },
   ]);
 });

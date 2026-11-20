@@ -8,6 +8,7 @@ import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/cod
 import { resolveCodexSparkRateLimit } from "../../shared/codexSparkRateLimit.js";
 import { classifyCodexQuotaWindow } from "../../shared/codexQuotaWindow.js";
 import { CODEX_CLI_USER_AGENT } from "../../config/appConstants.js";
+import { codexCredentialBindingMismatch } from "./codexCredentialBinding.js";
 
 // Codex (OpenAI) API config
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -235,6 +236,10 @@ const USAGE_FETCH_TIMEOUT_MS = 15000;
 
 export async function getCodexUsage(accessToken, providerSpecificData = {}, proxyOptions = null, idToken = null) {
   [providerSpecificData, proxyOptions] = normalizeCodexUsageArgs(providerSpecificData, proxyOptions, idToken);
+
+  if (codexCredentialBindingMismatch(accessToken, providerSpecificData, idToken)) {
+    return { message: "Codex OAuth token identity does not match this connection; re-authenticate it." };
+  }
 
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {

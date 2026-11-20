@@ -23,6 +23,19 @@ describe("Provider Validation API", () => {
     global.fetch = originalFetch;
   });
 
+  it("validates hosted Firecrawl keys against the v2 scrape endpoint", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const response = await POST(new Request("http://localhost/api/providers/validate", {
+      method: "POST",
+      body: JSON.stringify({ provider: "firecrawl", apiKey: "test-key" }),
+    }));
+    expect(await response.json()).toEqual({ valid: true, error: null });
+    expect(global.fetch).toHaveBeenCalledWith("https://api.firecrawl.dev/v2/scrape", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
+    }));
+  });
+
   describe("Google PSE validation", () => {
     it("should return valid:false when Google PSE responds 400", async () => {
       global.fetch = vi.fn().mockResolvedValue({

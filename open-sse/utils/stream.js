@@ -218,7 +218,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE ?
-  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
+  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
   null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.

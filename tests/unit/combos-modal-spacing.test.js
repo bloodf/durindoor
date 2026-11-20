@@ -83,6 +83,24 @@ describe("Create Combo modal spacing", () => {
     expect(JSON.parse(writes[0][1].body)).toEqual({ name: "weighted", models: ["openai/model"], members: [{ id: "openai/model", weight: 3 }], capabilities: {} });
   });
 
+  it("accepts a zero fallback weight when another member has positive weight", async () => {
+    const combo = { id: "mixed", name: "mixed", models: ["openai/a", "openai/b"], members: [{ id: "openai/a", weight: 2 }, { id: "openai/b", weight: 1 }] };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url, options) => url === "/api/combos" ? json({ combos: [combo] }) : originalFetch(url, options));
+    await act(async () => { root.render(React.createElement(CombosPage)); });
+    await flush();
+    await act(async () => { within(container).getByRole("button", { name: "Edit", exact: true }).click(); });
+    const dialog = document.body.querySelector("dialog");
+    const input = within(dialog).getAllByRole("spinbutton", { name: "Weight" })[1];
+    await act(async () => { fireEvent.input(input, { target: { value: "0" } }); });
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+    const save = within(dialog).getByRole("button", { name: "Save", exact: true });
+    expect(save.disabled).toBe(false);
+    await act(async () => { save.click(); });
+    const write = globalThis.fetch.mock.calls.find(([, options]) => options?.method === "PUT");
+    expect(JSON.parse(write[1].body).members).toEqual([{ id: "openai/a", weight: 2 }, { id: "openai/b", weight: 0 }]);
+  });
+
   it("renders Cancel and Create inside the dialog footer", async () => {
     await act(async () => { root.render(React.createElement(CombosPage)); });
     await flush();

@@ -914,15 +914,9 @@ function ApiKeyProviderCard({
     compatible: "Compatible"
   };
 
-  const getIconPath = () => {
-    if (provider.iconUrl) return provider.iconUrl;
-    if (isCompatible)
-    return provider.apiType === "responses" ?
-    "/providers/oai-r.png" :
-    "/providers/oai-cc.png";
-    if (isAnthropicCompatible) return "/providers/anthropic-m.png";
-    return `/providers/${providerId}.png`;
-  };
+  const compatibleFallback = isAnthropicCompatible ? "/providers/anthropic-m.png" :
+    isCompatible ? (provider.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png") : null;
+  const getIconPath = () => provider.iconUrl || `/providers/${providerId}.png`;
 
   return (
     <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
@@ -936,6 +930,7 @@ function ApiKeyProviderCard({
               {provider.iconUrl ? (
                 <ProviderIcon
                   src={getIconPath()}
+                  fallbackSrc={compatibleFallback || undefined}
                   alt={provider.name}
                   size={30}
                   className="max-h-[30px] max-w-[30px] rounded-dd object-contain"
@@ -944,6 +939,7 @@ function ApiKeyProviderCard({
               ) : isCompatible || isAnthropicCompatible ? (
                 <ProviderIcon
                   src={getIconPath()}
+                  fallbackSrc={compatibleFallback || undefined}
                   alt={provider.name}
                   size={30}
                   className="max-h-[30px] max-w-[30px] rounded-dd object-contain"

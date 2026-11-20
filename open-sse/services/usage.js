@@ -8,6 +8,7 @@ import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage, getAntigravityUsage } from "./usage/google.js";
 import { getClaudeUsage, consumeClaudeResetGrant } from "./usage/claude.js";
 import { getCodexUsage, consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "./usage/codex.js";
+import { getNanUsage } from "./usage/nan.js";
 
 export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits, consumeClaudeResetGrant };
 import { getKiroUsage } from "./usage/kiro.js";
@@ -45,6 +46,7 @@ const USAGE_HANDLERS = {
   antigravity: (c) => getAntigravityUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   agy: (c) => getAntigravityUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   claude: (c) => getClaudeUsage(c.accessToken ?? c.apiKey, c.proxyOptions, c.authType, { force: c.force, providerSpecificData: c.providerSpecificData }),
+  nan: (c) => getNanUsage(c.apiKey, c.proxyOptions),
   codex: (c) => getCodexUsage(c.accessToken, c.providerSpecificData, c.proxyOptions, c.idToken),
   kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "amazon-q": (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),

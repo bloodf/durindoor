@@ -54,10 +54,13 @@ Choose a strategy on the Combos page. The default is `fallback`; a combo without
 | --- | --- |
 | `fallback` | Try members in the saved order. The next member runs only when the current one fails. |
 | `round-robin` | Rotate the start member across requests to spread load. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
-| `weighted` | Pick by member weight. |
+| `weighted` | Pick randomly by member weight. |
+
 | `smart-scoring` | Reorder by provider health (quota, ban status) and prefer the best score, then fall through on errors. |
 | `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
 | `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Every panel and judge call can incur a charge: each request bills every panel member plus the judge (N+1 calls). |
+
+Round-robin uses a smooth weighted cycle when member weights differ. A zero-weight member is tried only as a fallback; at least one member must have a positive weight. Equal weights retain the usual rotation, including its sticky limit. Existing fractional weights remain supported.
 
 Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
 
@@ -145,7 +148,7 @@ Upstream HTTP 408 and 425 trigger account fallback with a transient cooldown. Cl
 
 A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, prepaid credit exhaustion (case-insensitive message substrings `insufficient credit` and `credit balance is too low`, including Anthropic's HTTP 400 billing envelope and OpenRouter/reseller insufficient-credits bodies; same long terminal account cooldown as `insufficient balance`, not a short transient backoff; on an HTTP 400 `invalid_request_error` only the provider's `error.message` is matched, never other body fields), and HTTP 200 with no usable output. Ordinary request-scoped 4xx (malformed body, context too long, other `invalid_request_error` messages) move to the next member with no cooldown and no account fallback; if no member serves the request, the client gets the first rejecting member's own status and body, unless another member failed with a retry hint (`retryAfter`), in which case the client gets that retryable status and `Retry-After`. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
 
-A malformed client body is rejected before combo dispatch. Fix the request before testing fallback.
+A malformed client body is rejected before combo dispatch. Fix the request before testing fallback. For non-streaming chat, an empty successful completion is retried once on the same member, then the combo tries the next member. If every member remains empty, DurinDoor returns a gateway error. Text, tool calls, supported media, and explicit provider refusals are preserved.
 
 Account fallback inside one member still runs first. If OpenAI account A 429s and account B succeeds, the combo does not move to member 2.
 

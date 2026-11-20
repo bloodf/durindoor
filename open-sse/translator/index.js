@@ -1,4 +1,5 @@
 import { FORMATS } from "./formats.js";
+import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
@@ -140,10 +141,16 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
+  // Capture the latest Claude system directive before the OpenAI pivot drops it.
+  const directiveEffort = sourceFormat === FORMATS.CLAUDE && targetFormat !== FORMATS.CLAUDE &&
+    (targetFormat === FORMATS.OPENAI || !requestRegistry.get(`${sourceFormat}:${targetFormat}`))
+    ? result.messages?.findLast((message) => message?.role === ROLE.SYSTEM &&
+        isString(message.output_config?.effort) && message.output_config.effort.trim())?.output_config.effort.trim().toLowerCase()
+    : null;
   const thinkingIntent = translationContext?.thinkingIntent ??
   parsedModel.override ??
   claudeGeminiBudgetIntent ??
-  captureThinking(result);
+  captureThinking(directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
@@ -356,7 +363,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
-    return [chunk];
+    return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];
   }
 
   let results = [chunk];
@@ -367,7 +374,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   // request-side direct route (e.g. kiro:claude — KiroExecutor already emits
   // OpenAI-shaped chunks, so this converts them straight to Claude SSE).
   const directFn = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
-  if (directFn) {
+  if (directFn && targetFormat !== FORMATS.OPENAI) {
     const converted = directFn(chunk, state);
     return converted ? Array.isArray(converted) ? converted : [converted] : [];
   }
@@ -391,6 +398,8 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   if (chunk === null && results.length === 0) {
     results = [null];
   }
+
+  results = normalizeDsmlChunks(results, state);
 
   if (sourceFormat !== FORMATS.OPENAI) {
     const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);

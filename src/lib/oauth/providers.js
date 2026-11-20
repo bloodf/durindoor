@@ -283,7 +283,17 @@ function kimiDeviceProvider(config, fallbackVerificationUrl) {
       if (!data || !isObject(data) || Array.isArray(data)) {
         return { ok: false, data: { error: "invalid_response", error_description: "Invalid Kimi token response" } };
       }
-      return { ok: response.ok, data };
+      if (!response.ok) return { ok: false, data };
+      if (data.error) {
+        return { ok: false, data: { ...data, error_description: data.error_description || data.message } };
+      }
+
+      const { access_token, refresh_token } = data;
+      if (!isString(access_token) || !access_token.trim() ||
+          (Object.hasOwn(data, "refresh_token") && (!isString(refresh_token) || !refresh_token.trim()))) {
+        return { ok: false, data: { error: "invalid_response", error_description: "Invalid Kimi token response" } };
+      }
+      return { ok: true, data };
     },
     // The pending flow owns this ID. Carry it into the connection only on success.
     postExchange: (_tokens, _proxyOptions, extraData) => extraData,

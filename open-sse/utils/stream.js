@@ -1069,7 +1069,7 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               } else if ((isFinishChunk || lateUsage) && usage) {
                 pendingUsageEstimate = false;
-                const buffered = addBufferToUsage(usage);
+                const buffered = addBufferToUsage(usage, provider);
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
@@ -1329,7 +1329,7 @@ export function createSSEStream(options = {}) {
               // Preserve the translated Claude cache details for OpenAI clients.
               const translatedUsage = targetFormat === FORMATS.CLAUDE && sourceFormat === FORMATS.OPENAI
                 && item.usage?.prompt_tokens !== undefined ? item.usage : state.usage;
-              const buffered = addBufferToUsage(translatedUsage);
+              const buffered = addBufferToUsage(translatedUsage, provider);
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), sourceFormat);
             }
 

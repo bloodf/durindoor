@@ -5,6 +5,7 @@ import { AzureExecutor } from "./azure.js";
 import { AzureOpenAIExecutor } from "./azure-openai.js";
 import { BedrockExecutor } from "./bedrock.js";
 import { ChipotleExecutor } from "./chipotle.js";
+import { GeminiInteractionsExecutor } from "./gemini-interactions.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { GheCopilotExecutor } from "./ghe-copilot.js";
@@ -76,6 +77,7 @@ const executors = {
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
+  "gemini-interactions": new GeminiInteractionsExecutor(),
   github: new GithubExecutor(),
   "ghe-copilot": new GheCopilotExecutor(),
   "muse-code": new MuseCodeExecutor(),

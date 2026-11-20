@@ -7,6 +7,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 
 | id | executor | source file |
 |---|---|---|
+| `adapta-web` | AdaptaWebExecutor | `./adapta-web.js` |
+| `adp-web` | AdaptaWebExecutor | `./adapta-web.js` |
 | `agy` | AntigravityExecutor | `./antigravity.js` |
 | `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
@@ -32,6 +34,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `dify` | DifyExecutor | `./dify.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
+| `gemini-interactions` | GeminiInteractionsExecutor | `./gemini-interactions.js` |
 | `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
@@ -209,6 +212,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
+| `gemini-interactions` | openai | apikey | `https://generativelanguage.googleapis.com/v1beta/interactions` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |

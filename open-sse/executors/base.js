@@ -425,13 +425,11 @@ export class BaseExecutor {
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
         beginDispatch();
-        let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-          method: "POST",
-          headers,
-          body: bodyStr,
-          signal: mergedSignal
-        }), proxyOptions));
-        if (response.status === 400) {
+        const fetchOptions = { method: "POST", headers, body: bodyStr, signal: mergedSignal };
+        if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
+        let response = await runQuotaBearingProviderRequest(() =>
+          proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
+        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false) {
           const clone = response.clone?.();
           const errorText = clone ?
           await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 }) :

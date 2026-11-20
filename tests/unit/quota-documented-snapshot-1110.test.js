@@ -11,6 +11,18 @@ describe("documented quota snapshots", () => {
     expect(await fetchGeminiApiKeyQuota({ connection: { apiKey: "secret", providerSpecificData: { quotaEndpoint: "https://127.0.0.1" } }, fetchImpl })).toMatchObject({ outcome: "unknown", rows: [], quotas: {} });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+  it("keeps Gemini unknown without a configured endpoint or credential", async () => {
+    const fetchImpl = vi.fn();
+    for (const apiKey of [undefined, "inference-only"]) {
+      expect(await fetchGeminiApiKeyQuota({ connection: { apiKey }, fetchImpl })).toMatchObject({ outcome: "unknown", reasonCode: "missing", rows: [], quotas: {} });
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("does not call xAI when a management key has no team ID", async () => {
+    const fetchImpl = vi.fn();
+    expect(await fetchXaiQuota({ connection: { managementApiKey: "management-only" }, fetchImpl })).toMatchObject({ outcome: "unknown", quotas: {} });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
   it.each([{}, { teamId: "team" }, { managementApiKey: "management" }, { ...connection.providerSpecificData, quotaEndpoint: "https://127.0.0.1" }])("does not send an inference key or use custom URLs: %j", async (providerSpecificData) => {
     const fetchImpl = vi.fn();
     expect(await fetchXaiQuota({ connection: { ...connection, managementApiKey: undefined, providerSpecificData }, fetchImpl })).toMatchObject({ outcome: "unknown", quotas: {} });
@@ -41,6 +53,18 @@ describe("documented quota snapshots", () => {
     expect(fetchImpl).toHaveBeenCalledWith("https://management-api.x.ai/v1/billing/teams/team%2F42/prepaid/balance", expect.objectContaining({ redirect: "error", headers: { Authorization: "Bearer management-only", Accept: "application/json" }, signal: expect.any(AbortSignal) }), proxyOptions);
     expect(JSON.stringify(result)).not.toContain("management-only");
   });
+  it.each([[{ total: { val: "0" } }, "success", 0], [{ balance: 85.5 }, "malformed", undefined]])(
+    "handles a successful response with payload %j", async (payload, outcome, total) => {
+      const result = await fetchXaiQuota({ connection, fetchImpl: vi.fn().mockResolvedValue(response(payload)) });
+      expect(result.outcome).toBe(outcome);
+      if (outcome === "success") {
+        expect(result.quotas["Prepaid credit (USD)"].total).toBe(total);
+        expect(result.notice).toContain("Postpaid allowance and inference readiness remain unknown");
+      } else {
+        expect(result.quotas).toEqual({});
+      }
+    }
+  );
   it.each([401, 403, 429, 500])("keeps failed HTTP %s unknown without fabricating balances", async (status) => {
     const result = await fetchXaiQuota({ connection, fetchImpl: vi.fn().mockResolvedValue(response({}, status)) });
     expect(result.quotas).toEqual({});

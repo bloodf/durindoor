@@ -302,6 +302,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `lyceum` |  | apikey | `https://api.lyceum.technology/openai/v1/chat/completions` |
 | `magnific` |  | apikey | `` |
 | `maritalk` |  | apikey | `https://chat.maritaca.ai/api/chat/completions` |
+| `megabrain` |  | apikey | `https://getmegabrain.com/api/gateway/v1/chat/completions` |
 | `meganova-ai` |  | apikey | `https://api.meganova.ai/v1/chat/completions` |
 | `meta-llama` |  | apikey | `https://api.llama.com/compat/v1/chat/completions` |
 | `mimo-free` |  | free | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |

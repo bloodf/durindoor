@@ -319,7 +319,22 @@ function normalizeGlmSearch(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+function normalizeKeenable(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = Array.isArray(data?.results) ? data.results.filter((item) => item !== null && isObject(item)) : [];
+  const results = items.map((item, idx) =>
+    makeResult("keenable", {
+      title: isString(item.title) ? item.title : "",
+      url: isString(item.url) ? item.url : "",
+      snippet: (isString(item.snippet) && item.snippet) || (isString(item.description) ? item.description : ""),
+      published_at: isString(item.published_at) ? item.published_at : null
+    }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
 const NORMALIZERS = {
+  "keenable": normalizeKeenable,
   "glm": normalizeGlmSearch,
   "serper": normalizeSerper,
   "brave-search": normalizeBrave,

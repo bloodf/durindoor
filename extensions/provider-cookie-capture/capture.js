@@ -1,0 +1,298 @@
+/**
+ * Core of the DurinDoor provider cookie capture. Pure ES module: the `chrome`
+ * namespace, `fetch` and the clock are injected so every path runs against mocks.
+ *
+ * Rules this module keeps (see README.md):
+ *  - runs only from a popup the user opened, and only after an explicit confirmation
+ *    of provider and dashboard destination;
+ *  - asks for optional permissions on exactly two origins (provider, paired
+ *    dashboard) plus `cookies`, and gives back what it was granted afterwards;
+ *  - reads only cookie names that are in both the built-in table and the pairing;
+ *  - sends one request, to the dashboard URL named by the pairing, and never retries;
+ *  - never stores, logs or echoes a cookie value or the pairing secret.
+ */
+
+import { PROVIDERS, PAIRING_HEADER, IMPORT_PATH, PAIRING_TOKEN_RE, MAX_COOKIES } from "./providers.js";
+import { isString, isNumber, isRecord } from "./types.js";
+
+const MAX_PAIRING_TEXT = 4096;
+const MAX_PAIRING_LIFETIME_MS = 10 * 60 * 1000;
+const MAX_TARGET_LENGTH = 200;
+const REQUEST_TIMEOUT_MS = 15_000;
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Fixed user-facing text. Nothing here is built from cookie values, the secret or server output. */
+export const MESSAGES = Object.freeze({
+  invalid_pairing: "That is not a DurinDoor pairing. Paste the pairing JSON from the dashboard.",
+  unsupported_provider: "This extension does not support that provider.",
+  origin_mismatch: "The pairing names a different site than this extension supports for that provider.",
+  invalid_destination: "The pairing destination is not an allowed DurinDoor import address. Use HTTPS, or http to localhost.",
+  pairing_expired: "The pairing has expired. Create a new pairing in the dashboard. Nothing was read or sent.",
+  wrong_tab: "Open the supported provider site in the active tab, then try again.",
+  not_confirmed: "Confirm the provider and dashboard destination first. Nothing was read or sent.",
+  already_used: "This pairing was already submitted. Create a new pairing in the dashboard.",
+  permission_denied: "Permission was not granted, so nothing was read or sent. Click Send to try again, or Cancel.",
+  no_cookie_store: "Could not find the browser session for this tab. Nothing was sent.",
+  no_cookies: "No approved session cookie was found. Sign in to the provider in this tab, create a new pairing and try again.",
+  cancelled: "Cancelled. Create a new pairing if you want to try again.",
+  network_error: "Could not reach the dashboard. The pairing may be spent; create a new pairing before trying again.",
+  pairing_rejected: "The dashboard rejected the pairing (expired or already used). Create a new pairing.",
+  rejected: "The dashboard did not accept these cookies. Sign in to the provider again and create a new pairing.",
+  forbidden: "The dashboard refused the request (HTTPS is required, or the login host was used). Create a new pairing.",
+  target_missing: "The target connection no longer exists. Create a new pairing.",
+  conflict: "The dashboard reported a conflict (for example the connection name already exists). Create a new pairing.",
+  server_error: "The dashboard could not save the connection. Create a new pairing to try again.",
+  unexpected_status: "The dashboard answered unexpectedly. Create a new pairing to try again.",
+});
+
+const fail = (code, extra) => ({ ok: false, code, message: MESSAGES[code], ...extra });
+const matchPattern = (origin) => { const u = new URL(origin); return `${u.protocol}//${u.hostname}/*`; };
+
+function originOf(value) {
+  try { return new URL(value).origin; } catch { return null; }
+}
+
+/** The one address cookies may be posted to: HTTPS, or plain http to loopback, exact import path, nothing else. */
+function parseDestination(value) {
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  const secure = url.protocol === "https:";
+  const loopback = url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
+  if (!secure && !loopback) return null;
+  if (url.username || url.password || url.search || url.hash || url.pathname !== IMPORT_PATH) return null;
+  if (Object.values(PROVIDERS).some((p) => p.origin === url.origin)) return null;
+  return { origin: url.origin, url: `${url.origin}${IMPORT_PATH}` };
+}
+
+/**
+ * Validate the pairing the operator pasted and bind it to the built-in table.
+ * @returns {{ ok: true, plan: object } | { ok: false, code: string, message: string }}
+ */
+export function parsePairing(text, now = Date.now()) {
+  if (!isString(text) || !text.trim() || text.length > MAX_PAIRING_TEXT) return fail("invalid_pairing");
+  let raw;
+  try { raw = JSON.parse(text); } catch { return fail("invalid_pairing"); }
+  const pairing = isRecord(raw) && isRecord(raw.pairing) ? raw.pairing : raw;
+  if (!isRecord(pairing)) return fail("invalid_pairing");
+
+  if (!isString(pairing.provider) || !Object.hasOwn(PROVIDERS, pairing.provider)) return fail("unsupported_provider");
+  const def = PROVIDERS[pairing.provider];
+  if (!isString(pairing.token) || !PAIRING_TOKEN_RE.test(pairing.token) || pairing.header !== PAIRING_HEADER) return fail("invalid_pairing");
+
+  let target;
+  if (pairing.action === "create" && isString(pairing.name) && pairing.name.trim() && pairing.name.length <= MAX_TARGET_LENGTH && pairing.connectionId === undefined) {
+    target = { action: "create", name: pairing.name };
+  } else if (pairing.action === "update" && isString(pairing.connectionId) && pairing.connectionId && pairing.connectionId.length <= MAX_TARGET_LENGTH && pairing.name === undefined) {
+    target = { action: "update", connectionId: pairing.connectionId };
+  } else {
+    return fail("invalid_pairing");
+  }
+
+  const destination = parseDestination(pairing.importUrl);
+  if (!destination) return fail("invalid_destination");
+
+  const contract = pairing.contract;
+  if (!isRecord(contract) || !Array.isArray(contract.cookieNames)) return fail("invalid_pairing");
+  if (contract.origin !== def.origin) return fail("origin_mismatch");
+  // A pairing may only narrow the built-in allowlist.
+  const cookieNames = def.cookieNames.filter((name) => contract.cookieNames.includes(name));
+  const prefixes = Array.isArray(contract.cookiePrefixes) ? contract.cookiePrefixes : [];
+  const cookiePrefixes = def.cookiePrefixes.filter((prefix) => prefixes.includes(prefix));
+  if (cookieNames.length === 0) return fail("invalid_pairing");
+
+  const expiresAt = isString(pairing.expiresAt) ? Date.parse(pairing.expiresAt) : NaN;
+  if (!Number.isFinite(expiresAt) || expiresAt - now > MAX_PAIRING_LIFETIME_MS) return fail("invalid_pairing");
+  if (expiresAt <= now) return fail("pairing_expired");
+
+  return {
+    ok: true,
+    plan: {
+      provider: pairing.provider,
+      label: def.label,
+      providerOrigin: def.origin,
+      dashboardOrigin: destination.origin,
+      importUrl: destination.url,
+      cookieNames,
+      cookiePrefixes,
+      expiresAt,
+      token: pairing.token,
+      ...target,
+    },
+  };
+}
+
+/** Everything the confirmation screen may show. Never the secret. */
+export function describePlan(plan) {
+  return {
+    provider: plan.provider,
+    label: plan.label,
+    providerOrigin: plan.providerOrigin,
+    dashboardOrigin: plan.dashboardOrigin,
+    action: plan.action,
+    target: plan.action === "create" ? plan.name : plan.connectionId,
+    cookieNames: [...plan.cookieNames, ...plan.cookiePrefixes.map((prefix) => `${prefix}<n>`)],
+  };
+}
+
+/** The exact statement the user confirms; `runCapture` refuses anything else. */
+export function confirmationFor(plan) {
+  return { provider: plan.provider, providerOrigin: plan.providerOrigin, dashboardOrigin: plan.dashboardOrigin };
+}
+
+/**
+ * Parse the pairing and check that the active tab is the provider site.
+ * Reads no cookie and makes no request.
+ */
+export async function prepareCapture({ chrome, text, now = Date.now() }) {
+  const parsed = parsePairing(text, now);
+  if (!parsed.ok) return parsed;
+  let tab = null;
+  try { [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); } catch { /* handled as a wrong tab */ }
+  if (!tab || !isNumber(tab.id) || originOf(tab.url) !== parsed.plan.providerOrigin) {
+    return fail("wrong_tab", { expectedOrigin: parsed.plan.providerOrigin });
+  }
+  parsed.plan.tabId = tab.id;
+  return parsed;
+}
+
+const spentPlans = new WeakSet();
+
+function cookieHostAllowed(host, domain) {
+  if (!isString(domain)) return false;
+  const d = domain.replace(/^\./, "").toLowerCase();
+  return d.includes(".") && (host === d || host.endsWith(`.${d}`));
+}
+
+async function readApprovedCookies(chrome, plan, storeId, cancelled) {
+  const url = `${plan.providerOrigin}/`;
+  const host = new URL(plan.providerOrigin).hostname;
+  const found = [];
+  const take = async (name) => {
+    const cookie = await chrome.cookies.get({ url, name, storeId });
+    if (cancelled() || !cookie) return null;
+    // Only secure cookies of this host, under exactly the requested name.
+    if (cookie.name !== name || cookie.secure !== true || !isString(cookie.value) || !cookie.value || !cookieHostAllowed(host, cookie.domain)) return null;
+    const out = { name: cookie.name, value: cookie.value, domain: cookie.domain.replace(/^\./, ""), secure: true };
+    if (isNumber(cookie.expirationDate)) out.expirationDate = cookie.expirationDate;
+    found.push(out);
+    return out;
+  };
+  for (const name of plan.cookieNames) {
+    await take(name);
+    if (cancelled()) return found;
+  }
+  for (const prefix of plan.cookiePrefixes) {
+    // Chunks are contiguous from .0; stop at the first gap.
+    for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
+      if (!(await take(`${prefix}${index}`)) || cancelled()) break;
+    }
+  }
+  return found;
+}
+
+function statusCode(status) {
+  if (status === 400) return "rejected";
+  if (status === 401) return "pairing_rejected";
+  if (status === 403) return "forbidden";
+  if (status === 404) return "target_missing";
+  if (status === 409) return "conflict";
+  if (status === 413 || status === 415) return "rejected";
+  if (status >= 500) return "server_error";
+  return "unexpected_status";
+}
+
+/**
+ * Run one confirmed capture: permissions, read, one POST, cleanup.
+ * @param {object} args
+ * @param {object} args.chrome       chrome.* namespace (promise API)
+ * @param {Function} args.fetch      fetch implementation
+ * @param {object} args.plan         from `prepareCapture`
+ * @param {object} args.confirmed    must equal `confirmationFor(plan)`
+ * @param {AbortSignal} [args.signal]
+ * @param {() => number} [args.now]
+ */
+export async function runCapture({ chrome, fetch, plan, confirmed, signal, now = Date.now }) {
+  const expected = confirmationFor(plan);
+  if (!isRecord(confirmed) || Object.keys(expected).some((key) => confirmed[key] !== expected[key])) return fail("not_confirmed");
+  if (spentPlans.has(plan)) return fail("already_used");
+  if (plan.expiresAt <= now()) return fail("pairing_expired");
+  const cancelled = () => signal?.aborted === true;
+  if (cancelled()) return fail("cancelled");
+
+  const origins = [`${matchPattern(plan.providerOrigin)}`, `${matchPattern(plan.dashboardOrigin)}`];
+  const granted = { permissions: [], origins: [] };
+  try {
+    // Only ask for what is not already held, so cleanup never removes a grant the user made earlier.
+    const missing = { permissions: [], origins: [] };
+    if (!(await chrome.permissions.contains({ permissions: ["cookies"] }))) missing.permissions.push("cookies");
+    for (const origin of origins) if (!(await chrome.permissions.contains({ origins: [origin] }))) missing.origins.push(origin);
+    if (missing.permissions.length || missing.origins.length) {
+      let ok = false;
+      try { ok = (await chrome.permissions.request(missing)) === true; } catch { ok = false; }
+      if (!ok) return cancelled() ? fail("cancelled") : fail("permission_denied");
+      granted.permissions = missing.permissions;
+      granted.origins = missing.origins;
+    }
+    if (cancelled()) return fail("cancelled");
+    if (plan.expiresAt <= now()) return fail("pairing_expired");
+
+    // Re-check the tab: the user may have navigated while the prompt was open.
+    let tab = null;
+    try { tab = await chrome.tabs.get(plan.tabId); } catch { /* wrong tab */ }
+    if (cancelled()) return fail("cancelled");
+    if (!tab || originOf(tab.url) !== plan.providerOrigin) return fail("wrong_tab", { expectedOrigin: plan.providerOrigin });
+
+    // The session is the cookie store that owns this tab (normal, incognito, container).
+    const stores = await chrome.cookies.getAllCookieStores();
+    const store = Array.isArray(stores) ? stores.find((s) => Array.isArray(s.tabIds) && s.tabIds.includes(plan.tabId)) : null;
+    if (cancelled()) return fail("cancelled");
+    if (!store) return fail("no_cookie_store");
+
+    const cookies = await readApprovedCookies(chrome, plan, store.id, cancelled);
+    if (cancelled()) return fail("cancelled");
+    if (cookies.length === 0) return fail("no_cookies");
+
+    const body = { provider: plan.provider, origin: plan.providerOrigin, cookies };
+    if (plan.action === "update") body.connectionId = plan.connectionId;
+
+    // From here the secret is spent, whatever the outcome.
+    spentPlans.add(plan);
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(plan.importUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", [PAIRING_HEADER]: plan.token },
+        body: JSON.stringify(body),
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "error",
+        referrerPolicy: "no-referrer",
+        signal: controller.signal,
+      });
+    } catch {
+      return cancelled() ? fail("cancelled") : fail("network_error");
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      plan.token = "";
+    }
+    if (response.status !== 200 && response.status !== 201) return fail(statusCode(response.status));
+    let connection = null;
+    try { connection = (await response.json())?.connection ?? null; } catch { /* the import itself succeeded */ }
+    return {
+      ok: true,
+      action: plan.action,
+      cookieCount: cookies.length,
+      connection: isRecord(connection) ? { id: String(connection.id ?? ""), name: String(connection.name ?? "") } : null,
+    };
+  } finally {
+    // Give back what this run was granted. Failures here are not actionable.
+    if (granted.permissions.length || granted.origins.length) {
+      try { await chrome.permissions.remove(granted); } catch { /* nothing to do */ }
+    }
+  }
+}

@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 350 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 355 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -104,6 +104,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
 | DeepInfra | `deepinfra` | apikey | 0 | [site](https://deepinfra.com) |
 | DeepSeek | `deepseek` | apikey | 4 | [site](https://deepseek.com) |
+| DemonRoute | `demonroute` | apikey | 7 | [site](https://demonroute.com) |
 | Devin | `devin` | apikey | 1 | [site](https://devin.ai) |
 | Devin CLI | `devin-cli` | oauth | 0 | [site](https://cli.devin.ai) |
 | Devin CLI (Agentic) | `devin-cli-agentic` | none | 2 | [site](https://docs.devin.ai/cli) |
@@ -119,6 +120,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Edge TTS | `edge-tts` | none | 11 |  |
 | Electron Hub | `electronhub` | apikey | 0 |  |
 | ElevenLabs | `elevenlabs` | apikey | 6 | [site](https://elevenlabs.io) |
+| EmpirioLabs AI | `empiriolabs` | apikey | 7 | [site](https://empiriolabs.ai) |
 | Empower | `empower` | apikey | 0 | [site](https://docs.empower.dev) |
 | EUrouter | `eurouter` | apikey | 0 |  |
 | Exa | `exa` | apikey | 0 | [site](https://exa.ai) |
@@ -144,6 +146,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | GoAPI | `getgoapi` | apikey | 0 | [site](https://api.getgoapi.com) |
 | GitHub Enterprise Copilot | `ghe-copilot` | oauth | 40 | [site](https://docs.github.com/en/enterprise-cloud@latest/copilot) |
 | GigaChat | `gigachat` | apikey | 3 | [site](https://developers.sber.ru/portal/products/gigachat-api) |
+| Gisoo | `gisoo` | apikey | 9 | [site](https://gisoo.pro) |
 | GitHub Copilot | `github` | oauth | 42 | [site](https://github.com/features/copilot) |
 | GitHub Models | `github-models` | apikey | 12 | [site](https://github.com/marketplace/models) |
 | GitLab Duo | `gitlab` | oauth | 0 | [site](https://gitlab.com) |
@@ -180,6 +183,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | JembatanAI | `jembatanai` | apikey | 5 | [site](https://jembatanai.com) |
 | Jina AI | `jina-ai` | apikey | 3 | [site](https://jina.ai) |
 | Jina Reader | `jina-reader` | apikey | 0 | [site](https://jina.ai/reader) |
+| Keenable | `keenable` | none | 0 | [site](https://keenable.ai) |
 | Kenari | `kenari` | apikey | 0 | [site](https://kenari.id) |
 | Kie.ai | `kie` | apikey | 11 | [site](https://kie.ai) |
 | Kilo Gateway | `kilo-gateway` | optional | 6 | [site](https://kilo.ai) |
@@ -214,6 +218,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Lyceum | `lyceum` | apikey | 0 |  |
 | Magnific | `magnific` | apikey | 6 | [site](https://magnific.com) |
 | MariTalk | `maritalk` | apikey | 4 | [site](https://www.maritaca.ai) |
+| MegaBrain | `megabrain` | apikey | 0 | [site](https://getmegabrain.com) |
 | MegaNova AI | `meganova-ai` | apikey | 0 |  |
 | Meta Llama | `meta-llama` | apikey | 4 | [site](https://www.llama.com) |
 | MiMo Code Free | `mimo-free` | none | 1 |  |
@@ -227,7 +232,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Modal | `modal` | apikey | 1 | [site](https://modal.com/docs) |
 | ModelScope | `modelscope` | apikey | 0 | [site](https://modelscope.cn) |
 | Morph | `morph` | apikey | 6 | [site](https://morphllm.com) |
-| Muse Code (Meta) | `muse-code` | oauth, apikey | 13 | [site](https://ai.developer.meta.com/docs/muse-code/auth) |
+| Muse Code (Meta) | `muse-code` | oauth, apikey | 13 | [site](https://dev.meta.ai/docs/muse-code/auth) |
 | Muse Spark Web | `muse-spark-web` | cookie | 3 | [site](https://www.meta.ai) |
 | Naga.ac | `naga-ac` | optional | 0 | [site](https://docs.naga.ac) |
 | NaN | `nan` | apikey | 14 | [site](https://nan.builders) |
@@ -252,7 +257,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Onomeo | `onomeo` | apikey | 0 |  |
 | oobabooga | `oobabooga` | apikey | 0 | [site](https://github.com/oobabooga/text-generation-webui) |
 | OpenAdapter | `openadapter` | apikey | 1 | [site](https://docs.openadapter.dev) |
-| OpenAI | `openai` | apikey | 103 | [site](https://platform.openai.com) |
+| OpenAI | `openai` | apikey | 94 | [site](https://platform.openai.com) |
 | OpenCode Free | `opencode` | none | 3 |  |
 | OpenCode Go | `opencode-go` | apikey | 20 | [site](https://opencode.ai/auth) |
 | OpenCode Server | `opencode-server` | apikey | 0 | [site](https://opencode.ai/docs/api) |

@@ -188,8 +188,12 @@ export function isRoutableProvider(aliasOrId) {
 /**
  * Per-account requests-per-minute defaults from decolua/9router#3203.
  * Unlisted providers are unlimited; persisted settings may override either case.
+ *
+ * Gisoo publishes a default of 60 requests per minute per key
+ * (https://gisoo.pro/en/docs/quickstart); the account's real ceiling is
+ * reported by `GET /api/v1/me` and can be overridden in the settings.
  */
-export const DEFAULT_PROVIDER_RPM = Object.freeze({ nvidia: 40 });
+export const DEFAULT_PROVIDER_RPM = Object.freeze({ nvidia: 40, gisoo: 60 });
 export const MAX_PROVIDER_RPM = 10_000;
 
 /** Resolve a persisted provider override, where blank uses defaults and zero is unlimited. */

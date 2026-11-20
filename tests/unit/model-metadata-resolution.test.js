@@ -331,7 +331,7 @@ describe("dashboard model metadata", () => {
     dashboardDb.custom = [{ providerAlias: "xai", id: "future-chat", kind: "llm", capabilities: { tools: false } }, { providerAlias: "xai", id: "custom-only", kind: "image" }];
     const { models } = await (await getDashboardModels()).json();
     expect(models.find((m) => m.provider === "openai" && m.model === "gpt-4o")).toMatchObject({ fullModel: "openai/gpt-4o", kind: "llm" });
-    expect(models.find((m) => m.provider === "openai" && m.model === "gpt-image-1")).toMatchObject({ fullModel: "openai/gpt-image-1", kind: "image" });
+    expect(models.find((m) => m.provider === "openai" && m.model === "gpt-image-2.5-sunburst")).toMatchObject({ fullModel: "openai/gpt-image-2.5-sunburst", kind: "image" });
     expect(models.find((m) => m.fullModel === "xai/future-image")).toMatchObject({ alias: "paint", kind: "image" });
     expect(models.find((m) => m.fullModel === "xai/future-kind")).toMatchObject({ kind: "unrecognized" });
     expect(models.find((m) => m.fullModel === "xai/future-chat")).toMatchObject({ kind: "llm", caps: { tools: false } });

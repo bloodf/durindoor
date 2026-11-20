@@ -549,6 +549,13 @@
       }
     ]
   },
+  "demonroute": {
+    "baseUrl": "https://api.demonroute.com/v1/chat/completions",
+    "validateUrl": "https://api.demonroute.com/v1/models",
+    "format": "openai",
+    "timeoutMs": 120000,
+    "authType": "apikey"
+  },
   "devin-cli": {
     "baseUrl": "devin://acp/stdio",
     "format": "openai",
@@ -1759,6 +1766,12 @@
   "routeway": {
     "baseUrl": "https://api.routeway.ai/v1/chat/completions",
     "validateUrl": "https://api.routeway.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "runcrate": {
+    "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
+    "validateUrl": "https://api.runcrate.ai/v1/models",
     "format": "openai",
     "authType": "apikey"
   },

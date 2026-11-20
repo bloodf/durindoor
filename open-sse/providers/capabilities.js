@@ -291,6 +291,8 @@ const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
 // Codex-only models have no direct API counterpart. Published API model sizes
 // live in vendorModelCapabilities.js and are reused by all Codex aliases.
 const CODEX_ONLY_CAPABILITIES = {
+  "gpt-6.2-sol": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingEfforts: ["low", "medium", "high", "xhigh", "max"], contextWindow: 500000, maxOutput: 128000 },
+  "gpt-6.2-astra": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingEfforts: ["low", "medium", "high", "xhigh", "max"], contextWindow: 272000, maxOutput: 128000 },
   "gpt-5.3-codex-spark": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null },
   "gpt-5.3-codex-spark-review": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null },
 };

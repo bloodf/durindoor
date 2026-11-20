@@ -1,3 +1,4 @@
+import { withRouteResponseHeaders } from "../utils/routeResponseHeaders.js";
 import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 /**
  * Shared combo (model combo) handling with fallback support
@@ -1637,7 +1638,7 @@ export async function handleComboChat({
           }
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
-        return successfulResult;
+        return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
       }
 
       if (result.headers?.get?.(ACCEPTED_JOB_HEADER)) {

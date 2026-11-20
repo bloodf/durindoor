@@ -1,4 +1,5 @@
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Compressors can leave whitespace at the end of a Claude assistant prefill,
 // which Anthropic rejects. Preserve earlier text and non-text blocks verbatim.
@@ -8,13 +9,13 @@ export function normalizeClaudeAssistantTail(body) {
   while (messages.at(-1)?.role === ROLE.ASSISTANT) {
     const last = messages.at(-1);
     let content = last.content;
-    if (typeof content === "string") {
+    if (isString(content)) {
       content = content.trimEnd();
     } else if (Array.isArray(content)) {
       let end = content.length;
       while (end > 0) {
         const block = content[end - 1];
-        if (block?.type !== CLAUDE_BLOCK.TEXT || typeof block.text !== "string") break;
+        if (block?.type !== CLAUDE_BLOCK.TEXT || !isString(block.text)) break;
         const text = block.text.trimEnd();
         if (text) {
           if (text !== block.text || end !== content.length) content = [...content.slice(0, end - 1), { ...block, text }];
@@ -24,7 +25,7 @@ export function normalizeClaudeAssistantTail(body) {
       }
       if (end !== content.length) content = content.slice(0, end);
     } else break;
-    if (Array.isArray(content) && content.length === 0 || typeof content === "string" && content.length === 0) {
+    if (Array.isArray(content) && content.length === 0 || isString(content) && content.length === 0) {
       messages = messages.slice(0, -1);
       continue;
     }

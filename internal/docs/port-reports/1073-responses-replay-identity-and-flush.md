@@ -1,0 +1,7 @@
+# Responses replay identity and EOF
+
+OmniRoute #15510 (commit 408b4f2bd) supplies sequence-number replay suppression, already ported locally. This follow-up retains the local terminal and usage delivery contract: a terminal or usage event for a different response is forwarded without replacing the active response identity or advancing its watermark. A new identified non-protected response event resets the watermark, while streams without IDs retain sequence-based behavior. State remains per stream and constant sized.
+
+The translated EOF path now applies the same replay check as ordinary frames before recording or translating an unterminated final event. Fresh EOF events still flow through translation and existing incomplete-stream handling; snapshot-only completions remain supported. Passthrough framing, protected accounting and terminal events remain intact.
+
+Offline coverage exercises the two independently reviewed regressions, interrupted and completed EOF, unrelated terminal and usage events, reset numbering and independent trackers. Existing replay and terminal snapshot tests cover additional raw, translated, usage and snapshot contracts. No live provider calls are needed.

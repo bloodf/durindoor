@@ -671,7 +671,7 @@ export const PROVIDER_MODELS_CONFIG = {
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
   nan: createOpenAIModelsConfig("https://api.nan.builders/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
-  paraloncloud: createOpenAIModelsConfig("https://paraloncloud.com/v1/models"),
+  paraloncloud: { ...createOpenAIModelsConfig("https://paraloncloud.com/v1/models"), apiKeyOnly: true },
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),

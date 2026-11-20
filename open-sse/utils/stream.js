@@ -705,6 +705,8 @@ export function createSSEStream(options = {}) {
     null;
     return {
       ...getAccumulatedCompletion(),
+      hadToolCalls,
+      upstreamError: streamErrorPayload,
       usage: resolvedUsage,
       ttftAt
     };

@@ -391,6 +391,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : log?.nextTag ? log.nextTag() : "";
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+  const executor = getExecutor(provider);
+  const clientRequestError = executor.validateClientRequest?.(body, sourceFormat);
+  if (clientRequestError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, clientRequestError);
 
   // Per-request token-saver bypass (#2609): `X-DurinDoor-Token-Saver: off`
   // (or the legacy `X-9Router-Token-Saver` alias) disables every saver below
@@ -438,7 +441,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       ? modelCapabilities.customKeys : new Set(Object.keys(modelCapabilities || {})),
     enumerable: false,
   });
-  const executor = getExecutor(provider);
   const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat } = resolveRequestTransport({
     provider,
     alias,

@@ -1,3 +1,4 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
@@ -637,6 +638,10 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
 }
 
 async function testApiKeyConnection(connection, effectiveProxy = null) {
+  if (connection.provider === "opencode-server") {
+    const result = await fetchOpenCodeServerModels(connection);
+    return { valid: !result.error, error: result.error ?? null };
+  }
   if (isOpenAICompatibleProvider(connection.provider)) {
     const modelsBase = connection.providerSpecificData?.baseUrl;
     if (!modelsBase) return { valid: false, error: "Missing base URL" };

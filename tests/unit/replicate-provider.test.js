@@ -63,18 +63,6 @@ describe("Replicate official text predictions", () => {
     expect(PROVIDER_MODELS.replicate.map((item) => item.id)).toContain(model);
     expect(transport.fetch.mock.calls[0][1]).toMatchObject({ redirect: "manual", headers: { Authorization: `Bearer ${credentials.apiKey}` } });
   });
-  it.each([false, true])("routes a chat request through the gateway with stream=%s", async (stream) => {
-    await initTranslators();
-    transport.fetch.mockResolvedValueOnce(json({ status: "succeeded", output: ["Hello", " there"] }, 201));
-    const request = { ...body, model: `replicate/${model}`, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) };
-    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), errorLine: vi.fn() };
-    const result = await handleChatCore({ body: request, modelInfo: { provider: "replicate", model }, credentials, clientRawRequest: { endpoint: "/v1/chat/completions", body: request, headers: { accept: stream ? "text/event-stream" : "application/json" } }, connectionId: "offline-replicate", log });
-    expect(result.success, result.success ? undefined : await result.response.text()).toBe(true);
-    const wire = await result.response.text();
-    expect(wire).toContain("Hello there");
-    expect(wire).not.toContain('"usage"');
-    expect(transport.fetch.mock.calls[0][0]).toBe(`${api}/models/${model}/predictions`);
-  });
   it("creates and translates the documented synchronous prediction without invented usage", async () => {
     transport.fetch.mockResolvedValueOnce(json({ status: "succeeded", output: ["A sunny ", "day."] }, 201));
     const { response } = await execute();
@@ -135,6 +123,51 @@ describe("Replicate official text predictions", () => {
 });
 
 describe("Replicate quota lifecycle", () => {
+  it.each([
+    ["JSON", false, { status: "succeeded", output: ["Hello", " there"] }, null, true],
+    ["synthesized SSE", true, { status: "succeeded", output: ["Hello", " there"] }, null, true],
+    ["native SSE", true, null, "event: output\ndata: Hello there\n\nevent: done\ndata: {}\n\n", true],
+    ["failed prediction", false, { status: "failed", output: ["Hello there"] }, null, false],
+    ["malformed prediction", false, { status: "succeeded", output: ["Hello", 1] }, null, false],
+    ["empty prediction output", true, { status: "succeeded", output: [] }, null, false],
+    ["truncated native SSE", true, null, "event: output\ndata: Hello there\n\nevent: done\ndata: {}", false],
+    ["invalid done payload", true, null, "event: output\ndata: Hello there\n\nevent: done\ndata: null\n\n", false],
+    ["done without output", true, null, "event: done\ndata: {}\n\n", false],
+    ["canceled native SSE", true, null, 'event: output\ndata: Hello there\n\nevent: done\ndata: {"reason":"canceled"}\n\n', false],
+    ["native SSE error", true, null, 'event: output\ndata: Hello there\n\nevent: error\ndata: {}\n\nevent: done\ndata: {}\n\n', false],
+  ])("settles quota exactly once through chatCore for %s", async (_name, stream, prediction, events, success) => {
+    await initTranslators();
+    const ticket = quotaTicket();
+    const quotaReservation = { ...ticket, beginDispatch: vi.fn().mockResolvedValue(ticket) };
+    const streamUrl = "https://streaming.api.replicate.com/v1/predictions/fixture";
+    transport.fetch.mockResolvedValueOnce(json(prediction ?? { status: "starting", urls: { stream: streamUrl } }, 201));
+    if (events) transport.fetch.mockResolvedValueOnce(new Response(events, { headers: { "Content-Type": "text/event-stream" } }));
+    const request = { ...body, model: `replicate/${model}`, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) };
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), errorLine: vi.fn() };
+
+    const result = await handleChatCore({
+      body: request, modelInfo: { provider: "replicate", model }, credentials,
+      clientRawRequest: { endpoint: "/v1/chat/completions", body: request, headers: { accept: stream ? "text/event-stream" : "application/json" } },
+      connectionId: "offline-replicate", log, quotaReservation,
+    });
+    expect(result.success).toBe(success || Boolean(events));
+    const wire = await result.response.text();
+    if (success) {
+      expect(wire).toContain("Hello there");
+      expect(wire).not.toContain('"usage"');
+    } else {
+      expect(wire).toContain('"error"');
+      expect(wire).not.toContain('"finish_reason":"stop"');
+    }
+    expect(quotaReservation.beginDispatch).toHaveBeenCalledTimes(1);
+    expect(transport.fetch.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
+      [`${api}/models/${model}/predictions`, "POST"],
+      ...(events ? [[streamUrl, "GET"]] : []),
+    ]);
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success, reason: success ? "success" : expect.not.stringMatching(/^success$/) });
+  });
+
   it("refuses a locally denied reservation before any prediction request is sent", async () => {
     const beginQuotaDispatch = vi.fn().mockRejectedValue(new QuotaDispatchUnavailableError("capacity_exhausted"));
     await expect(withQuota(beginQuotaDispatch, () => execute())).rejects.toMatchObject({

@@ -1,6 +1,6 @@
 ---
-title: Provider configuration
-description: Configure model request controls and LLMTR routing.
+title: Configuration
+description: Configure model service tiers and provider-specific routing, including LLMTR.
 ---
 
 OpenAI and Codex model IDs accept `(fast)` for priority service and `(standard)` for standard service. Combine a tier with a reasoning modifier, for example `cx/gpt-6.1-sol(xhigh,fast)`; the explicit tier overrides the request's `service_tier`. Availability and charges are determined by the upstream provider.

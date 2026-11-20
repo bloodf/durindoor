@@ -6,6 +6,8 @@ Requests use the model-specific GPU chatbot endpoint. System or developer instru
 
 Each request holds one gateway quota reservation for its physical upstream call. If no reservation is available, the gateway refuses the request locally and answers `503 Provider quota capacity unavailable` without contacting NLP Cloud; that refusal is a local capacity decision, not an NLP Cloud error. See [Troubleshooting](troubleshooting.mdx#rate-limit-or-quota-skip).
 
+The gateway commits the reservation after a nonempty JSON `response` or a native event stream with nonempty text and a trailing `[DONE]` marker at clean EOF. An embedded marker cannot finish the stream early. Errors, missing terminals, and client cancellations release the reservation.
+
 The executor and registry were adapted from OmniRoute's `open-sse/executors/nlpcloud.ts` and `open-sse/config/providers/registry/nlpcloud/index.ts` at commit `2c4aa9e9af21e2ad27440c4c478c10282154a596`. The published NLP Cloud catalog and Bearer contract take precedence where they differ.
 
 This integration has been exercised with local mocks only; account-backed behavior has not been verified. The dashboard uses a neutral icon.

@@ -9,6 +9,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -274,6 +275,17 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  commandcode: {
+    customResolver: async (connection, proxyOptions) => {
+      if (!connection.apiKey) return { error: "No valid token found", status: 401 };
+      const result = await resolveCommandCodeModels((url, options) => proxyAwareFetch(url, options, proxyOptions));
+      if (result) return result;
+      return {
+        models: getStaticProviderModels("commandcode"),
+        warning: "CommandCode returned no live models. Showing the static catalog.",
+      };
+    },
+  },
   claude: {
     url: "https://api.anthropic.com/v1/models?limit=1000",
     method: "GET",

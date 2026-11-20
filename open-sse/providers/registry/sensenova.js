@@ -5,7 +5,7 @@ import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChec
 // ceiling must be clamped here before the body is forwarded upstream.
 const SENSENOVA_MAX_OUTPUT_TOKENS = 65536;
 
-function clampSensenovaMaxTokens(body) {
+export function clampSensenovaMaxTokens(body) {
   if (!body || !isObject(body)) return body;
   if (isNumber(body.max_tokens) && body.max_tokens > SENSENOVA_MAX_OUTPUT_TOKENS) {
     body.max_tokens = SENSENOVA_MAX_OUTPUT_TOKENS;
@@ -20,7 +20,7 @@ function clampSensenovaMaxTokens(body) {
 // OpenAI-compatible reasoning_content the passthrough filter recognises). Map
 // reasoning -> reasoning_content in-place so the chunk survives the
 // hasValuableContent gate and reaches the client on the same-format path.
-function normalizeSensenovaStreamChunk(parsed) {
+export function normalizeSensenovaStreamChunk(parsed) {
   const choices = parsed?.choices;
   if (!Array.isArray(choices)) return false;
   let changed = false;
@@ -39,7 +39,7 @@ function normalizeSensenovaStreamChunk(parsed) {
 // on stream:false responses, but Claude/Responses conversion and request-detail
 // logging read message.reasoning_content. Map it in-place so non-stream
 // completions don't silently drop reasoning.
-function normalizeSensenovaResponse(parsed) {
+export function normalizeSensenovaResponse(parsed) {
   const choices = parsed?.choices;
   if (!Array.isArray(choices)) return false;
   let changed = false;
@@ -77,11 +77,14 @@ export default {
     // omitted-token requests keep the Token Plan's own default budget instead of
     // always asking for the 65536 maximum.
     baseUrl: "https://token.sensenova.cn/v1/chat/completions",
+    validateUrl: "https://token.sensenova.cn/v1/models",
     clampRequestBody: clampSensenovaMaxTokens,
     normalizeStreamChunk: normalizeSensenovaStreamChunk,
     normalizeResponse: normalizeSensenovaResponse
   },
   models: [
+    { id: "glm-5.3", name: "GLM-5.3" },
+    { id: "sensenova-6.8-flash", name: "SenseNova 6.8 Flash" },
   // SenseNova Token Plan chat models (validated 2026-07-06). The /models
   // list also advertises sensenova-u1-fast, but chat completions 404 for it;
   // U1 Fast belongs to image flows, so omit it here.

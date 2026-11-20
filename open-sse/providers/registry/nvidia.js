@@ -25,6 +25,7 @@ export default {
   passthroughModels: true,
   passthroughConnectionWideErrors: true,
   transport: {
+    timeoutMs: 90000,
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
     quirks: {
@@ -34,6 +35,11 @@ export default {
     },
   },
   models: [
+    { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct" },
+    { id: "nvidia/riva-translate-4b-instruct-v2", name: "Riva Translate 4B v2" },
+    { id: "poolside/laguna-xs-2.1", name: "Laguna XS 2.1" },
+    { id: "nvidia/nemotron-3.5-bolt-e4b", name: "Nemotron 3.5 Bolt" },
+    { id: "nvidia/nemotron-3.5-lightning-30b-a3b", name: "Nemotron 3.5 Lightning" },
     { id: "abacusai/dracarys-llama-3.1-70b-instruct", name: "Dracarys Llama 3.1 70B Instruct" },
     { id: "google/diffusiongemma-26b-a4b-it", name: "DiffusionGemma 26B A4B IT" },
     { id: "google/gemma-2-2b-it", name: "Gemma 2 2B IT" },

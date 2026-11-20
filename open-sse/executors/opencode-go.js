@@ -52,7 +52,7 @@ import {
  *    design notes from upstream's docs/superpowers spec are folded into this
  *    JSDoc because the fork does not track that docs area.
  */
-const RESPONSES_BASE_URL = "https://opencode.ai/zen/go/v1/responses";
+const RESPONSES_BASE_URL = "https://opencode.ai/inference/go/openai/v1/responses";
 const MAX_TOOL_NAME_LEN = 128;
 
 const SESSION_HEADER = "x-opencode-session";

@@ -68,6 +68,20 @@ describe("parseAntigravityWeeklyQuotas", () => {
     expect(Object.keys(quotas).sort()).toEqual(["claude_gpt_weekly", "gemini_session", "gemini_weekly"]);
   });
 
+  it("normalizes the dedicated Gemini 4 Argon pool independently", () => {
+    const quotas = parseAntigravityWeeklyQuotas({ groups: [{
+      displayName: "Gemini 4 Argon",
+      buckets: [
+        { bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.2, resetTime: RESET_IN_3_DAYS },
+        { bucketId: "gemini-argon-5h", remainingFraction: 0.7, resetTime: RESET_IN_2_HOURS }
+      ]
+    }] });
+    expect(quotas).toEqual({
+      gemini_argon_weekly: expect.objectContaining({ displayName: "Gemini 4 Argon Weekly", remainingPercentage: 20 }),
+      gemini_argon_session: expect.objectContaining({ displayName: "Gemini 4 Argon 5h", remainingPercentage: 70 })
+    });
+  });
+
   it("tolerates the quotaSummary-nested envelope", () => {
     const quotas = parseAntigravityWeeklyQuotas({
       quotaSummary: {

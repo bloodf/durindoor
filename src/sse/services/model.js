@@ -274,6 +274,17 @@ export async function getModelInfo(modelStr) {
     if (combo) return { provider: null, model: combo.name };
     const resolved = await getModelInfoCore(modelStr, getModelAliases);
     if (!resolved.provider || !resolved.model) return resolved;
+    // Only inferred, bare Claude identifiers may use an OAuth connection.
+    if (resolved.provider === "anthropic" && /^claude-/.test(modelStr) &&
+      resolved.model === modelStr && !modelStr.includes("/")) {
+      const anthropic = await getProviderConnections({ provider: "anthropic", isActive: true });
+      if (!anthropic?.length) {
+        const claude = await getProviderConnections({ provider: "claude", isActive: true });
+        if (claude?.some((connection) => connection.authType === "oauth")) {
+          return { ...resolved, provider: "claude" };
+        }
+      }
+    }
     parsed = parseModel(`${resolved.provider}/${resolved.model}`);
   }
 

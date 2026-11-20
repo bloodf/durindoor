@@ -69,7 +69,7 @@ const EXPECTED_TRANSPORT = {
   },
   synthetic: {
     baseUrl: "https://api.synthetic.new/openai/v1/chat/completions",
-    validateUrl: "https://api.synthetic.new/openai/v1/models",
+    validateUrl: "https://api.synthetic.new/v2/quotas",
     modelsUrl: "https://api.synthetic.new/openai/v1/models",
     passthroughModels: true,
   },

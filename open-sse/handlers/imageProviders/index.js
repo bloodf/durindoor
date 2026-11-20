@@ -26,6 +26,7 @@ const ADAPTERS = {
   // Same API on the China host the registry declares.
   "minimax-cn": { ...minimax, buildUrl: () => PROVIDER_MEDIA["minimax-cn"]?.imageConfig?.baseUrl },
   openrouter: createOpenAIAdapter("openrouter"),
+  "sensenova-intl": createOpenAIAdapter("sensenova-intl"),
   venice: createOpenAIAdapter("venice"),
   recraft: createOpenAIAdapter("recraft"),
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),

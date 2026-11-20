@@ -28,13 +28,14 @@ export default {
     validationModelId: "deepseek/deepseek-v4-flash",
     forceStream: true,
     headers: {
-      "x-command-code-version": "1.88.0",
+      "x-command-code-version": "1.88.5",
       "x-cli-environment": "production",
       "x-cli-surface": "cli",
       "x-taste-learning": "false",
       "User-Agent": "cli",
     },
   },
+  passthroughModels: true,
   models: [
     { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
@@ -62,5 +63,7 @@ export default {
     { id: "stepfun/Step-3.7-Flash", name: "Step 3.7 Flash" },
     { id: "stepfun/Step-3.5-Flash", name: "Step 3.5 Flash" },
     { id: "nvidia/nemotron-3-ultra-550b-a55b", name: "Nemotron 3 Ultra" },
+    { id: "google/gemini-4-carbon", name: "Gemini 4 Carbon" },
+    { id: "claude-fable-5-2", name: "Claude Fable 5.2" },
   ],
 };

@@ -14,6 +14,8 @@ import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
+import { getClinepassUsage } from "./usage/clinepass.js";
+import { getSyntheticUsage } from "./usage/synthetic.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
 import { getOpenCodeGoUsage } from "./usage/opencode-go.js";
@@ -58,6 +60,8 @@ const USAGE_HANDLERS = {
   "minimax-cn": (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
+  clinepass: (c) => getClinepassUsage(c.accessToken, c.apiKey, c.proxyOptions),
+  synthetic: (c) => getSyntheticUsage(c.apiKey, c.proxyOptions),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   gemini: () => fetchGeminiApiKeyQuota(),
   xai: async (c) => {

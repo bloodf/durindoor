@@ -54,10 +54,13 @@ Choose a strategy on the Combos page. The default is `fallback`; a combo without
 | --- | --- |
 | `fallback` | Try members in the saved order. The next member runs only when the current one fails. |
 | `round-robin` | Rotate the start member across requests to spread load. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
-| `weighted` | Pick by member weight. |
+| `weighted` | Pick randomly by member weight. |
+
 | `smart-scoring` | Reorder by provider health (quota, ban status) and prefer the best score, then fall through on errors. |
 | `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
 | `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Every panel and judge call can incur a charge: each request bills every panel member plus the judge (N+1 calls). |
+
+Round-robin uses a smooth weighted cycle when member weights differ. A zero-weight member is tried only as a fallback; at least one member must have a positive weight. Equal weights retain the usual rotation, including its sticky limit. Existing fractional weights remain supported.
 
 Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
 

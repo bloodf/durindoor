@@ -31,13 +31,14 @@ export function normalizeComboMembers(models, members) {
   if (!Array.isArray(members) || members.length !== ids.length) throw new ComboMemberError("Combo members must match models");
   const saved = new Map();
   for (const member of members) {
-    if (!member || !isString(member.id) || !Number.isFinite(member.weight) || member.weight <= 0) {
-      throw new ComboMemberError("Each combo member weight must be a positive finite number");
+    if (!member || !isString(member.id) || !Number.isFinite(member.weight) || member.weight < 0) {
+      throw new ComboMemberError("Each combo member weight must be a non-negative finite number");
     }
     const occurrences = saved.get(member.id) || [];
     occurrences.push(member.weight);
     saved.set(member.id, occurrences);
   }
+  if (members.length && !members.some((member) => member.weight > 0)) throw new ComboMemberError("At least one combo member must have positive weight");
   const normalized = ids.map((id) => {
     const occurrences = saved.get(id);
     if (!occurrences?.length) throw new ComboMemberError("Combo members must match models");
@@ -163,6 +164,7 @@ export async function updateCombo(id, data) {
     Array.isArray(data.models) ?
     mergeMembersOnModelsPatch(merged.models, priorMembers) :
     priorMembers;
+    merged.members = normalizeComboMembers(merged.models, merged.members);
     // Re-derive the invariant from the merged combo (a caller may set or
     // replace it) and validate the merged targets before persisting.
     const invariant = normalizeInvariant(merged) || merged.invariant || null;

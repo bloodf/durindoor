@@ -303,6 +303,7 @@ function taskWeight(level) {
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
  */
 const comboRotationState = new Map();
+const comboWeightedRotationState = new Map();
 
 /**
  * Keep chat-like traffic on the same first model so provider-side prompt caches
@@ -1143,6 +1144,34 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
     return models;
   }
 
+  // Match member occurrences so duplicate model entries retain their weights.
+  const remaining = Array.isArray(members) ? [...members] : [];
+  const weights = models.map((model) => {
+    const index = remaining.findIndex((member) => member?.id === model);
+    const value = index < 0 ? 1 : remaining.splice(index, 1)[0].weight;
+    return Number.isFinite(value) && value >= 0 ? value : 1;
+  });
+  if (weights.some((weight) => weight > 0) && weights.some((weight) => weight !== weights[0])) {
+    const key = comboName || "__default__";
+    const signature = JSON.stringify([models, weights]);
+    let state = comboWeightedRotationState.get(key);
+    if (!state || state.signature !== signature) state = { signature, current: weights.map(() => 0), head: -1, count: 0 };
+    if (state.head < 0 || state.count >= normalizeStickyLimit(stickyLimit)) {
+      weights.forEach((weight, i) => { state.current[i] += weight; });
+      state.head = weights.findIndex((weight) => weight > 0);
+      weights.forEach((weight, i) => { if (weight > 0 && state.current[i] > state.current[state.head]) state.head = i; });
+      state.current[state.head] -= weights.reduce((sum, weight) => sum + weight, 0);
+      state.count = 0;
+    }
+    state.count++;
+    comboWeightedRotationState.set(key, state);
+    const order = models.map((model, i) => ({ model, i }));
+    order.sort((a, b) => (a.i === state.head ? -1 : b.i === state.head ? 1 :
+      (weights[b.i] > 0) - (weights[a.i] > 0) || (state.current[b.i] + weights[b.i]) - (state.current[a.i] + weights[a.i]) || a.i - b.i));
+    return order.map(({ model }) => model);
+  }
+  comboWeightedRotationState.delete(comboName || "__default__");
+
   const rotationKey = comboName || "__default__";
   const normalizedStickyLimit = normalizeStickyLimit(stickyLimit);
   const state = getRotationState(rotationKey);
@@ -1178,12 +1207,14 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
  */
 export function resetComboRotation(comboName) {
   if (comboName) {
+    comboWeightedRotationState.delete(comboName);
     comboRotationState.delete(comboName);
     const prefix = `${comboName}:`;
     for (const key of comboConversationAffinity.keys()) {
       if (key.startsWith(prefix)) comboConversationAffinity.delete(key);
     }
   } else {
+    comboWeightedRotationState.clear();
     comboRotationState.clear();
     comboConversationAffinity.clear();
   }
@@ -1475,7 +1506,7 @@ export async function handleComboChat({
   // Weighted strategy: the ranker always re-orders by `index`, which would
   // collapse the weight-driven permutation on every chat call. Skip reordering
   // so the weighted first pick survives the full dispatch pipeline.
-  if (isFunction(quotaRanker) && comboStrategy !== "weighted") {
+  if (isFunction(quotaRanker) && comboStrategy !== "weighted" && !(comboStrategy === "round-robin" && comboWeightedRotationState.has(comboName || "__default__"))) {
     try {
       const quotaOrdered = await quotaRanker(rotatedModels);
       if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {
@@ -1633,7 +1664,7 @@ export async function handleComboChat({
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
         if (comboStrategy === "round-robin") {
           const actuallyRotated = modelStr !== rotatedModels[0];
-          if (actuallyRotated) {
+          if (actuallyRotated && !comboWeightedRotationState.has(comboName || "__default__")) {
             advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
         }

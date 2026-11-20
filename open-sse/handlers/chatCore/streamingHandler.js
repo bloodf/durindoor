@@ -15,6 +15,8 @@ import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
+import { sseChunk } from "../../utils/sse.js";
+import { SSE_DONE } from "../../utils/sseConstants.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -33,6 +35,22 @@ function hasOutputTokens(usage) {
     usage?.completion_tokens ?? usage?.output_tokens ?? usage?.candidatesTokenCount ?? 0
   );
   return Number.isFinite(count) && count > 0;
+}
+
+/** Frame a complete OpenAI response for the normal streaming pipeline. */
+export function completionToStream(completion) {
+  if (completion?.error || !Array.isArray(completion?.choices) || !completion.choices.length ||
+      !completion.choices.every((choice) => choice?.message && typeof choice.message === "object")) {
+    throw new Error("Invalid JSON completion for streaming request");
+  }
+  return sseChunk({
+    ...completion,
+    object: "chat.completion.chunk",
+    choices: completion.choices.map(({ message, ...choice }) => ({
+      ...choice,
+      delta: { ...message, ...(message.tool_calls ? { tool_calls: message.tool_calls.map((call, index) => ({ ...call, index })) } : {}) }
+    }))
+  }) + SSE_DONE;
 }
 
 /**
@@ -103,6 +121,21 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // ollamaToOpenAIResponse, see translator/response/ollama-to-openai.js), so
   // it must not be treated as an upstream error page (issue #2386).
   const upstreamContentType = (providerResponse.headers.get('content-type') || '').toLowerCase();
+  if (upstreamContentType.includes("application/json") && targetFormat === FORMATS.OPENAI) {
+    try {
+      const text = await readBoundedResponseText(providerResponse, { signal, maxBytes: 16 * 1024 * 1024, timeoutMs: 30_000 });
+      signal?.throwIfAborted();
+      const framed = completionToStream(JSON.parse(text));
+      const headers = new Headers(providerResponse.headers);
+      headers.set("content-type", "text/event-stream");
+      headers.delete("content-length");
+      providerResponse = new Response(framed, { headers });
+    } catch (error) {
+      streamController?.handleError?.(error);
+      failTimeline(error?.name === "AbortError" ? "aborted" : "error");
+      return createErrorResult(error?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, error?.name === "AbortError" ? "Request aborted" : "Invalid JSON completion for streaming request");
+    }
+  }
   const isExpectedOllamaNdjson = targetFormat === FORMATS.OLLAMA && upstreamContentType.includes('application/x-ndjson');
   if (upstreamContentType && !isExpectedOllamaNdjson && !upstreamContentType.includes('text/event-stream') && !upstreamContentType.includes('application/json')) {
     let bodyText = "";

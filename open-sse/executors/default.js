@@ -585,8 +585,12 @@ export class DefaultExecutor extends BaseExecutor {
     }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
-    for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
+    for (const hook of desc.hooks || []) {
+      if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials);
+    }
     applyAuth(headers, desc, credentials);
+    // Cline's hook normalizes OAuth JWTs; generic bearer auth otherwise overwrites it.
+    if (desc.hooks?.includes("clineHeaders")) HEADER_HOOKS.clineHeaders(headers, credentials);
 
     // Claude Code OAuth Messages send `oauth-2025-04-20` (+ extended-cache-ttl);
     // the API-key path keeps the plain first-party pin (#1383).

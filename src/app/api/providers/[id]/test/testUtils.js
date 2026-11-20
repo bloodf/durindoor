@@ -142,6 +142,7 @@ export const OAUTH_TEST_CONFIG = {
     refreshable: false
   },
   "kimi-coding": { checkExpiry: true, refreshable: false },
+  "kimi-ai": { checkExpiry: true, refreshable: false },
   cursor: { tokenExists: true },
   kilocode: {
     url: `${KILOCODE_CONFIG.apiBaseUrl}/api/profile`,

@@ -27,6 +27,20 @@ export function mapStainlessArch(archName = arch()) {
 export const ANTHROPIC_API_VERSION = "2023-06-01";
 
 /**
+ * OAuth-only Anthropic-Beta flag.
+ *
+ * Anthropic's OAuth control plane (the `/v1/oauth/token` grant and the
+ * `/api/oauth/profile` lookup) answers an OAuth grant only when the OAuth
+ * beta is present. The inference path adds it to the first-party pin through
+ * {@link buildClaudeOAuthAnthropicBeta}; the control-plane calls that carry a
+ * single flag use this constant directly.
+ *
+ * Sources: OmniRoute `open-sse/services/tokenRefresh/providers/claudeOAuth.ts`
+ * (refresh) and `src/lib/oauth/providers/claude.ts` (authorize).
+ */
+export const CLAUDE_OAUTH_BETA = "oauth-2025-04-20";
+
+/**
  * Pinned Claude Code release (latest on npm when last bumped). It must stay at or above
  * 2.1.280, the first release Anthropic accepts for Claude Opus 5.5.
  */
@@ -203,7 +217,7 @@ export function buildClaudeOAuthAnthropicBeta(baseBeta = CLAUDE_FIRST_PARTY_ANTH
     if (i >= 0) flags.splice(i, 0, "extended-cache-ttl-2025-04-11");
     else flags.push("extended-cache-ttl-2025-04-11");
   }
-  if (!flags.includes("oauth-2025-04-20")) flags.splice(flags.indexOf("claude-code-20250219") + 1, 0, "oauth-2025-04-20");
+  if (!flags.includes("oauth-2025-04-20")) flags.splice(flags.indexOf("claude-code-20250219") + 1, 0, CLAUDE_OAUTH_BETA);
   return flags.join(",");
 }
 

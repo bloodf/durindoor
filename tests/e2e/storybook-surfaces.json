@@ -24571,7 +24571,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "1f5be6e3ab8c95f8ebc567da4abe33ecfdc0374eed7027b49df869db7c9b0252",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25913,7 +25913,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25926,7 +25926,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25939,7 +25939,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25952,7 +25952,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -25990,7 +25990,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26013,7 +26013,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26035,7 +26035,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26057,7 +26057,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26229,7 +26229,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26261,7 +26261,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -26376,7 +26376,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26464,7 +26464,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "4a46762c6df8b39b4c24be5e84c7e39e2b9a91bdcd85d5fc9bafce73761c17a1",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "8485473bc9dad4b374864a40f35926af3268e241250decd51b56873abc227e85",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "dd8e4f13b0df52455a9bee80a17abbfec5dcc9445667595fd59e63d209f7d5ae",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -45723,9 +45723,9 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "bd5b248913bd717f84e9e0556fbffc8b6ab2f655ec4a349e5c7fc1c312b92533"
+            "src/app/api/oauth/[provider]/[action]/route.js": "edbdc48567e0e41ccbaa6fa769c1a7dbfcf1be4b17aeb3a9db0c03729cb7358e"
           },
           "expectedVisibleText": "Enter an https URL, for example https://ghe.company.com",
           "id": "production-shared-auth-ghecopilotauthmodal--invalid-origin",
@@ -45747,9 +45747,9 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "bd5b248913bd717f84e9e0556fbffc8b6ab2f655ec4a349e5c7fc1c312b92533"
+            "src/app/api/oauth/[provider]/[action]/route.js": "edbdc48567e0e41ccbaa6fa769c1a7dbfcf1be4b17aeb3a9db0c03729cb7358e"
           },
           "expectedVisibleText": "GHE-1234",
           "id": "production-shared-auth-ghecopilotauthmodal--device-code-handoff",
@@ -48667,12 +48667,12 @@
       "id": "src/shared/components/OAuthModal.js#OAuthModal",
       "sourcePath": "src/shared/components/OAuthModal.js",
       "symbol": "OAuthModal",
-      "sourceSha256": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+      "sourceSha256": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: OAuthModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-oauth-oauthmodal--loading-routing-options",
         "production-shared-oauth-oauthmodal--manual-callback",
@@ -48681,14 +48681,7 @@
         "production-shared-oauth-oauthmodal--xai-copies-auth-url",
         "production-shared-oauth-oauthmodal--authorization-failure"
       ],
-      "approvedScenarioIds": [
-        "production-shared-oauth-oauthmodal--loading-routing-options",
-        "production-shared-oauth-oauthmodal--manual-callback",
-        "production-shared-oauth-oauthmodal--proxy-and-fingerprint",
-        "production-shared-oauth-oauthmodal--device-code-flow",
-        "production-shared-oauth-oauthmodal--xai-copies-auth-url",
-        "production-shared-oauth-oauthmodal--authorization-failure"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-oauth-oauthmodal--loading-routing-options",
@@ -48699,7 +48692,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
@@ -48715,7 +48708,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
@@ -48731,7 +48724,7 @@
             "fingerprint"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -48748,7 +48741,7 @@
             "device-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
@@ -48763,7 +48756,7 @@
             "manual-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
@@ -48778,7 +48771,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+            "src/shared/components/OAuthModal.js": "a9505c368267dffd85cb2653e7fad87d985fd86fd59c0583a4c55de5fbb8d6ba",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
@@ -48786,16 +48779,132 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: OAuthModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: OAuthModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-oauth-oauthmodal--loading-routing-options",
+            "production-shared-oauth-oauthmodal--manual-callback",
+            "production-shared-oauth-oauthmodal--proxy-and-fingerprint",
+            "production-shared-oauth-oauthmodal--device-code-flow",
+            "production-shared-oauth-oauthmodal--xai-copies-auth-url",
+            "production-shared-oauth-oauthmodal--authorization-failure"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-oauth-oauthmodal--loading-routing-options",
+              "storyId": "production-shared-oauth-oauthmodal--loading-routing-options",
+              "runtimeArtifactId": "production-shared-oauth-oauthmodal--loading-routing-options",
+              "axes": [
+                "routing-options",
+                "loading"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+                "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
+              },
+              "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
+              "expectedVisibleText": "Loading routing options…"
+            },
+            {
+              "id": "production-shared-oauth-oauthmodal--manual-callback",
+              "storyId": "production-shared-oauth-oauthmodal--manual-callback",
+              "runtimeArtifactId": "production-shared-oauth-oauthmodal--manual-callback",
+              "axes": [
+                "popup",
+                "manual-callback",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+                "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
+              },
+              "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
+              "expectedVisibleText": "Connected successfully!"
+            },
+            {
+              "id": "production-shared-oauth-oauthmodal--proxy-and-fingerprint",
+              "storyId": "production-shared-oauth-oauthmodal--proxy-and-fingerprint",
+              "runtimeArtifactId": "production-shared-oauth-oauthmodal--proxy-and-fingerprint",
+              "axes": [
+                "Codex",
+                "proxy-pool",
+                "fingerprint"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+                "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
+              },
+              "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "combobox",
+                "name": "OAuth fingerprint mode"
+              }
+            },
+            {
+              "id": "production-shared-oauth-oauthmodal--device-code-flow",
+              "storyId": "production-shared-oauth-oauthmodal--device-code-flow",
+              "runtimeArtifactId": "production-shared-oauth-oauthmodal--device-code-flow",
+              "axes": [
+                "device-code"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+                "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
+              },
+              "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
+              "expectedVisibleText": "ABCD-1234"
+            },
+            {
+              "id": "production-shared-oauth-oauthmodal--xai-copies-auth-url",
+              "storyId": "production-shared-oauth-oauthmodal--xai-copies-auth-url",
+              "runtimeArtifactId": "production-shared-oauth-oauthmodal--xai-copies-auth-url",
+              "axes": [
+                "xAI",
+                "manual-code"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+                "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
+              },
+              "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
+              "expectedVisibleText": "Waiting for Grok Build OAuth…"
+            },
+            {
+              "id": "production-shared-oauth-oauthmodal--authorization-failure",
+              "storyId": "production-shared-oauth-oauthmodal--authorization-failure",
+              "runtimeArtifactId": "production-shared-oauth-oauthmodal--authorization-failure",
+              "axes": [
+                "authorize",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OAuthModal.js": "c57de4bc0035ee4eb57bdc428a13a85a3db08e77bc80c8788fe4479ef618acb6",
+                "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
+              },
+              "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
+              "expectedVisibleText": "OAuth provider is unavailable"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: OAuthModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/OrcaModelDropdown.js#OrcaModelDropdown",
@@ -91870,9 +91979,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "3699121fb7398088db57d5e131b188207c0bea2e7aa673be53f77679d3755688",
-    "sourceCensusSha256": "f75080224e185528fda3016628734e41c3557203188f97859bb238b5aecd820e",
-    "pendingRows": 333,
-    "retainedApprovedRows": 279,
+    "sourceCensusSha256": "dc5ee9df1d2e72f40fb168094f4fd2d134a38bbb123bb39ac44b7c5e091ec763",
+    "pendingRows": 334,
+    "retainedApprovedRows": 278,
     "pendingReferences": 1273,
     "runtimeStatus": "pending"
   }

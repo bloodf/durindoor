@@ -58,6 +58,7 @@ const ROTATION_LOCK_GROUP = {
   kiro: "kiro",
   "amazon-q": "kiro",
   "kimi-coding": "kimi-coding",
+  "kimi-ai": "kimi-ai",
   qwen: "qwen",
 };
 

@@ -7,6 +7,8 @@ import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
+import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
@@ -14,7 +16,7 @@ import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
-import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
+import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import {
   discoverOrcaRouterModels,
@@ -24,7 +26,7 @@ import {
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
-import { CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
+import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
 import { withCodexReviewModels } from "open-sse/providers/models/helpers.js";
 
@@ -275,6 +277,10 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
+  "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
+  "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
+  "xiaomi-tokenplan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
   commandcode: {
     customResolver: async (connection, proxyOptions) => {
       if (!connection.apiKey) return { error: "No valid token found", status: 401 };
@@ -346,7 +352,17 @@ export const PROVIDER_MODELS_CONFIG = {
   codex: {
     url: `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLI_VERSION}`,
     method: "GET",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      // The catalog request carries the same CLI identity the Codex backend
+      // sees on chat requests.
+      // Upstream provenance: router-for-me/CLIProxyAPI
+      // `cmd/fetch_codex_models/main.go` at
+      // 6faa8d20b2673404cff70a2f2d9537ae0d0e684d (`fetchModels`).
+      originator: "codex_cli_rs",
+      "User-Agent": CODEX_CLI_USER_AGENT
+    },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     parseResponse: parseCodexModels
@@ -371,6 +387,28 @@ export const PROVIDER_MODELS_CONFIG = {
         contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
         supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
       }))
+  },
+  // Enterprise discovery must use the connection's scoped token and tenant host.
+  "ghe-copilot": {
+    customResolver: async (connection, proxyOptions = null) => {
+      const data = connection.providerSpecificData || {};
+      const base = resolveGheCopilotApiBase(data);
+      if (!base || !data.copilotToken) return { error: "Enterprise Copilot token or host missing; reconnect or refresh the connection", status: 401 };
+      const response = await proxyAwareFetch(`${base}/models`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${data.copilotToken}`,
+          "Copilot-Integration-Id": "vscode-chat",
+          "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
+          "editor-plugin-version": `copilot-chat/${GITHUB_COPILOT.COPILOT_CHAT_VERSION}`,
+          "user-agent": GITHUB_COPILOT.USER_AGENT,
+          "x-github-api-version": GITHUB_COPILOT.API_VERSION
+        },
+        cache: "no-store"
+      }, proxyOptions);
+      if (!response.ok) return { error: `Enterprise Copilot models request failed: ${response.status}`, status: response.status };
+      return { models: parseOpenAIStyleModels(await response.json()) };
+    }
   },
   github: {
     customResolver: async (connection, proxyOptions = null) => {
@@ -568,8 +606,8 @@ export const PROVIDER_MODELS_CONFIG = {
     customResolver: buildOAuthResolver({
       refreshFn: (conn, proxyOptions) => refreshGoogleToken(
         conn.refreshToken,
-        process.env.AGY_CLIENT_ID,
-        process.env.AGY_CLIENT_SECRET,
+        ANTIGRAVITY_OAUTH_CLIENT.clientId,
+        ANTIGRAVITY_OAUTH_CLIENT.clientSecret,
         proxyOptions
       ),
       fetchFn: (token, conn, proxyOptions) => {

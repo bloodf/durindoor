@@ -35,6 +35,7 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { applyClaudeResponseModelEcho, applyResponseModelEcho, resolveClaudeEchoModel, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
 import { getUsageForProvider } from "../services/usage.js";
 import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
+import { resolveProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -862,8 +863,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     const fmtStr = passthrough ? `FMT: ${sourceFormat} (passthrough)` : `FMT: ${sourceFormat}→${targetFormat}`;
     const think = log.fmtThink?.(extractThinking(translatedBody));
     const acc = credentials?.connectionName || credentials?.connectionId?.slice(0, 8) || "-";
+    // A custom provider is addressed by the prefix the operator configured
+    // ("mirai"), not by its node id ("openai-compatible-chat-<uuid>"). Show the
+    // prefix so the log matches the model id the client sent and the one the
+    // dashboard advertises. Display only: routing and upstream dispatch still
+    // use the provider id.
+    const displayProvider = resolveProviderPrefix({
+      providerId: provider,
+      providerSpecificData: credentials?.providerSpecificData
+    });
     const parts = [
-    `POST ${clientModel} → ${provider}/${cleanModel}`,
+    `POST ${clientModel} → ${displayProvider}/${cleanModel}`,
     fmtStr,
     stream ? "STREAM" : "JSON",
     `${msgN} MSG`];

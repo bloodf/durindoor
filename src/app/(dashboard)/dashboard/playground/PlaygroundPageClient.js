@@ -12,12 +12,12 @@ import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import Pagination from "@/shared/ui/components/Pagination.jsx";
 import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import PlaygroundCompare from "./PlaygroundCompare.jsx";
-import { getModelsByProviderId, isChatModel } from "@/shared/constants/models";
+import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort, paginateSessions } from "./playgroundHelpers";
+import { getConnectionOptions, getModelReasoningOptions, getProviderLabel, groupModelsByProvider, normalizeLiveModel, normalizeReasoningEffort, normalizeStaticModel, paginateSessions } from "./playgroundHelpers";
 import { isBrowser, isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const STORAGE_KEYS = {
@@ -123,50 +123,6 @@ function cloneSession(session) {
   return {
     ...session,
     messages: Array.isArray(session.messages) ? session.messages.map((message) => ({ ...message })) : []
-  };
-}
-
-function getProviderLabel(connection) {
-  return connection?.name || humanize(connection?.provider || connection?.id || "provider");
-}
-
-function normalizeStaticModel(model, connection) {
-  if (!model?.id) return null;
-  // Agent-only static models (e.g. Devin) are not chat candidates; skip them.
-  if (!isChatModel(model)) return null;
-  const providerId = connection.providerId || connection.provider || connection.id;
-  return {
-    id: `${providerId}/${model.id}`,
-    requestModel: `${providerId}/${model.id}`,
-    name: model.name || model.id,
-    providerId,
-    providerName: connection.providerName || getProviderLabel(connection),
-    source: "static"
-  };
-}
-
-function normalizeLiveModel(model, connection) {
-  const rawId = isString(model) ? model : model?.id || model?.name || model?.model || "";
-  if (!rawId) return null;
-
-  const displayName = isString(model) ?
-  model :
-  model?.name || model?.displayName || rawId;
-
-  const providerId = connection.providerId || connection.provider || connection.id;
-  let requestModel = rawId;
-  const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
-  if (isCompatible && !rawId.includes("/")) {
-    requestModel = `${providerId}/${rawId}`;
-  }
-
-  return {
-    id: requestModel,
-    requestModel,
-    name: displayName,
-    providerId,
-    providerName: connection.providerName || getProviderLabel(connection),
-    source: "live"
   };
 }
 
@@ -357,11 +313,18 @@ export default function PlaygroundPageClient() {
     const map = new Map();
     for (const group of providerGroups) {
       for (const model of group.models) {
-        map.set(model.id, {
+        const entry = {
           ...model,
           providerId: group.providerId,
           providerName: group.providerName
-        });
+        };
+        map.set(model.id, entry);
+        // A selection saved before the configured prefix was published still
+        // carries the node id. Keep that label resolvable so an upgrade never
+        // silently drops the operator's chosen model.
+        if (model.legacyId && model.legacyId !== model.id && !map.has(model.legacyId)) {
+          map.set(model.legacyId, entry);
+        }
       }
     }
     return map;

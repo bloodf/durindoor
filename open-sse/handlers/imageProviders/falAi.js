@@ -15,6 +15,8 @@ export default {
     const req = { prompt: body.prompt, num_images: body.n || 1 };
     if (body.size) req.image_size = sizeToAspectRatio(body.size);
     if (body.image) req.image_url = body.image;
+    // Fal endpoints decide which output formats they support.
+    if (body.output_format !== undefined) req.output_format = body.output_format;
     return req;
   },
   async parseResponse(response, { headers, signal }) {

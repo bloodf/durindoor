@@ -189,7 +189,9 @@ These are fixes to features the fork **already has**. Each is stated with the lo
 
 ### 7.2 Pair an unpaired Responses `function_call` instead of forwarding it bare
 
-**Upstream:** #15231, `87a753439`, `fix(translator): pair unpaired Responses function_call items with synthetic outputs`.
+The gap and acceptance conditions below describe the historical comparison, not current behavior; the subsequent port is documented in [the tool-pairing report](1073-responses-historical-tool-pairing.md).
+
+**Upstream:** #15231, `fca2f868129964a71004c185c1453864d5c2503f`, `fix(translator): pair unpaired Responses function_call items with synthetic outputs`.
 **Upstream path:** `open-sse/translator/request/openai-responses/toResponses.ts` (+31/−1).
 **Local surface:** `open-sse/translator/request/openai-responses.js`; existing self-check `open-sse/utils/openaiResponsesToolPairingSelfCheck.mjs`.
 

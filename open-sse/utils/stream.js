@@ -1,3 +1,4 @@
+import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
@@ -442,7 +443,9 @@ export function createSSEStream(options = {}) {
   /** Append chunks without copying growing prefixes; join only at observable completion/snapshot boundaries. */
   const appendContent = (chunk) => contentChunks.push(chunk);
   const appendThinking = (chunk) => thinkingChunks.push(chunk);
+  let hasSnapshotOutput = false;
   const getAccumulatedCompletion = () => ({
+    ...(hasSnapshotOutput ? { hasSnapshotOutput: true } : null),
     content: contentChunks.join(""),
     thinking: thinkingChunks.join("")
   });
@@ -461,6 +464,7 @@ export function createSSEStream(options = {}) {
   const eventTypeCounts = {};
   let onStreamCompleteFired = false; // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
   const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
+    if (targetFormat === FORMATS.OPENAI_RESPONSES && (mode === STREAM_MODE.PASSTHROUGH || sourceFormat === FORMATS.OPENAI_RESPONSES) && hasResponsesSnapshotOutput(parsed)) hasSnapshotOutput = true;
     if (summary) providerSummary.ingest(parsed);
     const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
     const openaiToolCalls = parsed.choices?.some?.((choice) => choice?.delta?.tool_calls?.length > 0 || choice?.delta?.function_call);

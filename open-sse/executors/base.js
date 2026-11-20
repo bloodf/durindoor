@@ -435,6 +435,26 @@ export class BaseExecutor {
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
         let response = await runQuotaBearingProviderRequest(() =>
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
+        // Cohere can explicitly suggest its supported tier on a 422. Retry only
+        // that rejection, once, and only when a different effort was sent.
+        if (this.provider === "cohere" && response.status === 422 &&
+            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high") {
+          const errorText = await readBoundedResponseText(response.clone(), { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 });
+          if (/reasoning_effort/i.test(errorText) && /\buse\s+['"`]high['"`]\s+instead\b/i.test(errorText)) {
+            requestBody = { ...requestBody, reasoning_effort: "high" };
+            bodyStr = JSON.stringify(requestBody);
+            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+            cancelDiscardedResponse(response);
+            clearTimeout(connectTimer);
+            connectCtrl = new AbortController();
+            connectTimer = armConnectTimer();
+            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            beginDispatch();
+            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
+              ...fetchOptions, body: bodyStr, signal: mergedSignal
+            }), proxyOptions));
+          }
+        }
         if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false) {
           const clone = response.clone?.();
           const errorText = clone ?

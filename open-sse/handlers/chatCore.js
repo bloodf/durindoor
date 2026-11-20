@@ -73,7 +73,7 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { maskSensitiveUrl } from "../utils/requestLogger.js";
-import { isOpencodeGoProvider, stripBooleanReasoning } from "../services/opencodeReasoningSanitizer.js";
+import { isOpencodeGoProvider, normalizeOpencodeMimoEffort, restoreOpencodeMimoEffort, stripBooleanReasoning } from "../services/opencodeReasoningSanitizer.js";
 import { startTrace, record, finishTrace } from "./chatCore/proxyTimeline.js";
 
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -435,6 +435,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const cleanModel = parsedModel.cleanModel;
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
+  // Normalize explicit inputs before thinking intent is captured and translated.
+  if (isOpencodeGoProvider(provider)) {
+    body = structuredClone(body);
+    normalizeOpencodeMimoEffort(body, provider, cleanModel);
+  }
+  const explicitMimoBody = isOpencodeGoProvider(provider) ? structuredClone(body) : null;
   const ollamaCatalogModel = provider === "ollama-local" ?
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel) ||
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel) :
@@ -800,7 +806,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // boolean `reasoning: true/false` (valid per the OpenAI API) 400s on the Go
   // side. Strip the boolean so the upstream applies its own default. (#7891)
   if (isOpencodeGoProvider(provider)) {
+    // Same-format requests retain their explicit carriers through generic
+    // thinking conversion, which can otherwise replace a supported low tier.
+    if (sourceFormat === targetFormat && !modelThinkingIntent) {
+      restoreOpencodeMimoEffort(translatedBody, explicitMimoBody, provider, cleanModel);
+    } else if (targetFormat === FORMATS.OPENAI && !modelThinkingIntent) {
+      const intent = extractThinking(explicitMimoBody);
+      if (intent?.mode === "level" || intent?.mode === "none") {
+        const explicit = { reasoning_effort: intent.mode === "none" ? "none" : intent.level };
+        restoreOpencodeMimoEffort(translatedBody, explicit, provider, cleanModel);
+      }
+    }
     stripBooleanReasoning(translatedBody);
+    normalizeOpencodeMimoEffort(translatedBody, provider, cleanModel);
   }
 
   // OpenAI-format upstreams enforce `^[a-zA-Z0-9_-]{1,64}$` on tool names, and a

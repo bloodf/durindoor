@@ -10,6 +10,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+vi.mock("node:dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] }));
+
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
 
 const originalFetch = global.fetch;
@@ -638,9 +640,11 @@ describe("handleImageGenerationCore", () => {
   });
 
   it("resolves Cloudflare img2img and inpainting URL inputs before sending", async () => {
+    const image = [137, 80, 78, 71, 13, 10, 26, 10, 1];
+    const mask = [137, 80, 78, 71, 13, 10, 26, 10, 2];
     global.fetch
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "Content-Type": "image/png" } }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([4, 5, 6]), { status: 200, headers: { "Content-Type": "image/png" } }))
+      .mockResolvedValueOnce(new Response(new Uint8Array(image), { status: 200, headers: { "Content-Type": "image/png" } }))
+      .mockResolvedValueOnce(new Response(new Uint8Array(mask), { status: 200, headers: { "Content-Type": "image/png" } }))
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ result: { image: "base64inpaint" }, success: true }),
@@ -664,17 +668,17 @@ describe("handleImageGenerationCore", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenNthCalledWith(1, "https://example.com/source.png");
-    expect(global.fetch).toHaveBeenNthCalledWith(2, "https://example.com/mask.png");
+    expect(global.fetch).toHaveBeenNthCalledWith(1, "https://example.com/source.png", expect.objectContaining({ redirect: "manual", dispatcher: expect.anything() }));
+    expect(global.fetch).toHaveBeenNthCalledWith(2, "https://example.com/mask.png", expect.objectContaining({ redirect: "manual", dispatcher: expect.anything() }));
 
     const providerCall = global.fetch.mock.calls[2];
     expect(providerCall[0]).toBe("https://api.cloudflare.com/client/v4/accounts/cf-account/ai/run/@cf/runwayml/stable-diffusion-v1-5-inpainting");
     const requestBody = JSON.parse(providerCall[1].body);
-    expect(requestBody.image).toEqual([1, 2, 3]);
-    expect(requestBody.image_b64).toBe(Buffer.from([1, 2, 3]).toString("base64"));
-    expect(requestBody.mask).toEqual([4, 5, 6]);
-    expect(requestBody.mask_image).toEqual([4, 5, 6]);
-    expect(requestBody.mask_b64).toBe(Buffer.from([4, 5, 6]).toString("base64"));
+    expect(requestBody.image).toEqual(image);
+    expect(requestBody.image_b64).toBe(Buffer.from(image).toString("base64"));
+    expect(requestBody.mask).toEqual(mask);
+    expect(requestBody.mask_image).toEqual(mask);
+    expect(requestBody.mask_b64).toBe(Buffer.from(mask).toString("base64"));
   });
 
   it("handles provider error responses", async () => {

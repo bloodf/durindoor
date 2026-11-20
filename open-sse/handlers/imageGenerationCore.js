@@ -153,13 +153,14 @@ export async function handleImageGenerationCore({
   let url;
   let headers;
   let requestBody;
-  const adapterOptions = { streamToClient };
+  const adapterOptions = { streamToClient, signal };
 
   try {
     url = adapter.buildUrl(model, credentials, body, adapterOptions);
     requestBody = await adapter.buildBody(model, body, adapterOptions);
     headers = adapter.buildHeaders(credentials, requestBody, model, body);
   } catch (error) {
+    if (isAbort(error)) return abortedResult();
     // An adapter may tag a pre-dispatch rejection with an explicit HTTP status
     // (e.g. 403 for a plan entitlement it already knows will fail upstream) so
     // combo fallback sees the real retryable status instead of a flat 400.

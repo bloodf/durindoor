@@ -17,7 +17,9 @@ import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
 
 function resolveRequestModel(provider, requestedModel) {
-  const { cleanModel, override } = parseSuffix(requestedModel);
+  // Provider-scoped: only OpenAI and Codex read `fast`/`standard` as a service
+  // tier; everywhere else the suffix belongs to the opaque model ID.
+  const { cleanModel, override } = parseSuffix(requestedModel, provider);
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const upstreamModel = getModelUpstreamId(alias, cleanModel);
   const targetFormat = getModelTargetFormat(alias, cleanModel) || getTargetFormat(provider);

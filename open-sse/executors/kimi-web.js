@@ -431,7 +431,8 @@ export class KimiWebExecutor extends BaseExecutor {
     // Strip the repo-wide thinking suffix (e.g. `k2d6-thinking(high)`) that
     // getModelUpstreamId preserves, so resolveModelConfig resolves the correct
     // tier. applyThinking has already set reasoning_effort from the suffix.
-    const modelId = stripThinkingSuffix(bodyObj.model || "k2d6");
+    // Kimi accepts no service tier, so a tier-shaped suffix stays opaque.
+    const modelId = stripThinkingSuffix(bodyObj.model || "k2d6", "kimi-web");
     const modelConfig = resolveModelConfig(modelId);
     const reasoningEffort = resolveReasoningEffort(modelConfig, bodyObj.reasoning_effort);
 

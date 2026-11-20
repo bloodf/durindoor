@@ -322,7 +322,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -508,6 +508,15 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   const isCompactRequest = requestContext?.compact === true;
   const streamWasOmitted = body.stream === undefined;
+  // The client's own `stream` value, read from the request snapshot the
+  // gateway took before it started working on the body. The working body
+  // cannot answer this: same-format translation hands that same object to
+  // the transport, which rewrites `stream` to the provider-required value
+  // (#3420), so `body.stream` reports the transport, not the client. The
+  // snapshot still holds what the client sent, which keeps "did the client
+  // ask for a JSON completion?" answerable when the response is routed.
+  const rawClientStream = clientRawRequest?.body ? clientRawRequest.body.stream : body.stream;
+  const clientRequestedNonStreaming = rawClientStream === false;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
   const providerRequiresStreaming = !isCompactRequest &&
   (PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
@@ -962,10 +971,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
-  // Custom prompt: user-authored instruction, independent of the savers above.
-  // Still honors the per-request token-saver bypass header.
-  if (tokenSaverEnabled && customPromptEnabled && injectCustomPrompt(translatedBody, finalFormat, customPrompt)) {
-    xf.push(`CUSTOMPROMPT:${customPrompt.trim().length}c`);
+  // Kiro stores instructions as a prefix in user content. Inject the global
+  // and combo instructions together there to retain outer-to-inner order.
+  const globalPrompt = tokenSaverEnabled && customPromptEnabled && isString(customPrompt) && customPrompt.trim() ? customPrompt : "";
+  const kiroCombined = (finalFormat === FORMATS.KIRO || isString(translatedBody.conversationState?.currentMessage?.userInputMessage?.content)) && globalPrompt && comboPrompts.length;
+  if (globalPrompt && !kiroCombined && injectCustomPrompt(translatedBody, finalFormat, globalPrompt)) {
+    xf.push(`CUSTOMPROMPT:${globalPrompt.trim().length}c`);
+  }
+  // Configured combo instructions are routing policy, independent of savers.
+  if (comboPrompts.length) {
+    injectCustomPrompt(translatedBody, finalFormat, [...(kiroCombined ? [globalPrompt] : []), ...comboPrompts].join("\n\n"));
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
@@ -1846,12 +1861,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     try {
       const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
-      // Compatible chat clients that omit stream expect JSON, even if a
-      // stream-only provider unexpectedly answered with a JSON completion.
-      // Keep explicit flags and other endpoint contracts on their existing paths.
+      // Compatible chat clients that omit stream — or explicitly ask for
+      // `stream: false` — expect JSON, even if a stream-only provider
+      // unexpectedly answered with a JSON completion. The upstream request
+      // already went out with the provider-required `stream: true`, so only
+      // the client-facing response changes here: the coherent JSON
+      // completion replaces the SSE an empty terminal used to produce.
+      // Other endpoint contracts stay on their existing paths.
       const path = String(clientRawRequest?.endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
+      const clientAskedForJson = streamWasOmitted || clientRequestedNonStreaming;
       if (sourceFormat === FORMATS.OPENAI && path.endsWith("/v1/chat/completions") &&
-          streamWasOmitted && (providerResponse.headers.get("content-type") || "").toLowerCase().includes("application/json")) {
+          clientAskedForJson && (providerResponse.headers.get("content-type") || "").toLowerCase().includes("application/json")) {
         stream = false;
       }
     } catch (error) {

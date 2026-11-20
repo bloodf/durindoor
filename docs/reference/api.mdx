@@ -58,7 +58,7 @@ image data. This applies to both streaming and non-streaming requests.
 
 Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
 
-For ordinary Chat Completions requests, omitting `stream` requests JSON. Providers that require streaming still receive a streaming request; DurinDoor converts their SSE response to JSON, and also accepts a JSON completion if the provider returns one. Send `stream: true` to request SSE. Claude CLI warmup and naming bypasses retain their existing response behavior.
+For ordinary Chat Completions requests, omitting `stream` requests JSON, and an explicit `stream: false` asks for the same JSON completion. Providers that require streaming still receive a streaming request; DurinDoor converts their SSE response to JSON, and also accepts a JSON completion if the provider returns one. Send `stream: true` to request SSE. Claude CLI warmup and naming bypasses retain their existing response behavior.
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \

@@ -439,8 +439,12 @@ export function initState(sourceFormat, requestBody) {
   const plainToolNames = new Set();
   // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
   const chatCustomToolNames = new Set();
-  if (Array.isArray(requestBody?.tools)) {
-    for (const tool of requestBody.tools) {
+  const declaredTools = [
+    ...(Array.isArray(requestBody?.tools) ? requestBody.tools : []),
+    ...(Array.isArray(requestBody?.input) ? requestBody.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
+  ];
+  if (declaredTools.length) {
+    for (const tool of declaredTools) {
       const type = isString(tool?.type) ? tool.type : "";
       const name = isString(tool?.function?.name) ?
       tool.function.name :

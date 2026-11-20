@@ -58,7 +58,7 @@ The field is plain text, not a password field, so the cookie is visible on scree
 
 | Provider | Id | Paste |
 | --- | --- | --- |
-| Grok Web | `grok-web` | The `sso=` cookie value (the prefix is optional) |
+| Grok Web | `grok-web` | The `sso` cookie value, `sso=<value>`, or a full Cookie header that contains `sso=`. See [Grok Web](#grok-web) |
 | Perplexity Web | `perplexity-web` | The `__Secure-next-auth.session-token` value; chunked `.0`, `.1` cookies are accepted |
 | Copilot Web | `copilot-web` | An `access_token`, or a HAR from a signed-in browser |
 | Microsoft 365 Copilot Web | `copilot-m365-web` | The chathub WebSocket path and `access_token` |
@@ -121,13 +121,13 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 - Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
 - The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
-- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx), except Grok Web, which has a usage fetcher but no preflight config.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web and ChatGPT Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which neither site exposes through a stable API. Token counts are estimates of about four characters per token.
 
 ## When the session ends
 
 Most cookie sessions have no proactive refresh or expiry tracking. ChatGPT Web can save cookies rotated by the site, but rotation does not prevent expiry or revocation. The temporary dashboard-login jar discards expired cookies before saving. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
 
-If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
+If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Saving a new cookie on a web-cookie connection replaces the stored value, keeps the connection's name, priority and settings, and clears the cooldown and error state recorded against the old cookie, so the next request uses the new one right away. Other connections of the same provider are not touched. Pasting the same value again changes nothing. Signing out of the site in your browser usually kills the session DurinDoor holds too.
 
 Keep one browser profile for the account you hand to DurinDoor, and avoid signing out of it.
 
@@ -138,3 +138,16 @@ After saving a supported session, send one short request and check **Usage**. A 
 Copilot Web accepts a pasted access token, a bearer header, a cookie containing `access_token`, a JSON object containing `access_token` (and optionally the exact `https://copilot.microsoft.com` origin), or a HAR. HAR credentials are taken only from requests to that exact HTTPS origin; other origins are ignored. An invalid supplied credential is rejected locally. Each request starts a fresh personal conversation. An expired or revoked session must be replaced; no refresh token is retained for this manual flow.
 
 Microsoft 365 Copilot Web uses a separate Chathub path and access token. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` and `included` select the education profile. Individual accounts retain their existing defaults. If a Microsoft 365 stream rewrites text already sent to the client, the stream reports an error; retry without streaming to receive the final snapshot. Manually supplied Microsoft 365 tokens are not refreshed automatically.
+
+## Grok Web
+
+`grok-web` (alias `gw`) sends chat requests to `grok.com` with your signed-in `sso` session. It is separate from the `xai` API provider and the Grok CLI device flow; their credentials do not work here.
+
+1. Sign in at grok.com. In DevTools, Application, Cookies, `https://grok.com`, copy the `sso` value. Or copy the whole `Cookie` request header from the Network tab.
+2. In **Providers → Grok Web**, paste it and save. Accepted forms: the bare value, `sso=<value>`, or a full header. A full header is sent as pasted and must contain `sso=`; a header without it is rejected locally with HTTP 401 and nothing is sent to grok.com.
+3. **Validate** and **Test Connection** are skipped for Grok Web. Its only chat endpoint creates a conversation per probe, so a skipped result does not prove the cookie works. Send one short request to confirm.
+4. Models are the registry list (`grok-3` to `grok-4.2`); unlisted ids pass through and map to `grok-4.1-fast` when DurinDoor has no mapping for them. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tools and image generation are not supported.
+
+Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `sso` cookie); 429 means grok.com is rate limiting you. With more than one Grok Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above. Signing out of grok.com in that browser profile ends the session.
+
+Known limits: no cookie rotation is written back (unlike ChatGPT Web), so a renewed `sso` must be pasted by hand. Paired `sso-rw` handling beyond forwarding it from a pasted header is untested. DurinDoor does not emulate browser attestation or work around access controls; if grok.com challenges a session, use a different session or provider.

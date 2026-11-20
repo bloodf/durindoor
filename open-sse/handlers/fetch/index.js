@@ -180,6 +180,9 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
     if (provider === "tinyfish") {
       return await runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
     }
+    if (provider === "keenable") {
+      return await runKeenable({ url, fmt, timeoutMs, maxCharacters, costPerQuery, startedAt });
+    }
     if (provider === "ollama") {
       return await runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, providerConfig });
     }
@@ -605,6 +608,58 @@ async function runAnysearch({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
       provider: "anysearch", url, title: json?.data?.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
     })
+  };
+}
+
+// Keenable keyless public fetch: GET /v1/fetch/public?url=...[&max_chars=...]
+// Response: { url, title, content, truncated, total_chars, author?, published_at? }
+// Fixed official origin; `live`, `prompt` and any other API option is never sent.
+// guardedProbeFetch never follows redirects, so a redirect is surfaced as an error.
+const KEENABLE_FETCH_URL = "https://api.keenable.ai/v1/fetch/public";
+
+function truncateCodePoints(text, max) {
+  if (!max) return text;
+  const chars = Array.from(text);
+  return chars.length > max ? chars.slice(0, max).join("") : text;
+}
+
+async function runKeenable({ url, fmt, timeoutMs, maxCharacters, costPerQuery, startedAt }) {
+  if (fmt !== "markdown") return { success: false, status: 400, error: `Unsupported Keenable format: ${fmt}` };
+  if (maxCharacters != null && maxCharacters !== 0 && (!Number.isInteger(maxCharacters) || maxCharacters < 1)) {
+    return { success: false, status: 400, error: "Keenable maxCharacters must be a positive integer" };
+  }
+  const qp = new URLSearchParams({ url });
+  if (maxCharacters) qp.set("max_chars", String(maxCharacters));
+  const upstreamStart = Date.now();
+  const r = await tryFetch(`${KEENABLE_FETCH_URL}?${qp}`, {
+    method: "GET",
+    headers: { Accept: "application/json", "X-Keenable-Title": "durindoor" }
+  }, timeoutMs);
+  if (!r.ok) return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  const upstreamMs = Date.now() - upstreamStart;
+  if (r.res.status >= 300 && r.res.status < 400) {
+    return { success: false, status: 502, error: "Keenable redirected the request; redirects are not followed" };
+  }
+  const { json, text: responseText } = await readJsonOrText(r.res);
+  if (!r.res.ok) {
+    const detail = [json?.message, json?.error, json?.detail].find((v) => isString(v) && v);
+    return { success: false, status: r.res.status, error: detail || responseText?.slice(0, 500) || `Keenable error: ${r.res.status}` };
+  }
+  if (!isString(json?.content)) {
+    return { success: false, status: 502, error: "Keenable returned no extractable content" };
+  }
+  const text = truncateCodePoints(json.content, maxCharacters);
+  return {
+    success: true,
+    data: {
+      ...buildData({ provider: "keenable", url, title: isString(json.title) ? json.title : null, format: fmt, text,
+        costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs }),
+      metadata: {
+        author: isString(json.author) && json.author ? json.author : null,
+        published_at: isString(json.published_at) && json.published_at ? json.published_at : null,
+        language: null
+      }
+    }
   };
 }
 

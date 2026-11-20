@@ -17,6 +17,9 @@
 import { isNumber, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { isOpenAIResponsesTerminalEvent } from "./responsesStreamHelpers.js";
 
+/** Most superseded response ids remembered per stream, so state stays constant sized. */
+const MAX_SEEN_RESPONSE_IDS = 16;
+
 /** Canonical decimal integers only: "0", "7", "42". */
 const DECIMAL_SEQUENCE = /^(?:0|[1-9]\d*)$/;
 
@@ -67,13 +70,18 @@ function isProtectedResponsesEvent(payload, eventType) {
  * The watermark is scoped to one upstream response: a different
  * `response.id` on a non-protected event starts fresh numbering. A late
  * terminal or usage frame for another response is forwarded without changing
- * the active response or its watermark.
+ * the active response or its watermark. A bounded list of superseded ids keeps
+ * a replayed event of an already-seen response (such as its creation) from
+ * resetting the active watermark: it is dropped as a replay, while an id never
+ * seen before is a genuine new response and starts fresh numbering.
  *
  * @returns {{isReplay: (payload: unknown) => boolean}} The tracker.
  */
 export function createResponsesSequenceReplayTracker() {
   let responseId = null;
   let lastSequence = -1;
+  /** @type {string[]} Superseded response ids, oldest first, capped. */
+  const seenResponseIds = [];
 
   /**
    * @param {unknown} payload Parsed upstream event.
@@ -88,6 +96,13 @@ export function createResponsesSequenceReplayTracker() {
     const eventResponseId = payload.response?.id;
     if (isString(eventResponseId) && eventResponseId && eventResponseId !== responseId) {
       if (responseId !== null && isProtectedResponsesEvent(payload, eventType)) return false;
+      // An already-seen response replayed after a newer one is active must not
+      // take over the watermark; its creation was forwarded the first time.
+      if (seenResponseIds.includes(eventResponseId)) return true;
+      if (responseId !== null) {
+        seenResponseIds.push(responseId);
+        if (seenResponseIds.length > MAX_SEEN_RESPONSE_IDS) seenResponseIds.shift();
+      }
       responseId = eventResponseId;
       lastSequence = -1;
     }

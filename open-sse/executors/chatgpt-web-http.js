@@ -202,7 +202,9 @@ async function exchangeSession(cookie, signal) {
     expiresAt: Math.min(expiresAt, Date.now() + TOKEN_TTL_MS),
     refreshedCookie: refreshed ?? undefined,
   };
-  tokenStore(cookie, entry);
+  // A rotated cookie is a write candidate for this request only. Never replay
+  // it from the token cache after the gateway accepts or rejects the write.
+  if (!refreshed || refreshed === cookie) tokenStore(cookie, entry);
   return entry;
 }
 

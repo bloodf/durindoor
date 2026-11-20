@@ -445,7 +445,8 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "gemini-level":{
-        let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        let level = none ? "minimal" :
+          (["antigravity", "ag", "agy"].includes(provider) && caps.thinkingEfforts?.includes("xhigh") && toLevel(eff) === "xhigh" ? "xhigh" : toGeminiThinkingLevel(eff));
         // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
         const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;
@@ -623,6 +624,16 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
         if (targetFormat === FORMATS.CLAUDE) body.output_config = { ...body.output_config, effort: level };
         else body.reasoning_effort = level;
       }
+    }
+    return body;
+  }
+
+  // Interactions Hydrogen has a distinct documented enum; do not apply the
+  // generic Gemini xhigh-to-high conversion. Unsupported intents are omitted.
+  if (provider === "gemini-interactions" && cleanModel === "gemini-4-hydrogen") {
+    stripAll(body, false);
+    if (cfg.mode === "level" && ["low", "medium", "high", "xhigh"].includes(cfg.level)) {
+      body.reasoning_effort = cfg.level;
     }
     return body;
   }

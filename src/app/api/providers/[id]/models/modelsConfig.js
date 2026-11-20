@@ -18,6 +18,7 @@ import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import { META_MODEL_API_MODELS_URL } from "open-sse/config/museCode.js";
 import {
   ANTIGRAVITY_CATALOG_URL,
   buildAntigravityCatalogBody,
@@ -37,6 +38,7 @@ import {
   ORCAROUTER_MODALITIES,
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
+import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
@@ -336,6 +338,20 @@ export function buildClaudeModelsHeaders(token) {
   };
 }
 
+// The catalog includes media and embedding models; only advertise chat endpoints.
+export const parseEmpirioLabsChatModels = (data) => {
+  if (!Array.isArray(data?.data)) return [];
+  return data.data.filter((model) => isString(model?.id) && model.id &&
+    Array.isArray(model.supported_endpoints) && model.supported_endpoints.includes("POST /v1/chat/completions"))
+    .map((model) => {
+      const result = { id: model.id, name: model.display_name || model.id };
+      if (model.context_window) result.contextLength = model.context_window;
+      if (model.max_output_tokens) result.outputTokenLimit = model.max_output_tokens;
+      if (Array.isArray(model.input_modalities) && model.input_modalities.includes("image")) result.supportsVision = true;
+      return result;
+    });
+};
+
 /** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
 export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
   model && isString(model.id) &&
@@ -400,6 +416,7 @@ export async function persistCopilotEndpointContract(connection, rows) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {
     url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
@@ -437,6 +454,10 @@ export const PROVIDER_MODELS_CONFIG = {
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },
+  // Meta Model API: `GET /v1/models` lists the models the account's own key
+  // can use, so discovery is account-scoped. The request is a documented
+  // Model API call and carries no Muse Code client fingerprint.
+  "muse-code": createOpenAIModelsConfig(META_MODEL_API_MODELS_URL),
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
@@ -903,5 +924,19 @@ export const PROVIDER_MODELS_CONFIG = {
   // resolver form rather than a registry-level modelsFetcher. The key stays here.
   [ORCAROUTER_ID]: {
     customResolver: resolveOrcaRouterModels
+  },
+  // Gisoo's catalog is public (`GET /api/v1/models` needs no key and answers
+  // 200 even for an invalid one), so discovery runs without an Authorization
+  // header: the stored key never leaves the server for a request that does not
+  // need it, and the request target is the registry constant rather than the
+  // connection's client-writable baseUrl.
+  gisoo: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const result = await discoverGisooModels({
+        fetchImpl: (url, init) => proxyAwareFetch(url, init, proxyOptions),
+      });
+      if (result.error) return { error: result.error, status: result.status };
+      return { models: result.models };
+    }
   }
 };

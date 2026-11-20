@@ -35,6 +35,7 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { applyClaudeResponseModelEcho, applyResponseModelEcho, resolveClaudeEchoModel, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
 import { getUsageForProvider } from "../services/usage.js";
 import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
+import { resolveProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -479,7 +480,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when
   // nothing named a tier and neither the client nor the provider setting
   // controls thinking (`thinking` present, or mode none/off).
-  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body);
+  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body, provider);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
   const thinkingControlled = requestedModelTier || body.thinking ||
   providerThinking?.mode === "none" || providerThinking?.mode === "off";
@@ -865,8 +866,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     const fmtStr = passthrough ? `FMT: ${sourceFormat} (passthrough)` : `FMT: ${sourceFormat}→${targetFormat}`;
     const think = log.fmtThink?.(extractThinking(translatedBody));
     const acc = credentials?.connectionName || credentials?.connectionId?.slice(0, 8) || "-";
+    // A custom provider is addressed by the prefix the operator configured
+    // ("mirai"), not by its node id ("openai-compatible-chat-<uuid>"). Show the
+    // prefix so the log matches the model id the client sent and the one the
+    // dashboard advertises. Display only: routing and upstream dispatch still
+    // use the provider id.
+    const displayProvider = resolveProviderPrefix({
+      providerId: provider,
+      providerSpecificData: credentials?.providerSpecificData
+    });
     const parts = [
-    `POST ${clientModel} → ${provider}/${cleanModel}`,
+    `POST ${clientModel} → ${displayProvider}/${cleanModel}`,
     fmtStr,
     stream ? "STREAM" : "JSON",
     `${msgN} MSG`];
@@ -1363,6 +1373,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         body: translatedBody,
         stream,
         credentials,
+        connectionId,
         providerSessionId: sessionSeed,
         clientTool,
         signal: providerSignal,
@@ -1558,8 +1569,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   }
 
-  // Handle 401/403 - try token refresh (skip for noAuth providers)
-  if (!executor.noAuth && (parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED || parsedError?.statusCode === HTTP_STATUS.FORBIDDEN)) {
+  // Handle 401/403 - try token refresh (skip for noAuth providers).
+  // A provider may decline the refresh when the upstream refusal cannot be
+  // answered by a fresh credential: a key minted from the same account carries
+  // the same scope, so refreshing would only repeat the refusal with a
+  // substituted credential. The refusal then surfaces as it arrived, with no
+  // second attempt.
+  const authFailure = parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED ||
+  parsedError?.statusCode === HTTP_STATUS.FORBIDDEN;
+  const refreshAfterAuthFailure = authFailure && !executor.noAuth &&
+  (isFunction(executor.shouldRefreshAfterAuthFailure)
+    ? executor.shouldRefreshAfterAuthFailure(parsedError, providerResponse) !== false
+    : true);
+  if (refreshAfterAuthFailure) {
     try {
       await settleProviderAttemptDispatch(providerResponse, { success: false, reason: "fallback" });
       // Some custom executors wrap the mapped transport response. Release any

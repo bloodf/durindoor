@@ -129,7 +129,8 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   // decolua/9router #2800). An explicit persisted thinkingFormat (handled above)
   // still wins for operators who know their upstream speaks a native format.
   if (isString(provider) && provider.startsWith("openai-compatible-")) {
-    return "openai";
+    return targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE
+      ? "openai-responses" : "openai";
   }
   // DeepSeek on the OpenCode Go Messages lane speaks Claude adaptive thinking.
   if (provider === "opencode-go" && targetFormat === FORMATS.CLAUDE &&
@@ -332,6 +333,8 @@ function isAstraMinimalFloorModel(provider, model) {
 // Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
 export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (!level) return level;
+  // Adaptive intent must resolve to an OpenAI wire effort.
+  if (level === "auto") level = "high";
   const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
   if (Array.isArray(allowed)) {
     if (allowed.includes(level)) return level;
@@ -381,6 +384,11 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
     case "openai-low-high-max": {
         const level = toLowHighMaxLevel(eff);
         if (level) body.reasoning_effort = level;
+        break;
+      }
+    case "llmtr": {
+        // LLMTR Chat Completions accepts a boolean reasoning switch.
+        body.reasoning = !(none && canDisable);
         break;
       }
     case "tokenmarket": {

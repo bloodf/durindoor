@@ -45,6 +45,20 @@ describe("completed Vitest report states", () => {
     }
   });
 
+  it("rejects a truncated fresh JSON report before accepting its valid replacement", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "report-fresh-json-"));
+    const file = path.join(dir, "report.json");
+    const startedAt = Date.now() - 1000;
+    try {
+      writeFileSync(file, '{"success":true,"testResults":[');
+      expect(() => validateTestReport(file, startedAt, 0, null, dir)).toThrow(/not parseable/);
+
+      const report = { success: true, testResults: [suite(path.join(dir, "a.test.js"))] };
+      writeFileSync(file, JSON.stringify(report));
+      expect(validateTestReport(file, startedAt, 0, null, dir).tests).toBe(1);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it("preserves explicit skipped/todo assertions as skips in completed suites", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "report-skips-"));
     try {

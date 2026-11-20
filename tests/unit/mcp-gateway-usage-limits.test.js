@@ -354,6 +354,24 @@ it.each(["mcp-gateway", "openai"])("deduplicates failed %s events while retainin
 });
 
 
+it("preserves unknown-cost failed MCP attribution through replay and rebuild", async () => {
+  const start = "2000-01-01T00:00:00.000Z";
+  const failed = { usageEventId: "preserved-mcp-failed-replay", provider: "mcp-gateway", status: "error", apiKey: KEY, tokens: { prompt_tokens: 5 }, cost: null, strict: true };
+  const paid = { usageEventId: "preserved-chat-paid-replay", provider: "openai", status: "error", apiKey: KEY, tokens: { prompt_tokens: 3 }, cost: 1, strict: true };
+  for (const entry of [failed, failed, paid, paid]) await database.saveRequestUsage({ ...entry });
+
+  expect(rows().map(({ apiKey, status }) => [apiKey, status])).toEqual([[KEY, "error"], [KEY, "error"]]);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 3, totalCost: 1, unknownCostRequests: 0 });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, start, start);
+  expect(window.day).toEqual({ inputTokens: 3, outputTokens: 0, requests: 1, cost: 1, unknownCostRequests: 0 });
+  expect(window.month).toEqual(window.day);
+  expect(await database.getUsageStats("all")).toMatchObject({ totalRequests: 2, unknownCostRequests: 1 });
+
+  const { backfillApiKeyUsageTotals } = await import("@/lib/db/helpers/apiKeyUsageTotals.js");
+  backfillApiKeyUsageTotals(adapter, { overwrite: true });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 3, totalCost: 1, unknownCostRequests: 0 });
+});
+
 it("rejects accepted MCP writes without claiming a receipt or changing accounting", async () => {
   const entry = { apiKey: KEY, provider: "mcp-gateway", model: "tools__echo",
     usageEventId: "unsupported-mcp-accepted", status: "accepted", tokens: {}, cost: null, strict: true };

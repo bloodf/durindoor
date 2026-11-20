@@ -26,6 +26,16 @@ Add model names, or enable passthrough if the node should forward unknown ids. A
 
 `GET /v1/models` on DurinDoor is the list clients should trust. Discovery against the node needs `providerSpecificData.baseUrl`; a token is optional.
 
+### Delegated Devin inference through CLIProxyAPI
+
+Deploy and authorize CLIProxyAPI separately. The operator manages its upstream Devin authorization and decides which model IDs the proxy exposes. In DurinDoor, add an OpenAI-compatible **Chat Completions** node with a prefix such as `devin-proxy` and a base URL such as `http://127.0.0.1:8317/v1` if both services run on the same host. Use an address reachable from DurinDoor when they run separately.
+
+Add a connection using a CLIProxyAPI gateway key. Import models from that connection and save the IDs you want to expose. Keep the full ID returned by the proxy, including any slashes. Call DurinDoor with a DurinDoor API key and `devin-proxy/<advertised-id>` as the model. To select an account, send its DurinDoor connection ID in `X-Connection-ID`. When issuing separate client keys, scope each one to its allowed connections. The public model catalog can include live discoveries from the node’s active connection. The connection scope governs request dispatch.
+
+At the pinned CLIProxyAPI revision, `GET /v1/models` returns an OpenAI list object with model entries in `data`. `POST /v1/chat/completions` accepts `model`, `messages`, and `stream`, returning JSON for non-streaming requests or `text/event-stream` with `data:` frames ending in `[DONE]`. Both routes accept a configured proxy key in `Authorization: Bearer`. [Route registration](https://github.com/router-for-me/CLIProxyAPI/blob/6faa8d20b2673404cff70a2f2d9537ae0d0e684d/internal/api/server_routes.go#L68-L77) · [Key authentication](https://github.com/router-for-me/CLIProxyAPI/blob/6faa8d20b2673404cff70a2f2d9537ae0d0e684d/internal/access/config_access/provider.go#L55-L104) · [OpenAI handlers](https://github.com/router-for-me/CLIProxyAPI/blob/6faa8d20b2673404cff70a2f2d9537ae0d0e684d/sdk/api/handlers/openai/openai_handlers.go)
+
+The closed fixture verifies connection-specific discovery, selected-account chat, gateway key enforcement, and local token accounting for JSON and SSE. Devin CLI ACP runs a local subprocess for agent-protocol messages. Hosted Devin agent sessions use session operations for agent tasks. This proxy setup exposes chat inference. Direct hosted inference and live upstream authorization remain unverified.
+
 ## Anthropic-compatible
 
 Same Providers page, Add Anthropic Compatible. Default base URL is `https://api.anthropic.com/v1`. If you paste a URL that already ends in `/messages`, DurinDoor strips that suffix so runtime does not double it.

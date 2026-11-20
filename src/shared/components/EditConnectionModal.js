@@ -26,6 +26,7 @@ import PeakHourProtectionEditor, {
 "@/shared/components/PeakHourProtectionEditor";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
+  const isDevinAgentic = connection?.provider === "devin-cli-agentic";
   const [formData, setFormData] = useState({
     name: "",
     priority: 1,
@@ -260,7 +261,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: formData.name,
         priority: formData.priority
       };
-      if (!isOAuth && formData.apiKey) {
+      if (!isOAuth && !isDevinAgentic && formData.apiKey) {
         updates.apiKey = formData.apiKey;
         let isValid = validationResult === "success";
         let skipped = validationResult === "skipped";
@@ -342,7 +343,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             setValidationResult(null);
           }}
         />}
-        {!isOAuth ? <>
+        {!isOAuth && !isDevinAgentic ? <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label={isOpenCodeServer ? "HTTP Basic credential (username:password)" : "API Key"} type="password" value={formData.apiKey} onChange={(e) => { setFormData({ ...formData, apiKey: e.target.value }); setValidationResult(null); }} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={missingOpenCodeUrl || !formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
           {validationResult ? <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "neutral" : "danger"}>{validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}</Badge> : null}
         </> : null}

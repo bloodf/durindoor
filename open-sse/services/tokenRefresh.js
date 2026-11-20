@@ -20,8 +20,11 @@ import {
 "./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
+import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { digestMemoryKey } from "../utils/memoryKey.js";
+import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -72,6 +75,89 @@ export function parseVertexSaJson(apiKey) {
   }
 }
 
+/**
+ * Credential shapes a Vertex connection can carry.
+ *
+ *   - `service_account`: the JSON key downloaded from the Cloud console.
+ *   - `authorized_user`: the ADC file written by `gcloud auth application-default login`.
+ *   - `api_key`: an opaque Express-mode API key.
+ *   - `none`: the connection carries no API key (an OAuth token is used instead).
+ */
+export const VERTEX_CREDENTIAL = {
+  NONE: "none",
+  SERVICE_ACCOUNT: "service_account",
+  ADC: "authorized_user",
+  API_KEY: "api_key",
+  UNSUPPORTED: "unsupported"
+};
+
+const VERTEX_SERVICE_ACCOUNT_FIELDS = ["client_email", "private_key", "project_id"];
+const VERTEX_ADC_FIELDS = ["client_id", "client_secret", "refresh_token"];
+
+function vertexUnsupportedCredentialMessage(parsed) {
+  if (parsed?.web || parsed?.installed) {
+    return "Vertex: OAuth client JSON is not a Service Account key. Import the Service Account JSON key file, an authorized_user ADC file, or a raw API key.";
+  }
+  return "Vertex: the credential is a JSON document that is not a Google service account or authorized_user file. Import the Service Account JSON key file, an authorized_user ADC file, or a raw API key.";
+}
+
+/**
+ * Classify the credential a Vertex connection carries.
+ *
+ * A JSON document that is neither a Service Account key nor an ADC file is a
+ * Google credential shape this gateway cannot use. It must never be demoted to
+ * a raw API key: a raw key travels in the URL query string, so that demotion
+ * would put a private key, a client secret or a refresh token into the
+ * outbound URL and in front of the egress proxy.
+ *
+ * @param {*} apiKey The stored connection credential.
+ * @returns {{kind: string, json: object|null, error: string|null}}
+ */
+export function classifyVertexCredential(apiKey) {
+  if (!isString(apiKey)) return { kind: VERTEX_CREDENTIAL.NONE, json: null, error: null };
+  const trimmed = apiKey.trim();
+  if (!trimmed) return { kind: VERTEX_CREDENTIAL.NONE, json: null, error: null };
+  if (!/^[\[{]/.test(trimmed)) return { kind: VERTEX_CREDENTIAL.API_KEY, json: null, error: null };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { kind: VERTEX_CREDENTIAL.UNSUPPORTED, json: null, error: "Vertex: malformed credential JSON" };
+  }
+  if (!isObject(parsed) || Array.isArray(parsed)) {
+    return { kind: VERTEX_CREDENTIAL.UNSUPPORTED, json: null, error: vertexUnsupportedCredentialMessage(null) };
+  }
+
+  if (parsed.type === "service_account") {
+    const missing = VERTEX_SERVICE_ACCOUNT_FIELDS.filter((field) => !parsed[field]);
+    return {
+      kind: VERTEX_CREDENTIAL.SERVICE_ACCOUNT,
+      json: parsed,
+      error: missing.length ?
+      `Vertex: service account JSON is missing ${missing.join(", ")}` :
+      null
+    };
+  }
+
+  if (parsed.type === "authorized_user") {
+    const missing = VERTEX_ADC_FIELDS.filter((field) => !parsed[field]);
+    return {
+      kind: VERTEX_CREDENTIAL.ADC,
+      json: parsed,
+      error: missing.length ?
+      `Vertex: ADC authorized_user JSON is missing ${missing.join(", ")}` :
+      null
+    };
+  }
+
+  return {
+    kind: VERTEX_CREDENTIAL.UNSUPPORTED,
+    json: parsed,
+    error: vertexUnsupportedCredentialMessage(parsed)
+  };
+}
+
 export function validateVertexSaKey(saJson) {
   if (!saJson?.private_key) return "Vertex: service account JSON missing private_key";
 
@@ -92,26 +178,26 @@ export function validateVertexSaKey(saJson) {
   null;
 }
 
-// Cache Vertex tokens keyed by service account email { token, expiresAt }
+// Cache only digests of the complete credential and effective egress route.
 const vertexTokenCache = new Map();
 
 export async function refreshVertexToken(saJson, log, proxyOptions = null) {
-  const cacheKey = saJson.client_email;
-  const cached = vertexTokenCache.get(cacheKey);
-
-  if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) {
-    return { accessToken: cached.token, expiresAt: cached.expiresAt };
-  }
-
   const keyError = validateVertexSaKey(saJson);
   if (keyError) {
     log?.error?.("TOKEN_REFRESH", keyError);
     return null;
   }
 
+  const cacheKey = digestMemoryKey("vertex-token", JSON.stringify(saJson), proxyRouteFingerprint(proxyOptions));
+  const cached = vertexTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) {
+    return { accessToken: cached.token, expiresAt: cached.expiresAt };
+  }
+  vertexTokenCache.delete(cacheKey);
+
   try {
     const { SignJWT, importPKCS8 } = await import("jose");
-    log?.debug?.("TOKEN_REFRESH", `Vertex minting token for ${saJson.client_email}`);
+    log?.debug?.("TOKEN_REFRESH", "Vertex minting token");
     const privateKey = await importPKCS8(saJson.private_key.replace(/\\n/g, "\n"), "RS256");
     const now = Math.floor(Date.now() / 1000);
 
@@ -133,20 +219,20 @@ export async function refreshVertexToken(saJson, log, proxyOptions = null) {
     }, proxyOptions);
 
     if (!res.ok) {
-      const err = await res.text();
-      log?.error?.("TOKEN_REFRESH", `Vertex token mint failed: ${sanitizeErrorMessage(err)}`);
+      log?.error?.("TOKEN_REFRESH", `Vertex token mint failed (HTTP ${res.status})`);
       return null;
     }
 
     const { access_token, expires_in } = await res.json();
     const expiresAt = Date.now() + (expires_in ?? 3600) * 1000;
 
+    if (vertexTokenCache.size >= 256) vertexTokenCache.delete(vertexTokenCache.keys().next().value);
     vertexTokenCache.set(cacheKey, { token: access_token, expiresAt });
-    log?.info?.("TOKEN_REFRESH", `Vertex token minted for ${saJson.client_email}`);
+    log?.info?.("TOKEN_REFRESH", "Vertex token minted");
 
     return { accessToken: access_token, expiresAt };
-  } catch (error) {
-    log?.error?.("TOKEN_REFRESH", `Vertex token error: ${sanitizeErrorMessage(error?.message || error)}`);
+  } catch {
+    log?.error?.("TOKEN_REFRESH", "Vertex token mint failed");
     return null;
   }
 }
@@ -158,6 +244,7 @@ function vertexRefreshHandler(c, log, proxyOptions) {
 }
 
 const REFRESH_HANDLERS = {
+  openference: (c, log, p) => refreshOpenferenceToken(c, log, p),
   "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
   antigravity: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log, p),
   agy: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log, p),

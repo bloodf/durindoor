@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/models";
 import {
   FREE_PROVIDERS,
+  FREE_TIER_PROVIDERS,
   OAUTH_PROVIDERS,
   APIKEY_PROVIDERS,
   OPENAI_COMPATIBLE_PREFIX,
@@ -11,19 +12,10 @@ import { testSingleConnection } from "../[id]/test/testUtils.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 
 function getAuthGroup(providerId, connection = null) {
-  // Prioritize authType from connection if available
-  if (connection?.authType) {
-    if (connection.authType === "oauth") {
-      // Check if it's a free provider
-      if (FREE_PROVIDERS[providerId]) return "free";
-      return "oauth";
-    }
-    return connection.authType;
-  }
-
-  // Fallback to constants
-  if (FREE_PROVIDERS[providerId]) return "free";
+  // Group by dashboard section before falling back to the connection credential type.
+  if (FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId]) return "free";
   if (OAUTH_PROVIDERS[providerId]) return "oauth";
+  if (connection?.authType) return connection.authType;
   if (APIKEY_PROVIDERS[providerId]) return "apikey";
   if (
   isString(providerId) && (

@@ -42,9 +42,50 @@ export function openaiToAntigravityResponse(chunk, state) {
   }
 
   // Accumulate tool calls silently (no emit until finish)
+  //
+  // Fragment ownership contract (streamed tool calls, Antigravity/Gemini family):
+  //   1. An explicit `index` on a fragment owns that fragment outright.
+  //   2. An explicit `id` that matches a call already open in this stream owns
+  //      the fragment, wherever that call sits in the index space.
+  //   3. A fragment carrying a new `id` opens another call.
+  //   4. A fragment with neither `index` nor `id` continues the call that owned
+  //      the previous fragment (the most recently active call), not the call
+  //      with the highest index. Providers interleave calls and then resume an
+  //      earlier one, so the highest index is not the owner.
+  //   5. With exactly one call open, an indexless fragment still belongs to it
+  //      (unchanged single-call behaviour).
+  //   6. With several calls open and no active owner known, the fragment is
+  //      dropped rather than guessed onto an unrelated call.
   if (delta.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const idx = tc.index ?? 0;
+      const indexes = Object.keys(state._toolCallAccum).map(Number);
+      const latest = indexes.length ? Math.max(...indexes) : 0;
+      const known = tc.id ? indexes.find((i) => state._toolCallAccum[i].id === tc.id) : undefined;
+      // The call that owned the previous fragment stays the owner of an
+      // indexless continuation, even when a later call has a higher index.
+      const active = Number.isInteger(state._activeToolIndex) && state._toolCallAccum[state._activeToolIndex]
+        ? state._activeToolIndex
+        : undefined;
+      // Ownership rules, in order: explicit index, explicit id, a new id opens
+      // a new call, then the most recently active call.
+      let idx;
+      if (Number.isInteger(tc.index)) {
+        idx = tc.index;
+      } else if (known !== undefined) {
+        idx = known;
+      } else if (tc.id && state._toolCallAccum[latest]?.id && tc.id !== state._toolCallAccum[latest].id) {
+        idx = latest + 1;
+      } else if (active !== undefined) {
+        idx = active;
+      } else if (indexes.length <= 1) {
+        idx = indexes.length ? indexes[0] : latest;
+      } else {
+        idx = undefined;
+      }
+      // No ownership evidence and several open calls: the fragment cannot be
+      // attributed without guessing, so it is dropped instead of being written
+      // into an unrelated call.
+      if (idx === undefined) continue;
       if (!state._toolCallAccum[idx]) {
         state._toolCallAccum[idx] = { id: "", name: "", arguments: "" };
       }
@@ -52,6 +93,7 @@ export function openaiToAntigravityResponse(chunk, state) {
       if (tc.id) accum.id = tc.id;
       if (tc.function?.name) accum.name += tc.function.name;
       if (tc.function?.arguments) accum.arguments += tc.function.arguments;
+      state._activeToolIndex = idx;
     }
     // Skip emit — wait for finish_reason
     if (parts.length === 0 && !finishReason) return null;

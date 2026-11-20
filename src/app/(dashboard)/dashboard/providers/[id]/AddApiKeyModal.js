@@ -66,6 +66,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya || isOpenCodeServer;
   const hostFieldLabel = isOpenCodeServer ? "OpenCode Server URL" : isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
   const hostFieldPlaceholder = isOpenCodeServer ? "http://127.0.0.1:4096" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
+  const isDevinAgentic = provider === "devin-cli-agentic";
   const isCookie = authType === "cookie";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
@@ -167,7 +168,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const sessionToken = usesAwsCredentialForm && awsData.sessionToken.trim() ? awsData.sessionToken.trim() : undefined;
 
   const apiKeySatisfied = () =>
-  keyOptional ||
+  isDevinAgentic || keyOptional ||
   !!formData.apiKey ||
   !!(apiKeyOptionalWith && buildProviderSpecificData()?.[apiKeyOptionalWith]);
 
@@ -227,6 +228,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
     setSaving(true);
     try {
+      if (isDevinAgentic) {
+        await onSave({ name: formData.name, priority: formData.priority });
+        return;
+      }
       let isValid = false;
       try {
         setValidating(true);
@@ -344,7 +349,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   return (
     <>
-    <Modal open={isOpen && !showWebLogin} title={`Add ${providerName || provider} ${credentialLabel}`} onClose={onClose}>
+    <Modal open={isOpen && !showWebLogin} title={`Add ${providerName || provider} ${isDevinAgentic ? "Connection" : credentialLabel}`} onClose={onClose}>
       <div className="flex flex-col gap-4">
         {webLogin ? (
           <section className="flex flex-col gap-2 rounded-dd-lg border border-dd-border p-3">
@@ -352,12 +357,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             <p className="text-xs text-dd-muted">Or paste your cookie manually below.</p>
           </section>
         ) : null}
-        {!isOpenCodeServer && <div className="flex gap-2">
+        {!isOpenCodeServer && !isDevinAgentic && <div className="flex gap-2">
           <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} onClick={() => {setMode("single");setBulkResult(null);}}>Single</Button>
           <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} onClick={() => {setMode("bulk");setBulkResult(null);}}>Bulk Add</Button>
         </div>}
 
-        {mode === "bulk" && !isOpenCodeServer &&
+        {mode === "bulk" && !isOpenCodeServer && !isDevinAgentic &&
         <div className="flex flex-col gap-3">
             <p className="text-xs text-dd-muted">
               {requiresAccountId ?
@@ -387,12 +392,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         }
 
-        {(mode === "single" || isOpenCodeServer) && <>
+        {(mode === "single" || isOpenCodeServer || isDevinAgentic) && <>
         <Input
             label="Name"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder={isOllamaLocal ? "Ollama Local" : "Production Key"} />
+            placeholder={isDevinAgentic ? "Local Devin" : isOllamaLocal ? "Ollama Local" : "Production Key"} />
           
         {hasConfigurableHost &&
           <div className="flex gap-2">
@@ -410,7 +415,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             </div>
           </div>
           }
-        {!isOllamaLocal &&
+        {!isOllamaLocal && !isDevinAgentic &&
           <div className="flex gap-2">
             <Input
               label={credentialLabel}
@@ -582,7 +587,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
           
 
-        {!isOpenCodeServer && <>
+        {!isOpenCodeServer && !isDevinAgentic && <>
         <Field label="Proxy Pool">
           <Select
             aria-label="Proxy Pool"

@@ -305,7 +305,7 @@ export async function probeConnectionHealth(connection, opts = {}) {
     // IS proxy-aware rather than bypassing the saved egress.
     // Signed AWS connections are skipped: their apiKey is an IAM secret access key (or absent, for
     // a profile), and this probe would send it as a bearer token through the proxy.
-    if (proxied && !usesSignedAwsAuth(connection)) {
+    if (proxied && !usesSignedAwsAuth(connection) && cfg?.quirks?.validationChatFallback !== false) {
       // OrcaRouter keys only ever go to the configured API base, never to a
       // client-supplied connection baseUrl.
       const baseUrl = connection.provider === "orcarouter" ?

@@ -2,6 +2,7 @@
   "pages": [
     "index",
     "getting-started",
+    "configuration",
     "providers",
     "integrations",
     "guides",

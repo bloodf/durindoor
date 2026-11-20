@@ -7,7 +7,8 @@
  *   provider.searchViaChat   → wrap chat-completions (chatSearch.js)
  */
 
-import { buildSearchRequest, getProviderSetting } from "./callers.js";
+import { buildSearchRequest } from "./callers.js";
+import { assertSearchCredentialBinding, resolveSearchBaseUrl } from "./baseUrl.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
@@ -103,9 +104,18 @@ async function tryDedicatedProvider({
   // override is variable input and must stay behind the SSRF guard on every
   // redirect hop; the providerConfig default is administrator-controlled and
   // may intentionally target an internal service (e.g. a SearXNG container).
-  const requiresPublicUrl = Boolean(getProviderSetting(params, "baseUrl"));
+  // The operator's connection endpoint wins over a caller-supplied one, so a
+  // caller can never shadow the endpoint the administrator authorized.
+  let requiresPublicUrl = false;
   try {
-    ({ url, init } = buildSearchRequest({ id: provider.id, ...providerConfig }, params));
+    const providerConfigWithId = { id: provider.id, ...providerConfig };
+    requiresPublicUrl = resolveSearchBaseUrl(providerConfigWithId, params).source !== "registry";
+    ({ url, init } = buildSearchRequest(providerConfigWithId, params));
+    // Credential binding (OmniRoute #12620): a stored search credential may
+    // only travel to a destination the administrator authorized. A caller that
+    // names its own endpoint for a credential-bearing provider is refused
+    // before any request leaves the gateway.
+    assertSearchCredentialBinding({ config: providerConfigWithId, params, url, init });
   } catch (err) {
     return { success: false, status: 400, error: err?.message || `Invalid request for ${provider.id}` };
   }
@@ -124,12 +134,18 @@ async function tryDedicatedProvider({
     // fetchPublic, which re-validates every redirect hop target (DNS + literal
     // SSRF checks); admin-configured endpoints are trusted (#3793) and keep
     // plain proxy routing.
-    const proxied = (hopUrl, hopInit) => proxyAwareFetch(hopUrl, hopInit, proxyOptions);
+    const proxied = (hopUrl, hopInit) => {
+      const options = { ...hopInit };
+      if (providerConfig.preventRedirects) options.redirect = "manual";
+      return proxyAwareFetch(hopUrl, options, proxyOptions);
+    };
+    const publicOptions = { fetchImpl: proxied };
+    if (providerConfig.preventRedirects) publicOptions.maxRedirects = 0;
     const resp = requiresPublicUrl ?
     await fetchPublic(
       url,
       { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal },
-      { fetchImpl: proxied }
+      publicOptions
     ) :
     await proxied(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
     clearTimeout(timer);
@@ -157,7 +173,7 @@ async function tryDedicatedProvider({
         query: params.query,
         results,
         answer: null,
-        usage: { queries_used: 1, search_cost_usd: providerConfig.costPerQuery || 0 },
+        usage: { queries_used: 1, search_cost_usd: providerConfig.costByMode ? (providerConfig.costByMode[JSON.parse(init.body).mode] ?? providerConfig.costPerQuery) + Math.max(0, results.length - providerConfig.includedResults) * providerConfig.extraResultCost : providerConfig.costPerQuery || 0 },
         metrics: { response_time_ms: duration, upstream_latency_ms: duration, total_results_available: normalized.totalResults },
         errors: []
       }

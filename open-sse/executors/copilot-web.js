@@ -10,7 +10,7 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
-import { isFunction, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
   try {
@@ -96,13 +96,50 @@ difficulty,
 }
 
 export function extractAccessToken(credential) {
-  if (!credential) return null;
+  if (!isString(credential)) return null;
   const value = String(credential).trim();
-  const cookieMatch = value.match(/access_token=([^;]+)/);
+  if (!value) return null;
+  // A HAR may contain credentials for unrelated origins; inspect only requests
+  // to the exact HTTPS Copilot origin, never search the whole archive as text.
+  if (value.startsWith("{") || value.startsWith("[")) {
+    try {
+      const data = JSON.parse(value);
+      if (!isObject(data) || Array.isArray(data)) return null;
+      if (data.log) {
+        const entries = data.log?.entries;
+        if (!Array.isArray(entries)) return null;
+        for (const entry of entries) {
+          const request = entry?.request;
+          try {
+            const url = new URL(request?.url);
+            if (url.origin !== COPILOT_BASE || url.username || url.password) continue;
+          } catch { continue; }
+          const headers = Array.isArray(request?.headers) ? request.headers : [];
+          for (const header of headers) {
+            if (!isString(header?.name) || !isString(header?.value)) continue;
+            const name = header.name.toLowerCase();
+            if (name !== "cookie" && name !== "authorization") continue;
+            if (name === "authorization" && !/^bearer\s+\S+$/i.test(header.value.trim())) continue;
+            const token = extractAccessToken(name === "cookie" ? `Cookie: ${header.value}` : header.value);
+            if (token) return token;
+          }
+          const cookies = Array.isArray(request?.cookies) ? request.cookies : [];
+          const cookie = cookies.find((item) => item?.name === "access_token" && isString(item.value) &&
+            (!item.domain || isString(item.domain) && ["copilot.microsoft.com", ".copilot.microsoft.com"].includes(item.domain.toLowerCase())));
+          if (cookie && cookie.value && !/\s|[;,]/.test(cookie.value)) return cookie.value;
+        }
+        return null;
+      }
+      if (Object.hasOwn(data, "origin") && data.origin !== COPILOT_BASE) return null;
+      const token = data.access_token ?? data.accessToken;
+      return isString(token) && token.trim() && !/\s/.test(token.trim()) ? token.trim() : null;
+    } catch { return null; }
+  }
+  const cookieMatch = value.match(/(?:^|[;\s])access_token\s*=\s*([^;\s]+)/i);
   if (cookieMatch) return cookieMatch[1];
-  const bearerMatch = value.match(/[Bb]earer\s+(.+)/);
+  const bearerMatch = value.match(/^(?:authorization:\s*)?bearer\s+(\S+)$/i);
   if (bearerMatch) return bearerMatch[1];
-  if (value.startsWith("ey") || value.length > 100) return value;
+  if (/[;\s]/.test(value) || /^[^=]+=[^=]+$/.test(value)) return null;
   return value;
 }
 
@@ -415,6 +452,10 @@ export class CopilotWebExecutor extends BaseExecutor {
     input.credentials?.apiKey || input.credentials?.providerSpecificData?.cookie || "";
     const accessToken = extractAccessToken(rawCredential);
     const prompt = flattenPrompt(body).trim();
+
+    if (rawCredential && !accessToken) {
+      return { response: jsonError("Invalid Copilot access_token", 400), url: COPILOT_START_URL, headers: {}, transformedBody: null };
+    }
 
     if (!prompt) {
       return { response: jsonError("No user message provided", 400), url: COPILOT_START_URL, headers: {}, transformedBody: null };

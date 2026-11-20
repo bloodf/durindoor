@@ -2,6 +2,7 @@
  * Token Usage Tracking - Extract, normalize, estimate and log token usage
  */
 
+import { GEMINI_INTERACTIONS_ID } from "../providers/registry/gemini-interactions.js";
 import { FORMATS } from "../translator/formats.js";
 import { getPricingForModel, calculateCostFromTokens } from "../providers/pricing.js";
 
@@ -35,7 +36,9 @@ function getTimeString() {
  * @param {object} usage - Usage object (any format)
  * @returns {object} Usage with buffer added
  */
-export function addBufferToUsage(usage) {
+export function addBufferToUsage(usage, provider) {
+  // Interactions exposes its provider receipt directly through the Gemini API.
+  if (provider === GEMINI_INTERACTIONS_ID) return usage;
   if (!usage || !isObject(usage)) return usage;
 
   const result = { ...usage };
@@ -79,7 +82,7 @@ export function filterUsageForFormat(usage, targetFormat) {
   const formatFields = {
     [FORMATS.CLAUDE]: [
     'input_tokens', 'output_tokens',
-    'cache_read_input_tokens', 'cache_creation_input_tokens',
+    'cache_read_input_tokens', 'cache_creation_input_tokens', 'server_tool_use',
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.GEMINI]: [

@@ -1,53 +1,60 @@
 import { BaseExecutor } from "./base.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelMeta } from "../config/providerModels.js";
-import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken } from "../services/tokenRefresh.js";
+import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken, classifyVertexCredential, VERTEX_CREDENTIAL } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { digestMemoryKey } from "../utils/memoryKey.js";
+import { proxyRouteFingerprint } from "../services/tokenRefresh/dedup.js";
 import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
-import { isString } from "../../src/shared/utils/typeChecks.js";
 const projectIdCache = new Map();
 
 /**
- * Parse Google ADC user credential JSON from apiKey string.
- * This is the format produced by `gcloud auth application-default login`.
+ * Resolve the Google credential a connection carries.
+ *
+ * Service Account JSON, ADC `authorized_user` JSON and opaque Express-mode API
+ * keys are all supported. A JSON document that is none of those is rejected
+ * here instead of being demoted to a raw API key: a raw key travels in the URL
+ * query string, so the demotion would put a private key, a client secret or a
+ * refresh token into the outbound URL and in front of the egress proxy.
  */
-function parseVertexAdcJson(apiKey) {
-  if (!isString(apiKey)) return null;
-  try {
-    const parsed = JSON.parse(apiKey);
-    if (
-    parsed.type === "authorized_user" &&
-    parsed.client_id &&
-    parsed.client_secret &&
-    parsed.refresh_token)
-    {
-      return parsed;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+function resolveVertexCredential(apiKey) {
+  const credential = classifyVertexCredential(apiKey);
+  if (credential.error) throw new Error(credential.error);
+  const saJson = credential.kind === VERTEX_CREDENTIAL.SERVICE_ACCOUNT ? credential.json : null;
+  const adcJson = credential.kind === VERTEX_CREDENTIAL.ADC ? credential.json : null;
+  return { credential, saJson, adcJson };
 }
 
 /**
  * Resolve GCP project ID from a raw Vertex API key.
  * Sends a dummy 404 request and parses "projects/{id}" from the error message.
  */
-async function resolveProjectId(apiKey) {
-  if (projectIdCache.has(apiKey)) return projectIdCache.get(apiKey);
+async function resolveProjectId(apiKey, proxyOptions, signal) {
+  const cacheKey = digestMemoryKey("vertex-project", apiKey, proxyRouteFingerprint(proxyOptions));
+  if (projectIdCache.has(cacheKey)) return projectIdCache.get(cacheKey);
 
-  const res = await fetch(
-    `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-  );
-  const json = await res.json().catch(() => null);
-  const msg = json?.[0]?.error?.message || json?.error?.message || "";
-  const match = msg.match(/projects\/([^/]+)\//);
-  const projectId = match?.[1] || null;
-
-  if (projectId) projectIdCache.set(apiKey, projectId);
+  const url = new URL("https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent");
+  url.searchParams.set("key", apiKey);
+  let projectId = null;
+  try {
+    const res = await proxyAwareFetch(url.toString(), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal, redirect: "error"
+    }, proxyOptions);
+    const json = await res.json().catch(() => null);
+    const msg = json?.[0]?.error?.message || json?.error?.message || "";
+    const match = isString(msg) ? msg.slice(0, 4096).match(/projects\/([a-z][a-z0-9-]{4,28}[a-z0-9])\//) : null;
+    projectId = match?.[1] || null;
+  } catch {
+    if (signal?.aborted) throw signal.reason;
+    throw new Error("Vertex: project discovery request failed");
+  }
+  if (projectId) {
+    if (projectIdCache.size >= 256) projectIdCache.delete(projectIdCache.keys().next().value);
+    projectIdCache.set(cacheKey, projectId);
+  }
   return projectId;
 }
 
@@ -73,8 +80,7 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
-    const saJson = parseVertexSaJson(credentials?.apiKey);
-    const adcJson = parseVertexAdcJson(credentials?.apiKey);
+    const { saJson, adcJson } = resolveVertexCredential(credentials?.apiKey);
     const usesOAuth = !!saJson || !!adcJson || !!credentials?.accessToken;
     const rawKey = !usesOAuth ? credentials?.apiKey : null;
     const projectId =
@@ -86,7 +92,7 @@ export class VertexExecutor extends BaseExecutor {
       // Partner models require project_id in path regardless of auth method
       if (!projectId) throw new Error("Vertex partner models require a project_id. Add it in providerSpecificData or use Service Account JSON.");
       const url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/global/endpoints/openapi/chat/completions`;
-      return rawKey ? `${url}?key=${rawKey}` : url;
+      return rawKey ? `${url}?key=${encodeURIComponent(rawKey)}` : url;
     }
 
     // Gemini on Vertex
@@ -119,7 +125,7 @@ export class VertexExecutor extends BaseExecutor {
     `${vertexLocationBase(keyProjectId, credentials?.providerSpecificData?.location || defaultLocation)}/publishers/google/models/${model}:${action}` :
     `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:${action}`;
     if (stream) url += "?alt=sse";
-    if (rawKey) url += stream ? `&key=${rawKey}` : `?key=${rawKey}`;
+    if (rawKey) url += stream ? `&key=${encodeURIComponent(rawKey)}` : `?key=${encodeURIComponent(rawKey)}`;
     return url;
   }
 
@@ -148,8 +154,7 @@ export class VertexExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
     const effectiveCredentials = credentials ? { ...credentials } : credentials;
-    const saJson = parseVertexSaJson(effectiveCredentials?.apiKey);
-    const adcJson = parseVertexAdcJson(effectiveCredentials?.apiKey);
+    const { saJson, adcJson } = resolveVertexCredential(effectiveCredentials?.apiKey);
 
     // SA JSON flow: mint Bearer token via JWT assertion (cached)
     if (saJson) {
@@ -173,7 +178,7 @@ export class VertexExecutor extends BaseExecutor {
 
     // vertex-partner with raw key: auto-resolve project_id if not provided
     if (this.provider === "vertex-partner" && !saJson && !adcJson && !effectiveCredentials?.providerSpecificData?.projectId) {
-      const projectId = await resolveProjectId(effectiveCredentials.apiKey);
+      const projectId = await resolveProjectId(effectiveCredentials.apiKey, proxyOptions, signal);
       if (!projectId) throw new Error("Vertex: could not resolve project_id from API key. Please add it manually in provider settings.");
       log?.debug?.("VERTEX", `Resolved project_id: ${projectId}`);
       effectiveCredentials.providerSpecificData = { ...effectiveCredentials.providerSpecificData, projectId };

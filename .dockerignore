@@ -40,3 +40,24 @@ website/src/components/*
 !website/src/components/brand/
 website/src/components/brand/*
 !website/src/components/brand/BrandMark.jsx
+
+# Local tooling, nested dependency trees, and runtime secrets are not build inputs.
+.github
+.codegraph
+.idea
+.cursor
+.claude
+.kiro
+.vercel
+**/node_modules
+.next-cli-build
+.next-analyze
+*.pem
+.env*
+!.env.example
+.engine-token.txt
+.oauth-session.json
+.tmp-prov.json
+.tmp-providers.json
+.dev-server.log
+.dev-server-err.log

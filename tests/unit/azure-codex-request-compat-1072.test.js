@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AzureExecutor } from "../../open-sse/executors/azure.js";
+import { CodexExecutor } from "../../open-sse/executors/codex.js";
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 
 // Upstream decolua/9router#2809 — Azure GPT-5/GPT-6 and o-series deployments
@@ -144,5 +145,129 @@ describe("Azure GPT-5-family request normalization (upstream #2809)", () => {
       credentials: credentials("gpt-5-prod"),
     });
     expect(sent()[2]).toEqual({ max_tokens: 42 });
+  });
+});
+
+// Upstream decolua/9router#5141 — a combo that fell back to Grok Build leaves
+// reasoning items in the replayed history that Codex cannot decrypt, so the
+// request is rejected with 400 invalid_encrypted_content and the combo falls
+// back on every later turn.
+//
+// The fork removes such an item only when the local format establishes it:
+// Grok Build ids are `rs_<uuid>`, OpenAI's are `rs_<hex>`. The blob is opaque
+// ciphertext, so reasoning of unknown provenance stays, and the existing
+// one-shot invalid_encrypted_content recovery still owns a stale OpenAI blob.
+
+const GROK_REASONING_ID = "rs_aca4e4a2-50fa-9d40-a12a-cb7e1f0d2c3b";
+const OPENAI_REASONING_ID = "rs_68c0f1e2a3b4c5d6e7f8091a2b3c4d5e";
+
+const codexCredentials = {
+  accessToken: "fixture-access-token",
+  connectionId: "fixture-connection",
+  providerSpecificData: { workspaceId: "fixture-workspace" },
+};
+const codexUser = (text) => ({ type: "message", role: "user", content: [{ type: "input_text", text }] });
+const codexAssistant = (text) => ({ type: "message", role: "assistant", content: [{ type: "output_text", text }] });
+const codexInput = (items) => new CodexExecutor().transformRequest(
+  "gpt-6.1-sol",
+  { model: "gpt-6.1-sol", input: items },
+  true,
+  codexCredentials,
+);
+
+describe("Codex replay of reasoning another provider sealed (upstream #5141)", () => {
+  it("drops Grok-sealed reasoning and keeps OpenAI-sealed reasoning", () => {
+    const body = codexInput([
+      codexUser("first"),
+      { type: "reasoning", id: GROK_REASONING_ID, summary: [], encrypted_content: "opaque-grok-blob" },
+      codexAssistant("from grok"),
+      { type: "reasoning", id: OPENAI_REASONING_ID, summary: [], encrypted_content: "opaque-openai-blob" },
+      codexAssistant("from codex"),
+      codexUser("next"),
+    ]);
+
+    const reasoning = body.input.filter((item) => item.type === "reasoning");
+    expect(reasoning.map((item) => item.id)).toEqual([OPENAI_REASONING_ID]);
+    expect(reasoning[0].encrypted_content).toBe("opaque-openai-blob");
+    expect(body.input.filter((item) => item.type === "message").map((item) => item.content[0].text))
+      .toEqual(expect.arrayContaining(["first", "from grok", "from codex", "next"]));
+  });
+
+  it("keeps reasoning whose provenance cannot be established locally", () => {
+    const body = codexInput([
+      codexUser("first"),
+      // Replayed with store=false: the client dropped the item id.
+      { type: "reasoning", summary: [], encrypted_content: "opaque-unknown-blob" },
+      { type: "reasoning", id: "rs_not-a-uuid", summary: [], encrypted_content: "opaque-unknown-blob" },
+      { type: "reasoning", summary: [{ type: "summary_text", text: "plain" }] },
+      codexUser("next"),
+    ]);
+
+    const reasoning = body.input.filter((item) => item.type === "reasoning");
+    expect(reasoning).toHaveLength(3);
+    expect(reasoning[0].encrypted_content).toBe("opaque-unknown-blob");
+    expect(reasoning[1].id).toBe("rs_not-a-uuid");
+    expect(reasoning[2].summary[0].text).toBe("plain");
+  });
+
+  it("keeps tool calls and their outputs", () => {
+    const body = codexInput([
+      codexUser("first"),
+      { type: "function_call", id: "fc_1", call_id: "call_1", name: "get_weather", arguments: "{}" },
+      { type: "function_call_output", call_id: "call_1", output: "sunny" },
+      codexUser("next"),
+    ]);
+
+    const calls = body.input.filter((item) => item.type === "function_call");
+    const outputs = body.input.filter((item) => item.type === "function_call_output");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].call_id).toBe("call_1");
+    expect(outputs).toHaveLength(1);
+    expect(outputs[0].output).toBe("sunny");
+  });
+
+  it("keeps the one-shot invalid_encrypted_content recovery for OpenAI-sealed reasoning", async () => {
+    const fetchMock = vi.mocked(proxyAwareFetch);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      error: {
+        code: "invalid_encrypted_content",
+        message: "The encrypted content could not be verified. Reason: Encrypted content could not be decrypted or parsed.",
+      },
+    }), { status: 400, headers: { "Content-Type": "application/json" } }));
+    fetchMock.mockResolvedValueOnce(new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("event: response.output_text.delta\n"));
+        controller.enqueue(new TextEncoder().encode(
+          `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "hi" })}\n\n`,
+        ));
+        controller.close();
+      },
+    }), { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+
+    const executor = new CodexExecutor();
+    executor.config = { ...executor.config, baseUrl: "https://api.openai.test/v1/responses", baseUrls: undefined };
+    const result = await executor.execute({
+      model: "gpt-6.1-sol",
+      body: {
+        model: "gpt-6.1-sol",
+        input: [
+          codexUser("first"),
+          { type: "reasoning", id: OPENAI_REASONING_ID, summary: [], encrypted_content: "opaque-openai-blob" },
+          codexAssistant("from codex"),
+          codexUser("next"),
+        ],
+      },
+      stream: true,
+      credentials: codexCredentials,
+      requestContext: { compact: false },
+    });
+    await result.response.text();
+
+    expect(result.response.status).toBe(200);
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body));
+    // The native item is not removed proactively; the measured 400 strips it.
+    expect(bodies[0].input.some((item) => item.type === "reasoning")).toBe(true);
+    expect(bodies[1].input.some((item) => item.type === "reasoning")).toBe(false);
   });
 });

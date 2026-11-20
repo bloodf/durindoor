@@ -28,6 +28,25 @@ const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 
+// HTTP-date allows IMF-fixdate and the two obsolete HTTP date formats.
+const HTTP_DATE = /^(?:[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]+, \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d{2}:\d{2}:\d{2} \d{4})$/;
+
+function comboRetryAfter(response, legacyReset, now) {
+  const header = response.headers?.get?.("retry-after")?.trim() || "";
+  let reset = NaN;
+  if (/^\d+$/.test(header)) {
+    reset = now + Number(header) * 1000;
+  } else if (HTTP_DATE.test(header)) {
+    // The obsolete asctime format has an implicit GMT timezone.
+    reset = Date.parse(header.endsWith(" GMT") ? header : `${header} GMT`);
+  }
+  if (reset >= now && Number.isFinite(new Date(reset).getTime())) return reset;
+  const legacyIsTimestamp = isNumber(legacyReset) ||
+    (isString(legacyReset) && (/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(legacyReset) || HTTP_DATE.test(legacyReset)));
+  const legacyDeadline = legacyIsTimestamp ? new Date(legacyReset).getTime() : NaN;
+  return legacyDeadline > now ? legacyDeadline : null;
+}
+
 function nonEmptyString(value) {
   return isString(value) && value.length > 0;
 }
@@ -1672,7 +1691,7 @@ export async function handleComboChat({
       try {
         errorBody = await result.clone().json();
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
-        retryAfter = errorBody?.retryAfter || null;
+        retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
       } catch {
 
         // Ignore JSON parse errors
@@ -1680,13 +1699,6 @@ export async function handleComboChat({
       // Normalize error text to string (Worker-safe)
       if (!isString(errorText)) {
         try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
-      }
-
-      // Track earliest retryAfter across all combo models
-      if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
-        earliestRetryAfter = retryAfter;
-        earliestRetryStatus = result.status;
-        earliestRetryError = errorText || String(result.status);
       }
 
       // A client-side abort that surfaced without a 499 (bare
@@ -1708,7 +1720,7 @@ export async function handleComboChat({
       if (result[LOCAL_POLICY_REJECTION]) localPolicyRejections++;
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs, requestScoped } = checkFallbackError(
+      const { shouldFallback, cooldownMs, requestScoped, terminal } = checkFallbackError(
         result.status,
         errorText,
         0,
@@ -1735,6 +1747,16 @@ export async function handleComboChat({
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
         log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, { status: result.status });
         return result;
+      }
+
+      // Billing and authentication failures can rotate without offering a reset.
+      if (!terminal && result.status !== 401 && result.status !== 403) {
+        const reset = comboRetryAfter(result, retryAfter, Date.now());
+        if (reset !== null && (earliestRetryAfter === null || reset < earliestRetryAfter)) {
+          earliestRetryAfter = reset;
+          earliestRetryStatus = result.status;
+          earliestRetryError = errorText || String(result.status);
+        }
       }
 
       if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
@@ -1794,7 +1816,7 @@ export async function handleComboChat({
   // A transient failure with a retry hint wins: another member may serve the
   // request once it recovers, so the client keeps the Retry-After (#1433).
   // Only a retry hint still in the future beats the request-scoped rejection.
-  if (requestScopedResult && earliestRetryAfter && new Date(earliestRetryAfter).getTime() > Date.now()) {
+  if (requestScopedResult && earliestRetryAfter > Date.now()) {
     const retryHuman = formatRetryAfter(earliestRetryAfter);
     log.warn("COMBO", `No model served the request; returning the retryable failure | ${earliestRetryError} (${retryHuman})`);
     return unavailableResponse(getClientStatusFromError(earliestRetryStatus, earliestRetryError), earliestRetryError, earliestRetryAfter, retryHuman);
@@ -1812,7 +1834,7 @@ export async function handleComboChat({
   const status = allDisabled ? HTTP_STATUS.SERVICE_UNAVAILABLE : getClientStatusFromError(lastStatus, lastError);
   const msg = lastError || "All combo models unavailable";
 
-  if (earliestRetryAfter) {
+  if (earliestRetryAfter > Date.now() && status !== 401 && status !== 403) {
     const retryHuman = formatRetryAfter(earliestRetryAfter);
     log.warn("COMBO", `All models failed | ${msg} (${retryHuman})`);
     return unavailableResponse(status, msg, earliestRetryAfter, retryHuman);

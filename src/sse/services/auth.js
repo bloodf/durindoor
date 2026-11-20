@@ -529,7 +529,7 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
   legacyLocked.find((connection) => lockStatus(connection) !== 429);
   if (legacy) {
     const code = lockStatus(legacy);
-    const status = code >= 400 && code <= 599 ? code : 503;
+    const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : 503;
     const message = status === 429 ?
     "Rate limited" :
     status === 401 ?
@@ -554,7 +554,8 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
     boundedModel,
     now
   ));
-  const earliest = retries.length > 0 && retries.every(Boolean) ? retries.sort()[0] : null;
+  const earliest = retries.length > 0 && retries.every(Boolean) ?
+  retries.sort((left, right) => Date.parse(left) - Date.parse(right))[0] : null;
   return {
     status: 429,
     message: "Rate limited",

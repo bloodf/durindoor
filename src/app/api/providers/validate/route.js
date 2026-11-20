@@ -661,6 +661,7 @@ export async function POST(request) {
         case "novita":
         case "siliconflow":
         case "hyperbolic":
+        case "paraloncloud":
         case "ollama":
         case "ollama-local":
         case "assemblyai":

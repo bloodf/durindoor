@@ -489,6 +489,7 @@ export const PROVIDER_MODELS_CONFIG = {
   novita: createOpenAIModelsConfig("https://api.novita.ai/openai/v1/models"),
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
+  paraloncloud: createOpenAIModelsConfig("https://paraloncloud.com/v1/models"),
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),

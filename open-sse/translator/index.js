@@ -2,6 +2,7 @@ import { FORMATS } from "./formats.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
+import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -9,6 +10,7 @@ import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
+import { mergeHistoricalToolIdentities } from "./response/openai-responses/historyToolIdentity.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
@@ -299,6 +301,12 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     const customMaxOutput = resolvedTranslationContext.modelCapabilities?.maxOutput ?? null;
+    /**
+     * Kimi's Claude-compatible endpoint takes deferred MCP definitions in
+     * tools[] and rejects the beta-only `tool_addition` blocks Claude Code
+     * sends mid-session. Hoist them before the Claude wire is prepared.
+     */
+    if (provider === "kimi") result = normalizeDeferredTools(result);
     result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole);
     /**
      * Forced tool choice is rejected by every thinking model, so this must run
@@ -454,6 +462,13 @@ export function initState(sourceFormat, requestBody) {
       }
     }
   }
+
+  // A follow-up turn that continues a conversation (previous_response_id) or
+  // simply omits `tools` still carries the namespace identity of every earlier
+  // call in its own `input` history. Recover it so the response translator
+  // restores `{namespace, name}` instead of forwarding a flat dotted name
+  // (OmniRoute #15974). Current declarations always win.
+  mergeHistoricalToolIdentities(toolNamespaces, requestBody?.input);
 
   // Base state for all formats
   const base = {

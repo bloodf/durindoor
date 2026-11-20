@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TRANSIENT_COOLDOWN_MS } from "../../open-sse/config/errorConfig.js";
 import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 
 describe("account fallback request-error classification", () => {
@@ -14,6 +15,14 @@ describe("account fallback request-error classification", () => {
       cooldownMs: 0,
       scope: null,
       requestScoped: true,
+    });
+  });
+
+  it.each([408, 425])("rotates accounts with a transient cooldown for upstream HTTP %d", (status) => {
+    expect(checkFallbackError(status, "Upstream gateway unavailable")).toEqual({
+      shouldFallback: true,
+      cooldownMs: TRANSIENT_COOLDOWN_MS,
+      scope: null,
     });
   });
 

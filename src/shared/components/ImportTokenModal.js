@@ -6,6 +6,7 @@ import Modal from "@/shared/ui/components/Modal";
 import Button from "@/shared/ui/components/Button";
 import Input from "@/shared/ui/components/Input";
 
+/** Failed imports keep the token in private state for retry; feedback never echoes remote errors. */
 export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuccess, onClose }) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,8 +40,8 @@ export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuc
       if (!res.ok) throw new Error(data.error || "Import failed");
       onSuccess?.();
       handleClose();
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      setError("Import failed. Please try again.");
     } finally {
       setLoading(false);
     }

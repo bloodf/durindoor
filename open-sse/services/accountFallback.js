@@ -159,7 +159,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     }
   }
 
-  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel, provider);
   return { ...generic, scope: null };
 }
 
@@ -172,8 +172,9 @@ function extractErrorMessage(structuredError, errorText) {
   return isString(message) ? message : "";
 }
 
-function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
+function checkFallbackErrorByRules(status, lowerError, backoffLevel, provider = null) {
   for (const rule of ERROR_RULES) {
+    if (rule.provider && !rule.provider.includes(provider)) continue;
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
       if (rule.fallback === false) return { shouldFallback: false, cooldownMs: 0 };
@@ -217,7 +218,8 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
   // their ERROR_RULES status match, so they never reach this fallthrough.
   // `requestScoped` tells combo rotation this member rejected THIS request, so the
   // next member may still serve it (upstream 9router 5cdcddf5, #5057).
-  if (status >= 400 && status < 500) {
+  // Upstream HTTP 408 and 425 use the transient cooldown below.
+  if (status >= 400 && status < 500 && Number(status) !== 408 && Number(status) !== 425) {
     return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 

@@ -1050,6 +1050,9 @@ export class CodexExecutor extends BaseExecutor {
     delete body.safety_identifier; // Droid CLI sends this but Codex doesn't support it
     delete body.previous_response_id; // store=false → backend can't resolve previous resp; avoid 404
 
+    // The connection opt-in applies only to GPT 6.2 Sol and never overrides a client tier.
+    if (body.service_tier == null && credentials?.providerSpecificData?.codexUltrafastMode === true &&
+        /^gpt-6\.2-sol(?:\([^()]+\))?$/.test(model)) body.service_tier = "ultrafast";
     if (body.service_tier === "fast") body.service_tier = "priority";
     if (body.service_tier === "priority" && /^gpt-/.test(body.model)) {
       const estimatedInputTokens = estimateCodexInputTokens(body, CODEX_PRIORITY_ESTIMATED_INPUT_LIMIT);
@@ -1060,7 +1063,7 @@ export class CodexExecutor extends BaseExecutor {
         );
       }
     }
-    if (body.service_tier && body.service_tier !== "priority") delete body.service_tier;
+    if (body.service_tier && body.service_tier !== "priority" && body.service_tier !== "ultrafast") delete body.service_tier;
 
     // Final allowlist filter — compact and streaming Responses use different contracts.
     const allowlist = isCompact ? COMPACT_API_ALLOWLIST : RESPONSES_API_ALLOWLIST;

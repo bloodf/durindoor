@@ -161,12 +161,50 @@ describe("stripUnsupportedParams", () => {
     expect(body).toEqual({ temperature: 0.7, top_p: 1 });
   });
 
-  it("still drops unsupported GitHub model params", () => {
+  it.each([
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.9",
+    "gpt-5.10",
+    "gpt-6",
+    "gpt-6-luna",
+    "gpt-6-sol",
+    "gpt-6-astra",
+    "gpt-6.0",
+    "gpt-6.1-sol",
+    "gpt-6.10",
+  ])("drops unsupported GitHub params for %s", (model) => {
     const body = { temperature: 0.7, top_p: 1 };
 
-    stripUnsupportedParams("github", "gpt-5.4", body);
+    stripUnsupportedParams("github", model, body);
 
     expect(body).toEqual({ top_p: 1 });
+  });
+
+  it.each([
+    "gpt-4.1",
+    "gpt-5",
+    "gpt-5.0",
+    "gpt-5.3-codex",
+    "gpt-7.0",
+    "gpt-5.4invalid",
+    "gpt-60-luna",
+    "gpt-6invalid",
+    "gpt-6.1invalid",
+  ])("preserves temperature outside the GitHub version range for %s", (model) => {
+    const body = { temperature: 0.7 };
+
+    stripUnsupportedParams("github", model, body);
+
+    expect(body).toEqual({ temperature: 0.7 });
+  });
+
+  it("preserves temperature for other providers", () => {
+    const body = { temperature: 0.7 };
+
+    stripUnsupportedParams("openai", "gpt-6.1-sol", body);
+
+    expect(body).toEqual({ temperature: 0.7 });
   });
 
   it("applies a RegExp provider selector through stripUnsupportedParams", () => {
@@ -402,4 +440,13 @@ describe("executor max-token rename dispatch", () => {
     expect(out.max_completion_tokens).toBeUndefined();
     expect(input).toEqual({ max_completion_tokens: 77 }); // caller body not mutated
   });
+});
+
+
+it("strips temperature only for OpenCode Go GPT models", () => {
+  for (const [provider, model, expected] of [["opencode-go", "gpt-6-luna", undefined], ["opencode-go", "glm-5", 0.2], ["openrouter", "gpt-6-luna", 0.2]]) {
+    const body = { temperature: 0.2 };
+    stripUnsupportedParams(provider, model, body);
+    expect(body.temperature).toBe(expected);
+  }
 });

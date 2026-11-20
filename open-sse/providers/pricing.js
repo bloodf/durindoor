@@ -353,6 +353,10 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  codex: {
+    "gpt-6.2-sol": { input: 2, output: 10, cached: 0.1, reasoning: 10, cache_creation: 2.5 },
+    "gpt-6.2-astra": { input: 8, output: 40, cached: 0.4, reasoning: 40, cache_creation: 10 },
+  },
   // https://docs.typesafe.ai/models — native System One input is billed, output is free.
   typesafe: {
     "jev-latest": { input: JEV_INPUT_PRICE_PER_MTOK, output: JEV_OUTPUT_PRICE_PER_MTOK },
@@ -564,7 +568,8 @@ export function getPricingForModel(provider, model) {
   if (!model) return null;
 
   if (provider) {
-    const providerPricing = providerPricingFor(provider, model);
+    const codexModel = /^(?:codex|cx)$/.test(provider) ? model.replace(/\((?:low|medium|high|xhigh|max)\)$/, "") : model;
+    const providerPricing = providerPricingFor(provider, codexModel);
     if (providerPricing) return providerPricing;
   }
 
@@ -689,10 +694,17 @@ export function calculateCostBreakdown(tokens, pricing) {
   // Reasoning detail is a subset of completion/output in the canonical usage
   // contract. Price the visible remainder at the ordinary output rate, then
   // price the reasoning subset once at its dedicated rate (or output fallback).
-  const billedReasoningTokens = outputTokens > 0 ?
+  // The additive families (Gemini's thoughtsTokenCount, xAI-style reports) mark
+  // themselves with `reasoning_included_in_output: 0`: there the reasoning is
+  // counted ON TOP of the output count, so the whole output is billed and the
+  // reasoning is charged separately — each token exactly once.
+  const reasoningAdditive = tokens.reasoning_included_in_output === 0;
+  const billedReasoningTokens = reasoningAdditive ? reasoningTokens :
+  outputTokens > 0 ?
   Math.min(outputTokens, reasoningTokens) :
   reasoningTokens;
-  const visibleOutputTokens = Math.max(0, outputTokens - billedReasoningTokens);
+  const visibleOutputTokens = reasoningAdditive ? outputTokens :
+  Math.max(0, outputTokens - billedReasoningTokens);
   const outputCost = visibleOutputTokens * (pricing.output * outputMultiplier / 1000000);
   const reasoningCost = billedReasoningTokens > 0 ?
   billedReasoningTokens * ((pricing.reasoning || pricing.output) * outputMultiplier / 1000000) :

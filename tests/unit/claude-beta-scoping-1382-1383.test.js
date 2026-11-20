@@ -64,6 +64,6 @@ describe("#1382 first-party-gated betas", () => {
     ["api.anthropic.com", { baseUrl: "https://api.anthropic.com/v1" }],
   ])("keeps prompt-caching-scope for an anthropic-compatible node on %s", (_label, providerSpecificData) => {
     expect(beta("anthropic-compatible-x", { apiKey: "k", providerSpecificData }, "claude-sonnet-5-5"))
-      .toBe("claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01,effort-2025-11-24");
+      .toBe("interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01,effort-2025-11-24");
   });
 });

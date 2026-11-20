@@ -2,17 +2,17 @@ import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS } from "../config/appConstants.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
-import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
+import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
-import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
+import { getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
 
 /**
  * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
@@ -22,11 +22,19 @@ import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore
  */
 function rewriteOpenCodeBranding(text) {
   if (!isString(text)) return text;
-  return text.replace(/opencode/gi, (match) => {
-    if (match === "OpenCode") return "Antigravity";
-    if (match === "OPENCODE") return "ANTIGRAVITY";
-    return "antigravity";
-  });
+  return text.replace(ANTIGRAVITY_PROMPT_REWRITES[0].from, ANTIGRAVITY_PROMPT_REWRITES[0].to);
+}
+
+function stripHarnessTelemetry(value) {
+  if (!isObject(value) || value === null || Array.isArray(value)) return value;
+  const cleaned = { ...value };
+  for (const key of ANTIGRAVITY_TELEMETRY_KEYS) delete cleaned[key];
+  if (isObject(cleaned.labels) && cleaned.labels !== null && !Array.isArray(cleaned.labels)) {
+    const labels = { ...cleaned.labels };
+    for (const key of ANTIGRAVITY_TELEMETRY_KEYS) delete labels[key];
+    cleaned.labels = labels;
+  }
+  return cleaned;
 }
 
 const SYSTEM_INSTRUCTION_CHAR_LIMIT = 4000;
@@ -236,6 +244,18 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    body = { ...(body || {}) };
+    if (body.request) {
+      body.request = { ...body.request };
+      if (body.request.systemInstruction?.parts) {
+        body.request.systemInstruction = {
+          ...body.request.systemInstruction,
+          parts: body.request.systemInstruction.parts.map((part) =>
+            isObject(part) && part !== null && !Array.isArray(part) ? { ...part } : part
+          )
+        };
+      }
+    }
     const projectId = credentials?.projectId || this.generateProjectId();
 
     // OpenAI clients may include stream_options even for non-streaming calls.
@@ -310,6 +330,10 @@ export class AntigravityExecutor extends BaseExecutor {
       // don't persist thoughtSignature in their history, so backfill from cache or default signature.
       // In parallel function calls, only the first call needs a signature; siblings stay unsigned.
       let firstFunctionCallSeen = false;
+      const targetModel = body.model || model;
+      const defaultSignature = signatureFamily(targetModel) === "claude"
+        ? DEFAULT_THINKING_AG_SIGNATURE
+        : DEFAULT_THINKING_GEMINI_CLI_SIGNATURE;
       const modifiedParts = parts?.map(p => {
         // Native requests bypass the translator's function-response payload sanitizer.
         if (p.functionResponse) {
@@ -323,8 +347,8 @@ export class AntigravityExecutor extends BaseExecutor {
         }
         if (!p.functionCall) return p;
         const callId = p.functionCall.id;
-        const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId, body.model || model) : null;
-        const callSig = p.thoughtSignature || cachedSig || (!firstFunctionCallSeen ? DEFAULT_THINKING_AG_SIGNATURE : undefined);
+        const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId, targetModel) : null;
+        const callSig = p.thoughtSignature || cachedSig || (!firstFunctionCallSeen ? defaultSignature : undefined);
         firstFunctionCallSeen = true;
         if (callSig) {
           return { ...p, thoughtSignature: callSig };
@@ -440,6 +464,9 @@ export class AntigravityExecutor extends BaseExecutor {
         if (part.text.includes(competitiveMarker)) {
           part.text = part.text.split(competitiveMarker).join("");
         }
+        for (const { from, to } of ANTIGRAVITY_PROMPT_REWRITES.slice(1)) {
+          part.text = part.text.replace(from, to);
+        }
       }
     }
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
@@ -499,14 +526,15 @@ export class AntigravityExecutor extends BaseExecutor {
     // `search` buckets are unaffected and keep their own requestType.
     delete body.requestType;
 
-    const transformedBody = {
+    const cleanedRequest = stripHarnessTelemetry(transformedRequest);
+    const transformedBody = stripHarnessTelemetry({
       ...body,
       project: projectId,
       model: model,
       userAgent: "antigravity",
       requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
-      request: transformedRequest
-    };
+      request: cleanedRequest
+    });
     // Keep stream available to in-process callers, but omit it from the serialized
     // Cloud Code envelope (the endpoint and URL already carry streaming semantics).
     Object.defineProperty(transformedBody, "stream", {

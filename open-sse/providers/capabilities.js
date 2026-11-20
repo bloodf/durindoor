@@ -157,6 +157,9 @@ export const MODEL_CAPABILITIES = {
   // https://platform.kimi.ai/docs/models.md — K3.1 Pro / Highspeed share K3 series 1M context + reasoning_effort.
   // https://platform.kimi.ai/docs/guide/use-reasoning-effort.md — low|high|max (default max); always reasons.
   // https://platform.kimi.ai/docs/guide/troubleshooting — default output 131072; max = 1048576 - prompt.
+  // Kimi Code uses bare K3.1 identifiers.
+  "k3.1-pro": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
   "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
   "kimi-k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
   // https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart — vision+video, thinking always on, 262144 context.
@@ -288,6 +291,8 @@ const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
 // Codex-only models have no direct API counterpart. Published API model sizes
 // live in vendorModelCapabilities.js and are reused by all Codex aliases.
 const CODEX_ONLY_CAPABILITIES = {
+  "gpt-6.2-sol": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingEfforts: ["low", "medium", "high", "xhigh", "max"], contextWindow: 500000, maxOutput: 128000 },
+  "gpt-6.2-astra": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingEfforts: ["low", "medium", "high", "xhigh", "max"], contextWindow: 272000, maxOutput: 128000 },
   "gpt-5.3-codex-spark": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null },
   "gpt-5.3-codex-spark-review": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null },
 };
@@ -388,6 +393,8 @@ const ANTIGRAVITY_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, vi
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
 export const PROVIDER_CAPABILITIES = {
+  // Native Mistral Large 4 catalog limits; resellers retain their own limits.
+  mistral: Object.fromEntries(["mistral-large-latest", "mistral-large-4", "mistral-large-4-0"].map(id => [id, { vision: true, contextWindow: 1048576 }])),
   "sensenova-intl": {
     "sensenova-6.8-flash": SENSENOVA_INTL_CHAT,
     "sensenova-6.8-flash-lite": SENSENOVA_INTL_CHAT,
@@ -720,6 +727,8 @@ export const PROVIDER_CAPABILITIES = {
   // models are exposed; sensenova-u1-fast advertises on /models but 404s on
   // chat completions, so it is omitted from the registry.
   sensenova: {
+    // Flash supports vision and OpenAI-style reasoning controls.
+    "sensenova-6.8-flash": { vision: true, reasoning: true, thinkingFormat: "openai" },
     "sensenova-6.7-flash-lite": {
       vision: true,
       tools: true,
@@ -818,6 +827,8 @@ export const PATTERN_CAPABILITIES = [
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
 { pattern: "*claude*opus-5-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4-7*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
+{ pattern: "*claude*opus-4-8*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
 { pattern: "*claude*opus-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*sonnet-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 /** Claude 4.6+ variants share the generation's 1M context and 128K output limits. */
@@ -835,8 +846,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*claude*haiku*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*opus*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*sonnet*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
-{ pattern: "*claude*fable*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*mythos*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*fable*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*mythos*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude-3*", caps: { vision: true } },
 { pattern: "*claude*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 
@@ -930,12 +941,14 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*@cf/qwen/qwen2.5-coder-32b-instruct", caps: { reasoning: false, thinkingFormat: null, contextWindow: 32768 } },
 
 // ── Qwen (3.5+ = native vision/video; coder = text-only; QwQ = thinking-only) ─
+/** Qwen 3.8 uses reasoning_effort; keep its rows above the legacy omni/Max patterns. */
+{ pattern: "*qwen3.8*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 65536 } },
+{ pattern: "*qwen3.8*27b*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 262144 } },
+{ pattern: "*qwen3.8-2.4t*", caps: { reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144 } },
+{ pattern: "*qwen3.8*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 1000000, maxOutput: 131072 } },
 { pattern: "*qwen*vl*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 { pattern: "*qwen*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144, maxOutput: 65536 } },
 { pattern: "*qwen*coder*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 } },
-/** Qwen3.8 exceptions precede overlapping Max and family patterns; the 2.4T open model is text-only. */
-{ pattern: "*qwen3.8-2.4t*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
-{ pattern: "*qwen3.8*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen*max*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen3.5*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen3.6*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },

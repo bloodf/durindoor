@@ -20,8 +20,8 @@ const STRIP_RULES = [
 { match: /claude/i, drop: ["temperature", "diagnostics"] },
 /** Claude Opus 5.5 also rejects the remaining sampling controls. */
 { match: /claude-opus-5[-.]5/i, drop: ["top_p", "top_k"] },
-// GitHub Copilot gpt-5.4: temperature unsupported.
-{ provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
+// GitHub Copilot GPT-5.4+ (within 5.x) and GPT-6.x: temperature unsupported.
+{ provider: "github", match: /^gpt-(?:5\.(?:[4-9]|[1-9]\d+)|6(?:\.\d+)?)(?:-|$)/i, drop: ["temperature"] },
 // OpenAI GPT-6 Astra supports neither sampling nor top-logprob controls.
 // Chat rejects `logprobs`; Responses rejects only its output-text include entry.
 { provider: "openai", match: /^gpt-6-astra$/i, drop: ["temperature", "top_p", "top_logprobs"], dropChat: ["logprobs"], dropInclude: ["message.output_text.logprobs"] },
@@ -50,6 +50,8 @@ const STRIP_RULES = [
 // upstream 2026-10-13: 12/12 structured calls 400, 4/4 without the field 200
 // (decolua/9router 468aa7d9).
 { provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
+// OpenCode Go GPT Responses rejects temperature.
+{ provider: "opencode-go", match: /^gpt-/i, drop: ["temperature"] },
 
 // 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
 {

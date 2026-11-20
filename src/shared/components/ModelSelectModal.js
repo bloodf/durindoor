@@ -11,7 +11,8 @@ import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, LIVE_CATALOG_PROVIDERS } from "@/shared/constants/providers";
+import { mergeLiveCatalogs, liveCatalogModelEntries } from "@/shared/utils/liveCatalogModels";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 import { isString } from "../utils/typeChecks.js";
@@ -50,6 +51,7 @@ const KIND_TO_SLUG = {
 // `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
 const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
 
+/** Keeps empty-search feedback available to screen readers without moving keyboard focus. */
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -105,6 +107,7 @@ export default function ModelSelectModal({
   // server returns the full catalog and the intersection is a no-op for known
   // models while still keeping custom/unknown entries visible.
   const [visibleModelIds, setVisibleModelIds] = useState(null);
+  const [visibleCatalogReady, setVisibleCatalogReady] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -113,6 +116,7 @@ export default function ModelSelectModal({
     // flight; an ignore flag drops a slow prior response from overwriting a
     // newer one.
     let ignore = false;
+    setVisibleCatalogReady(false);
     setVisibleModelIds(null);
     const controller = new AbortController();
     (async () => {
@@ -120,7 +124,11 @@ export default function ModelSelectModal({
         const settingsRes = await fetch("/api/settings", { signal: controller.signal });
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
-        if (settingsData?.hidePaidModels !== true || ignore) return;
+        if (ignore) return;
+        if (settingsData?.hidePaidModels !== true) {
+          setVisibleCatalogReady(true);
+          return;
+        }
         // Fail-closed: from this point the toggle is confirmed ON. Hide
         // everything until a VALID catalog response replaces this set — non-OK
         // status, thrown fetch, or a malformed `data` payload must NOT fall
@@ -136,6 +144,7 @@ export default function ModelSelectModal({
         map((m) => m.id).
         filter((id) => isString(id));
         setVisibleModelIds(new Set(ids));
+        setVisibleCatalogReady(true);
       } catch (error) {
         if (error?.name === "AbortError") return;
         console.error("Error fetching visible model ids:", error);
@@ -215,31 +224,69 @@ export default function ModelSelectModal({
     }
   };
 
+  // Fetch a provider's account-scoped live catalog for every active connection
+  // and merge the results. Entries collapse by model id: two connections of the
+  // same provider expose the same catalog, so the first one wins.
+  const fetchLiveCatalogModels = async (providerId) => {
+    const connections = activeProviders.filter((p) => p.provider === providerId && p.id);
+    if (connections.length === 0) return [];
+
+    const catalogs = await Promise.all(connections.map(async (connection) => {
+      try {
+        const res = await fetch(`/api/providers/${connection.id}/models`);
+        if (!res.ok) {
+          console.log(`Failed to fetch live models for ${providerId}:`, res.status);
+          return [];
+        }
+        const data = await res.json();
+        return Array.isArray(data.models) ? data.models : [];
+      } catch (error) {
+        console.error(`Error fetching live models for ${providerId}:`, error);
+        return [];
+      }
+    }));
+
+    return mergeLiveCatalogs(catalogs);
+  };
+
   // Fetch models for all custom providers when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    let ignore = false;
 
-    const loadCustomProviderModels = async () => {
+    const loadProviderModels = async () => {
       const customProviderIds = activeProviders.
       filter((p) => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec").
       map((p) => p.provider);
+      // Providers that publish a per-account live catalog (claude, commandcode):
+      // a passthrough provider has no static list at all, and an account's
+      // catalog is not the static registry either.
+      const liveCatalogProviderIds = [...new Set(activeProviders.
+        map((p) => p.provider).
+        filter((providerId) => LIVE_CATALOG_PROVIDERS.includes(providerId)))];
 
-      if (customProviderIds.length === 0) return;
+      if (customProviderIds.length === 0 && liveCatalogProviderIds.length === 0) return;
 
       const fetched = {};
-      await Promise.all(
-        customProviderIds.map(async (providerId) => {
+      await Promise.all([
+        ...customProviderIds.map(async (providerId) => {
           const models = await fetchProviderModels(providerId);
           if (models && models.length > 0) {
             fetched[providerId] = models;
           }
-        })
-      );
+        }),
+        ...liveCatalogProviderIds.map(async (providerId) => {
+          const models = await fetchLiveCatalogModels(providerId);
+          if (models.length > 0) fetched[providerId] = models;
+        }),
+      ]);
 
+      if (ignore) return;
       setFetchedModels(fetched);
     };
 
-    loadCustomProviderModels();
+    loadProviderModels();
+    return () => { ignore = true; };
   }, [isOpen, activeProviders]);
 
   const fetchDisabledModels = async () => {
@@ -542,7 +589,12 @@ export default function ModelSelectModal({
         const merged = [
         ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m), capabilities: m.capabilities })),
         ...customAliasModels,
-        ...customRegisteredModels];
+        ...customRegisteredModels,
+        // The account's live catalog is offered next to the static registry: a
+        // model the connected account can actually use must be selectable even
+        // when the registry does not list it.
+        ...liveCatalogModelEntries(alias, fetchedModels[providerId] || []).
+        filter((m) => !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))];
 
         // Dedupe by value (alias may equal hardcoded id, causing React key collision)
         const seen = new Set();
@@ -721,7 +773,9 @@ export default function ModelSelectModal({
             const caps = { ...getCaps(model.value), ...liveCaps, ...customOverride?.capabilities };
             return <Chip key={model.value} size="sm" icon={isAdded && !isPlaceholder ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect(model)} title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined} label={isPlaceholder ? <span className="inline-flex items-center gap-1 italic text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[12px]">edit</span>{model.name}</span> : <span className="inline-flex items-center gap-1">{model.name}{model.isCustom ? <span className="text-xs font-normal text-dd-muted">custom</span> : null}{model.isFetched ? <span className="text-xs font-normal text-dd-muted">auto</span> : null}<CapacityBadges caps={caps} colorOverride="text-dd-muted" size={12} /></span>} />;
           })}</div></section>)}
-          {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+          <div role="status" aria-atomic="true">
+            {visibleCatalogReady && Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+          </div>
         </div>
       </div>
     </Modal>);

@@ -38,7 +38,7 @@ Onboarding is a long-running Google operation, so the sign-in can wait for it. T
 
 ## The agy id
 
-`agy` ("Antigravity CLI") uses the same executor, models, quota fetcher, and Google token refresh as `antigravity`, under a separate id. It exists so credentials imported from the Antigravity CLI do not collide with dashboard IDE logins. The dashboard has no Connect flow for `agy`; it is for connections that already exist.
+`agy` ("Antigravity CLI") uses the same executor, models, quota fetcher, and Google token refresh as `antigravity`, under a separate id. It keeps existing `agy` connections separate from dashboard IDE logins. The dashboard has no Connect flow for `agy`. A legacy DurinDoor `db.json` containing an `agy` connection can be imported by the existing database migration; this is not an import of an Antigravity CLI credential file. Catalog refresh uses the same configured Antigravity OAuth client as request refresh.
 
 ## Models
 

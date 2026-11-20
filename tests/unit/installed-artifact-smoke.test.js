@@ -102,6 +102,32 @@ function run(entry, { aliasedTemp = false, contaminatedTemp = false } = {}) {
 }
 
 describe("installed artifact smoke failures", () => {
+  // A private CI temp directory may itself sit below checkout dependencies;
+  // subprocess relocation must still use a clean platform temp root.
+  it("uses an isolated relocation root when the inherited temp directory is under node_modules", async () => {
+    const { entry } = artifact();
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-inherited-temp-"));
+    cleanup.push(() => fs.rmSync(parent, { recursive: true, force: true }));
+    const inherited = path.join(parent, "node_modules", "private-temp");
+    fs.mkdirSync(inherited, { recursive: true });
+    const previous = ["TMPDIR", "TMP", "TEMP"].map((key) => [key, process.env[key]]);
+    try {
+      for (const [key] of previous) process.env[key] = inherited;
+      const result = await run(entry);
+      expect(result.code).toBe(1);
+      expect(result.signal).toBeNull();
+      expect(result.temp.startsWith(parent + path.sep)).toBe(false);
+      expect(result.output).toContain("Optional runtime probe failed");
+      expect(result.output).not.toContain("Isolation requires no ancestor node_modules");
+      expect(fs.readdirSync(inherited)).toEqual([]);
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it.each([false, true])("rejects ancestor dependencies before runtime probing and cleans relocation state (aliased: %s)", async (aliasedTemp) => {
     const { entry } = artifact();
     const result = await run(entry, { aliasedTemp, contaminatedTemp: true });

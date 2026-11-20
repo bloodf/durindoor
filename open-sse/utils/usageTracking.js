@@ -188,6 +188,40 @@ export function normalizeUsage(usage) {
 }
 
 /**
+ * Is the reasoning slice counted INSIDE the output count?
+ *
+ * OpenAI chat completions and the Responses API report reasoning_tokens as a
+ * SUBSET of completion/output tokens. A few OpenAI-compatible upstreams (xAI)
+ * report it on top instead, and Gemini's thoughtsTokenCount is separate from
+ * candidatesTokenCount. The reported total tells the two apart: an additive
+ * report has total_tokens === prompt + completion + reasoning.
+ *
+ * @param {object} usage raw upstream usage object
+ * @returns {boolean} true when reasoning is a subset of the output count
+ */
+export function reasoningIsSubsetOfOutput(usage) {
+  const reasoning = Number(
+    usage?.completion_tokens_details?.reasoning_tokens ?? usage?.output_tokens_details?.reasoning_tokens
+  ) || 0;
+  const total = Number(usage?.total_tokens);
+  if (reasoning <= 0 || !Number.isFinite(total)) return true;
+  const prompt = Number(usage?.prompt_tokens ?? usage?.input_tokens) || 0;
+  const completion = Number(usage?.completion_tokens ?? usage?.output_tokens) || 0;
+  return total !== prompt + completion + reasoning;
+}
+
+// Mark a usage object whose reasoning slice is counted ON TOP of the output
+// count. DurinDoor bills reasoning as a subset of the output count by default
+// (calculateCostBreakdown), so only the additive families carry this marker —
+// 1 means "reasoning is inside the output count", 0 means "counted on top".
+function markReasoningAdditive(usage) {
+  if (usage && isObject(usage) && usage.reasoning_tokens > 0) {
+    usage.reasoning_included_in_output = 0;
+  }
+  return usage;
+}
+
+/**
  * Canonicalize usage into ONE storage/cost convention so token counts and cost
  * are consistent across providers:
  *   prompt_tokens               = total input INCLUDING cache read + cache creation
@@ -251,6 +285,9 @@ export function canonicalizeUsage(usage) {
   if (isUsdReceipt(usage.cost_in_usd)) result.cost_in_usd = usage.cost_in_usd;
   if (isUsdReceipt(usage.cost_in_usd_ticks)) result.cost_in_usd_ticks = usage.cost_in_usd_ticks;
   if (reasoning > 0) result.reasoning_tokens = reasoning;
+  // Carry the additive-reasoning marker through canonicalization so cost
+  // pricing knows the reasoning slice is NOT already inside completion_tokens.
+  if (usage.reasoning_included_in_output === 0) result.reasoning_included_in_output = 0;
   const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined ?
   Number(usage.kiro_credits) : NaN;
   if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
@@ -410,7 +447,7 @@ export function extractUsage(chunk) {
   if (chunk.usage && isObject(chunk.usage) && (
   chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
-    return normalizeUsage({
+    const normalized = normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
       completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
@@ -426,19 +463,28 @@ export function extractUsage(chunk) {
       kiro_credit_unit: chunk.usage.kiro_credit_unit,
       estimated: chunk.usage.estimated
     });
+    // OpenAI chat reports reasoning_tokens INSIDE completion_tokens, but a few
+    // OpenAI-compatible upstreams (xAI) report it on top instead. Charge each
+    // token once either way.
+    if (!reasoningIsSubsetOfOutput(chunk.usage)) {
+      return markReasoningAdditive(normalized);
+    }
+    return normalized;
   }
 
   // Gemini format (Antigravity)
   // Antigravity wraps usageMetadata inside response: { response: { usageMetadata: {...} } }
   const usageMeta = chunk.usageMetadata || chunk.response?.usageMetadata;
   if (usageMeta && isObject(usageMeta)) {
-    return normalizeUsage({
+    // thoughtsTokenCount is NOT part of candidatesTokenCount: the reasoning is
+    // counted on top of the output count, so it is billed separately.
+    return markReasoningAdditive(normalizeUsage({
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
       cached_tokens: usageMeta.cachedContentTokenCount,
       reasoning_tokens: usageMeta.thoughtsTokenCount
-    });
+    }));
   }
 
   // Ollama NDJSON format (raw from provider, before translation).
@@ -464,14 +510,97 @@ export function extractUsage(chunk) {
   return null;
 }
 
+// Token-count fields an estimate can stand in for. A report that carries none
+// of them (Kiro meters in credits only) says nothing about token counts, so an
+// estimate still supplies them.
+const TOKEN_COUNT_FIELDS = [
+  "prompt_tokens", "completion_tokens", "total_tokens",
+  "input_tokens", "output_tokens",
+  "cached_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
+  "reasoning_tokens"
+];
+
+function hasTokenCounts(usage) {
+  if (!usage || !isObject(usage)) return false;
+  return TOKEN_COUNT_FIELDS.some((field) => isNumber(usage[field]) && Number.isFinite(usage[field]));
+}
+
+// Copy the token counts of `donor` onto `base`, keeping every other field of
+// `base` (provider credits, unit label, cost receipts) untouched.
+function mergeTokenCounts(base, donor) {
+  const merged = { ...base };
+  for (const field of TOKEN_COUNT_FIELDS) {
+    if (isNumber(donor?.[field]) && Number.isFinite(donor[field])) merged[field] = donor[field];
+  }
+  if (merged.total_tokens === undefined) {
+    const prompt = merged.prompt_tokens ?? merged.input_tokens;
+    const completion = merged.completion_tokens ?? merged.output_tokens;
+    if (Number.isFinite(prompt) && Number.isFinite(completion)) merged.total_tokens = prompt + completion;
+  }
+  // The counts came from an estimate, so they stay marked as estimates.
+  if (donor?.estimated === true) merged.estimated = true;
+  return merged;
+}
+
+// A real report replaces the token counts of the estimate it follows. The
+// estimate's other fields (credits, unit) survive; its inflated total does not.
+function replaceEstimatedTokens(prev, next) {
+  const merged = { ...prev };
+  for (const [k, v] of Object.entries(next)) {
+    if (k === "estimated") continue; // the marker is sticky, handled below
+    if (isNumber(v) && Number.isFinite(v)) {
+      merged[k] = v;
+    } else if (v && isObject(v)) {
+      merged[k] = v; // nested details objects: take latest
+    } else if (isString(v) && k === "kiro_credit_unit") {
+      merged[k] = v; // Kiro credit unit label: take latest
+    }
+  }
+  // The real report may omit total_tokens; recompute from the real counts
+  // instead of keeping the estimate's inflated total.
+  if (next.total_tokens === undefined) {
+    const prompt = merged.prompt_tokens ?? merged.input_tokens;
+    const completion = merged.completion_tokens ?? merged.output_tokens;
+    if (Number.isFinite(prompt) && Number.isFinite(completion)) merged.total_tokens = prompt + completion;
+  }
+  // Estimation marker: once estimated, stays estimated (a real value never
+  // downgrades an estimate to authoritative).
+  if (prev.estimated === true) merged.estimated = true;
+  return merged;
+}
+
 // Field-wise max-merge of two usage objects. Anthropic splits usage across
 // events: message_start has real input+cache (output is a placeholder 1),
 // message_delta has the real cumulative output (input/cache absent). Max keeps
 // the meaningful value from each without clobbering. Idempotent for other
 // providers that emit a single complete usage object.
+//
+// An estimate (estimateUsage(), flagged `estimated:true`) is a placeholder,
+// never a floor: a real upstream report replaces it outright, and a late
+// estimate never overwrites real usage. Max-merge only applies between partial
+// REAL reports — otherwise the persisted prompt_tokens became
+// max(estimate, real), inflated whenever the estimate exceeded reality.
 export function mergeUsage(prev, next) {
   if (!prev) return next || null;
   if (!next) return prev;
+
+  const prevEstimated = prev.estimated === true;
+  const nextEstimated = next.estimated === true;
+
+  if (prevEstimated !== nextEstimated) {
+    if (nextEstimated) {
+      // A late estimate never overwrites real usage. It still supplies the
+      // token counts when the real report carries none (Kiro meters in credits
+      // only), because then the estimate is the only count there is.
+      if (!hasTokenCounts(prev)) return mergeTokenCounts(prev, next);
+      return prev;
+    }
+    // prev was the estimate; the real report replaces its token counts — unless
+    // it carries none, in which case the estimate still supplies them.
+    if (!hasTokenCounts(next)) return mergeTokenCounts(next, prev);
+    return replaceEstimatedTokens(prev, next);
+  }
+
   const merged = { ...prev };
   for (const [k, v] of Object.entries(next)) {
     // typeof NaN === "number" — guard with Number.isFinite so one malformed

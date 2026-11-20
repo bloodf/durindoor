@@ -23,7 +23,7 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["adapta-web", "chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
+const portedProviders = ["adapta-web", "chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web", "yuanbao-web"];
 const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {

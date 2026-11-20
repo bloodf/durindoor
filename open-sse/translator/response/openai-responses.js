@@ -14,6 +14,7 @@ import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { normalizeArrayContentDelta } from "../../utils/arrayContentDelta.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
@@ -140,6 +141,18 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
         status: "in_progress"
       }
     });
+  }
+
+  // Fold typed content before emitting reasoning so each thinking part is emitted
+  // once. Preserve vendor reasoning fields that the fold would otherwise mask.
+  if (Array.isArray(delta.content)) {
+    const vendorReasoning = extractReasoningText({ ...delta, content: undefined });
+    if (isInternalReasoningPlaceholder(vendorReasoning)) {
+      delete delta.reasoning_content;
+    } else if (vendorReasoning && !delta.reasoning_content) {
+      delta.reasoning_content = vendorReasoning;
+    }
+    normalizeArrayContentDelta(delta);
   }
 
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
@@ -400,9 +413,12 @@ export function restoreResponsesToolName(state, name) {
  */
 export function resolveResponsesToolName(state, name) {
   if (!isString(name)) return { name };
+  // A flat declaration of this exact name wins over a namespace recovered from
+  // the request history: the client declared the dotted name as one ordinary
+  // function, so the call must not acquire a namespace (OmniRoute #15974).
+  if (isDeclaredFlatTool(state, name)) return { name };
   const exact = splitNamespacedName(state, name);
   if (exact) return exact;
-  if (isDeclaredFlatTool(state, name)) return { name };
 
   const dot = name.indexOf(".");
   if (dot === -1) {

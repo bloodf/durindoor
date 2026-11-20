@@ -14,6 +14,7 @@ import { IFlowExecutor } from "./iflow.js";
 import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
 import { DifyExecutor } from "./dify.js";
+import { ReplicateExecutor } from "./replicate.js";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
@@ -90,6 +91,7 @@ const executors = {
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
   dify: new DifyExecutor(),
+  replicate: new ReplicateExecutor(),
   "qoder-cn": new QoderExecutor("qoder-cn"),
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),

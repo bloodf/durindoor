@@ -1,3 +1,4 @@
+import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
@@ -421,7 +422,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Parse the request-only dashboard suffix once. The raw ID is retained only
   // for client-visible bypass identity; routing, compression, accounting, and
   // provider dispatch consistently use the clean catalog identity.
-  const parsedModel = parseSuffix(requestedModel);
+  const parsedModel = parseModelModifiers(requestedModel);
   const cleanModel = parsedModel.cleanModel;
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
@@ -795,6 +796,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+  // Explicit model modifiers take precedence after translation on supported transports.
+  if ((provider === "openai" || provider === "codex") && parsedModel.serviceTier &&
+      (finalFormat === FORMATS.OPENAI || finalFormat === FORMATS.OPENAI_RESPONSES)) {
+    translatedBody.service_tier = parsedModel.serviceTier;
+  }
 
   // Request line: one correlated summary (fmt + thinking + counts + account)
   if (log?.line) {

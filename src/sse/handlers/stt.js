@@ -99,6 +99,8 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
       cost: priced ? nativeUnits.audioSeconds * 0.006 / 60 : null,
       costStatus: priced ? "estimated" : "unknown",
       costSource: priced ? "https://developers.openai.com/api/docs/pricing#whisper" : "unavailable",
+      // The stable id of the admitted key travels with the usage.
+      apiKeyId,
     });
   };
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);

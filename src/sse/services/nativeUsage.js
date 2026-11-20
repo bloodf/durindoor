@@ -76,9 +76,11 @@ export function isNativeTerminalUsageEvent(event, details = {}) {
   return false;
 }
 
-export async function nativeUsageAdmission(apiKey) {
+export async function nativeUsageAdmission(apiKey, apiKeyId = null) {
   if (!apiKey) return null;
-  const status = await getApiKeyUsageLimitStatus(apiKey);
+  // The daily allowance belongs to the key, so the admitted id resolves the
+  // key even when the secret it was admitted with has since changed.
+  const status = await getApiKeyUsageLimitStatus(apiKey, new Date(), apiKeyId);
   return status.exceeded ? annotateClientAdmissionFailure(
     new Response("API key daily token limit reached", { status: 429 }), "client_limit") : null;
 }
@@ -103,13 +105,19 @@ export async function nativeDirectSessionAllowed(apiKey) {
  * native units from output payloads. Incomplete accounting events throw.
  * billingEpoch is the dispatch/creation stamp, including explicit null before
  * cutover. Never refresh it here: the ledger rejects stale in-flight completions.
+ * apiKeyId is the stable id of the key admitted for the event. It travels with
+ * the usage so a native completion that lands after a secret change is still
+ * charged to the key that was admitted.
  */
-export async function recordNativeUsage({ apiKey, provider, model, connectionId, endpoint, value, usageEventId, billingEpoch, fallbackUsage = null, ...accounting }) {
+export async function recordNativeUsage({ apiKey, apiKeyId = null, provider, model, connectionId, endpoint, value, usageEventId, billingEpoch, fallbackUsage = null, ...accounting }) {
   const tokens = nativeUsageFromValue(value) || accounting.tokens || fallbackUsage;
   if (!usageEventId || !tokens) throw new TypeError("Native usage requires usageEventId and a token object (empty for non-token usage)");
-  await recordApiKeyUsage(apiKey, { ...accounting, provider, model, connectionId, endpoint, tokens, usageEventId, billingEpoch });
+  // The stable id of the admitted key travels inside the usage payload, so the
+  // ledger charges the key that was admitted even when the secret it was
+  // admitted with has since changed.
+  await recordApiKeyUsage(apiKey, { ...accounting, apiKeyId, provider, model, connectionId, endpoint, tokens, usageEventId, billingEpoch });
   if (!apiKey) return true;
-  if (await nativeUsageAdmission(apiKey)) return false;
+  if (await nativeUsageAdmission(apiKey, apiKeyId)) return false;
   return !(await enforceApiKeyModelPolicy(new Request("http://127.0.0.1/native-usage"), `${provider}/${model}`, apiKey, { limits: false }));
 }
 

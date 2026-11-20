@@ -147,7 +147,7 @@ function reconcileReportedTotal(usage) {
  * billingEpoch is the original admission stamp, including pre-cutover null.
  * Never read the current epoch here: the ledger rejects stale in-flight usage.
  */
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, billingEpoch, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, apiKeyId = null, endpoint, usageEventId, billingEpoch, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -179,6 +179,9 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
+    // The stable key id of the admitted key. It travels with the row so the
+    // request stays attached to the key's budgets when its secret changes.
+    apiKeyId: apiKeyId || undefined,
     endpoint: endpoint || null,
     // Timing rides along with the usage row so the dashboard can report
     // duration and throughput per model/account/key without a second lookup.

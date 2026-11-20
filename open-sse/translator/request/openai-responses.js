@@ -19,6 +19,7 @@ import {
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
@@ -305,6 +306,48 @@ function splitToolOutputImages(output) {
   return { content: parts.length === 0 ? "[]" : collapseTextParts(parts), images };
 }
 
+/**
+ * Fixed per-request bounds for tool-output images re-injected into Chat
+ * history (no configuration surface). Bytes reuse the existing per-image
+ * `MAX_IMAGE_BYTES` ceiling at twice that size, measured as URL length (a data
+ * URL's length is its base64 payload).
+ */
+export const MAX_TOOL_OUTPUT_IMAGES = 16;
+export const MAX_TOOL_OUTPUT_IMAGE_BYTES = 2 * MAX_IMAGE_BYTES;
+
+const imageUrlSize = (part) => {
+  const url = part?.image_url?.url;
+  return isString(url) ? url.length : 0;
+};
+
+/**
+ * Keep the newest tool-output images that fit both budgets and replace older
+ * ones, in place, with a text note. Keeping is a strict newest-first prefix, so
+ * a smaller older image never survives a newer dropped one; surviving images
+ * keep their original order. `groups` are follow-up user messages in history
+ * order, each `{ message, entries: [{ part, callId }] }`.
+ */
+export function boundToolOutputImages(groups, maxCount = MAX_TOOL_OUTPUT_IMAGES, maxBytes = MAX_TOOL_OUTPUT_IMAGE_BYTES) {
+  const all = groups.flatMap((g) => g.entries);
+  let count = 0;
+  let bytes = 0;
+  let cut = all.length;
+  while (cut > 0) {
+    const size = imageUrlSize(all[cut - 1].part);
+    if (count + 1 > maxCount || bytes + size > maxBytes) break;
+    count++;
+    bytes += size;
+    cut--;
+  }
+  if (cut === 0) return;
+  const dropped = new Set(all.slice(0, cut));
+  for (const { message, entries } of groups) {
+    message.content = entries.map((entry) => dropped.has(entry) ?
+    { type: OPENAI_BLOCK.TEXT, text: `[Earlier tool output image omitted to bound request size (tool_call_id: ${entry.callId})]` } :
+    entry.part);
+  }
+}
+
 function responsesContentToOpenAI(c) {
   if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
@@ -476,6 +519,13 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // Images lifted out of tool outputs wait here until the run of tool
   // messages ends, so a user message never splits parallel tool results.
   let pendingToolImages = [];
+  const toolImageGroups = [];
+  const flushToolImages = () => {
+    const message = { role: ROLE.USER, content: pendingToolImages.map((e) => e.part) };
+    toolImageGroups.push({ message, entries: pendingToolImages });
+    result.messages.push(message);
+    pendingToolImages = [];
+  };
 
   for (const item of inputItems) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
@@ -483,8 +533,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
 
     if (pendingToolImages.length > 0 && itemType !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT && itemType !== RESPONSES_ITEM.REASONING) {
-      result.messages.push({ role: ROLE.USER, content: pendingToolImages });
-      pendingToolImages = [];
+      flushToolImages();
     }
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
@@ -593,7 +642,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // Add tool result immediately; its images follow in a user message
       const { content, images } = splitToolOutputImages(item.output);
       result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content });
-      pendingToolImages.push(...images);
+      pendingToolImages.push(...images.map((part) => ({ part, callId: item.call_id })));
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
@@ -605,7 +654,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
 
   // Flush remaining
   flushAssistant();
-  if (pendingToolImages.length > 0) result.messages.push({ role: ROLE.USER, content: pendingToolImages });
+  if (pendingToolImages.length > 0) flushToolImages();
+  boundToolOutputImages(toolImageGroups);
   if (pendingToolResults.length > 0) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);

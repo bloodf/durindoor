@@ -57,6 +57,8 @@ import {
 import REGISTRY from "../providers/registry/index.js";
 import { resolveProviderAlias } from "../services/model.js";
 
+import { OpenCodeServerExecutor } from "./opencode-server.js";
+
 const chatGptWebExecutor = new ChatGptWebExecutor();
 
 const executors = {
@@ -93,6 +95,7 @@ const executors = {
   "vertex-partner": new VertexExecutor("vertex-partner"),
   qwen: new QwenExecutor(),
   opencode: new OpenCodeExecutor(),
+  "opencode-server": new OpenCodeServerExecutor(),
   "opencode-zen": new OpenCodeZenExecutor(),
   "opencode-go": new OpenCodeGoExecutor(),
   "grok-web": new GrokWebExecutor(),

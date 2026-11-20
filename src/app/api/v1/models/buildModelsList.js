@@ -1,3 +1,4 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { createHash } from "node:crypto";
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { KIMI_CODING_MODELS_URL } from "../../../../../open-sse/providers/shared.js";
@@ -299,6 +300,7 @@ const LIVE_MODEL_RESOLVERS = {
     map((m) => ({ id: m.id, ...(isString(m.name) ? { name: m.name } : null) }));
     return models.length ? { models } : null;
   },
+  "opencode-server": fetchOpenCodeServerModels,
   "ollama-local": async (conn, guard) => {
     const host = resolveOllamaLocalHost(conn);
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};

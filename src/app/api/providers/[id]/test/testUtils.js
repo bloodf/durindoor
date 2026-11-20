@@ -1,3 +1,4 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -635,6 +636,10 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
 }
 
 async function testApiKeyConnection(connection, effectiveProxy = null) {
+  if (connection.provider === "opencode-server") {
+    const result = await fetchOpenCodeServerModels(connection);
+    return { valid: !result.error, error: result.error ?? null };
+  }
   if (isOpenAICompatibleProvider(connection.provider)) {
     const modelsBase = connection.providerSpecificData?.baseUrl;
     if (!modelsBase) return { valid: false, error: "Missing base URL" };

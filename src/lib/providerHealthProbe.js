@@ -22,6 +22,7 @@
  * `valid` but the caller classifies them as `degraded` (reachable, bad creds)
  * rather than `down`.
  */
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveApiBase as resolveOrcaRouterApiBase, isAllowedOrcaOrigin } from "open-sse/providers/orcarouterCatalog.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -240,6 +241,11 @@ async function probeRegistry(connection, fetcher, effectiveProxy) {
 export async function probeConnectionHealth(connection, opts = {}) {
   const fetcher = opts.fetcher;
   if (!connection) return { valid: false, status: null, error: "no connection" };
+  if (connection.provider === "opencode-server") {
+    const result = await fetchOpenCodeServerModels(connection, undefined, fetcher);
+    return { valid: !result.error, status: result.status ?? 200, error: result.error ?? null };
+  }
+
 
   // Match catalog and OAuth origin policy before any health transport can attach credentials.
   if (connection.provider === "orcarouter" && !isAllowedOrcaOrigin(resolveOrcaRouterApiBase(process.env))) {

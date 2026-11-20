@@ -123,6 +123,7 @@ export function canDiscoverModels(connection) {
       case "agy":
         return Boolean(connection.accessToken);
       case "ollama-local":
+      case "mlx":
       case "devin-cli-agentic":
         return true;
       default:

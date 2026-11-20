@@ -1,6 +1,7 @@
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
+import mlx from "open-sse/providers/registry/mlx.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
@@ -837,6 +838,22 @@ export const PROVIDER_MODELS_CONFIG = {
       parseFn: parseGeminiCliModels,
       errorLabel: "Failed to fetch Antigravity CLI models"
     })
+  },
+  mlx: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const base = (connection.providerSpecificData?.baseUrl || mlx.transport.baseUrl).replace(/\/+$/, "");
+      try {
+        const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+        const response = await guardedProbeFetch(`${base}/models`, {
+          method: "GET", headers, cache: "no-store", signal: AbortSignal.timeout(8000)
+        }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
+        if (!response.ok) return { error: `Failed to fetch models: ${response.status}`, status: response.status };
+        return { models: parseOpenAIStyleModels(await response.json()) };
+      } catch (error) {
+        console.log("Error fetching models from mlx:", sanitizeErrorMessage(error?.message));
+        return { error: "Failed to fetch models", status: 500 };
+      }
+    }
   },
   "ollama-local": {
     customResolver: async (connection, proxyOptions = null) => {

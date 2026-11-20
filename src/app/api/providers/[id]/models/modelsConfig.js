@@ -275,6 +275,10 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
+  "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
+  "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
+  "xiaomi-tokenplan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
   commandcode: {
     customResolver: async (connection, proxyOptions) => {
       if (!connection.apiKey) return { error: "No valid token found", status: 401 };

@@ -2,7 +2,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
-import { PROVIDERS } from "open-sse/config/providers.js";
+import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
@@ -114,6 +114,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
   if (!token) return { error: "No valid token found", status: 401 };
 
   let url = config.url;
+  if (connection.provider === "xiaomi-tokenplan") url = `${resolveXiaomiTokenplanBaseUrl(connection)}/models`;
   if (connection.provider === "qwen") url = resolveQwenModelsUrl(connection);
   if (connection.provider === "kimi-web") url = resolveKimiWebModelsUrl(connection);
   if (config.authQuery) url += `?${config.authQuery}=${token}`;

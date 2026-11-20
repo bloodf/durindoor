@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   acquirePayloadAdmission,
   estimatePayloadBytes,
@@ -20,6 +20,15 @@ afterEach(() => {
 });
 
 describe("estimatePayloadBytes", () => {
+  it("rejects unmeasurable payloads without admitting capacity", () => {
+    const body = {};
+    body.self = body;
+    expect(() => acquirePayloadAdmission({ body })).toThrow(
+      expect.objectContaining({ reason: ADMISSION_REJECTION_REASONS.PAYLOAD_TOO_LARGE, status: 413 })
+    );
+    expect(getPayloadAdmissionStats()).toMatchObject({ activeBytes: 0, activeRequests: 0, queuedRequests: 0 });
+  });
+
   it("handles null, undefined, strings, numbers, and JSON objects", () => {
     expect(estimatePayloadBytes(null)).toBe(0);
     expect(estimatePayloadBytes(undefined)).toBe(0);
@@ -199,6 +208,24 @@ describe("concurrencyGate acquireMany integration with payload admission", () =>
     expect(getPayloadAdmissionStats().activeStreams).toBe(0);
   });
 
+  it("rolls back payload and earlier tiers when a later tier aborts", async () => {
+    const blocker = await acquireMany([{ key: "provider", limit: 1 }]);
+    const controller = new AbortController();
+    const pending = acquireMany(
+      [{ key: "global", limit: 1 }, { key: "provider", limit: 1 }],
+      5000, controller.signal, { payloadBytes: 40, stream: true }
+    );
+    // Allow the dynamic import and both acquisition stages to run.
+    await vi.waitFor(() => expect(getGateStats().provider?.queued).toBe(1));
+    expect(getGateStats().global.current).toBe(1);
+    expect(getPayloadAdmissionStats()).toMatchObject({ activeBytes: 40, activeStreams: 1 });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(getGateStats()).toEqual({ provider: { current: 1, queued: 0 } });
+    expect(getPayloadAdmissionStats()).toMatchObject({ activeBytes: 0, activeStreams: 0, activeRequests: 0 });
+    blocker();
+  });
+
   it("rolls back payload lease if a subsequent concurrency gate tier fails", async () => {
     // Fill provider concurrency gate
     const fillRelease = await acquireMany([{ key: "openai", limit: 1 }]);
@@ -221,6 +248,21 @@ describe("concurrencyGate acquireMany integration with payload admission", () =>
 });
 
 describe("payload queue ownership", () => {
+  it("preserves FIFO and admits the next fitting waiter when the head aborts", async () => {
+    const limits = { maxPayloadBytes: 100 };
+    const held = await acquirePayloadAdmission({ payloadBytes: 80, limits });
+    const controller = new AbortController();
+    const head = acquirePayloadAdmission({ payloadBytes: 30, limits, signal: controller.signal });
+    const tail = acquirePayloadAdmission({ payloadBytes: 10, limits });
+    expect(getPayloadAdmissionStats()).toMatchObject({ activeBytes: 80, queuedRequests: 2 });
+    controller.abort();
+    await expect(head).rejects.toMatchObject({ name: "AbortError" });
+    const admitted = await tail;
+    expect(getPayloadAdmissionStats()).toMatchObject({ activeBytes: 90, queuedRequests: 0 });
+    admitted.release();
+    held.release();
+  });
+
   it("uses the waiter's budget when another lease releases", async () => {
     const first = await acquirePayloadAdmission({ payloadBytes: 80, limits: { maxPayloadBytes: 100 } });
     const second = await acquirePayloadAdmission({ payloadBytes: 10, limits: { maxPayloadBytes: 100 } });

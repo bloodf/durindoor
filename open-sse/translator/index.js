@@ -69,6 +69,7 @@ function detectClientLastRole(body) {
 // Translate request: source -> openai -> target. `translationContext` carries
 // request-scoped routing intent (never serialized into the provider body).
 const isGeminiRequestSource = (format) => format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI;
+const isGeminiFamilyTarget = (format) => isGeminiRequestSource(format) || format === FORMATS.ANTIGRAVITY || format === FORMATS.VERTEX;
 
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
@@ -225,6 +226,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
            */
           if ((sourceFormat === FORMATS.OPENAI_RESPONSES || isGeminiRequestSource(sourceFormat)) && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);
+          }
+          // Responses developer items survive the pivot with role "developer", which the
+          // Gemini converters skip. Promote them to system so they land in systemInstruction.
+          if (sourceFormat === FORMATS.OPENAI_RESPONSES && isGeminiFamilyTarget(targetFormat) && Array.isArray(result?.messages)) {
+            result.messages = result.messages.map((message) => message?.role === ROLE.DEVELOPER ? { ...message, role: ROLE.SYSTEM } : message);
           }
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);

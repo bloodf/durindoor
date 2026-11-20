@@ -115,6 +115,18 @@ describe("Cursor live model catalog", () => {
     expect(http2Mock.connect).not.toHaveBeenCalled();
   });
 
+  it("keeps proxy-bound lookups separate from the direct catalog cache", async () => {
+    stubH2(200, concat(model("claude-4.6-opus", "Claude 4.6 Opus")));
+    const credentials = { accessToken: "cursor-token", providerSpecificData: { machineId: "machine-id" } };
+    const direct = { proxyOptions: { disableEnvProxy: true } };
+    const proxied = { proxyOptions: { connectionProxyEnabled: true, connectionProxyUrl: "http://127.0.0.1:9" } };
+
+    await expect(resolveCursorModels(credentials, proxied)).resolves.toBeNull();
+    await expect(resolveCursorModels(credentials, direct)).resolves.toEqual({ models: [{ id: "claude-4.6-opus", name: "Claude 4.6 Opus" }] });
+    await expect(resolveCursorModels(credentials, proxied)).resolves.toBeNull();
+    expect(http2Mock.connect).toHaveBeenCalledTimes(1);
+  });
+
   it("fails open when the Cursor catalog request fails", async () => {
     stubH2(403, "no");
 

@@ -61,6 +61,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
+| `t3-web` | T3ChatWebExecutor | `./t3-chat-web.js` |
+| `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
@@ -71,6 +73,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xai` | XaiExecutor | `./xai.js` |
 | `xiaomi-mimo` | XiaomiMimoExecutor | `./xiaomi-mimo.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
+| `ybw` | YuanbaoWebExecutor | `./yuanbao-web.js` |
+| `yuanbao-web` | YuanbaoWebExecutor | `./yuanbao-web.js` |
 | `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 | `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 
@@ -246,6 +250,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kilocode` |  | oauth | `https://api.kilo.ai/api/openrouter/chat/completions` |
 | `kimchi` | openai | oauth | `https://llm.kimchi.dev/openai/v1/chat/completions` |
 | `kimi` | claude | apikey | `https://api.moonshot.ai/anthropic/v1/messages` |
+| `kimi-ai` | openai | oauth | `https://api.kimi.ai/coding/v1/chat/completions` |
 | `kimi-coding` | claude | oauth | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding-apikey` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-web` | openai | webCookie | `https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat` |

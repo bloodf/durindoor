@@ -13,13 +13,11 @@ import {
 } from "recharts";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
+import { formatCompactToken } from "@/shared/utils/formatCompact";
 import { createLatestRequestGuard } from "@/shared/utils/requestFreshness";
 
-const fmtTokens = (n) => {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return String(n || 0);
-};
+// Chart labels use the same compact units as the other usage surfaces.
+export const fmtTokens = (n) => formatCompactToken(n).display;
 
 const fmtCost = (n) => `$${(n || 0).toFixed(4)}`;
 

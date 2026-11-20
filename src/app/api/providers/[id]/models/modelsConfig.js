@@ -7,6 +7,8 @@ import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
+import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
@@ -275,6 +277,10 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
+  "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
+  "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
+  "xiaomi-tokenplan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
   commandcode: {
     customResolver: async (connection, proxyOptions) => {
       if (!connection.apiKey) return { error: "No valid token found", status: 401 };
@@ -362,13 +368,47 @@ export const PROVIDER_MODELS_CONFIG = {
     parseResponse: parseCodexModels
   },
   antigravity: {
-    url: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models",
+    // The per-account Hub catalog replaces the stale sandbox models endpoint.
+    url: "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+      "X-Client-Name": "antigravity",
+      "X-Client-Version": ANTIGRAVITY_IDE_VERSION
+    },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     body: {},
-    parseResponse: (data) => data.models || []
+    parseResponse: (data) => Object.entries(data?.models || {})
+      .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
+      .map(([id, info]) => ({
+        id, name: info?.displayName || id,
+        contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
+        supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
+      }))
+  },
+  // Enterprise discovery must use the connection's scoped token and tenant host.
+  "ghe-copilot": {
+    customResolver: async (connection, proxyOptions = null) => {
+      const data = connection.providerSpecificData || {};
+      const base = resolveGheCopilotApiBase(data);
+      if (!base || !data.copilotToken) return { error: "Enterprise Copilot token or host missing; reconnect or refresh the connection", status: 401 };
+      const response = await proxyAwareFetch(`${base}/models`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${data.copilotToken}`,
+          "Copilot-Integration-Id": "vscode-chat",
+          "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
+          "editor-plugin-version": `copilot-chat/${GITHUB_COPILOT.COPILOT_CHAT_VERSION}`,
+          "user-agent": GITHUB_COPILOT.USER_AGENT,
+          "x-github-api-version": GITHUB_COPILOT.API_VERSION
+        },
+        cache: "no-store"
+      }, proxyOptions);
+      if (!response.ok) return { error: `Enterprise Copilot models request failed: ${response.status}`, status: response.status };
+      return { models: parseOpenAIStyleModels(await response.json()) };
+    }
   },
   github: {
     customResolver: async (connection, proxyOptions = null) => {

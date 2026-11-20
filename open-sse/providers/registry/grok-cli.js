@@ -88,6 +88,9 @@ export default {
     { id: "grok-4.5-low", name: "Grok 4.5 (Low)", upstreamModelId: "grok-4.5", contextLength: 500000 },
     // Grok 4.7 is the Grok Build default and takes the same effort levels as 4.6.
     { id: "grok-4.7", name: "Grok 4.7", contextLength: 500000 },
+    // Accepted by the CLI proxy although absent from its model discovery.
+    { id: "grok-4.7-build-fast", name: "Grok 4.7 Build Fast", contextLength: 500000 },
+    { id: "grok-code-fast-1", name: "Grok Code Fast 1" },
     { id: "grok-4.7-xhigh", name: "Grok 4.7 (XHigh)", upstreamModelId: "grok-4.7", contextLength: 500000 },
     { id: "grok-4.7-high", name: "Grok 4.7 (High)", upstreamModelId: "grok-4.7", contextLength: 500000 },
     { id: "grok-4.7-medium", name: "Grok 4.7 (Medium)", upstreamModelId: "grok-4.7", contextLength: 500000 },

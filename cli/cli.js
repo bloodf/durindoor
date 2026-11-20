@@ -216,7 +216,7 @@ function killCloudflaredByAppPort(appPort) {
   try {
     // Shares the safe scan (pid column, verified candidates, ancestors excluded)
     // and only keeps the tunnels pointed at this app's port.
-    pids = collectAppPids().filter((pid) => {
+    pids = collectAppPids({ appDir: path.join(__dirname, "app") }).filter((pid) => {
       const cmd = readCommand(pid) || "";
       return cmd.includes("cloudflared") && portMatchers.some((m) => cmd.includes(m));
     });
@@ -253,7 +253,7 @@ function killAllAppProcesses(appPort, scanProcesses = true) {
       // See src/lib/processScan.js for why that matters.
       let pids = [];
       try {
-        pids = collectAppPids();
+        pids = collectAppPids({ appDir: path.join(__dirname, "app") });
       } catch {
         // No processes found or error - continue
       }

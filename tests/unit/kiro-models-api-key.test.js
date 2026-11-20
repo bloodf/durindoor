@@ -8,6 +8,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: mocks.proxyAwareFetch,
 }));
 
+import { buildKiroIdentityHeaders } from "../../open-sse/shared/kiroHeaders.js";
 import {
   clearKiroModelCache,
   resolveKiroModels,
@@ -33,6 +34,15 @@ describe("Kiro API-key model discovery", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("uses the shared Kiro identity for model discovery", async () => {
+    const credentials = { accessToken: "key", providerSpecificData: { authMethod: "api_key" } };
+    await resolveKiroModels(credentials, { forceRefresh: true });
+    const headers = mocks.proxyAwareFetch.mock.calls[0][1].headers;
+    expect(headers["User-Agent"]).toBe(buildKiroIdentityHeaders(credentials)["User-Agent"]);
+    expect(headers["x-amz-user-agent"]).toBe(buildKiroIdentityHeaders(credentials)["x-amz-user-agent"]);
+    expect(headers.Authorization).toBe("Bearer key");
   });
 
   it("removes outer abort listener after Kiro model fetch settles successfully", async () => {

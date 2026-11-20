@@ -1,3 +1,4 @@
+import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapability.js";
@@ -1087,6 +1088,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // finally (success, terminal error, abort, or throw) so one logical request
   // = one row and retries never double-count.
   let lastTokenSaverEvent = null;
+  let accountAttempts = 0;
   try {
     while (true) {
       if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
@@ -1288,6 +1290,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboName: comboRouting?.name || null,
         quotaReservation,
         onProviderAttempt: () => {
+          accountAttempts++;
           latestAttemptStartedAt = allocateProviderAttemptTimestamp();
           return latestAttemptStartedAt;
         },
@@ -1415,9 +1418,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
 
       if (result.success) {
-        if (earlyEofOriginal || preferredConnectionId) return result.response;
+        if (earlyEofOriginal || preferredConnectionId) return withRouteResponseHeaders(result.response, { provider, model, attempts: Math.max(1, accountAttempts) });
         const held = await holdForEarlyEof(result.response);
-        if (!held.failed || requestAborted(request, requestSignal)) return held.response;
+        if (!held.failed || requestAborted(request, requestSignal)) return withRouteResponseHeaders(held.response, { provider, model, attempts: Math.max(1, accountAttempts) });
         log.warn("STREAM", `[${provider}/${model}] ACC:${credentials.connectionId.slice(0, 8)} stream ended before any content; trying one sibling`);
         earlyEofOriginal = held.response;
         excludeConnectionIds.add(credentials.connectionId);

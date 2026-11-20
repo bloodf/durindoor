@@ -23,7 +23,7 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
+const portedProviders = ["chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "t3-web", "veoaifree-web", "yuanbao-web"];
 const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
@@ -43,7 +43,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("ports completed web-session providers to real executors", async () => {
-    for (const provider of ["copilot-web", "copilot-m365-web", "duckduckgo-web"]) {
+    for (const provider of ["copilot-web", "copilot-m365-web", "duckduckgo-web", "t3-web"]) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});

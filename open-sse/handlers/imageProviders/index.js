@@ -28,6 +28,7 @@ const ADAPTERS = {
   openrouter: createOpenAIAdapter("openrouter"),
   "sensenova-intl": createOpenAIAdapter("sensenova-intl"),
   venice: createOpenAIAdapter("venice"),
+  nan: createOpenAIAdapter("nan"),
   recraft: createOpenAIAdapter("recraft"),
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
   together,

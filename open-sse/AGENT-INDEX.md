@@ -290,6 +290,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `muse-code` | openai-responses | oauth | `https://api.meta.ai/v1/responses` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `naga-ac` |  | apikey | `https://api.naga.ac/v1/chat/completions` |
+| `nan` |  | apikey | `https://api.nan.builders/v1/chat/completions` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |
 | `nara` |  | apikey | `https://router.bynara.id/v1/chat/completions` |

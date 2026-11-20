@@ -11,7 +11,7 @@ const OPENAI_COMPAT_PROVIDERS = [
   "paraloncloud",
   "openai", "openrouter", "mistral", "voyage-ai", "fireworks",
   "together", "nebius", "nvidia", "jina-ai",
-  "vercel-ai-gateway", "venice",
+  "vercel-ai-gateway", "venice", "nan",
 ];
 
 const ADAPTERS = {

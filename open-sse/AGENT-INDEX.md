@@ -239,6 +239,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `inner-ai` | openai | apikey | `https://chatapi.innerai.com/chat` |
 | `internlm` | openai | apikey | `https://chat.intern-ai.org.cn/api/v1/chat/completions` |
 | `inworld` |  | apikey | `` |
+| `jembatanai` |  | apikey | `https://freeai.jembatanai.com/v1/chat/completions` |
 | `jina-ai` |  | apikey | `` |
 | `jina-reader` |  | apikey | `` |
 | `kenari` |  | apikey | `https://kenari.id/v1/chat/completions` |

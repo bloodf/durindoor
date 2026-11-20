@@ -1,0 +1,175 @@
+---
+title: Network LLM servers
+description: Point DurinDoor at Ollama hosts and LAN OpenAI-compatible servers by base URL, run several with failover, and use opt-in LAN discovery.
+---
+
+DurinDoor can serve models from a machine on your network instead of a cloud vendor. Two shapes cover most setups:
+
+- Ollama hosts. Provider `ollama-local`, one connection per host, each with its own base URL.
+- OpenAI-compatible servers. llama.cpp, vLLM, LM Studio, LocalAI, or another DurinDoor instance, reached by base URL.
+
+The API key is optional on every server on this page. Save one only when the upstream checks it.
+
+## Network Ollama by base URL
+
+`ollama-local` talks to `http://localhost:11434` until a connection sets its own base URL.
+
+<Steps>
+<Step>
+Open Dashboard, then Providers, then the Ollama Local card, and add a connection.
+</Step>
+<Step>
+Set **Ollama Host URL** to the network Ollama server, for example `http://192.168.1.20:11434`. Only `http` and `https` are accepted. A trailing `/api/chat`, `/v1`, or `/api` path is removed and any query string or fragment is dropped, so `http://nas.local:11434/v1` reaches the same server as `http://nas.local:11434`.
+An invalid configured URL is rejected for both chat and Messages requests.
+</Step>
+<Step>
+Leave the API key empty unless your Ollama build checks one. Ollama ignores keys, and DurinDoor sends `Authorization: Bearer` only when a key is saved.
+</Step>
+<Step>
+Save the connection, then send `ollama-local/<model>` with the model id from `GET /v1/models`.
+</Step>
+</Steps>
+
+The health probe for an Ollama connection is `GET {baseUrl}/api/tags`, with a 5 second timeout. Model discovery reads the native Ollama endpoints (`/api/tags`, `/api/show`, `/api/ps`) for each saved host, so every host contributes its own model list and its own context limits.
+
+### Several Ollama hosts
+
+Add one connection per host. Each connection keeps its own base URL, so `ollama-local` can reach a workstation, a NAS, and a rack server at the same time.
+
+Routing is model aware. When a request names a model, DurinDoor reads the discovered catalog of each host:
+
+- a host whose catalog lists the model is eligible and comes first;
+- a host whose catalog could not be read stays eligible, behind the confirmed hosts;
+- a host whose catalog is known and does not list the model is not eligible.
+
+When no host confirms the model, the selection order is left as it was, so an unreachable catalog cannot take every host out of rotation.
+
+Which eligible host serves the request follows the provider selection strategy: fill-first by priority by default, with round-robin and the other strategies available. See [Smart routing](../features/smart-routing.mdx).
+
+## LAN OpenAI-compatible servers by base URL
+
+DurinDoor ships registry ids for the common self-hosted servers. Each one is an OpenAI-compatible provider whose default base URL points at localhost:
+
+| Provider id | Display name | Default base URL |
+| --- | --- | --- |
+| `llama-cpp` | llama.cpp | `http://127.0.0.1:8080/v1` |
+| `vllm` | vLLM | `http://localhost:8000/v1` |
+| `lm-studio` | LM Studio | `http://localhost:1234/v1` |
+| `9router` | 9router | `http://127.0.0.1:20130/v1` |
+
+`9router` is the local 9router style service. It is not the DurinDoor process, which listens on 20128.
+
+Any other server, including LocalAI and another DurinDoor instance, is a provider node rather than a registry id. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
+
+### Point a registry id at a network server
+
+The connection form for these ids has no URL field, so set the base URL through the API. The value is stored per connection as `providerSpecificData.baseUrl` and overrides the localhost default:
+
+```bash
+curl -X POST http://localhost:20128/api/providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_ADMIN_API_KEY' \
+  -d '{
+    "provider": "vllm",
+    "name": "vllm in the server room",
+    "apiKey": "",
+    "providerSpecificData": { "baseUrl": "http://192.168.1.30:8000/v1" }
+  }'
+```
+
+Send an empty key or leave it out. DurinDoor sends no `Authorization` header when no key is saved, so a server that does not check auth works as is. Use `PUT /api/providers/{id}` with the same `providerSpecificData` to change a saved base URL later. Changing the URL of a saved connection needs operator access: a dashboard session, a machine-bound CLI token, or the open local dashboard. The management API also accepts an admin-scoped DurinDoor API key for the create call. See [Management API](../reference/management-api.mdx).
+
+### Point a node at a network server
+
+LocalAI, another DurinDoor instance, or any other OpenAI-compatible server works as a provider node. Open Dashboard, then Providers, then **Custom Providers (OpenAI/Anthropic Compatible)**, then **Add OpenAI Compatible**. Set the base URL to the server's `/v1` root, for example `http://localai.internal:8080/v1` for LocalAI or `http://192.168.1.40:20128/v1` for another DurinDoor instance.
+
+Give the node a prefix. Clients request `prefix/model`, so `oc-lab/qwen2.5-coder` reaches that server. The key on the connection is optional; add a DurinDoor client API key when the other instance requires one.
+
+The node base URL is copied into every connection created for it, and the `GET /v1/models` catalog of that server is what the gateway publishes for the prefix.
+
+### Health and model discovery
+
+The health probe for these servers is `GET {baseUrl}/models` with a 5 second timeout. The same endpoint feeds model discovery, and a keyless server is listed without any credential. Results are cached for 5 minutes per connection, base URL, and credential.
+
+## Several servers with failover
+
+Failover works at two levels.
+
+**Inside one provider.** Several Ollama connections, or several connections for the same registry id, share one provider. When the selected connection fails in a way that points at that connection, such as a rate limit, an unauthorized answer, or an upstream error, routing tries the next eligible connection for the same provider and model. Priority decides the fill-first order. See [Error rules and egress cooldown](../features/error-rules-and-egress-cooldown.mdx).
+
+**Across providers.** Ollama, vLLM, LM Studio, and a LocalAI node are different providers, so a combo is what links them. Create a combo whose members are the model ids from `GET /v1/models`:
+
+```json
+{
+  "name": "lan-coder",
+  "models": [
+    "ollama-local/qwen2.5-coder",
+    "vllm/qwen2.5-coder",
+    "oc-lab/qwen2.5-coder"
+  ]
+}
+```
+
+Clients then send `model: "lan-coder"`. The default combo strategy is `fallback`: members are tried in the saved order, and the next member runs only when the current one fails. `round-robin`, `weighted`, `smart-scoring`, and `smart` are available too. See [Combos](../features/combos.mdx).
+
+## LAN discovery
+
+The **Discover on LAN** panel on the Providers page scans for Ollama and OpenAI-compatible endpoints and lists what it finds. Nothing is scanned until you press Discover, and nothing is created until you press **Add connection** or **Add node**.
+
+### Turning it on
+
+Discovery is off by default. The scan needs the `lanDiscoveryEnabled` setting and an operator session, so the setting itself can only be changed by a signed-in dashboard operator or a machine-bound CLI token. An inference API key alone is refused for this setting. With the setting off, the panel says so and the scan request is refused.
+
+```bash
+curl -X PATCH http://localhost:20128/api/settings \
+  -H 'Content-Type: application/json' \
+  -H 'x-9r-cli-token: YOUR_CLI_TOKEN' \
+  -d '{"lanDiscoveryEnabled": true}'
+```
+
+### What it scans
+
+Give either a list of hosts or one CIDR range, never both:
+
+- Hosts are bare hostnames or IPv4 addresses, separated by spaces or commas. A scheme, a port, or a path inside a host entry is rejected.
+- A CIDR is IPv4 only, with a prefix from 0 to 32, and expands to at most 256 addresses.
+- Ports default to `11434`, `8000`, `8080`, `1234`, and `20128`. A custom list is allowed, with at most 8 ports between 1 and 65535.
+
+For every host and port the scan probes `GET /api/tags` for Ollama and `GET /v1/models` for an OpenAI-compatible server. Each probe times out after 1.5 seconds, and at most 32 probes run at the same time.
+
+A candidate you add becomes an `ollama-local` connection with that base URL, or an OpenAI-compatible node with the prefix `lan-<host>-<port>`.
+
+### Limits worth knowing
+
+- The probes are unauthenticated. A server that answers `401` on `/v1/models` does not appear as a candidate, so a server that checks a key has to be added by base URL instead.
+- Only `http` is probed, and only IPv4 addresses are scanned.
+- The scan covers the hosts and ports you name. It does not look for servers on other subnets.
+- The outbound URL guard applies to the probes, so a blocked host is skipped instead of reported. See the next section.
+
+## Outbound URL guard
+
+Every provider probe, model discovery request, and LAN discovery probe goes through the outbound URL guard. The default mode is local-first: LAN and localhost hosts are allowed, while cloud metadata hostnames and the `169.254.0.0/16` link-local range are blocked. DNS answers are validated too, so a public name that resolves to a private address is refused.
+
+These environment variables change the mode. See [Environment variables](../reference/environment.mdx) for the full list.
+
+| Variable | Value | Effect |
+| --- | --- | --- |
+| `OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS` | unset | Default. LAN and localhost provider URLs are allowed. |
+| `OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS` | `false`, `0`, `no`, `off` | Strict mode: every private or LAN host is blocked, so network servers stop working. |
+| `OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS` | `1`, `true`, `yes`, `on` | Full opt-in: no host checks at all, including the metadata block. |
+| `OUTBOUND_SSRF_GUARD_ENABLED` | `false`, `0`, `no`, `off` | Legacy spelling of the same full opt-in. |
+
+Only turn the guard off for a target you trust. Under the full opt-in no check runs, so the guard no longer protects the metadata endpoints either.
+
+## Verify
+
+After saving, list the models and send a short request:
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+Confirm the provider and the account on **Usage**. A saved connection and a successful probe do not prove that chat, streaming, or tools work on that server.
+
+Related pages: [OpenAI-compatible nodes](./openai-compatible-nodes.mdx), [Free and local](./free-and-local.mdx), [Local router providers](./local-router-providers.mdx).

@@ -68,7 +68,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isCookie = authType === "cookie";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
-  const credentialLabel = isCookie ? "Cookie Value" : "API Key";
+  // Compatible nodes are often keyless LAN endpoints, so their key is optional.
+  const keyOptional = credentialOptional || isCompatible;
+  const credentialLabel = isCookie ? "Cookie Value" : keyOptional ? "API key (optional)" : "API Key";
   const credentialPlaceholder = isCookie ?
   provider === "grok-web" ? "sso=xxxxx... or just the raw value" : "eyJhbGciOi..." :
   isXaiApiKey ? "xai-..." : "";
@@ -164,7 +166,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const sessionToken = usesAwsCredentialForm && awsData.sessionToken.trim() ? awsData.sessionToken.trim() : undefined;
 
   const apiKeySatisfied = () =>
-  credentialOptional ||
+  keyOptional ||
   !!formData.apiKey ||
   !!(apiKeyOptionalWith && buildProviderSpecificData()?.[apiKeyOptionalWith]);
 

@@ -112,7 +112,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           baseUrl: formData.baseUrl,
-          apiKey: checkKey,
+          ...(checkKey ? { apiKey: checkKey } : null),
           type: config.type,
           modelId: checkModelId.trim() || undefined,
         }),
@@ -191,7 +191,8 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         />
 
         <Input
-          label="API Key (for Check)"
+          label="API key (optional)"
+          hint="Leave blank for a LAN or local node that needs no key."
           type="password"
           value={checkKey}
           onChange={(e) => setCheckKey(e.target.value)}
@@ -208,7 +209,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
             onClick={handleValidate}
-            disabled={!checkKey || validating || !formData.baseUrl.trim()}
+            disabled={validating || !formData.baseUrl.trim()}
             variant="secondary"
             className="w-full sm:w-auto"
           >

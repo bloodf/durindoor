@@ -45,7 +45,8 @@ describe.each(["openai", "anthropic"])("%s compatible Check announcement", (vari
     })));
     const dialog = document.body.querySelector("dialog");
     expect(dialog.open).toBe(true);
-    expect(button(dialog, "Check").disabled).toBe(true);
+    // The API key is optional, so the prefilled base URL alone is enough to Check.
+    expect(button(dialog, "Check").disabled).toBe(false);
     expect(button(dialog, "Create").disabled).toBe(true);
     expect(dialog.querySelector('[role="alert"]')).toBeNull();
     const key = [...dialog.querySelectorAll("input")].find((input) => input.type === "password");
@@ -85,5 +86,24 @@ describe.each(["openai", "anthropic"])("%s compatible Check announcement", (vari
       expect(alert, "Check failure must request an announcement").not.toBeNull();
       expect(alert.textContent).toBe(`Invalid${message}`);
     }
+  });
+});
+
+describe.each(["openai", "anthropic"])("%s compatible Check without an API key", (variant) => {
+  it("labels the key optional and posts no key", async () => {
+    const fetch = vi.fn(async () => ({ json: async () => ({ valid: true }) }));
+    vi.stubGlobal("fetch", fetch);
+    await act(async () => root.render(React.createElement(AddCompatibleModal, {
+      variant, isOpen: true, onClose: vi.fn(), onCreated: vi.fn(),
+    })));
+    const dialog = document.body.querySelector("dialog");
+    expect(dialog.textContent).toContain("API key (optional)");
+    expect(button(dialog, "Check").disabled).toBe(false);
+    await act(async () => button(dialog, "Check").click());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty("apiKey");
+    expect(body.baseUrl).toBeTruthy();
+    expect(dialog.textContent).toContain("Valid");
   });
 });

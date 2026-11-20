@@ -29,6 +29,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
+import LanDiscoveryPanel from "./components/LanDiscoveryPanel";
 import { getProviderStatus, getFreeAuthTypes, matchesProviderSearch, matchesProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 import { testSummaryToast } from "./testSummaryToast";
 
@@ -503,6 +504,8 @@ export default function ProvidersPage() {
           </div>
         }
       </div>
+
+      <LanDiscoveryPanel onAdded={fetchData} />
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 &&

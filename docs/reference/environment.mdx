@@ -103,6 +103,8 @@ Dashboard proxy settings write `NINE_ROUTER_PROXY_MANAGED` plus the matching URL
 
 Prefer dashboard proxy settings for day-to-day use. Use process-level vars for container egress.
 
+The default guard mode is local-first: LAN and localhost provider URLs are allowed, and only cloud metadata and link-local destinations are blocked. A network Ollama host or a LAN OpenAI-compatible server therefore works without any of these variables. Setting `OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS` to a false value blocks every private host, and `OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS` (or the legacy `OUTBOUND_SSRF_GUARD_ENABLED=false`) turns the guard off entirely. See [Network LLM servers](../providers/network-llm-servers.mdx).
+
 ## Timeouts and stream bounds
 
 Most timeout variables parse an integer greater than zero. Invalid or nonpositive values use the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off.

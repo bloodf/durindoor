@@ -242,7 +242,7 @@ export function openaiToClaudeResponse(chunk, state) {
       results.push({
         type: "content_block_start",
         index: state.thinkingBlockIndex,
-        content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "" }
+        content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" }
       });
     }
 

@@ -30,6 +30,12 @@ import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
 import { withCodexReviewModels } from "open-sse/providers/models/helpers.js";
+import {
+  DOTHOOSH_ANTHROPIC_MODELS_URL,
+  DOTHOOSH_OPENAI_MODELS_URL,
+  dotHooshListingHeaders,
+  mergeDotHooshListings
+} from "open-sse/providers/dothooshCatalog.js";
 
 const KIMI_WEB_MODELS_PATH = "/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels";
 
@@ -157,6 +163,48 @@ export const createOpenAIModelsConfig = (url) => ({
   authPrefix: "Bearer ",
   parseResponse: parseOpenAIStyleModels
 });
+
+/**
+ * Read one DotHoosh listing.
+ *
+ * The provider publishes two listings: the OpenAI path (/v1/models) and the
+ * Anthropic path (/anthropic/v1/models). A model is served on the paths it is
+ * verified for, so a model that only the Anthropic path lists never appears
+ * in the OpenAI listing. Both are read and merged.
+ *
+ * The key only ever travels to the provider host: the OpenAI listing takes
+ * the bearer scheme, the Anthropic listing takes x-api-key only (the
+ * provider rejects a request that carries both auth headers).
+ *
+ * @param {string} url - listing URL on the provider host
+ * @param {"openai"|"anthropic"} listing - which listing is being read
+ * @param {string} apiKey - the connection's key
+ * @param {object|null} proxyOptions
+ * @returns {Promise<{ rows: object[], error?: string, status?: number }>}
+ */
+export async function fetchDotHooshListing(url, listing, apiKey, proxyOptions = null) {
+  try {
+    const response = await proxyAwareFetch(url, {
+      method: "GET",
+      headers: dotHooshListingHeaders(listing, apiKey),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000)
+    }, proxyOptions);
+    if (!response.ok) {
+      const text = await response.text();
+      return {
+        rows: [],
+        error: sanitizeErrorMessage(text || response.statusText),
+        status: response.status
+      };
+    }
+    const body = await response.json();
+    const rows = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : []);
+    return { rows };
+  } catch (error) {
+    return { rows: [], error: sanitizeErrorMessage(error?.message), status: 502 };
+  }
+}
 
 export const resolveQwenModelsUrl = (connection) => {
   const fallback = "https://portal.qwen.ai/v1/models";
@@ -515,6 +563,31 @@ export const PROVIDER_MODELS_CONFIG = {
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   hcnsec: createOpenAIModelsConfig("https://api.hcnsec.cn/v1/models"),
+  // DotHoosh publishes no static catalog: the model list is the provider's own
+  // listing, read per key. Both listings are merged so a model that only the
+  // Anthropic path serves is listed too.
+  dothoosh: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const apiKey = connection.apiKey;
+      if (!apiKey) return { error: "No valid token found", status: 401 };
+      const [openai, anthropic] = await Promise.all([
+        fetchDotHooshListing(DOTHOOSH_OPENAI_MODELS_URL, "openai", apiKey, proxyOptions),
+        fetchDotHooshListing(DOTHOOSH_ANTHROPIC_MODELS_URL, "anthropic", apiKey, proxyOptions)
+      ]);
+      const models = mergeDotHooshListings({ openai: openai.rows, anthropic: anthropic.rows });
+      if (!models.length) {
+        // One listing may be empty while the other answers; only a total
+        // failure is an error, and a rejected key is reported as such.
+        const failure = openai.error ? openai : anthropic;
+        const status = failure.status;
+        if (status === 401 || status === 403) {
+          return { error: "Invalid API key", status: 401 };
+        }
+        return { error: "DotHoosh returned no models", status: 502 };
+      }
+      return { models };
+    }
+  },
   kimchi: {
     customResolver: async (connection, proxyOptions = null) => {
       const result = await resolveKimchiModels({

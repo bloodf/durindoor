@@ -188,6 +188,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `digitalocean` |  | apikey | `https://inference.do-ai.run/v1/chat/completions` |
 | `dit` |  | apikey | `https://api.dit.ai/v1/chat/completions` |
 | `docker-model-runner` | openai | apikey | `http://localhost:12434/v1` |
+| `dothoosh` |  | apikey | `https://gateway.dothoosh.com/v1/chat/completions` |
 | `doubao` |  | apikey | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
 | `duckduckgo-web` | openai | free | `https://duckduckgo.com/duckchat/v1/chat` |
 | `dxnt` |  | apikey | `https://www.dxnt.com/v1/chat/completions` |

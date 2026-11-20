@@ -102,6 +102,9 @@ export function canDiscoverModels(connection) {
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
+      case "dothoosh":
+        // modelsConfig.js: the listing is read with the connection's key.
+        return Boolean(connection.apiKey);
       case "kiro":
         return Boolean(connection.accessToken);
       case "qoder":

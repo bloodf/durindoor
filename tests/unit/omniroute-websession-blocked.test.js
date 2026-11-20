@@ -23,7 +23,7 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
+const portedProviders = ["adapta-web", "chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
 const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
@@ -89,7 +89,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("preserves structured provider_port_pending error body through the upstream error parser", async () => {
-    const executor = getExecutor("adapta-web");
+    const executor = getExecutor("huggingchat");
     const { response } = await executor.execute({});
     const parsed = await parseUpstreamError(response, executor);
     expect(parsed.statusCode).toBe(501);
@@ -97,7 +97,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(parsed.errorBody).toMatchObject({
       error: {
         type: "provider_port_pending",
-        provider: "adapta-web",
+        provider: "huggingchat",
         sourceFiles: expect.any(Array),
       },
     });

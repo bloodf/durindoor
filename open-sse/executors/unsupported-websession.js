@@ -17,14 +17,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     detail: "runtime execution is not available",
     reason: "cloud-agent provider (kind: agent) with no chat transport — credential/catalog only",
   },
-  "adapta-web": {
-    aliases: ["adp-web"],
-    source: [
-      "open-sse/executors/adapta-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires the Adapta web-session bearer-token executor and credential validation flow",
-  },
   huggingchat: {
     aliases: [],
     source: [

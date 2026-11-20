@@ -1,3 +1,4 @@
+import { isString } from "../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
 
@@ -10,11 +11,11 @@ export function hasResponsesSnapshotOutput(payload) {
   return Array.isArray(payload?.response?.output) && payload.response.output.some((item) => {
     if (item?.type === "message" && Array.isArray(item.content)) {
       return item.content.some((part) =>
-        part?.type === "output_text" && typeof part.text === "string" && part.text.trim() ||
-        part?.type === "refusal" && typeof part.refusal === "string" && part.refusal.trim());
+        part?.type === "output_text" && isString(part.text) && part.text.trim() ||
+        part?.type === "refusal" && isString(part.refusal) && part.refusal.trim());
     }
     return ["function_call", "custom_tool_call"].includes(item?.type) &&
-      [item.name, item.arguments, item.input].some((value) => typeof value === "string" && value.trim());
+      [item.name, item.arguments, item.input].some((value) => isString(value) && value.trim());
   });
 }
 

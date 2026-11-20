@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getModelsByProviderId, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
+import { getModelsByProviderId, getModelUpstreamId, getModelUpstreamThinkingIntent } from "../../open-sse/config/providerModels.js";
 import { ANTIGRAVITY_QUOTA_MODELS } from "../../open-sse/services/usage/google.js";
 
 describe("Antigravity Gemini 4 Hydrogen catalog", () => {
@@ -12,5 +12,6 @@ describe("Antigravity Gemini 4 Hydrogen catalog", () => {
     expect(getModelUpstreamId("ag", "gemini-4-hydrogen")).toBe("gemini-4-hydrogen-medium");
     expect(getModelUpstreamId("ag", "gemini-4-hydrogen-high")).toBe("gemini-4-hydrogen-high");
     expect(getModelUpstreamId("ag", "gemini-4-hydrogen-xhigh")).toBe("gemini-4-hydrogen-xhigh");
+    expect(getModelUpstreamThinkingIntent("ag", "gemini-4-hydrogen-xhigh")).toEqual({ mode: "level", level: "xhigh" });
   });
 });

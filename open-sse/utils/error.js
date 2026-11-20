@@ -601,6 +601,10 @@ function isMissingModelError(errorText) {
  * statuses remain unchanged. Non-integer or out-of-range statuses fall back
  * to 503.
  *
+ * HTTP 524 is the one exception: only the client-facing projection is normalized to
+ * 502 — the internal status stays 524, so account-fallback classification and
+ * the persisted lock keep the original evidence.
+ *
  * @param {number|string|null|undefined} status - upstream status
  * @param {string|object|null|undefined} errorText - upstream error text or body
  * @returns {number} client-facing status
@@ -608,6 +612,7 @@ function isMissingModelError(errorText) {
 export function getClientStatusFromError(status, errorText = null) {
   const numericStatus = Number(status);
   if (numericStatus === 401 && isMissingModelError(errorText)) return 404;
+  if (numericStatus === 524) return HTTP_STATUS.BAD_GATEWAY;
   return Number.isInteger(numericStatus) && numericStatus >= 400 && numericStatus <= 599 ?
     numericStatus : HTTP_STATUS.SERVICE_UNAVAILABLE;
 }

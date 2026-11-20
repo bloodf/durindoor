@@ -943,7 +943,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
     if (!state.finishReasonSent) {
       const finishReason = eventType === "response.incomplete" ?
-      OPENAI_FINISH.LENGTH :
+      (data.response?.incomplete_details?.reason === "content_filter" ? OPENAI_FINISH.CONTENT_FILTER : OPENAI_FINISH.LENGTH) :
       computeFinishReason(state);
 
       state.finishReasonSent = true;

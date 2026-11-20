@@ -50,6 +50,7 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "github",
 "kiro",
 "kimi-coding",
+"kimi-ai",
 "kilocode",
 "codebuddy-cn",
 "qoder",
@@ -70,6 +71,8 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set([
 "kiro",
 "amazon-q",
 "ghe-copilot",
+"kimi-coding",
+"kimi-ai",
 // The Codex device poll needs the user code next to the device handle.
 "codex"
 ]);
@@ -77,7 +80,6 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set([
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
 "muse-code",
-"kimi-coding",
 "kilocode",
 "codebuddy-cn"]
 );

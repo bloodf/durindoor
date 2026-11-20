@@ -91,14 +91,11 @@ const PROVIDER_MODELS = {
   openai: [
     { id: "gpt-4o" },
     { id: "gpt-4o-mini" },
-    { id: "gpt-4-turbo" },
     { id: "o1" },
-    { id: "o1-mini" },
   ],
   anthropic: [
-    { id: "claude-sonnet-4-20250514" },
-    { id: "claude-opus-4-20250514" },
-    { id: "claude-3-5-sonnet-20241022" },
+    { id: "claude-sonnet-5-5" },
+    { id: "claude-opus-4-8" },
   ],
   gemini: [
     { id: "gemini-3.8-flash" },

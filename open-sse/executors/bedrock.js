@@ -40,7 +40,38 @@ function stripDataUrlPrefix(value) {
   return { format: match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase(), data: match[2] };
 }
 
-function textBlocksFromContent(content) {
+// Allocate one stable Bedrock-safe ID per history ID, reserving valid IDs first.
+function createToolIdNormalizer(messages) {
+  const ids = [];
+  for (const message of messages) {
+    if (message?.role === "tool") ids.push(message.tool_call_id);
+    for (const call of Array.isArray(message?.tool_calls) ? message.tool_calls : []) ids.push(call?.id);
+    for (const block of Array.isArray(message?.content) ? message.content : []) {
+      if (block?.type === "tool_use") ids.push(block.id);
+      if (block?.type === "tool_result") ids.push(block.tool_use_id);
+    }
+  }
+  const valid = /^[a-zA-Z0-9_-]{1,64}$/;
+  const used = new Set(ids.filter(isString).map((id) => id.trim()).filter((id) => valid.test(id)));
+  const mapped = new Map();
+  return (id) => {
+    if (!isString(id) || !id.trim()) return null;
+    id = id.trim();
+    if (valid.test(id)) return id;
+    if (mapped.has(id)) return mapped.get(id);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 0x01000193) >>> 0;
+    const base = `${id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48)}_${hash.toString(16).padStart(8, "0")}`;
+    let result = base;
+    let n = 0;
+    while (used.has(result)) result = `${base.slice(0, 60)}_${++n}`;
+    used.add(result);
+    mapped.set(id, result);
+    return result;
+  };
+}
+
+function textBlocksFromContent(content, normalizeId = (id) => id) {
   if (isString(content)) return content.trim() ? [{ text: content }] : [];
   if (!Array.isArray(content)) return [];
   const blocks = [];
@@ -71,10 +102,14 @@ function textBlocksFromContent(content) {
       }
       continue;
     }
-    if (type === "tool_result" && isString(p.tool_use_id)) {
+    if (type === "tool_use" && normalizeId(p.id) && isString(p.name)) {
+      blocks.push({ toolUse: { toolUseId: normalizeId(p.id), name: p.name, input: asRecord(p.input) } });
+      continue;
+    }
+    if (type === "tool_result" && normalizeId(p.tool_use_id)) {
       blocks.push({
         toolResult: {
-          toolUseId: p.tool_use_id,
+          toolUseId: normalizeId(p.tool_use_id),
           content: [{ text: toText(p.content) || " " }],
           status: p.is_error ? "error" : "success"
         }
@@ -110,10 +145,11 @@ function toolResultContentFromMessage(message) {
   return result.length > 0 ? result : [{ text: " " }];
 }
 
-function groupToolResults(messages) {
+function groupToolResults(messages, normalizeId) {
   const groups = [];
   for (const message of messages) {
     if (message?.role === "tool") {
+      if (!normalizeId(message.tool_call_id)) continue;
       const lastGroup = groups[groups.length - 1];
       if (lastGroup && lastGroup.role === "tool") {
         lastGroup.results.push(message);
@@ -130,7 +166,7 @@ function groupToolResults(messages) {
         role: "user",
         content: group.results.map((m) => ({
           toolResult: {
-            toolUseId: m.tool_call_id || `toolu_${randomUUID()}`,
+            toolUseId: normalizeId(m.tool_call_id),
             content: toolResultContentFromMessage(m),
             // Consume the bridge marker before sending Bedrock's native schema.
             status: m.is_error === true ? "error" : "success"
@@ -144,7 +180,8 @@ function groupToolResults(messages) {
 
 function messagesFromOpenAI(messages) {
   const converted = [];
-  for (const message of groupToolResults(messages)) {
+  const normalizeId = createToolIdNormalizer(messages);
+  for (const message of groupToolResults(messages, normalizeId)) {
     if (!message || !isObject(message)) continue;
     if (message.role === "system" || message.role === "developer") continue;
     if (message.role === "tool") {
@@ -153,7 +190,7 @@ function messagesFromOpenAI(messages) {
         content: [
         {
           toolResult: {
-            toolUseId: message.tool_call_id || `toolu_${randomUUID()}`,
+            toolUseId: normalizeId(message.tool_call_id),
             content: toolResultContentFromMessage(message),
             status: message.is_error === true ? "error" : "success"
           }
@@ -166,8 +203,10 @@ function messagesFromOpenAI(messages) {
       converted.push(message);
       continue;
     }
-    const content = textBlocksFromContent(message.content);
+    const content = textBlocksFromContent(message.content, normalizeId);
     for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
+      const toolUseId = normalizeId(call?.id);
+      if (!toolUseId) continue;
       const fn = asRecord(call.function);
       let input = {};
       try {
@@ -177,7 +216,7 @@ function messagesFromOpenAI(messages) {
       }
       content.push({
         toolUse: {
-          toolUseId: call.id || `toolu_${randomUUID()}`,
+          toolUseId,
           name: isString(fn.name) && fn.name ? fn.name : "unknown_tool",
           input
         }

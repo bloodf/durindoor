@@ -39,7 +39,7 @@ import {
   buildKiroModelVariants,
   stripKiroSyntheticSuffixes } from
 "../providers/models/kiroVariants.js";
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
@@ -377,7 +377,8 @@ function cacheKey(credentials) {
 /**
  * Resolve the live Kiro model catalog for a credential and expand each entry
  * into 9router variants (`-thinking`, `-agentic`, `-thinking-agentic`). Each
- * variant retains the upstream input and output token limits.
+ * variant retains valid upstream input and output token limits. Missing or
+ * invalid input limits are omitted so catalog capabilities remain authoritative.
  *
  * On any error (network, 4xx, 5xx), returns `null` so callers can fall back
  * to the static catalog without taking down the dashboard or `/v1/models`.
@@ -466,14 +467,15 @@ export async function resolveKiroModels(credentials, options = {}) {
     const upstreamId = m.modelId || m.id;
     if (!upstreamId) continue;
     const display = formatDisplayName(m.modelName, upstreamId, m.rateMultiplier);
-    const ctx = Number(m?.tokenLimits?.maxInputTokens) || 200_000;
+    const inputLimit = m?.tokenLimits?.maxInputTokens;
+    const ctx = isNumber(inputLimit) || isString(inputLimit) ? Number(inputLimit) : NaN;
     const maxOutputTokens = Number(m?.tokenLimits?.maxOutputTokens) || null;
     for (const v of buildVariants(upstreamId, display)) {
       expanded.push({
         ...v,
         // Carry over context window + raw upstream metadata so the caller
         // (e.g. the dashboard models endpoint) can render it.
-        contextLength: ctx,
+        ...(Number.isFinite(ctx) && ctx > 0 ? { contextLength: ctx } : null),
         ...(maxOutputTokens ? { maxOutputTokens } : null),
         rateMultiplier: Number.isFinite(Number(m.rateMultiplier)) ? Number(m.rateMultiplier) : 1.0,
         upstreamModelId: upstreamId,

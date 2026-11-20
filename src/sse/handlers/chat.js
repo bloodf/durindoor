@@ -1,3 +1,4 @@
+import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
@@ -85,7 +86,7 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject, isString } from "../../shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -462,7 +463,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   if (apiKey) {
     let limitStatus;
     try {
-      limitStatus = await getApiKeyUsageLimitStatus(apiKey);
+      limitStatus = await getApiKeyUsageLimitStatus(apiKey, new Date(), apiKeyAuth.apiKeyId);
     } catch (err) {
       if (err?.message?.includes("no such table: apiKeyUsageTotals")) {
         limitStatus = { enforced: false, exceeded: false };
@@ -583,6 +584,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     const comboRouting = await getComboRoutingPolicy(comboName);
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
+    const comboPrompts = appendComboPrompt([], settings.comboPrompts, comboName);
     const comboSpecificStrategy = isAutoComboId(modelStr) ?
     perCombo.strategy ?? perCombo.fallbackStrategy :
     perCombo.fallbackStrategy;
@@ -611,7 +613,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, reportComboPolicyRejections: true }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: true }
           );
         },
         log,
@@ -648,7 +650,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts }
         );
       },
       log,
@@ -778,7 +780,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * fallback combos retain their existing model/account error responses.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, reportComboPolicyRejections = false } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], reportComboPolicyRejections = false } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -804,6 +806,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
       const perCombo = comboStrategies[comboName] || {};
+      const nestedPrompts = appendComboPrompt(comboPrompts, chatSettings.comboPrompts, comboName);
       const comboSpecificStrategy = isAutoComboId(modelStr) ?
       perCombo.strategy ?? perCombo.fallbackStrategy :
       perCombo.fallbackStrategy;
@@ -828,7 +831,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, reportComboPolicyRejections: true }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: true }
             );
           },
           log,
@@ -864,7 +867,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, reportComboPolicyRejections }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections }
           );
         },
         log,
@@ -1064,6 +1067,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const refreshedQuotaConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let antigravityTimeoutResponse = null;
   let antigravityCapacitySweeps = 0;
   let totalAttempts = 0;
   let requestReplayConnectionId = null;
@@ -1129,21 +1133,25 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return response;
       }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+        if (antigravityTimeoutResponse && !credentials?.providerDisabled) return antigravityTimeoutResponse;
         if (earlyEofOriginal) return earlyEofOriginal;
         if (credentials?.providerDisabled) {
           log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
           return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
         }
         if (credentials?.allRateLimited) {
-          const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+          const rawStatus = credentials.lastErrorCode;
+          const parsedStatus = isNumber(rawStatus) || isString(rawStatus) ? Number(rawStatus) : NaN;
+          const validStoredStatus = Number.isInteger(parsedStatus) && parsedStatus >= 400 && parsedStatus <= 599;
+          const storedStatus = validStoredStatus ? parsedStatus : HTTP_STATUS.SERVICE_UNAVAILABLE;
           const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
             status: storedStatus,
             retryAt: credentials.retryAfter || null,
             retryAtKnown: Boolean(credentials.retryAfter)
           });
           const status = combinedRateLimit?.status || (
-          storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
-          const errorMsg = status === storedStatus ?
+          validStoredStatus && storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
+          const errorMsg = status === storedStatus && (validStoredStatus || !lastStatus) ?
           credentials.lastError || "Unavailable" :
           lastError || credentials.lastError || "Unavailable";
           const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
@@ -1194,6 +1202,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
         excludeConnectionIds.add(credentials.connectionId);
         if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+          if (antigravityTimeoutResponse) return antigravityTimeoutResponse;
           if (earlyEofOriginal) return earlyEofOriginal;
           log.warn("FALLBACK", "Provider fallback attempt bound reached");
           const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
@@ -1281,6 +1290,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         connectionId: credentials.connectionId,
         userAgent,
         apiKey,
+        apiKeyId,
         apiKeyName,
         billingEpoch,
         abortSignal: requestSignal,
@@ -1307,6 +1317,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         ponytailLevel: chatSettings.ponytailLevel || "full",
         customPromptEnabled: !!chatSettings.customPromptEnabled,
         customPrompt: chatSettings.customPrompt || "",
+        comboPrompts,
         pxpipeMinChars: chatSettings.pxpipeMinChars,
         pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
         pxpipeTransform,
@@ -1426,6 +1437,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         excludeConnectionIds.add(credentials.connectionId);
         continue;
       }
+      if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       // Process-local admission pressure is terminal for this request. Retrying a
       // sibling would hit the same queue and must not cool a healthy account.
       if (result.localAdmissionRejected === true) {
@@ -1438,6 +1450,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // local stream lifecycle event, NOT a provider failure. Return without cooling
       // down the account or accruing fallback state (OmniRoute #7907/#7908).
       if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
+      if (result.antigravityPreResponseTimeout === true ||
+          (provider === "antigravity" && result.status === HTTP_STATUS.GATEWAY_TIMEOUT)) {
+        // Internal metadata stays on the Response, never in the client payload.
+        result.response.skipAntigravityTimeoutReplay = true;
+        if (preferredConnectionId) return result.response;
+        antigravityTimeoutResponse ??= result.response;
+        requestReplayConnectionId = null;
+        excludeConnectionIds.add(credentials.connectionId);
+        lastError = result.error;
+        lastStatus = result.status;
+        continue;
+      }
       if (!requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
         requestReplayAttempted = true;
         requestReplayConnectionId = credentials.connectionId;
@@ -1476,6 +1500,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           statusText: result.response.statusText,
           headers: responseHeaders,
         });
+        if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);
@@ -1553,6 +1578,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           // The credential this attempt actually presented, so a durable-key
           // provider can mark exactly the generation that was rejected.
           usedCredential: credentials.accessToken || credentials.apiKey || null,
+          // Proven relay/hop provenance from the fork's own transport layer.
+          // Null for an ordinary upstream HTTP response, which is a provider
+          // answer rather than a hop failure.
+          transportFailure: result.transportFailure ?? null,
+          // Accounts this request already excluded cannot serve it again, so
+          // they are not alternatives for the cooldown decision.
+          excludedConnectionIds: excludeConnectionIds,
+          hasComboFallback: comboRouting !== null,
           signal: requestSignal
         }
       );

@@ -9,6 +9,7 @@
  */
 import { register, initState } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
@@ -26,7 +27,7 @@ import {
 } from "../concerns/finishReason.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function recordFinalOutputItem(state, eventType, data) {
   if (eventType !== "response.output_item.added" && eventType !== "response.output_item.done") return;
   const outputIndex = Number(data.output_index);
@@ -193,7 +194,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
     if (state.inThinking && content) {
       emitReasoningDelta(state, emit, content);
-      return events;
+      content = "";
     }
 
     if (content) {
@@ -735,7 +736,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
     // A stream that ends with no terminal event still owes buffered custom input.
     const pending = flushWrappedCustomToolInputs(state);
-    return pending.length ? [...pending, finalChunk] : finalChunk;
+    // A stream that ends with no terminal event still owes the text it held
+    // back for source order: release it before the final chunk (#1073).
+    const held = flushResponsesTextSnapshots(state);
+    return held.length || pending.length ? [...held, ...pending, finalChunk] : finalChunk;
   }
 
   // Handle different event types from Responses API
@@ -761,22 +765,32 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.created") {
     state.respCustomToolKinds?.clear();
     state.respCustomToolInput?.clear();
+    delete state.responsesTextSnapshots;
+  }
+
+  if (eventType === "response.output_item.added" && data.item?.type === RESPONSES_ITEM.MESSAGE) {
+    bindResponsesTextItem(state, data.item, data.output_index);
   }
 
   // Text content delta
   if (eventType === "response.output_text.delta") {
     const delta = data.delta || "";
-    if (!delta) return null;
-
-    return buildChunk(
-      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { content: delta }
-    );
+    if (!isString(delta) || !delta || state.finishReasonSent) return null;
+    // A delta waits behind an earlier item that can still owe text: the
+    // recovered suffix of that item belongs before this one (#1073).
+    const chunks = recordResponsesTextDelta(state, data, delta);
+    if (!chunks.length) return null;
+    return chunks.length === 1 ? chunks[0] : chunks;
   }
 
-  // Text content done (ignore, we handle via delta)
+  // A snapshot may contain a suffix missing from the delta stream.
   if (eventType === "response.output_text.done") {
-    return null;
+    const chunks = reconcileResponsesTextDone(state, data, data.text);
+    if (!chunks.length) return null;
+    return chunks.length === 1 ? chunks[0] : chunks;
+  }
+  if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.MESSAGE) {
+    return synthesizeTextItemSnapshot(state, data.item, data.output_index);
   }
 
   // Function call started (standard function_call or custom_tool_call).
@@ -902,6 +916,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
+    const textSnapshots = finalizeResponsesTextSnapshots(state, data.response?.output);
+    closeResponsesTextSnapshots(state);
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && isObject(responseUsage)) {
@@ -916,11 +932,18 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         reasoningTokens: normalized.output_tokens_details?.reasoning_tokens,
         outputTokensDetails: normalized.output_tokens_details
       });
+      // A zero counter is a reported cache miss, not missing usage data.
+      const cacheCounters = [responseUsage.cache_read_input_tokens, responseUsage.cached_tokens,
+        responseUsage.input_tokens_details?.cached_tokens, responseUsage.prompt_tokens_details?.cached_tokens];
+      if (cacheCounters.some((value) => isNumber(value) && Number.isFinite(value) && value >= 0)) {
+        state.usage.prompt_tokens_details ||= {};
+        state.usage.prompt_tokens_details.cached_tokens = normalized.cached_tokens ?? 0;
+      }
     }
 
     if (!state.finishReasonSent) {
       const finishReason = eventType === "response.incomplete" ?
-      OPENAI_FINISH.LENGTH :
+      (data.response?.incomplete_details?.reason === "content_filter" ? OPENAI_FINISH.CONTENT_FILTER : OPENAI_FINISH.LENGTH) :
       computeFinishReason(state);
 
       state.finishReasonSent = true;
@@ -938,7 +961,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       }
 
       const pending = flushWrappedCustomToolInputs(state);
-      return pending.length ? [...pending, finalChunk] : finalChunk;
+      return textSnapshots.length || pending.length ? [...textSnapshots, ...pending, finalChunk] : finalChunk;
     }
     const pending = flushWrappedCustomToolInputs(state);
     return pending.length ? pending : null;
@@ -966,19 +989,38 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         { content: `[Error] ${message}` },
         OPENAI_FINISH.STOP
       );
+      // A failed stream still owes the text it already streamed: release it
+      // before the error so no text is dropped (#1073).
+      const held = flushResponsesTextSnapshots(state);
       const pending = flushWrappedCustomToolInputs(state);
-      return pending.length ? [...pending, errorChunk] : errorChunk;
+      return held.length || pending.length ? [...held, ...pending, errorChunk] : errorChunk;
     }
     return null;
   }
 
-  // Reasoning summary delta → emit as reasoning_content for client thinking display
-  if (eventType === "response.reasoning_summary_text.delta") {
-    const delta = data.delta || "";
-    if (!delta || isInternalReasoningPlaceholder(delta)) return null;
+  // Copilot can rotate reasoning item IDs between deltas and the final
+  // snapshot. Match both identifiers to replay only summaries we never streamed.
+  const reasoningEvents = state.responsesReasoningEvents ??= { ids: new Set(), indexes: new Set() };
+  let summary;
+  if (eventType === "response.reasoning_summary_text.delta" || eventType === "response.reasoning_text.delta") {
+    summary = data.delta;
+    if (!isString(summary) || !summary || isInternalReasoningPlaceholder(summary)) return null;
+    if (data.item_id) reasoningEvents.ids.add(data.item_id);
+    if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
+  } else if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.REASONING) {
+    if (reasoningEvents.ids.has(data.item.id) || reasoningEvents.indexes.has(data.output_index)) return null;
+    summary = Array.isArray(data.item.summary) ? data.item.summary
+      .filter(part => part?.type === RESPONSES_ITEM.SUMMARY_TEXT && isString(part.text))
+      .map(part => part.text)
+      .join("\n") : "";
+    if (!summary || isInternalReasoningPlaceholder(summary)) return null;
+    if (data.item.id) reasoningEvents.ids.add(data.item.id);
+    if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
+  }
+  if (summary) {
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      reasoningDelta(delta)
+      reasoningDelta(summary)
     );
   }
 

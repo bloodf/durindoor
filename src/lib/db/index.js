@@ -247,7 +247,7 @@ function validateQuotaImport(payload, { now }) {
 
 // Settings
 export {
-  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings } from
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings, mergeCompressionEngines } from
 "./repos/settingsRepo.js";
 
 // Provider connections
@@ -273,7 +273,7 @@ export {
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus } from
+  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, rotateApiKey, validateApiKey, getApiKeyUsageLimitStatus } from
 "./repos/apiKeysRepo.js";
 export { getApiKeyProviderConnectionIds, setApiKeyProviderConnectionIds } from
 "./repos/apiKeyProviderConnectionsRepo.js";
@@ -533,9 +533,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
     // Wipe all tables (keep _meta)
     // Usage history is intentionally retained for operator analytics, but its
-    // literal-secret attribution belongs to the pre-import key set. Detach it
-    // so an imported key reusing the same secret cannot inherit daily limits.
-    db.run(`UPDATE usageHistory SET apiKey = NULL WHERE apiKey IS NOT NULL`);
+    // key associations belong to the pre-import key set. Clear both so
+    // restored keys cannot inherit attribution from retained history.
+    db.run(`UPDATE usageHistory SET apiKey = NULL, apiKeyId = NULL WHERE apiKey IS NOT NULL OR apiKeyId IS NOT NULL`);
     for (const row of db.all(`SELECT dateKey, data FROM usageDaily`)) {
       const day = parseJson(row.data, {});
       if (day?.byApiKey && Object.keys(day.byApiKey).length > 0) {

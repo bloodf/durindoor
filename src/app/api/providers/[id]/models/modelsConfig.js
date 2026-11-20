@@ -1,4 +1,7 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
+import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
+import mlx from "open-sse/providers/registry/mlx.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
@@ -8,11 +11,19 @@ import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
+import { updateProviderConnection } from "@/lib/localDb";
 import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
 import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import {
+  ANTIGRAVITY_CATALOG_URL,
+  buildAntigravityCatalogBody,
+  classifyAntigravityCatalogStatus,
+  parseAntigravityCatalogModels
+} from "open-sse/services/antigravityCatalog.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -30,6 +41,12 @@ import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
 import { withCodexReviewModels } from "open-sse/providers/models/helpers.js";
+import {
+  DOTHOOSH_ANTHROPIC_MODELS_URL,
+  DOTHOOSH_OPENAI_MODELS_URL,
+  dotHooshListingHeaders,
+  mergeDotHooshListings
+} from "open-sse/providers/dothooshCatalog.js";
 
 const KIMI_WEB_MODELS_PATH = "/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels";
 
@@ -158,6 +175,48 @@ export const createOpenAIModelsConfig = (url) => ({
   parseResponse: parseOpenAIStyleModels
 });
 
+/**
+ * Read one DotHoosh listing.
+ *
+ * The provider publishes two listings: the OpenAI path (/v1/models) and the
+ * Anthropic path (/anthropic/v1/models). A model is served on the paths it is
+ * verified for, so a model that only the Anthropic path lists never appears
+ * in the OpenAI listing. Both are read and merged.
+ *
+ * The key only ever travels to the provider host: the OpenAI listing takes
+ * the bearer scheme, the Anthropic listing takes x-api-key only (the
+ * provider rejects a request that carries both auth headers).
+ *
+ * @param {string} url - listing URL on the provider host
+ * @param {"openai"|"anthropic"} listing - which listing is being read
+ * @param {string} apiKey - the connection's key
+ * @param {object|null} proxyOptions
+ * @returns {Promise<{ rows: object[], error?: string, status?: number }>}
+ */
+export async function fetchDotHooshListing(url, listing, apiKey, proxyOptions = null) {
+  try {
+    const response = await proxyAwareFetch(url, {
+      method: "GET",
+      headers: dotHooshListingHeaders(listing, apiKey),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000)
+    }, proxyOptions);
+    if (!response.ok) {
+      const text = await response.text();
+      return {
+        rows: [],
+        error: sanitizeErrorMessage(text || response.statusText),
+        status: response.status
+      };
+    }
+    const body = await response.json();
+    const rows = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : []);
+    return { rows };
+  } catch (error) {
+    return { rows: [], error: sanitizeErrorMessage(error?.message), status: 502 };
+  }
+}
+
 export const resolveQwenModelsUrl = (connection) => {
   const fallback = "https://portal.qwen.ai/v1/models";
   const raw = connection?.providerSpecificData?.resourceUrl;
@@ -277,7 +336,104 @@ export function buildClaudeModelsHeaders(token) {
   };
 }
 
+/** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
+export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
+  model && isString(model.id) &&
+  (!Array.isArray(model.supported_operations) || model.supported_operations.length === 0 || model.supported_operations.includes("CHAT_COMPLETIONS"))
+);
+
+/**
+ * Attach Copilot's endpoint contract to one catalog row.
+ *
+ * The contract states which of Copilot's existing routes serves the model. A
+ * row that declares no endpoint keeps none, so the executor falls back to its
+ * current behavior for it.
+ */
+export function withCopilotEndpointContract(row) {
+  if (!isObject(row) || !isString(row.id)) return row;
+  const contract = readCopilotEndpointContract(row, row.id);
+  if (!contract.supportedEndpoints?.length) return row;
+  const enriched = { ...row, supportedEndpoints: contract.supportedEndpoints };
+  if (contract.targetFormat) enriched.targetFormat = contract.targetFormat;
+  return enriched;
+}
+
+/** Compare two stored contracts regardless of model order. */
+function sameCopilotEndpointContract(left, right) {
+  const normalize = (value) => {
+    if (!isObject(value) || !Array.isArray(value.models)) return null;
+    return JSON.stringify({
+      version: value.version,
+      models: [...value.models].sort((a, b) => String(a?.id).localeCompare(String(b?.id)))
+    });
+  };
+  return normalize(left) === normalize(right);
+}
+
+/**
+ * Persist the Copilot endpoint contract discovered for a connection.
+ *
+ * The contract is a per-account fact: it states which of Copilot's existing
+ * routes serves a model for THIS account. It is stored on the connection so
+ * the executor can read it without another catalog fetch, and so the account
+ * that serves a request stays the account that discovered its route.
+ *
+ * The model list is an array, so a refreshed catalog replaces the stored one
+ * instead of merging into it and keeping models Copilot stopped serving. The
+ * write is skipped when the stored contract already matches.
+ */
+export async function persistCopilotEndpointContract(connection, rows) {
+  if (!connection?.id) return null;
+  const contract = buildCopilotEndpointContract(rows);
+  const stored = connection.providerSpecificData?.copilotEndpointContract;
+  if (sameCopilotEndpointContract(stored, contract)) return contract;
+  try {
+    // Deep merge: the contract must not disturb the stored Copilot token or
+    // the enterprise host.
+    await updateProviderConnection(connection.id, {
+      providerSpecificData: { copilotEndpointContract: contract }
+    });
+  } catch (error) {
+    console.warn("Copilot endpoint contract not stored:", sanitizeErrorMessage(error?.message || error));
+  }
+  return contract;
+}
+
 export const PROVIDER_MODELS_CONFIG = {
+  "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
+  replicate: {
+    url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    redirect: "manual",
+    parseResponse: (data) => data?.owner === "meta" && data?.name === "meta-llama-3-70b-instruct"
+      ? [{ id: "meta/meta-llama-3-70b-instruct", name: "Llama 3 70B Instruct" }] : [],
+  },
+  openference: {
+    customResolver: async (connection, proxyOptions) => {
+      if (!connection.accessToken) return { error: "No valid token found", status: 401 };
+      const fetchModels = (token) => proxyAwareFetch("https://api.openference.com/v1/models", {
+        headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000)
+      }, proxyOptions);
+      try {
+        let response = await fetchModels(connection.accessToken);
+        if (response.status === 401 && connection.refreshToken) {
+          const refreshed = await refreshOpenferenceToken(connection, null, proxyOptions);
+          if (refreshed?.accessToken) {
+            await updateProviderCredentials(connection.id, refreshed);
+            response = await fetchModels(refreshed.accessToken);
+          }
+        }
+        if (!response.ok) return { error: `Openference models request failed: ${response.status}`, status: response.status };
+        const data = await response.json();
+        if (!Array.isArray(data?.data)) return { error: "Invalid Openference models response", status: 502 };
+        return { models: data.data };
+      } catch {
+        return { error: "Openference models request failed", status: 502 };
+      }
+    }
+  },
+  llmtr: { ...createOpenAIModelsConfig("https://llmtr.com/v1/models"), parseResponse: parseLlmtrModels },
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },
@@ -385,7 +541,7 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   antigravity: {
     // The per-account Hub catalog replaces the stale sandbox models endpoint.
-    url: "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    url: ANTIGRAVITY_CATALOG_URL,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -395,14 +551,17 @@ export const PROVIDER_MODELS_CONFIG = {
     },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => Object.entries(data?.models || {})
-      .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
-      .map(([id, info]) => ({
-        id, name: info?.displayName || id,
-        contextLength: info?.maxTokens, maxOutputTokens: info?.maxOutputTokens,
-        supportsVision: !!info?.supportsImages, supportsReasoning: !!info?.supportsThinking
-      }))
+    // The catalog is account scoped: the request carries the signed-in
+    // account's validated project instead of an empty body. A connection
+    // without a usable project omits the field rather than sending a
+    // placeholder.
+    buildBody: (_token, connection) => buildAntigravityCatalogBody(connection),
+    // Tell an auth rejection apart from a transient upstream failure, so a
+    // dead credential is not read as a temporarily empty catalog.
+    classifyStatus: classifyAntigravityCatalogStatus,
+    // Returns null for a payload that is not a catalog, which keeps a known
+    // catalog in place instead of replacing it with an empty list.
+    parseResponse: parseAntigravityCatalogModels
   },
   // Enterprise discovery must use the connection's scoped token and tenant host.
   "ghe-copilot": {
@@ -423,7 +582,10 @@ export const PROVIDER_MODELS_CONFIG = {
         cache: "no-store"
       }, proxyOptions);
       if (!response.ok) return { error: `Enterprise Copilot models request failed: ${response.status}`, status: response.status };
-      return { models: parseOpenAIStyleModels(await response.json()) };
+      const rows = parseOpenAIStyleModels(await response.json());
+      const models = rows.map((row) => withCopilotEndpointContract(row));
+      await persistCopilotEndpointContract(connection, models);
+      return { models };
     }
   },
   github: {
@@ -445,7 +607,10 @@ export const PROVIDER_MODELS_CONFIG = {
           });
         }
       });
-      if (result?.models?.length) return { models: result.models };
+      if (result?.models?.length) {
+        await persistCopilotEndpointContract(connection, result.models);
+        return { models: result.models };
+      }
       return {
         models: [],
         warning: "GitHub Copilot returned no live models."
@@ -504,7 +669,9 @@ export const PROVIDER_MODELS_CONFIG = {
   nebius: createOpenAIModelsConfig("https://api.studio.nebius.ai/v1/models"),
   novita: createOpenAIModelsConfig("https://api.novita.ai/openai/v1/models"),
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
+  nan: createOpenAIModelsConfig("https://api.nan.builders/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
+  paraloncloud: createOpenAIModelsConfig("https://paraloncloud.com/v1/models"),
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
@@ -513,6 +680,31 @@ export const PROVIDER_MODELS_CONFIG = {
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   hcnsec: createOpenAIModelsConfig("https://api.hcnsec.cn/v1/models"),
+  // DotHoosh publishes no static catalog: the model list is the provider's own
+  // listing, read per key. Both listings are merged so a model that only the
+  // Anthropic path serves is listed too.
+  dothoosh: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const apiKey = connection.apiKey;
+      if (!apiKey) return { error: "No valid token found", status: 401 };
+      const [openai, anthropic] = await Promise.all([
+        fetchDotHooshListing(DOTHOOSH_OPENAI_MODELS_URL, "openai", apiKey, proxyOptions),
+        fetchDotHooshListing(DOTHOOSH_ANTHROPIC_MODELS_URL, "anthropic", apiKey, proxyOptions)
+      ]);
+      const models = mergeDotHooshListings({ openai: openai.rows, anthropic: anthropic.rows });
+      if (!models.length) {
+        // One listing may be empty while the other answers; only a total
+        // failure is an error, and a rejected key is reported as such.
+        const failure = openai.error ? openai : anthropic;
+        const status = failure.status;
+        if (status === 401 || status === 403) {
+          return { error: "Invalid API key", status: 401 };
+        }
+        return { error: "DotHoosh returned no models", status: 502 };
+      }
+      return { models };
+    }
+  },
   kimchi: {
     customResolver: async (connection, proxyOptions = null) => {
       const result = await resolveKimchiModels({
@@ -646,6 +838,22 @@ export const PROVIDER_MODELS_CONFIG = {
       parseFn: parseGeminiCliModels,
       errorLabel: "Failed to fetch Antigravity CLI models"
     })
+  },
+  mlx: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const base = (connection.providerSpecificData?.baseUrl || mlx.transport.baseUrl).replace(/\/+$/, "");
+      try {
+        const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+        const response = await guardedProbeFetch(`${base}/models`, {
+          method: "GET", headers, cache: "no-store", signal: AbortSignal.timeout(8000)
+        }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
+        if (!response.ok) return { error: `Failed to fetch models: ${response.status}`, status: response.status };
+        return { models: parseOpenAIStyleModels(await response.json()) };
+      } catch (error) {
+        console.log("Error fetching models from mlx:", sanitizeErrorMessage(error?.message));
+        return { error: "Failed to fetch models", status: 500 };
+      }
+    }
   },
   "ollama-local": {
     customResolver: async (connection, proxyOptions = null) => {

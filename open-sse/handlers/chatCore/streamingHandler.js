@@ -1,4 +1,5 @@
 import { FORMATS } from "../../translator/formats.js";
+import { isDeepSeekFamilyModel } from "../../utils/dsmlToolCalls.js";
 import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
@@ -9,6 +10,7 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
+import { createEmptyTerminalGuard } from "../../utils/emptyStreamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
@@ -35,6 +37,14 @@ function hasOutputTokens(usage) {
     usage?.completion_tokens ?? usage?.output_tokens ?? usage?.candidatesTokenCount ?? 0
   );
   return Number.isFinite(count) && count > 0;
+}
+
+// Match the existing cooldown classification; a previously reported error is
+// already visible to the client and must not be replaced by an empty error.
+function isEmptyCompletion(content, usage, summary) {
+  return !content?.upstreamError && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
+    !content?.content?.trim?.() && !content?.hadToolCalls && !content?.hasSnapshotOutput &&
+    !content?.thinking?.trim?.() && !hasOutputTokens(usage);
 }
 
 /** Frame a complete OpenAI response for the normal streaming pipeline. */
@@ -80,7 +90,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
     };
   }
 
-  if (needsTranslation(targetFormat, sourceFormat)) {
+  if (needsTranslation(targetFormat, sourceFormat) || targetFormat === FORMATS.OPENAI && isDeepSeekFamilyModel(providerBody?.model || model, provider)) {
     return {
       stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked),
       emittedFormat: sourceFormat
@@ -175,7 +185,15 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  let emptyVerdict = null;
+  const observeCompletion = (...args) => {
+    emptyVerdict = isEmptyCompletion(args[0], args[1], args[3]);
+    onStreamComplete?.(...args);
+  };
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  const emptyTerminalGuard = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(emittedFormat)
+    ? createEmptyTerminalGuard(emittedFormat, () => emptyVerdict, () => transformStream.getEmptyStreamSnapshot?.())
+    : null;
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
@@ -219,7 +237,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   });
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
-    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard,
   );
 
   saveRequestDetail(buildRequestDetail({
@@ -257,7 +275,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.credentials] - selected credentials redacted from the persisted stream error.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -326,7 +344,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     // The TTFT fallback above keeps request logs readable, but stored usage
     // needs one "not measured" value: 0, as the other handlers write.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     // A streamed Claude refusal (stop_reason "refusal") never accumulates delta
@@ -345,6 +363,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     !isRequestScopedRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&
+    !contentObj?.hasSnapshotOutput &&
     !contentObj?.thinking?.trim?.() &&
     !hasOutputTokens(usage))
     {
@@ -388,7 +407,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

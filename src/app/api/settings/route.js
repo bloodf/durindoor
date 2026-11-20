@@ -17,7 +17,7 @@ import {
   canModifySecurityCriticalSettings,
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isRecord, isString } from "@/shared/utils/typeChecks.js";
 import { normalizeMediaRoutes } from "@/shared/constants/mediaRoutes.js";
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import { MAX_CUSTOM_PROMPT_CHARS } from "@/shared/constants/customPrompt.js";
@@ -70,7 +70,10 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
   }
   // Operator-authored prompt text; unprivileged readers only learn the enabled flag.
-  if (!privileged) delete safeSettings.customPrompt;
+  if (!privileged) {
+    delete safeSettings.customPrompt;
+    delete safeSettings.comboPrompts;
+  }
   return { safeSettings, password };
 }
 
@@ -317,6 +320,17 @@ export async function PATCH(request) {
       }
     }
 
+    // Separate from legacy strategy keys: only an authenticated operator may
+    // configure these instructions, and existing combo settings stay inert.
+    if (Object.prototype.hasOwnProperty.call(body, "comboPrompts")) {
+      const prompts = body.comboPrompts;
+      if (!prompts || !isObject(prompts) || Array.isArray(prompts) ||
+          Object.entries(prompts).some(([name, prompt]) => !name.trim() ||
+            !isString(prompt) || prompt.length > MAX_CUSTOM_PROMPT_CHARS)) {
+        return NextResponse.json({ error: "Invalid comboPrompts" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+
     // mediaRoutes: { [kind]: ["provider/model", ...] } — see shared/constants/mediaRoutes.js.
     if (Object.prototype.hasOwnProperty.call(body, "mediaRoutes")) {
       const routes = normalizeMediaRoutes(body.mediaRoutes);
@@ -324,6 +338,17 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid mediaRoutes" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       body.mediaRoutes = routes;
+    }
+
+    // The compression stack map is a partial patch: the persistence layer
+    // merges it per engine id (mergeCompressionEngines in settingsRepo), so a
+    // write that carries one engine never drops its siblings. A value that is
+    // not a map of per-engine records or null removals is rejected.
+    if (Object.prototype.hasOwnProperty.call(body, "compressionEngines")) {
+      const engines = body.compressionEngines;
+      if (!isRecord(engines) || Object.values(engines).some((entry) => entry !== null && !isRecord(entry))) {
+        return NextResponse.json({ error: "Invalid compressionEngines" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "enableProxyTimeline")

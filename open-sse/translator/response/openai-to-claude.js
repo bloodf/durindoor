@@ -130,14 +130,13 @@ function flushToolBlocks(state, results) {
 // Convert OpenAI-shaped usage ({prompt_tokens, completion_tokens, ...}) to the
 // Claude shape ({input_tokens, output_tokens, cache_*}).
 function toClaudeUsage(usage) {
-  const promptTokens = isNumber(usage.prompt_tokens) ? usage.prompt_tokens : 0;
-  const outputTokens = isNumber(usage.completion_tokens) ? usage.completion_tokens : 0;
+  const firstNumber = (...values) => values.find(isNumber) ?? 0;
+  const promptTokens = firstNumber(usage.prompt_tokens, usage.input_tokens);
+  const outputTokens = firstNumber(usage.completion_tokens, usage.output_tokens);
 
   // Extract cache tokens from prompt_tokens_details
-  const cachedTokens = usage.prompt_tokens_details?.cached_tokens;
-  const cacheCreationTokens = usage.prompt_tokens_details?.cache_creation_tokens;
-  const cacheReadTokens = isNumber(cachedTokens) ? cachedTokens : 0;
-  const cacheCreateTokens = isNumber(cacheCreationTokens) ? cacheCreationTokens : 0;
+  const cacheReadTokens = firstNumber(usage.prompt_tokens_details?.cached_tokens, usage.input_tokens_details?.cached_tokens);
+  const cacheCreateTokens = firstNumber(usage.prompt_tokens_details?.cache_creation_tokens, usage.input_tokens_details?.cache_creation_tokens);
 
   // input_tokens = prompt_tokens - cached_tokens - cache_creation_tokens
   // Because OpenAI's prompt_tokens includes all prompt-side tokens
@@ -188,16 +187,15 @@ function finalizeOnFlush(state) {
 // Convert OpenAI stream chunk to Claude format
 export function openaiToClaudeResponse(chunk, state) {
   if (!chunk) return finalizeOnFlush(state);
+  if (chunk.usage && isObject(chunk.usage)) {
+    const usage = toClaudeUsage(chunk.usage);
+    state.usage = state.claudeFinishHandled ? { ...state.usage, ...usage } : usage;
+  }
   if (!chunk.choices?.[0]) return null;
 
   const results = [];
   const choice = chunk.choices[0];
   const delta = choice.delta;
-
-  // Track usage from OpenAI chunk if available
-  if (chunk.usage && isObject(chunk.usage)) {
-    state.usage = toClaudeUsage(chunk.usage);
-  }
 
   // First chunk - ALWAYS send message_start first
   if (!state.messageStartSent) {
@@ -242,7 +240,7 @@ export function openaiToClaudeResponse(chunk, state) {
       results.push({
         type: "content_block_start",
         index: state.thinkingBlockIndex,
-        content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "" }
+        content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" }
       });
     }
 

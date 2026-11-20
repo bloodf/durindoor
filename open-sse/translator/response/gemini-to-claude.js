@@ -1,5 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { CLAUDE_BLOCK } from "../schema/blocks.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";
 import { buildGeminiThoughtSignatureKey, storeGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
@@ -40,7 +41,7 @@ export function geminiToClaudeResponse(chunk, state) {
     if (!part.functionCall && inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
     if (part.thought === true && part.text) {
       const index = state.contentBlockIndex++;
-      results.push({ type: "content_block_start", index, content_block: { type: "thinking", thinking: "" } }, { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: part.text } }, { type: "content_block_stop", index });
+      results.push({ type: "content_block_start", index, content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" } }, { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: part.text } }, { type: "content_block_stop", index });
       continue;
     }
     if (part.functionCall) {

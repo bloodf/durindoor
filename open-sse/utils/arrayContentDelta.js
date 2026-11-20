@@ -14,7 +14,7 @@
  *
  * These helpers fold such a delta back into the OpenAI shape in place: text
  * parts become the `content` string, thinking parts are appended to
- * `reasoning_content`.
+ * `reasoning_content`. Finite numeric content is converted to text as well.
  *
  * Ported from OmniRoute #15757.
  */
@@ -40,7 +40,12 @@ function partsText(value) {
  * @returns {boolean}
  */
 export function normalizeArrayContentDelta(delta) {
-  if (!isRecord(delta) || !Array.isArray(delta.content)) return false;
+  if (!isRecord(delta)) return false;
+  if (Number.isFinite(delta.content)) {
+    delta.content = String(delta.content);
+    return true;
+  }
+  if (!Array.isArray(delta.content)) return false;
 
   let text = "";
   let thinking = "";
@@ -61,6 +66,14 @@ export function normalizeArrayContentDelta(delta) {
     delta.reasoning_content = existing + thinking;
   }
   return true;
+}
+
+/** Normalize Mistral text/thinking arrays only when no other part would be lost. */
+export function normalizeMistralContent(message) {
+  if (Array.isArray(message?.content) && message.content.length &&
+      message.content.every((part) => part?.type === "text" || part?.type === "thinking")) {
+    normalizeArrayContentDelta(message);
+  }
 }
 
 /**

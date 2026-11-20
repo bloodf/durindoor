@@ -217,6 +217,22 @@ describe("BaseExecutor.execute — computeRetryDelay hook veto", () => {
 });
 
 describe("BaseExecutor.execute — reactive field strip retry", () => {
+  it("keeps a rejected field stripped after a rate-limit rerun without changing the input", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 429: { attempts: 1, delayMs: 0 } } });
+    const body = { messages: [{ role: "user", content: "hi" }], context_management: { edits: [] } };
+    const original = structuredClone(body);
+    fetchMock
+      .mockResolvedValueOnce(new Response("context_management: Extra inputs are not permitted", { status: 400 }))
+      .mockResolvedValueOnce(res(429))
+      .mockResolvedValueOnce(res(200));
+
+    const out = await ex.execute({ model: "m", body, stream: false, credentials: creds });
+    expect(out.response.status).toBe(200);
+    expect(fetchMock.mock.calls.map((call) => JSON.parse(call[1].body).context_management))
+      .toEqual([original.context_management, undefined, undefined]);
+    expect(body).toEqual(original);
+  });
+
   it("strips top-level context_management and retries once when a strict gateway names it in a 400", async () => {
     const ex = makeExec({ baseUrl: "https://x/api" });
     fetchMock

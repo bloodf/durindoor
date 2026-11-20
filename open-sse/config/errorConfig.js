@@ -79,6 +79,21 @@ export const BACKOFF_CONFIG = resolveBackoffConfig();
 // Default cooldown for transient/unknown errors
 export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 
+/**
+ * Gateway/relay statuses: the hop in front of the origin answers while the
+ * origin does not. 502/503/504 are also legitimate provider-application
+ * statuses (an overloaded API answers 503 itself), so a bare one of them is
+ * NOT proof that a relay failed. A bare 524 is not proof either.
+ */
+export const RELAY_GATEWAY_STATUSES = Object.freeze([502, 503, 504, 524]);
+
+/**
+ * Transport failures the fork's own transport layer classifies. No HTTP
+ * response was received; the origin may nevertheless have received the request. "aborted" is deliberately absent: a client
+ * abort is not a relay failure.
+ */
+export const RELAY_TRANSPORT_FAILURES = Object.freeze(["connect_timeout", "network"]);
+
 /** Cooldown for HTTP 200 responses that contain no usable model output. */
 export const EMPTY_CONTENT_COOLDOWN_MS = 7 * 60 * 1000;
 

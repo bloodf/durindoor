@@ -1,7 +1,9 @@
+import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
+import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
-import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
+import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest, removeNamelessOpenAIToolHistory } from "./formats/claude.js";
 import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
@@ -80,8 +82,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   let customToolNames;
   // chatCore supplies an already-clean mapped model plus explicit context, but
   // public/direct translator callers may still pass `model(level)`. Keep that
-  // entry point safe by parsing here as a compatibility fallback.
-  const parsedModel = parseSuffix(model);
+  // entry point safe by parsing here as a compatibility fallback. The provider
+  // scopes the service-tier control, so a tier-shaped suffix on a provider
+  // without tier support stays part of the opaque model ID.
+  const parsedModel = parseSuffix(model, provider);
   const translationModel = parsedModel.cleanModel;
 
   // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
@@ -108,6 +112,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   { mode: "budget", budget: result.thinking.budget_tokens } :
   null;
 
+  if (sourceFormat === FORMATS.OPENAI && targetFormat === FORMATS.CLAUDE && Array.isArray(result?.messages)) {
+    result.messages = removeNamelessOpenAIToolHistory(result.messages);
+  }
   // Always ensure tool_calls have id (some providers require it). targetFormat
   // lets a target that validates its own tool-call arguments (e.g. CommandCode)
   // keep rejecting malformed JSON instead of having it silently coerced first.
@@ -140,10 +147,16 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
+  // Capture the latest Claude system directive before the OpenAI pivot drops it.
+  const directiveEffort = sourceFormat === FORMATS.CLAUDE && targetFormat !== FORMATS.CLAUDE &&
+    (targetFormat === FORMATS.OPENAI || !requestRegistry.get(`${sourceFormat}:${targetFormat}`))
+    ? result.messages?.findLast((message) => message?.role === ROLE.SYSTEM &&
+        isString(message.output_config?.effort) && message.output_config.effort.trim())?.output_config.effort.trim().toLowerCase()
+    : null;
   const thinkingIntent = translationContext?.thinkingIntent ??
   parsedModel.override ??
   claudeGeminiBudgetIntent ??
-  captureThinking(result);
+  captureThinking(directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
@@ -354,9 +367,13 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
+  if (targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.CLAUDE && state.searchEnabled) {
+    const converted = responsesToClaudeResponse(chunk, state);
+    return converted ? Array.isArray(converted) ? converted : [converted] : [];
+  }
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
-    return [chunk];
+    return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];
   }
 
   let results = [chunk];
@@ -367,7 +384,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   // request-side direct route (e.g. kiro:claude — KiroExecutor already emits
   // OpenAI-shaped chunks, so this converts them straight to Claude SSE).
   const directFn = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
-  if (directFn) {
+  if (directFn && targetFormat !== FORMATS.OPENAI) {
     const converted = directFn(chunk, state);
     return converted ? Array.isArray(converted) ? converted : [converted] : [];
   }
@@ -391,6 +408,8 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   if (chunk === null && results.length === 0) {
     results = [null];
   }
+
+  results = normalizeDsmlChunks(results, state);
 
   if (sourceFormat !== FORMATS.OPENAI) {
     const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);
@@ -430,8 +449,12 @@ export function initState(sourceFormat, requestBody) {
   const plainToolNames = new Set();
   // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
   const chatCustomToolNames = new Set();
-  if (Array.isArray(requestBody?.tools)) {
-    for (const tool of requestBody.tools) {
+  const declaredTools = [
+    ...(Array.isArray(requestBody?.tools) ? requestBody.tools : []),
+    ...(Array.isArray(requestBody?.input) ? requestBody.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
+  ];
+  if (declaredTools.length) {
+    for (const tool of declaredTools) {
       const type = isString(tool?.type) ? tool.type : "";
       const name = isString(tool?.function?.name) ?
       tool.function.name :

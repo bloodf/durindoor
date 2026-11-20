@@ -17,14 +17,47 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
-import { fixMissingToolResponses } from "../concerns/toolCall.js";
+import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+
+function withBooleanStrict(fn, source) {
+  if (isBoolean(source.strict)) fn.strict = source.strict;
+  return fn;
+}
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
+
+/** Repair truncated array keywords in Responses tool schemas before Chat forwarding.
+ * Traverse schema positions only, so literal enum/default values are preserved.
+ */
+function sanitizeChatSchema(schema) {
+  if (!schema || !isObject(schema) || Array.isArray(schema)) return schema;
+  const result = { ...schema };
+  for (const key of ["enum", "required", "anyOf", "oneOf", "allOf", "prefixItems"]) {
+    if (!(key in result)) continue;
+    let value = result[key];
+    if (!Array.isArray(value) && value && isObject(value)) {
+      const keys = Object.keys(value);
+      if (keys.length && keys.every((entry, index) => entry === String(index))) value = keys.map((entry) => value[entry]);
+    }
+    if (!Array.isArray(value)) { delete result[key]; continue; }
+    result[key] = ["anyOf", "oneOf", "allOf", "prefixItems"].includes(key) ? value.map(sanitizeChatSchema) : value;
+  }
+  for (const key of ["items", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "unevaluatedProperties", "additionalItems", "contentSchema", "unevaluatedItems"]) {
+    if (result[key] && isObject(result[key])) result[key] = Array.isArray(result[key]) ? result[key].map(sanitizeChatSchema) : sanitizeChatSchema(result[key]);
+    else if (isString(result[key]) && /^\[(?:MaxDepth|Truncated|Circular|Object|Array)\]$/.test(result[key].trim())) result[key] = {};
+  }
+  for (const key of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas"]) {
+    if (result[key] && isObject(result[key]) && !Array.isArray(result[key])) {
+      result[key] = Object.fromEntries(Object.entries(result[key]).map(([name, value]) => [name, sanitizeChatSchema(value)]));
+    }
+  }
+  return result;
+}
 
 /**
  * Scan a Responses API `input[]` and collect every `call_id` declared by a
@@ -77,6 +110,69 @@ function stripOrphanedToolOutputs(input) {
   });
   return stripped.length === 0 ? input : deduped;
 }
+
+/**
+ * Tool call item type -> the output item type that answers it. Both surfaces
+ * the Responses protocol rejects when a call has no output.
+ */
+const RESPONSES_TOOL_CALL_OUTPUT_TYPES = new Map([
+  [RESPONSES_ITEM.FUNCTION_CALL, RESPONSES_ITEM.FUNCTION_CALL_OUTPUT],
+  [RESPONSES_ITEM.CUSTOM_TOOL_CALL, RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT],
+]);
+
+/**
+ * Pair a historical tool call with the output item it never received.
+ *
+ * Mirror of the orphan-output cleanup above: an output whose call is gone is
+ * dropped, and a call whose output is gone gets the missing counterpart. A
+ * strict Responses upstream rejects the whole request with HTTP 400
+ * "No tool output found for function call <id>" when a `function_call` (or
+ * `custom_tool_call`) item has no matching output — the shape a client leaves
+ * behind when it crashes mid-tool-loop or truncates history after the
+ * assistant tool-call turn.
+ *
+ * The call is repaired, never dropped, so the model still sees that the call
+ * happened and the caller's history stays intact. A real output always wins:
+ * only a call whose counterpart is truly missing is filled, and the fill lands
+ * directly after its call so the item order of the remaining history is
+ * unchanged. The empty compatibility result states that no result was received
+ * — it never implies the tool ran.
+ *
+ * Ported from OmniRoute #15231 (upstream PR #15231, issue #15216), adapted to
+ * this fork's established empty compatibility result.
+ */
+function pairHistoricalToolCalls(input) {
+  if (!Array.isArray(input)) return input;
+
+  // Every call id that already has an output item, wherever that output sits
+  // in the history. A real output paired with a call is never touched.
+  const answeredCallIds = new Set();
+  let hasCallItem = false;
+  for (const item of input) {
+    if (item?.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) {
+      if (isString(item.call_id) && item.call_id) answeredCallIds.add(item.call_id);
+      continue;
+    }
+    if (RESPONSES_TOOL_CALL_OUTPUT_TYPES.has(item?.type)) hasCallItem = true;
+  }
+  if (!hasCallItem) return input;
+
+  const paired = [];
+  let changed = false;
+  for (const item of input) {
+    paired.push(item);
+    const outputType = RESPONSES_TOOL_CALL_OUTPUT_TYPES.get(item?.type);
+    if (!outputType) continue;
+    const callId = item.call_id;
+    if (!isString(callId) || !callId) continue;
+    if (answeredCallIds.has(callId)) continue;
+    answeredCallIds.add(callId);
+    paired.push({ type: outputType, call_id: callId, output: EMPTY_TOOL_RESULT_TEXT });
+    changed = true;
+  }
+  return changed ? paired : input;
+}
+
 /**
  * Lower custom (freeform) tool history to function history so it pairs, repairs,
  * and strips like `function_call` items. The raw `input` rides as `{input}`, the
@@ -309,7 +405,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // raw body apart from an ordinary function's malformed JSON, and never
   // freeform-wrap a name like "apply_patch" that this request declares as an
   // ordinary function (upstream #4208 review, round 2).
-  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+  // Responses Lite can declare tools in input additional_tools envelopes (#5378).
+  const responseTools = [
+    ...(Array.isArray(body.tools) ? body.tools : []),
+    ...(Array.isArray(body.input) ? body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
+  ];
+  const declaredToolTypes = buildDeclaredToolTypes(responseTools);
 
   // Extract reasoning text from summary[].text or encrypted_content fallback
   const extractReasoningText = (item) => {
@@ -521,8 +622,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
    * response routes can restore Responses semantics (upstream PR #3373).
    * (declaredToolTypes collected earlier, above the item loop.)
    */
-  if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.
+  if (responseTools.length) {
+    result.tools = responseTools.
     flatMap((tool) => {
       // Already in Chat Completions format: { type: "function", function: { name, ... } }.
       // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
@@ -540,12 +641,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         filter((subtool) => isString(subtool?.name) && subtool.name.trim() !== "").
         map((subtool) => ({
           type: OPENAI_BLOCK.FUNCTION,
-          function: {
+          function: withBooleanStrict({
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name)),
-            strict: subtool.strict
-          }
+            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
+          }, subtool)
         }));
       }
       // Responses API custom (freeform) tool: { type: "custom", name, description }.
@@ -555,7 +655,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
         return {
           type: OPENAI_BLOCK.FUNCTION,
-          function: {
+          function: withBooleanStrict({
             name: tool.name,
             description: String(tool.description || ""),
             parameters: {
@@ -563,9 +663,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
               properties: { input: { type: "string" } },
               required: ["input"],
               additionalProperties: false
-            },
-            strict: tool.strict
-          }
+            }
+          }, tool)
         };
       }
       // Responses API function tool: { type: "function", name, description, parameters }
@@ -575,15 +674,17 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (!name || !isString(name) || name.trim() === "") return null;
       return {
         type: OPENAI_BLOCK.FUNCTION,
-        function: {
+        function: withBooleanStrict({
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name)),
-          strict: tool.strict
-        }
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name))
+        }, tool)
       };
     }).
     filter(Boolean);
+    result.tools = result.tools.map((tool) => tool.function?.parameters === undefined ? tool : ({
+      ...tool, function: { ...tool.function, parameters: sanitizeChatSchema(tool.function.parameters) }
+    }));
   }
   const customToolNames = [...declaredToolTypes].filter(([, type]) => type === "custom").map(([name]) => name);
   if (customToolNames.length > 0) result._customToolNames = customToolNames;
@@ -865,7 +966,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           parameters: normalizeToolParameters(normalizeToolSchema(tool.function.parameters, name)),
           // The Responses API requires `strict` on every function tool; default to
           // false (non-strict) instead of forwarding an undefined field.
-          strict: tool.function.strict ?? false
+          strict: isBoolean(tool.function.strict) ? tool.function.strict : false
         };
       }
       // Chat nests custom tools under `custom`; Responses declares them flat (#1344).
@@ -879,6 +980,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }).filter(Boolean);
   }
 
+  // Only the Claude native-search pivot may force a hosted search choice.
+  const claudeSearch = body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH);
+  if (claudeSearch) result.include = ["web_search_call.action.sources"];
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;
@@ -887,7 +991,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Allowlist converter drops invalid shapes; also omit when no declarations
   // survived filtering (OpenAI rejects a forced choice with no tools).
   if (Array.isArray(result.tools) && result.tools.length > 0) {
-    const converted = convertChatToolChoiceToResponses(body.tool_choice);
+    const converted = claudeSearch && body.tool_choice?.type === OPENAI_BLOCK.WEB_SEARCH ?
+      { type: OPENAI_BLOCK.WEB_SEARCH } : convertChatToolChoiceToResponses(body.tool_choice);
     if (converted !== undefined) result.tool_choice = converted;
   }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
@@ -899,6 +1004,11 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.prompt_cache_key !== undefined) result.prompt_cache_key = body.prompt_cache_key;
 
   result.input = stripOrphanedToolOutputs(result.input);
+  // Mirror of the cleanup above: a historical tool call whose output never
+  // arrived is paired with the empty compatibility result it is missing, so a
+  // strict Responses upstream does not reject the whole request with
+  // 400 "No tool output found for function call <id>" (OmniRoute #15216).
+  result.input = pairHistoricalToolCalls(result.input);
 
   return ensureResponsesInputOrContinuity(result);
 }

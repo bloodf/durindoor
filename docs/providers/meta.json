@@ -6,6 +6,8 @@
     "index",
     "connecting-accounts",
     "api-key-providers",
+    "arcee-platform",
+    "cerebrium",
     "web-cookie",
     "openai-compatible-nodes",
     "network-llm-servers",
@@ -18,10 +20,14 @@
     "devin-cli-agentic",
     "antigravity",
     "kiro",
+    "xkiro",
     "cursor",
     "kimi-web",
     "grokified",
+    "openference",
+    "tokenharbor",
     "retired",
+    "hetzner",
     "catalog"
   ]
 }

@@ -53,6 +53,30 @@ function cancelDiscardedResponse(response) {
   } catch {/* body may already be locked or closed */}
 }
 
+/**
+ * Read an OPTIONAL cloned error body used to match a provider-side hint.
+ *
+ * The probe is advisory: a body that cannot be read (stream error, disturbed
+ * body, oversized payload) must never replace the upstream HTTP response with a
+ * transport error. A read failure is therefore a NON-MATCH (empty text) and the
+ * caller keeps the original response together with its status. A caller abort
+ * during the probe still propagates: the request is cancelled, never silently
+ * downgraded into a successful-looking response.
+ *
+ * The source is cloned before reading, so the original body stays intact for the
+ * caller and the translator.
+ */
+async function readOptionalProbeText(source, { signal = null, maxBytes = 64 * 1024, timeoutMs = 2_000 } = {}) {
+  if (!source || !isFunction(source.clone)) return "";
+  try {
+    return await readBoundedResponseText(source.clone(), { signal, maxBytes, timeoutMs });
+  } catch (probeError) {
+    if (probeError?.name === "AbortError" || signal?.aborted) throw probeError;
+    // Unreadable body → no match. The caller keeps the original HTTP response.
+    return "";
+  }
+}
+
 
 /** Abort-aware retry delay with deterministic listener/timer cleanup. */
 export function waitForRetryDelay(delayMs, signal = null) {
@@ -269,6 +293,9 @@ export class BaseExecutor {
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
+    const dispatchesByUrl = {};
+    // Keep explicit 400 downgrades across rebuilt attempts in this execution.
+    const strippedFields = new Set();
     let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
     attemptStartedAt :
     null;
@@ -300,6 +327,16 @@ export class BaseExecutor {
     const hasContainsRule = policy.hasContainsRule;
     // Header/connect timeout: per-request policy override → provider config → global default.
     const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+
+    // Count actual sends separately from status retries: every recovery spends
+    // the per-URL ceiling, without changing status-specific retry allowances.
+    const transportBudgetLeft = (urlIndex) => {
+      return maxTransportAttempts == null || (dispatchesByUrl[urlIndex] ?? 0) < maxTransportAttempts;
+    };
+
+    const chargeDispatch = (urlIndex) => {
+      dispatchesByUrl[urlIndex] = (dispatchesByUrl[urlIndex] ?? 0) + 1;
+    };
 
     // Resolve how many in-place retries a failure gets, honoring skip-rules and the
     // transport-attempt ceiling (see the attempts table in runtimeConfig.js).
@@ -335,7 +372,7 @@ export class BaseExecutor {
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
     const tryRetry = async (urlIndex, statusKey, reason, response = null, errorKind = null, text = null) => {
       const { attempts, delayMs } = resolveAttempts({ statusKey, errorKind, text });
-      if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts) return false;
+      if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts || !transportBudgetLeft(urlIndex)) return false;
       const matchedRule = skipRules ?
       matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules) :
       null;
@@ -421,22 +458,63 @@ export class BaseExecutor {
           (/\/chat\/completions\/?$/.test(new URL(url).pathname) ? FORMATS.OPENAI : null);
         const openAIChatWire = wireFormat === FORMATS.OPENAI;
         let requestBody = openAIChatWire ? this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody;
+        if (strippedFields.size && requestBody && isObject(requestBody) && !Array.isArray(requestBody)) {
+          requestBody = { ...requestBody };
+          for (const field of strippedFields) delete requestBody[field];
+        }
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
+        chargeDispatch(urlIndex);
         beginDispatch();
         const fetchOptions = { method: "POST", headers, body: bodyStr, signal: mergedSignal };
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
         let response = await runQuotaBearingProviderRequest(() =>
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
-        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false) {
-          const clone = response.clone?.();
-          const errorText = clone ?
-          await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 }) :
-          "";
+        // Cohere can explicitly suggest its supported tier on a 422. Retry only
+        // that rejection, once, and only when a different effort was sent.
+        //
+        // COMPATIBILITY CONTRACT (see internal/docs/port-reports/1073-existing-provider-request-residuals.md):
+        //  - The recovery is an EXTRA transport dispatch on this base URL, so it
+        //    is gated by the SAME transport-attempt budget the generic retry path
+        //    spends (`requestPolicy.maxTransportAttempts`, which counts the
+        //    first try). With a one-attempt ceiling the 422 is returned unchanged
+        //    and no second request is dispatched.
+        //  - The error body read is OPTIONAL. A body that cannot be read is a
+        //    NON-MATCH: the original response and its status are preserved
+        //    instead of the read failure surfacing as a transport error.
+        //  - Without a requestPolicy (no ceiling) the implicit pre-port
+        //    behavior is unchanged: the recovery still runs exactly once.
+        if (this.provider === "cohere" && response.status === 422 &&
+            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high" &&
+            transportBudgetLeft(urlIndex)) {
+          const errorText = await readOptionalProbeText(response, { signal });
+          if (/reasoning_effort/i.test(errorText) && /\buse\s+['"`]high['"`]\s+instead\b/i.test(errorText)) {
+            requestBody = { ...requestBody, reasoning_effort: "high" };
+            bodyStr = JSON.stringify(requestBody);
+            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+            cancelDiscardedResponse(response);
+            clearTimeout(connectTimer);
+            connectCtrl = new AbortController();
+            connectTimer = armConnectTimer();
+            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            chargeDispatch(urlIndex);
+            beginDispatch();
+            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
+              ...fetchOptions, body: bodyStr, signal: mergedSignal
+            }), proxyOptions));
+          }
+        }
+        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
+          // OPTIONAL probe: an unreadable body is a non-match, never a transport
+          // error that would discard the upstream 400.
+          const errorText = await readOptionalProbeText(response, { signal });
           const field = findOffendingField(errorText);
           if (
           field &&
+          // Azure negotiates token-limit spellings in its executor. Dropping
+          // either field here would silently remove the caller's output cap.
+          !(this.provider === "azure" && (field === "max_tokens" || field === "max_completion_tokens")) &&
           requestBody && isObject(
             requestBody) &&
           !Array.isArray(requestBody) &&
@@ -444,6 +522,7 @@ export class BaseExecutor {
           {
             requestBody = { ...requestBody };
             delete requestBody[field];
+            strippedFields.add(field);
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -453,12 +532,10 @@ export class BaseExecutor {
             connectCtrl = new AbortController();
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            chargeDispatch(urlIndex);
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              method: "POST",
-              headers,
-              body: bodyStr,
-              signal: mergedSignal
+              ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
         }
@@ -494,19 +571,17 @@ export class BaseExecutor {
         // (and the status is an error). Clone + bounded read so a provider-controlled
         // body cannot hang the request or grow memory; the original body stays intact
         // for the caller/translator. Unreadable/oversized → no contains match.
+        // readOptionalProbeText owns that contract: a failed read is a non-match
+        // (never a transport error that would discard the upstream response), while
+        // a caller abort during the probe still cancels the request.
         let errorText = null;
         if (hasContainsRule && response.status >= 400) {
-          try {
-            errorText = await readBoundedResponseText(response.clone(), { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 });
-          } catch (probeError) {
-            // A caller abort during the probe must cancel the request, not be
-            // swallowed into a silent no-match that returns the upstream response.
-            if (probeError?.name === "AbortError" || signal?.aborted) throw probeError;
-            // unreadable/oversized body → skip contains matching
-          }
+          errorText = await readOptionalProbeText(response, { signal });
         }
 
-        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
+        // Antigravity 504s move to the account layer without replaying this URL.
+        const antigravityGatewayTimeout = this.provider === "antigravity" && response.status === HTTP_STATUS.GATEWAY_TIMEOUT;
+        if (!antigravityGatewayTimeout && await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
 
         // A skip-rule matched this HTTP failure → abandon this account now; do NOT
         // fall through to shouldRetry()/other base URLs on the same account. The
@@ -526,7 +601,7 @@ export class BaseExecutor {
           };
         }
 
-        if (this.shouldRetry(response.status, urlIndex)) {
+        if (!antigravityGatewayTimeout && this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -561,6 +636,16 @@ export class BaseExecutor {
           error.errorKind = "aborted";
           error.providerAttemptStartedAt = providerAttemptStartedAt;
           throw error;
+        }
+
+        // A confirmed Antigravity header deadline has consumed the account's
+        // full budget. Preserve the original reason for account-level failover.
+        if (isConnectTimeout && this.provider === "antigravity") {
+          const timeout = connectCtrl.signal.reason;
+          timeout.errorKind = "connect_timeout";
+          timeout.antigravityPreResponseTimeout = true;
+          timeout.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw timeout;
         }
 
         // connect_timeout / network → retryable per resolveAttempts (default: connect_timeout=0 retries)

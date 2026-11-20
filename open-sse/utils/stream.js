@@ -1,3 +1,4 @@
+import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
@@ -7,6 +8,7 @@ import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStream
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
@@ -17,6 +19,7 @@ import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
+import { advancePendingSseLineBytes } from "./pendingSseLine.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -173,6 +176,19 @@ export function createSSEStream(options = {}) {
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
   const errorSecrets = credentialErrorSecrets(credentials);
   let buffer = "";
+  let pendingLineBytes = 0;
+  // OpenAI SDK consumers can attempt to decode field-only SSE events as JSON.
+  // Hold their framing until a data line proves the event has a payload.
+  const filterEmptyOpenAIFrames = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI;
+  let pendingSSEFields = "";
+  let sseFrameHasData = false;
+  let sseFrameHasComment = false;
+  // Responses passthrough: the upstream speaks the Responses protocol and the
+  // client wants it unchanged, so the frames are forwarded as they arrive.
+  const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
+  // Replayed Responses events (a reconnect re-sending an already forwarded
+  // sequence_number) are dropped before they reach the client.
+  const responsesReplay = createResponsesSequenceReplayTracker();
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();
   let usage = null;
@@ -218,7 +234,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE ?
-  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
+  { ...initState(sourceFormat, body || providerBody), searchEnabled: provider === "codex" && sourceFormat === FORMATS.CLAUDE && body?.tools?.some(tool => tool?.type === "web_search_20250305"), provider, toolNameMap, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
   null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
@@ -427,7 +443,9 @@ export function createSSEStream(options = {}) {
   /** Append chunks without copying growing prefixes; join only at observable completion/snapshot boundaries. */
   const appendContent = (chunk) => contentChunks.push(chunk);
   const appendThinking = (chunk) => thinkingChunks.push(chunk);
+  let hasSnapshotOutput = false;
   const getAccumulatedCompletion = () => ({
+    ...(hasSnapshotOutput ? { hasSnapshotOutput: true } : null),
     content: contentChunks.join(""),
     thinking: thinkingChunks.join("")
   });
@@ -446,6 +464,7 @@ export function createSSEStream(options = {}) {
   const eventTypeCounts = {};
   let onStreamCompleteFired = false; // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
   const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
+    if (targetFormat === FORMATS.OPENAI_RESPONSES && (mode === STREAM_MODE.PASSTHROUGH || sourceFormat === FORMATS.OPENAI_RESPONSES) && hasResponsesSnapshotOutput(parsed)) hasSnapshotOutput = true;
     if (summary) providerSummary.ingest(parsed);
     const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
     const openaiToolCalls = parsed.choices?.some?.((choice) => choice?.delta?.tool_calls?.length > 0 || choice?.delta?.function_call);
@@ -542,7 +561,7 @@ export function createSSEStream(options = {}) {
     if (targetFormat !== FORMATS.OPENAI || !Array.isArray(parsed?.choices)) {
       return { changed: false, keep: true };
     }
-    let changed = false;
+    let changed = normalizeArrayContentChunk(parsed);
     for (const choice of parsed.choices) {
       const delta = choice?.delta;
       if (isString(delta?.reasoning) && delta.reasoning.trim() && !delta.reasoning_content) {
@@ -689,10 +708,11 @@ export function createSSEStream(options = {}) {
    * finalizers use this when flush cannot run, preferring provider usage and
    * otherwise estimating from content already received.
    */
+  // Replicate predictions do not consistently report token counts; leave them unknown.
   const getStreamSnapshot = () => {
     const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
-    totalContentLength > 0 ?
+    provider !== "replicate" && totalContentLength > 0 ?
     estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
     null;
     return {
@@ -714,7 +734,7 @@ export function createSSEStream(options = {}) {
     clearCompletionFlushTimer();
     if (translatedStreamFinalized) return;
     translatedStreamFinalized = true;
-    if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
+    if (provider !== "replicate" && !hasValidUsage(state?.usage) && totalContentLength > 0) {
       state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
     }
     if (hasValidUsage(state?.usage)) {
@@ -752,12 +772,24 @@ export function createSSEStream(options = {}) {
   const transformStream = new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
+      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
+      if (nextPendingLineBytes === null) {
+        buffer = "";
+        clearCompletionFlushTimer();
+        upstreamTerminal.fail();
+        const error = new Error("Upstream SSE line exceeded the size limit");
+        error.code = "invalid_sse_payload";
+        throw error;
+      }
+      pendingLineBytes = nextPendingLineBytes;
       const text = decoder.decode(chunk, { stream: true });
       buffer += text;
       reqLogger?.appendProviderChunk?.(text);
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      const lastNewline = text.lastIndexOf("\n");
+      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
+      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
+      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -776,6 +808,12 @@ export function createSSEStream(options = {}) {
           currentUpstreamEvent = trimmed.slice(6).trim() || null;
           if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES) {
             currentOpenAIResponsesEvent = currentUpstreamEvent;
+          } else if (responsesPassthrough) {
+            // Hold the label until its frame is known to be forwarded: a replayed
+            // frame has to lose its label too, or the client sees an event
+            // label whose payload was dropped.
+            if (pendingSSEFields.length + line.length < 65536) pendingSSEFields += line + "\n";
+            continue;
           }
         }
 
@@ -788,6 +826,24 @@ export function createSSEStream(options = {}) {
 
           const isDoneLine = /^data:\s*\[DONE\]\s*$/.test(trimmed);
           const isDataLine = trimmed.startsWith("data:");
+          if (filterEmptyOpenAIFrames) {
+            if (!trimmed) {
+              pendingSSEFields = "";
+              const forwardTerminator = sseFrameHasData || sseFrameHasComment;
+              sseFrameHasData = false;
+              sseFrameHasComment = false;
+              currentUpstreamEvent = null;
+              if (!forwardTerminator) {
+                continue;
+              }
+            } else if (trimmed.startsWith(":")) {
+              sseFrameHasComment = true;
+            } else if (!isDataLine && /^(?:id|event|retry)(?::|$)/.test(trimmed)) {
+              // Bound buffering for a malformed stream that never terminates a frame.
+              if (pendingSSEFields.length + line.length < 65536) pendingSSEFields += line + "\n";
+              continue;
+            }
+          }
           const upstreamEventForLine = isDataLine ? currentUpstreamEvent : null;
           if (isDataLine) currentUpstreamEvent = null;
           if (isDoneLine) {
@@ -801,6 +857,13 @@ export function createSSEStream(options = {}) {
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
+              // A replayed Responses frame re-sends a sequence_number that was
+              // already forwarded. Forwarding it again duplicates its content,
+              // and its held event label has to go with it.
+              if (responsesPassthrough && responsesReplay.isReplay(parsed)) {
+                pendingSSEFields = "";
+                continue;
+              }
               streamErrorPayload ??= extractStreamErrorPayload(parsed);
               const publicError = sanitizePublicErrorEnvelope(parsed, errorSecrets);
 
@@ -808,7 +871,6 @@ export function createSSEStream(options = {}) {
               // arrays (Mistral thinking chunks). Fold them into the string
               // `content` / `reasoning_content` the chat-chunk contract requires
               // before any client-visible path sees the chunk (OmniRoute #15757).
-              if (targetFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -1060,9 +1122,9 @@ export function createSSEStream(options = {}) {
               parsed.response?.candidates?.[0]?.finishReason;
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               const lateUsage = pendingUsageEstimate && hasValidUsage(parsed.usage);
-              if (isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
+              if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
                 pendingUsageEstimate = true;
-              } else if (isFinishChunk && !hasValidUsage(usage)) {
+              } else if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
@@ -1087,7 +1149,7 @@ export function createSSEStream(options = {}) {
               parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) ||
               targetFormat == null && parsed.candidates?.some?.((candidate) => candidate?.finishReason);
               if (immediateGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
-                if (!hasValidUsage(usage) && totalContentLength > 0) {
+                if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
                   usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
                 }
                 onStreamCompleteFired = true;
@@ -1130,6 +1192,17 @@ export function createSSEStream(options = {}) {
           }
 
           if (pendingInlineThinkingOutput) output = pendingInlineThinkingOutput + output;
+
+          if (filterEmptyOpenAIFrames && isDataLine) {
+            sseFrameHasData = true;
+            output = pendingSSEFields + output;
+            pendingSSEFields = "";
+          } else if (responsesPassthrough) {
+            // The held Responses label belongs in front of the line it labels;
+            // a line that carries no frame of its own flushes it first.
+            output = pendingSSEFields + output;
+            pendingSSEFields = "";
+          }
 
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
@@ -1176,6 +1249,14 @@ export function createSSEStream(options = {}) {
         const openAIResponsesEventName = isOpenAIResponsesStream ?
         getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed) :
         currentUpstreamEvent;
+
+        // A replayed Responses event re-sends a sequence_number that was already
+        // forwarded. Forwarding it again glues duplicated text into the client
+        // stream and doubles its share of the completion accounting, so drop it
+        // before the terminal tracker, the summary and the translator see it.
+        if (isOpenAIResponsesStream && responsesReplay.isReplay(parsed)) {
+          continue;
+        }
 
         upstreamTerminal.observe({
           chunk: parsed,
@@ -1321,7 +1402,7 @@ export function createSSEStream(options = {}) {
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
-            if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
+            if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
@@ -1440,7 +1521,11 @@ export function createSSEStream(options = {}) {
                 const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
                 output = `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
-            } else {
+            } else if (responsesPassthrough && parsed && responsesReplay.isReplay(parsed)) {
+              // The unterminated final frame is a replay: drop it and the label
+              // it was holding.
+              pendingSSEFields = "";
+            } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
               output = buffer;
@@ -1449,14 +1534,29 @@ export function createSSEStream(options = {}) {
               }
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
+            if (output && filterEmptyOpenAIFrames && trimmedBuffer.startsWith("data:")) {
+              output = pendingSSEFields + output;
+              pendingSSEFields = "";
+            } else if (output && responsesPassthrough) {
+              // The held Responses label belongs in front of the frame it labels.
+              output = pendingSSEFields + output;
+              pendingSSEFields = "";
+            }
             if (output) {
               reqLogger?.appendConvertedChunk?.(output);
               controller.enqueue(sharedEncoder.encode(output));
             }
           }
 
+          if (pendingSSEFields && responsesPassthrough) {
+            // A Responses label whose frame never arrived still belongs to the client.
+            reqLogger?.appendConvertedChunk?.(pendingSSEFields);
+            controller.enqueue(sharedEncoder.encode(pendingSSEFields));
+            pendingSSEFields = "";
+          }
+
           emitPendingUsageEstimate(controller);
-          if (!hasValidUsage(usage) && totalContentLength > 0) {
+          if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
           }
 
@@ -1623,6 +1723,13 @@ export function createSSEStream(options = {}) {
     }
   });
   transformStream.getStreamSnapshot = getStreamSnapshot;
+  // Keep interruption snapshots stable; terminal classification also needs
+  // tool and error state that is not part of the accounting snapshot contract.
+  transformStream.getEmptyStreamSnapshot = () => ({
+    ...getStreamSnapshot(),
+    hadToolCalls,
+    upstreamError: streamErrorPayload
+  });
   return transformStream;
 }
 

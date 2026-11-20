@@ -91,6 +91,24 @@ function normalizeExa(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+function normalizeParallel(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = data.results;
+  if (!Array.isArray(items)) return { results: [], totalResults: null };
+  const results = items.map((item, idx) => {
+    const excerpts = Array.isArray(item.excerpts) ? item.excerpts.filter((e) => isString(e) && e.trim()) : [];
+    return makeResult("parallel", {
+      title: item.title,
+      url: item.url,
+      snippet: excerpts[0] || "",
+      published_at: item.publish_date,
+      full_text: excerpts.join("\n\n"),
+      text_format: "markdown",
+    }, idx, now);
+  });
+  return { results, totalResults: results.length };
+}
+
 function normalizeTavily(data, _query, _searchType) {
   const now = new Date().toISOString();
   const items = data.results;
@@ -307,6 +325,7 @@ const NORMALIZERS = {
   "brave-search": normalizeBrave,
   "perplexity": normalizePerplexity,
   "exa": normalizeExa,
+  "parallel": normalizeParallel,
   "tavily": normalizeTavily,
   "google-pse": normalizeGooglePse,
   "linkup": normalizeLinkup,

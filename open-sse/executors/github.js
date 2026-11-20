@@ -19,6 +19,8 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import { checkGitHubCreditLimit } from "../services/githubCreditLimit.js";
+import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { resolveCopilotEndpointRoute } from "../services/copilotEndpointContract.js";
 import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -151,6 +153,38 @@ export class GithubExecutor extends BaseExecutor {
     return !(m.includes("gemini") || m.includes("claude"));
   }
 
+  /**
+   * The route this model uses, per the account's discovered endpoint
+   * contract: "responses", "chat", or null when the contract says nothing.
+   *
+   * The account's discovered catalog is the authority (OmniRoute #15337): a
+   * model Copilot serves only through /responses goes there directly instead
+   * of paying a failed /chat/completions round trip first. A model with no
+   * discovered metadata keeps the current behavior — the chat route first,
+   * escalated only on Copilot's own "not accessible via the /chat/completions
+   * endpoint" error.
+   *
+   * The contract is a discovery fact, not an operator decision, so an explicit
+   * registry override wins: a catalog row that pins a model to a format is
+   * honored instead of the discovered route.
+   */
+  copilotEndpointRoute(model, credentials) {
+    const alias = PROVIDER_ID_TO_ALIAS[this.provider] || this.provider;
+    const override = getModelTargetFormat(alias, model);
+    if (override) return override === "openai-responses" ? "responses" : "chat";
+    const contract = credentials?.providerSpecificData?.copilotEndpointContract;
+    if (!contract) return null;
+    return resolveCopilotEndpointRoute(contract, model);
+  }
+
+  /**
+   * Whether this model must use Copilot's existing /responses route.
+   */
+  usesResponsesRoute(model, credentials) {
+    if (!this.supportsResponsesEndpoint(model)) return false;
+    return this.copilotEndpointRoute(model, credentials) === "responses";
+  }
+
   async execute(options) {
     const { model, log } = options;
 
@@ -179,10 +213,13 @@ export class GithubExecutor extends BaseExecutor {
       return this.executeWithMessagesEndpoint(options);
     }
 
-    // Only use /responses for models that are explicitly known to need it (e.g. gpt codex models)
-    // and that the /responses endpoint actually serves (excludes Gemini/Claude, see #1062).
-    if (this.knownCodexModels.has(model) && this.supportsResponsesEndpoint(model)) {
-      log?.debug("GITHUB", `Using cached /responses route for ${model}`);
+    // Only use /responses for models that are explicitly known to need it — the
+    // account's discovered endpoint contract, or a cached escalation after
+    // Copilot's own error — and that the /responses endpoint actually serves
+    // (excludes Gemini/Claude, see #1062).
+    if (this.supportsResponsesEndpoint(model) &&
+      (this.knownCodexModels.has(model) || this.usesResponsesRoute(model, options.credentials))) {
+      log?.debug("GITHUB", `Using /responses route for ${model}`);
       return this.executeWithResponsesEndpoint(options);
     }
 

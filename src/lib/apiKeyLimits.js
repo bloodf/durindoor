@@ -10,13 +10,22 @@
 //   flight can overshoot these limits and TPM.
 // - Day and month follow server local time, like usageDaily and the
 //   existing daily token limit.
-import { getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
+//
+// Every window belongs to the key's stable id, not to the secret it stores.
+// A secret is a credential that can change; the id is the account. Keying the
+// windows by the id keeps a key's budget intact across a secret change, and
+// keeps two keys that once shared a secret apart.
+import { getApiKeyByKey, getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
+import { getAdapterSync } from "@/lib/db/driver.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const RPM_WINDOW_MS = 60 * 1000;
 const USAGE_CACHE_TTL_MS = 10 * 1000;
+// Bound on the secret -> id alias table. One entry per key the process has
+// admitted; a rotated secret adds an entry, an idle one is dropped.
+const ALIAS_LIMIT = 512;
 
 const METRICS = {
   tokens: { label: "tokens", read: (u) => u.inputTokens + u.outputTokens },
@@ -45,15 +54,85 @@ const RESET_TEXT = { day: "Resets at local midnight.", month: "Resets on the 1st
 
 // Shared across Next.js module instances, like usageRepo's emitter.
 if (!global._apiKeyLimitState) {
-  global._apiKeyLimitState = { usage: new Map(), hits: new Map(), tokens: new Map(), checked: new WeakSet(), listening: false };
+  global._apiKeyLimitState = { usage: new Map(), hits: new Map(), tokens: new Map(), checked: new WeakSet(), listening: false, aliases: new Map() };
 }
 const state = global._apiKeyLimitState;
+if (!state.aliases) state.aliases = new Map();
 if (!state.listening) {
-  statsEmitter.on("apiKeyUsage", (apiKey, tokens = 0) => {
-    state.usage.delete(apiKey);
-    if (tokens > 0) state.tokens.set(apiKey, [...recentTokens(apiKey), { at: Date.now(), tokens }]);
+  // The usage event carries the key's stable id when the writer knows it.
+  // Older writers and direct emitters only carry the secret, so the secret is
+  // resolved back to its key: the alias table first, then the stored key row.
+  statsEmitter.on("apiKeyUsage", (apiKey, tokens = 0, apiKeyId = null) => {
+    const scope = apiKeyId || state.aliases.get(apiKey) || resolveKeyIdSync(apiKey) || apiKey;
+    state.usage.delete(scope);
+    if (tokens > 0) state.tokens.set(scope, [...recentTokens(scope), { at: Date.now(), tokens }]);
   });
   state.listening = true;
+}
+
+/**
+ * The stable id of the key that stores a secret, read synchronously.
+ *
+ * Only used when a usage event carries no id of its own. A missing or
+ * uninitialized database leaves the event scoped by its secret, which is the
+ * behaviour of a process that never admitted the key.
+ */
+function resolveKeyIdSync(apiKey) {
+  if (!apiKey) return null;
+  try {
+    const row = getAdapterSync().get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey]);
+    return row?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember which key a secret belongs to, so usage events can be scoped. */
+function rememberAlias(record) {
+  if (!record?.id || !record?.key) return;
+  if (state.aliases.get(record.key) === record.id) return;
+  if (state.aliases.size >= ALIAS_LIMIT) {
+    const oldest = state.aliases.keys().next().value;
+    if (oldest !== undefined) state.aliases.delete(oldest);
+  }
+  state.aliases.set(record.key, record.id);
+}
+
+/**
+ * The window scope of one key record, resolved to its stable id.
+ *
+ * A record that carries its id is already scoped. A record that carries only
+ * a secret is a legacy caller shape; its secret is resolved to the key it
+ * belongs to, so it reads the same window the usage writer charged. A secret
+ * that belongs to no key keeps the old behaviour and scopes by itself.
+ *
+ * @returns {Promise<{ scope: string|null, apiKeyId: string|null }>}
+ */
+async function scopeForRecord(record) {
+  if (!record?.key) return { scope: null, apiKeyId: null };
+  if (record.id) {
+    rememberAlias(record);
+    return { scope: record.id, apiKeyId: record.id };
+  }
+  const known = state.aliases.get(record.key);
+  if (known) return { scope: known, apiKeyId: known };
+  const resolved = await resolveKeyId(record.key);
+  if (resolved) {
+    rememberAlias({ id: resolved, key: record.key });
+    return { scope: resolved, apiKeyId: resolved };
+  }
+  return { scope: record.key, apiKeyId: null };
+}
+
+/** The stable id of the key that stores a secret. */
+async function resolveKeyId(apiKey) {
+  if (!apiKey) return null;
+  try {
+    const record = await getApiKeyByKey(apiKey);
+    return record?.id || null;
+  } catch {
+    return null;
+  }
 }
 
 function limitOf(record, field) {
@@ -72,12 +151,12 @@ function periodBounds(now = new Date()) {
 
 const resetOf = (period, bounds) => (period === "day" ? bounds.nextDay : bounds.nextMonth);
 
-async function getUsage(apiKey, bounds, { fresh = false } = {}) {
+async function getUsage(record, scope, apiKeyId, bounds, { fresh = false } = {}) {
   const dayKey = bounds.day.toISOString();
-  const cached = state.usage.get(apiKey);
+  const cached = state.usage.get(scope);
   if (!fresh && cached && cached.dayKey === dayKey && Date.now() - cached.ts < USAGE_CACHE_TTL_MS) return cached.totals;
-  const totals = await getApiKeyWindowUsageTotals(apiKey, dayKey, bounds.month.toISOString());
-  state.usage.set(apiKey, { totals, dayKey, ts: Date.now() });
+  const totals = await getApiKeyWindowUsageTotals(record.key, dayKey, bounds.month.toISOString(), apiKeyId);
+  state.usage.set(scope, { totals, dayKey, ts: Date.now() });
   return totals;
 }
 
@@ -108,10 +187,11 @@ function format(value, money) {
  */
 export async function checkApiKeyLimits(record, now = new Date()) {
   if (!record?.key) return null;
+  const { scope, apiKeyId } = await scopeForRecord(record);
   const bounds = periodBounds(now);
   const active = USAGE_LIMITS.filter((def) => def.enforce !== false && limitOf(record, def.field) != null);
   if (active.length) {
-    const usage = await getUsage(record.key, bounds);
+    const usage = await getUsage(record, scope, apiKeyId, bounds);
     for (const def of active) {
       const metric = METRICS[def.metric];
       const used = metric.read(usage[def.period]);
@@ -128,7 +208,7 @@ export async function checkApiKeyLimits(record, now = new Date()) {
   const nowMs = now.getTime();
   const tpmLimit = limitOf(record, "tpmLimit");
   if (tpmLimit) {
-    const entries = recentTokens(record.key, nowMs);
+    const entries = recentTokens(scope, nowMs);
     const used = sumTokens(entries);
     if (used >= tpmLimit) {
       return {
@@ -139,7 +219,7 @@ export async function checkApiKeyLimits(record, now = new Date()) {
   }
 
   const rpmLimit = limitOf(record, "rpmLimit");
-  const hits = recentHits(record.key, nowMs);
+  const hits = recentHits(scope, nowMs);
   if (rpmLimit && hits.length >= rpmLimit) {
     return {
       message: `API key rate limit exceeded (${rpmLimit} requests/minute).`,
@@ -147,7 +227,7 @@ export async function checkApiKeyLimits(record, now = new Date()) {
     };
   }
   hits.push(nowMs);
-  state.hits.set(record.key, hits);
+  state.hits.set(scope, hits);
   return null;
 }
 
@@ -179,11 +259,12 @@ export async function enforceApiKeyLimits(request, record) {
 
 /** Current usage against every limit, for the dashboard. */
 export async function getApiKeyLimitStatus(record, now = new Date()) {
+  const { scope, apiKeyId } = await scopeForRecord(record);
   const bounds = periodBounds(now);
-  const usage = await getUsage(record.key, bounds, { fresh: true });
+  const usage = await getUsage(record, scope, apiKeyId, bounds, { fresh: true });
   return {
-    rpm: { used: recentHits(record.key, now.getTime()).length, limit: limitOf(record, "rpmLimit") },
-    tpm: { used: sumTokens(recentTokens(record.key, now.getTime())), limit: limitOf(record, "tpmLimit") },
+    rpm: { used: recentHits(scope, now.getTime()).length, limit: limitOf(record, "rpmLimit") },
+    tpm: { used: sumTokens(recentTokens(scope, now.getTime())), limit: limitOf(record, "tpmLimit") },
     limits: USAGE_LIMITS.map((def) => ({
       field: def.field,
       label: def.label,

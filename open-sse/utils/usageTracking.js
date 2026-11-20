@@ -82,7 +82,7 @@ export function filterUsageForFormat(usage, targetFormat) {
   const formatFields = {
     [FORMATS.CLAUDE]: [
     'input_tokens', 'output_tokens',
-    'cache_read_input_tokens', 'cache_creation_input_tokens',
+    'cache_read_input_tokens', 'cache_creation_input_tokens', 'server_tool_use',
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.GEMINI]: [
@@ -154,7 +154,14 @@ export function normalizeUsage(usage) {
   assignNumber("completion_tokens", usage?.completion_tokens);
   assignNumber("total_tokens", usage?.total_tokens);
   assignNumber("cache_read_input_tokens", usage?.cache_read_input_tokens);
-  assignNumber("cache_creation_input_tokens", usage?.cache_creation_input_tokens);
+  const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
+    details?.cache_creation_tokens ?? details?.cache_write_tokens;
+  assignNumber("cache_creation_input_tokens", cacheWrite);
+  // Alias reports are inclusive subsets, like OpenAI token details.
+  if (usage.cache_creation_input_tokens == null && cacheWrite != null) {
+    normalized.prompt_tokens_details = { ...details, cache_creation_tokens: cacheWrite };
+  }
   assignNumber("cached_tokens", usage?.cached_tokens);
   assignNumber("reasoning_tokens", usage?.reasoning_tokens);
   for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
@@ -177,7 +184,7 @@ export function normalizeUsage(usage) {
 
   // Preserve nested details objects for OpenAI format forwarding
   if (usage?.prompt_tokens_details && isObject(usage.prompt_tokens_details)) {
-    normalized.prompt_tokens_details = usage.prompt_tokens_details;
+    normalized.prompt_tokens_details = { ...usage.prompt_tokens_details, ...normalized.prompt_tokens_details };
   }
   if (usage?.completion_tokens_details && isObject(usage.completion_tokens_details)) {
     normalized.completion_tokens_details = usage.completion_tokens_details;
@@ -249,13 +256,14 @@ export function canonicalizeUsage(usage) {
   const inputDetails = usage.prompt_tokens_details ?? usage.input_tokens_details;
   const outputDetails = usage.completion_tokens_details ?? usage.output_tokens_details;
   const reasoning = num(usage.reasoning_tokens ?? outputDetails?.reasoning_tokens);
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
   usage.cache_creation_input_tokens !== undefined &&
   usage.cached_tokens === undefined &&
   inputDetails?.cache_creation_tokens === undefined);
   const cacheCreation = hasExclusiveCache ?
   num(usage.cache_creation_input_tokens) :
-  num(usage.cache_creation_input_tokens ?? inputDetails?.cache_creation_tokens);
+  num(cacheWrite);
 
   let prompt = num(usage.prompt_tokens ?? usage.input_tokens);
   let cached;
@@ -431,7 +439,7 @@ export function extractUsage(chunk) {
     const usage = chunk.response.usage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
-    const cacheCreationTokens = usage.cache_creation_input_tokens ?? inputDetails?.cache_creation_tokens;
+    const cacheCreationTokens = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
     return normalizeUsage({
       prompt_tokens: usage.input_tokens ?? usage.prompt_tokens ?? 0,
       completion_tokens: usage.output_tokens ?? usage.completion_tokens ?? 0,
@@ -441,7 +449,7 @@ export function extractUsage(chunk) {
       reasoning_tokens: usage.output_tokens_details?.reasoning_tokens,
       cost_in_usd: usage.cost_in_usd,
       cost_in_usd_ticks: usage.cost_in_usd_ticks,
-      prompt_tokens_details: inputDetails
+      prompt_tokens_details: cacheCreationTokens == null ? inputDetails : { ...inputDetails, cache_creation_tokens: cacheCreationTokens }
     });
   }
 
@@ -460,6 +468,9 @@ export function extractUsage(chunk) {
       cost_usd: isUsdReceipt(chunk.usage.cost) ? chunk.usage.cost : chunk.usage.cost_usd,
       cost_in_usd: chunk.usage.cost_in_usd,
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
+      cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
+      cache_write_tokens: chunk.usage.cache_write_tokens,
+      input_tokens_details: chunk.usage.input_tokens_details,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,
       completion_tokens_details: chunk.usage.completion_tokens_details,
       kiro_credits: chunk.usage.kiro_credits,

@@ -8,6 +8,22 @@ import { collapseTextParts } from "../concerns/message.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
+/** Convert supported top-level Claude documents without fetching remote URLs. */
+export function claudeDocumentToOpenAIPart(block) {
+  const source = block.source;
+  let part;
+  if (source?.type === "text" && isString(source.data) && source.data) {
+    part = { type: OPENAI_BLOCK.TEXT, text: block.title ? `[${block.title}]\n${source.data}` : source.data };
+  } else if (source?.type === "url" && isString(source.url) && /^https?:\/\//i.test(source.url)) {
+    part = { type: OPENAI_BLOCK.TEXT, text: `[Document${block.title ? `: ${block.title}` : ""}] ${source.url}` };
+  } else if (source?.type === "base64" && isString(source.data) && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(source.data) && source.data.length > 0 && (source.media_type === undefined || source.media_type === "application/pdf")) {
+    const file = { file_data: encodeDataUri("application/pdf", source.data) };
+    if (isString(block.title) && block.title) file.filename = block.title;
+    part = { type: OPENAI_BLOCK.FILE, file };
+  }
+  return part;
+}
+
 function stripAnthropicBillingHeader(text) {
   if (!isString(text)) return "";
   return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
@@ -99,8 +115,9 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
   if (body.tools && Array.isArray(body.tools)) {
     const nativeTools = body.tools.filter((tool) => tool?.type && tool.type !== OPENAI_BLOCK.FUNCTION && tool.type !== "custom");
     if (nativeTools.length) Object.defineProperty(result, CLAUDE_NATIVE_TOOLS, { value: nativeTools, enumerable: false });
-    const functionTools = body.tools.filter((tool) => !tool?.type || tool.type === OPENAI_BLOCK.FUNCTION || tool.type === "custom");
+    const functionTools = body.tools.filter((tool) => !tool?.type || tool.type === OPENAI_BLOCK.FUNCTION || tool.type === "custom" || (opts.provider === "codex" && tool.type === "web_search_20250305"));
     if (functionTools.length) result.tools = functionTools.map((tool) => {
+      if (tool.type === "web_search_20250305") return { type: OPENAI_BLOCK.WEB_SEARCH };
       const fn = {
         name: tool.name,
         description: String(tool.description || ""),
@@ -113,13 +130,17 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
 
   // Tool choice
   if (body.tool_choice) {
-    result.tool_choice = convertToolChoice(body.tool_choice);
+    result.tool_choice = opts.provider === "codex" && body.tool_choice.type === "tool" && body.tools?.some(tool => tool.type === "web_search_20250305" && tool.name === body.tool_choice.name) ? { type: OPENAI_BLOCK.WEB_SEARCH } : convertToolChoice(body.tool_choice);
     // Anthropic's per-choice parallel ban is OpenAI's request-level flag.
     if (body.tool_choice.disable_parallel_tool_use === true && result.tools?.length) result.parallel_tool_calls = false;
   }
 
-  if (body.output_config?.effort !== undefined) {
-    result.reasoning_effort = body.output_config.effort;
+  // A later system directive represents the current turn, overriding cached defaults.
+  const directiveEffort = body.messages?.findLast((message) =>
+    message?.role === ROLE.SYSTEM && isString(message.output_config?.effort) && message.output_config.effort.trim()
+  )?.output_config.effort.trim().toLowerCase();
+  if (directiveEffort || body.output_config?.effort !== undefined) {
+    result.reasoning_effort = directiveEffort || body.output_config.effort;
   } else if (body.reasoning_effort !== undefined) {
     result.reasoning_effort = body.reasoning_effort;
   } else if (body.reasoning?.effort !== undefined) {
@@ -273,6 +294,23 @@ function convertClaudeMessage(msg, opts) {
           const part = { type: OPENAI_BLOCK.TEXT, text: block.text };
           if (opts?.preserveCacheControl && block.cache_control) part.cache_control = block.cache_control;
           parts.push(part);
+          break;
+        }
+
+        case CLAUDE_BLOCK.SERVER_TOOL_USE:
+          if (opts.provider === "codex" && block.name === OPENAI_BLOCK.WEB_SEARCH) parts.push({ type: OPENAI_BLOCK.TEXT, text: `Web search query: ${JSON.stringify(block.input || {})}` });
+          break;
+        case CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT:
+          if (opts.provider === "codex") parts.push({ type: OPENAI_BLOCK.TEXT, text: `Web search evidence: ${JSON.stringify(Array.isArray(block.content) ? block.content.map(({ title, url }) => ({ title, url })) : block.content)}` });
+          break;
+        case CLAUDE_BLOCK.DOCUMENT: {
+          // Only translate well-formed top-level sources; native Claude blocks
+          // remain attached separately for a subsequent Claude-format hop.
+          const part = claudeDocumentToOpenAIPart(block);
+          if (part) {
+            if (opts?.preserveCacheControl && block.cache_control) part.cache_control = block.cache_control;
+            parts.push(part);
+          }
           break;
         }
 

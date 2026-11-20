@@ -31,6 +31,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     name: "",
     priority: 1,
     apiKey: "",
+    baseUrl: "",
     rpd: "",
     timeoutMs: ""
   });
@@ -64,6 +65,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: connection.name || "",
         priority: connection.priority || 1,
         apiKey: "",
+        baseUrl: connection.providerSpecificData?.baseUrl || "",
         openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
         rpd: connection.providerSpecificData?.rateLimitOverrides?.rpd?.toString() ?? "",
         timeoutMs: connection.providerSpecificData?.timeoutMs?.toString() ?? ""
@@ -118,6 +120,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   }
 
   const isOAuth = connection?.authType === "oauth";
+  const isOpenCodeServer = connection?.provider === "opencode-server";
+  const missingOpenCodeUrl = isOpenCodeServer && !formData.baseUrl.trim();
   const isAzure = connection?.provider === "azure";
   const requiresAccountId = requiresProviderAccountId(connection?.provider);
   const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
@@ -163,6 +167,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const buildProviderSpecificData = () => {
     const generic = buildGenericOverrides();
+    if (isOpenCodeServer) return { ...generic, baseUrl: formData.baseUrl.trim() };
     if (isAzure) {
       return {
         azureEndpoint: azureData.azureEndpoint,
@@ -216,7 +221,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   };
 
   const handleValidate = async () => {
-    if (!connection?.provider || !formData.apiKey) return;
+    if (!connection?.provider || !formData.apiKey || missingOpenCodeUrl) return;
     if (!hasRequiredGooglePseCx) return;
     if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setValidating(true);
@@ -244,6 +249,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   };
 
   const handleSubmit = async () => {
+    if (missingOpenCodeUrl) return;
     if (saving || !connection || invalidCreditLimit) return;
     if (!hasRequiredGooglePseCx) return;
     if (requiresAccountId && !cloudflareData.accountId.trim()) return;
@@ -322,15 +328,23 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   if (!connection) return null;
 
   return (
-    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} pending={saving} size="md" footer={<><Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={invalidCreditLimit || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
+    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} pending={saving} size="md" footer={<><Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={missingOpenCodeUrl || invalidCreditLimit || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
       <div className="flex flex-col gap-5">
         {saveError ? <p role="alert" className="text-sm text-dd-danger">{saveError}</p> : null}
         <Input label="Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={isOAuth ? "Account name" : "Production Key"} />
         {isOAuth && connection.email ? <section aria-label="Connected account" className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><p className="text-xs text-dd-muted">Email</p><p className="mt-1 text-[13px] font-medium text-dd-text">{connection.email}</p></section> : null}
         <Input label="Priority" type="number" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })} />
         {isGithub ? <Input label="AI Credits limit per billing period" type="number" min="0" step="any" value={aiCreditLimit} onChange={(e) => setAiCreditLimit(e.target.value)} placeholder="No local limit" error={invalidCreditLimit ? "Enter a non-negative number." : undefined} hint="Blank disables the limit; 0 blocks all requests. Checks GitHub-reported credit usage through a short-lived cache, and blocks when usage cannot be verified. Cached readings, GitHub reporting delays and in-flight requests can all overshoot this cutoff, so it is not a guaranteed spending ceiling. Applies only to this connection's traffic." /> : null}
+        {isOpenCodeServer && <Input
+          label="OpenCode Server URL"
+          value={formData.baseUrl}
+          onChange={(event) => {
+            setFormData({ ...formData, baseUrl: event.target.value });
+            setValidationResult(null);
+          }}
+        />}
         {!isOAuth && !isDevinAgentic ? <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label="API Key" type="password" value={formData.apiKey} onChange={(e) => { setFormData({ ...formData, apiKey: e.target.value }); setValidationResult(null); }} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={!formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label={isOpenCodeServer ? "HTTP Basic credential (username:password)" : "API Key"} type="password" value={formData.apiKey} onChange={(e) => { setFormData({ ...formData, apiKey: e.target.value }); setValidationResult(null); }} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={missingOpenCodeUrl || !formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
           {validationResult ? <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "neutral" : "danger"}>{validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}</Badge> : null}
         </> : null}
         {isGooglePse ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">Google Programmable Search</h3><Input label="Search Engine ID (cx)" value={googlePseData.cx} onChange={(e) => setGooglePseData({ cx: e.target.value })} placeholder="012345678901234567890:abcdefg" hint="Required for Google Programmable Search requests." /></section> : null}

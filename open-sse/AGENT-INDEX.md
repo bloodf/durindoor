@@ -363,6 +363,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `speka` |  | apikey | `https://speka.me/v1/chat/completions` |
 | `stability-ai` |  | apikey | `` |
 | `stepfun` |  | freeTier | `https://api.stepfun.com/v1/chat/completions` |
+| `subq` |  | apikey | `` |
 | `sumopod` |  | apikey | `https://ai.sumopod.com/v1/chat/completions` |
 | `suno` | openai | webCookie | `https://studio-api.suno.ai/api/generate/v2/` |
 | `synthetic` |  | apikey | `https://api.synthetic.new/openai/v1/chat/completions` |

@@ -27,7 +27,7 @@ function generateOpencodeSessionId() {
  * Core System One (Jev) handler — native decision payload pass-through.
  * URL/headers come from the registry's `systemoneConfig` (PROVIDER_MEDIA), the
  * same config-driven shape as imageEditCore/rerankCore. Body and JSON response
- * are forwarded untouched: decision models have no chat translation layer.
+ * are forwarded as native data, with System One result envelopes unwrapped.
  *
  * @param {object} options
  * @param {object} options.body - { model, state, questions, ... }
@@ -139,6 +139,9 @@ export async function handleSystemoneCore({
     }
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(`Invalid JSON response from ${provider}: ${err?.message || "invalid response"}`, [credentials?.apiKey, credentials?.accessToken]));
   }
+
+  // Some System One upstreams wrap answers in a Cloudflare result envelope.
+  if (responseBody?.result?.answers && !responseBody.answers) responseBody = responseBody.result;
 
   if (onRequestSuccess) await onRequestSuccess();
 

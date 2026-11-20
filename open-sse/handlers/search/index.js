@@ -124,12 +124,18 @@ async function tryDedicatedProvider({
     // fetchPublic, which re-validates every redirect hop target (DNS + literal
     // SSRF checks); admin-configured endpoints are trusted (#3793) and keep
     // plain proxy routing.
-    const proxied = (hopUrl, hopInit) => proxyAwareFetch(hopUrl, hopInit, proxyOptions);
+    const proxied = (hopUrl, hopInit) => {
+      const options = { ...hopInit };
+      if (providerConfig.preventRedirects) options.redirect = "manual";
+      return proxyAwareFetch(hopUrl, options, proxyOptions);
+    };
+    const publicOptions = { fetchImpl: proxied };
+    if (providerConfig.preventRedirects) publicOptions.maxRedirects = 0;
     const resp = requiresPublicUrl ?
     await fetchPublic(
       url,
       { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal },
-      { fetchImpl: proxied }
+      publicOptions
     ) :
     await proxied(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
     clearTimeout(timer);
@@ -157,7 +163,7 @@ async function tryDedicatedProvider({
         query: params.query,
         results,
         answer: null,
-        usage: { queries_used: 1, search_cost_usd: providerConfig.costPerQuery || 0 },
+        usage: { queries_used: 1, search_cost_usd: providerConfig.costByMode ? (providerConfig.costByMode[JSON.parse(init.body).mode] ?? providerConfig.costPerQuery) + Math.max(0, results.length - providerConfig.includedResults) * providerConfig.extraResultCost : providerConfig.costPerQuery || 0 },
         metrics: { response_time_ms: duration, upstream_latency_ms: duration, total_results_available: normalized.totalResults },
         errors: []
       }

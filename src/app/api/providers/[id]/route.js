@@ -17,8 +17,16 @@ import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
-import { AI_PROVIDERS, isSystemoneCompatibleProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
+import {
+  compatibleNodeConflictMessage,
+  resolveCompatibleNodeIdentity
+} from "@/lib/providers/compatibleNodeIdentity";
+import {
+  encryptedEnvelopeCredentialMessage,
+  looksLikeEncryptedEnvelope
+} from "@/shared/utils/credentialEnvelope";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "managementApiKey",
@@ -159,6 +167,56 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
   return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField;
 }
 
+/**
+ * Look up the provider node a connection belongs to.
+ *
+ * The lookup is best-effort: a connection whose node cannot be resolved has
+ * nothing to compare against, so the identity check is skipped rather than
+ * failing the edit.
+ *
+ * @param {string} provider
+ * @returns {Promise<object|null>}
+ */
+async function lookupProviderNode(provider) {
+  try {
+    return (await getProviderNodeById(provider)) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reject a connection edit that contradicts the provider node the connection
+ * belongs to. Returns an error message, or null when the edit is compatible.
+ *
+ * Only the fields a node owns are checked, and only when the incoming payload
+ * actually carries them: an edit that leaves the node's endpoint alone is
+ * always accepted.
+ *
+ * @param {object} existing - the stored connection
+ * @param {unknown} incomingProviderSpecificData - the request's providerSpecificData
+ * @returns {Promise<string|null>}
+ */
+async function compatibleNodeIdentityConflict(existing, incomingProviderSpecificData) {
+  const provider = existing?.provider;
+  if (!provider) return null;
+  if (!isOpenAICompatibleProvider(provider) &&
+    !isAnthropicCompatibleProvider(provider) &&
+    !isCustomEmbeddingProvider(provider)) return null;
+
+  const node = await lookupProviderNode(provider);
+  // A missing node is reported by the create/update flow itself; there is
+  // nothing to compare against here.
+  if (!node) return null;
+
+  const identity = resolveCompatibleNodeIdentity(
+    node,
+    isObject(incomingProviderSpecificData) ? incomingProviderSpecificData : null,
+    isOpenAICompatibleProvider(provider),
+  );
+  return identity.conflict ? compatibleNodeConflictMessage(identity.conflict) : null;
+}
+
 function normalizeOpenAIStoreSetting(provider, providerSpecificData) {
   if (!providerSpecificData || provider === "openai" || provider?.startsWith("openai-compatible-responses-")) {
     return providerSpecificData;
@@ -271,6 +329,26 @@ export async function PUT(request, { params }) {
     const existing = await getProviderConnectionById(id);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    if (existing.provider === "devin-cli-agentic" && apiKey) {
+      return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
+    }
+
+    // A compatible node owns its identity. A connection whose stored endpoint
+    // disagrees with its node would send the stored API key to a different
+    // host than the operator configured, so the node's endpoint always wins
+    // and a conflicting value is rejected (OmniRoute #15987).
+    const nodeIdentityConflict = await compatibleNodeIdentityConflict(existing, providerSpecificData);
+    if (nodeIdentityConflict) {
+      return NextResponse.json({ error: nodeIdentityConflict }, { status: 400 });
+    }
+
+    // A credential that is already an encrypted envelope would be stored as a
+    // ciphertext of a ciphertext and could never decrypt back to a usable key
+    // (OmniRoute #15932).
+    if (looksLikeEncryptedEnvelope(apiKey)) {
+      return NextResponse.json({ error: encryptedEnvelopeCredentialMessage() }, { status: 400 });
     }
 
     if (changesUpstreamRouting(body, existing) && !(await canManageAccessConfig(request))) {
@@ -398,6 +476,24 @@ export async function PUT(request, { params }) {
         prefix: node.prefix,
         nodeName: node.name
       };
+    }
+    // Compatible nodes own their identity on every write, not only on create:
+    // the stored endpoint must stay the node's endpoint even when the edit
+    // leaves providerSpecificData untouched (OmniRoute #15987).
+    if (
+      isOpenAICompatibleProvider(existing.provider) ||
+      isAnthropicCompatibleProvider(existing.provider) ||
+      isCustomEmbeddingProvider(existing.provider))
+    {
+      const node = await lookupProviderNode(existing.provider);
+      if (node) {
+        const identity = resolveCompatibleNodeIdentity(
+          node,
+          updateData.providerSpecificData || existing.providerSpecificData || {},
+          isOpenAICompatibleProvider(existing.provider),
+        );
+        updateData.providerSpecificData = identity.data;
+      }
     }
     if (existing.provider === "laya" || isSystemoneCompatibleProvider(existing.provider)) {
       const metadata = updateData.providerSpecificData || existing.providerSpecificData || {};

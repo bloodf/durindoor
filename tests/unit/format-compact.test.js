@@ -7,6 +7,7 @@ import { formatCompactToken } from "../../src/shared/utils/formatCompact.js";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("@/shared/components/Card", () => ({ default: ({ children }) => React.createElement("section", null, children) }));
 
+const { fmtTokens } = await import("@/app/(dashboard)/dashboard/usage/components/UsageChart.js");
 const { default: OverviewCards } = await import("@/app/(dashboard)/dashboard/usage/components/OverviewCards.js");
 
 describe("formatCompactToken", () => {
@@ -20,6 +21,11 @@ describe("formatCompactToken", () => {
     [1_500_000_000, "1.5B"],
   ])("formats %i as %s and preserves exact total", (value, display) => {
     expect(formatCompactToken(value)).toEqual({ display, title: new Intl.NumberFormat().format(value) });
+  });
+
+  it("formats chart labels in billions and trillions", () => {
+    expect(fmtTokens(1_500_000_000)).toBe("1.5B");
+    expect(fmtTokens(1_500_000_000_000)).toBe("1.5T");
   });
 
   it("renders compact total with exact accessible tooltip", async () => {

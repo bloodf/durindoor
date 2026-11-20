@@ -303,7 +303,9 @@ async function beginAuthorization(provider, input) {
   const redirectUri = input.redirectUri || input.redirect_uri ||
   defaultOAuthRedirectUri(provider) ||
   "http://localhost:8080/callback";
-  const meta = input.meta && isObject(input.meta) ? input.meta : undefined;
+  const meta = provider === "openference" ?
+  { clientId: process.env.OPENFERENCE_OAUTH_CLIENT_ID?.trim() || "" } :
+  input.meta && isObject(input.meta) ? input.meta : undefined;
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(
     provider,
@@ -452,9 +454,9 @@ async function completeAuthorization(provider, input) {
 
   const claim = claimBoundOAuthFlow({ flowId, state, provider, kind: "authorization" });
   try {
-    // OrcaRouter codes are only ever exchanged: storing a pasted JWT-shaped
-    // code as a raw credential would skip the key exchange entirely.
-    if (provider !== ORCAROUTER_ID && code.startsWith("eyJ") && code.includes(".")) {
+    // OrcaRouter and Openference codes must be exchanged, including JWT-shaped
+    // codes; treating one as a token would bypass the authorization grant.
+    if (provider !== ORCAROUTER_ID && provider !== "openference" && code.startsWith("eyJ") && code.includes(".")) {
       const resolvedProxy = await resolveOAuthProxySelection(claim.payload.proxySelection);
       // Await before finally consumes the claim so the DB's shouldCommit guard
       // remains active through the actual write.
@@ -746,11 +748,18 @@ async function importToken(provider, body) {
   const rawToken = body.accessToken ?? body.token ?? body.authJson ?? body;
   let tokenData;
   try {
-    tokenData = providerData.mapTokens(rawToken);
+    // The pasted credential stays the first argument, so the approved import
+    // contract is unchanged. The request body is the second argument so a
+    // provider can pick up optional identity fields the credential itself does
+    // not carry — Trae's userRegion and userTimezone, for example. Both are
+    // stored on the connection and never echoed back.
+    tokenData = providerData.mapTokens(rawToken, body);
   } catch (error) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Invalid token payload", error);
   }
-  if (!tokenData?.accessToken) {
+  // The credential must be a token string. A non-string payload would be
+  // stored as the access token and then sent verbatim in an auth header.
+  if (!isString(tokenData?.accessToken) || !tokenData.accessToken.trim()) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing accessToken");
   }
   return createProviderConnection({

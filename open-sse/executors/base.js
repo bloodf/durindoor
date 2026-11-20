@@ -269,6 +269,8 @@ export class BaseExecutor {
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
+    // Keep explicit 400 downgrades across rebuilt attempts in this execution.
+    const strippedFields = new Set();
     let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
     attemptStartedAt :
     null;
@@ -421,18 +423,19 @@ export class BaseExecutor {
           (/\/chat\/completions\/?$/.test(new URL(url).pathname) ? FORMATS.OPENAI : null);
         const openAIChatWire = wireFormat === FORMATS.OPENAI;
         let requestBody = openAIChatWire ? this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody;
+        if (strippedFields.size && requestBody && isObject(requestBody) && !Array.isArray(requestBody)) {
+          requestBody = { ...requestBody };
+          for (const field of strippedFields) delete requestBody[field];
+        }
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
         beginDispatch();
-        let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-          method: "POST",
-          redirect: this.provider === "cerebrium" ? "error" : "follow",
-          headers,
-          body: bodyStr,
-          signal: mergedSignal
-        }), proxyOptions));
-        if (response.status === 400) {
+        const fetchOptions = { method: "POST", headers, body: bodyStr, signal: mergedSignal };
+        if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
+        let response = await runQuotaBearingProviderRequest(() =>
+          proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
+        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false) {
           const clone = response.clone?.();
           const errorText = clone ?
           await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 }) :
@@ -440,6 +443,9 @@ export class BaseExecutor {
           const field = findOffendingField(errorText);
           if (
           field &&
+          // Azure negotiates token-limit spellings in its executor. Dropping
+          // either field here would silently remove the caller's output cap.
+          !(this.provider === "azure" && (field === "max_tokens" || field === "max_completion_tokens")) &&
           requestBody && isObject(
             requestBody) &&
           !Array.isArray(requestBody) &&
@@ -447,6 +453,7 @@ export class BaseExecutor {
           {
             requestBody = { ...requestBody };
             delete requestBody[field];
+            strippedFields.add(field);
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -458,11 +465,7 @@ export class BaseExecutor {
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              method: "POST",
-              redirect: this.provider === "cerebrium" ? "error" : "follow",
-              headers,
-              body: bodyStr,
-              signal: mergedSignal
+              ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
         }
@@ -510,7 +513,9 @@ export class BaseExecutor {
           }
         }
 
-        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
+        // Antigravity 504s move to the account layer without replaying this URL.
+        const antigravityGatewayTimeout = this.provider === "antigravity" && response.status === HTTP_STATUS.GATEWAY_TIMEOUT;
+        if (!antigravityGatewayTimeout && await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
 
         // A skip-rule matched this HTTP failure → abandon this account now; do NOT
         // fall through to shouldRetry()/other base URLs on the same account. The
@@ -530,7 +535,7 @@ export class BaseExecutor {
           };
         }
 
-        if (this.shouldRetry(response.status, urlIndex)) {
+        if (!antigravityGatewayTimeout && this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -565,6 +570,16 @@ export class BaseExecutor {
           error.errorKind = "aborted";
           error.providerAttemptStartedAt = providerAttemptStartedAt;
           throw error;
+        }
+
+        // A confirmed Antigravity header deadline has consumed the account's
+        // full budget. Preserve the original reason for account-level failover.
+        if (isConnectTimeout && this.provider === "antigravity") {
+          const timeout = connectCtrl.signal.reason;
+          timeout.errorKind = "connect_timeout";
+          timeout.antigravityPreResponseTimeout = true;
+          timeout.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw timeout;
         }
 
         // connect_timeout / network → retryable per resolveAttempts (default: connect_timeout=0 retries)

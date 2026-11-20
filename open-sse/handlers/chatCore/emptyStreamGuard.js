@@ -19,6 +19,7 @@
 import { GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../../translator/schema/finishReasons.js";
 import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
+import { advancePendingSseLineBytes } from "../../utils/pendingSseLine.js";
 
 // Mirrors oh-my-pi's empty-response policy: 2 retries, 500ms * 2^attempt backoff.
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -164,6 +165,7 @@ export function createEmptyRetryStream({
       for (let attempt = 0;; attempt++) {
         const decoder = new TextDecoder();
         let lineBuffer = "";
+        let pendingLineBytes = 0;
         let held = null; // this attempt's withheld terminal
         let terminalForwarded = false;
         let endReason = "empty";
@@ -190,16 +192,37 @@ export function createEmptyRetryStream({
           }
           if (readResult.__stalled) {
             try {currentReader.cancel().catch(() => {});} catch {/* already closed */}
-            endReason = "stall";
-            break readAttempt;
+            if (held?.kind === "error_object") {
+              endReason = "stall";
+              break readAttempt;
+            }
+            // A stalled request says nothing about account health. Settle its
+            // reservation, but neither retry it nor trigger the empty-account
+            // cooldown reserved for completed empty responses.
+            try { await Promise.resolve(onAttemptDiscarded?.(currentBody, "stall", { final: true })); }
+            catch { return exhaust("local quota reservation settlement failed", { notifyProvider: false }); }
+            if (!downstreamGone) controller.error(new Error("stream stall timeout"));
+            return;
           }
 
           const { done, value } = readResult;
           if (done) break readAttempt;
 
-          lineBuffer += decoder.decode(value, { stream: true });
-          const lines = lineBuffer.split("\n");
-          lineBuffer = lines.pop(); // trailing partial line
+          const nextPending = advancePendingSseLineBytes(pendingLineBytes, value);
+          if (nextPending === null) {
+            try { currentReader.cancel().catch(() => {}); } catch { /* already closed */ }
+            const error = new Error("Upstream SSE line exceeded the size limit");
+            error.code = "invalid_sse_payload";
+            controller.error(error);
+            return;
+          }
+          pendingLineBytes = nextPending;
+          const text = decoder.decode(value, { stream: true });
+          lineBuffer += text;
+          const lastNewline = text.lastIndexOf("\n");
+          const splitAt = lastNewline < 0 ? -1 : lineBuffer.length - text.length + lastNewline;
+          const lines = splitAt < 0 ? [] : lineBuffer.slice(0, splitAt).split("\n");
+          if (splitAt >= 0) lineBuffer = lineBuffer.slice(splitAt + 1);
 
           for (const line of lines) {
             // Empty-attempt tail: everything after the withheld terminal is

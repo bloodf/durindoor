@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { CLIENT_STORE_TTL_MS } from "@/shared/constants/config";
 
+let settingsRevision = 0;
+
 const useSettingsStore = create((set, get) => ({
   settings: null,
   loading: false,
@@ -15,16 +17,19 @@ const useSettingsStore = create((set, get) => ({
   fetchSettings: async ({ force = false } = {}) => {
     const { lastFetched, settings } = get();
     if (!force && settings && Date.now() - lastFetched < CLIENT_STORE_TTL_MS) return settings;
+    const revision = settingsRevision;
     set({ loading: true, error: null });
     try {
       const res = await fetch("/api/settings");
       const data = await res.json();
+      if (revision !== settingsRevision) return get().settings;
       if (res.ok) {
         set({ settings: data, loading: false, lastFetched: Date.now() });
         return data;
       }
       set({ error: data.error, loading: false });
     } catch (e) {
+      if (revision !== settingsRevision) return get().settings;
       set({ error: "Failed to fetch settings", loading: false });
     }
     return null;
@@ -40,7 +45,8 @@ const useSettingsStore = create((set, get) => ({
       });
       if (!res.ok) return null;
       const updated = await res.json();
-      set({ settings: updated, lastFetched: Date.now() });
+      settingsRevision++;
+      set({ settings: updated, loading: false, lastFetched: Date.now() });
       return updated;
     } catch {
       return null;

@@ -130,3 +130,21 @@ describe("Nous API-key attribution", () => {
     expect(JSON.parse(proxyAwareFetch.mock.calls[0][1].body).tags).toEqual(expectedTags);
   });
 });
+
+
+describe("built-in Nous attribution", () => {
+  it("adds attribution for API keys without modifying the input", () => {
+    const original = body();
+    const result = new DefaultExecutor("nous-research").transformRequest(model, original, false, { apiKey: "private-test-key" });
+    expect(result.tags).toEqual(expectedTags);
+    expect(original.tags).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain("private-test-key");
+  });
+
+  it("does not tag OAuth requests or unrelated endpoints", () => {
+    const executor = new DefaultExecutor("nous-research");
+    expect(executor.transformRequest(model, body(), false, { accessToken: "token" }).tags).toBeUndefined();
+    executor.buildUrl = () => "https://example.com/v1/chat/completions";
+    expect(executor.transformRequest(model, body(), false, { apiKey: "key" }).tags).toBeUndefined();
+  });
+});

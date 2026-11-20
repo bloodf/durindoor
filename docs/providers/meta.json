@@ -15,11 +15,15 @@
     "claude-code",
     "codex",
     "codex-app-server",
+    "devin-cli-agentic",
     "antigravity",
     "kiro",
+    "xkiro",
     "cursor",
     "kimi-web",
+    "openference",
     "retired",
+    "hetzner",
     "catalog"
   ]
 }

@@ -17,7 +17,10 @@ happen before admission. Multiple server processes each have their own budget.
 Configure these positive integer values before server startup. Requests larger
 than either byte ceiling receive HTTP 413. Requests that cannot fit wait in a
 bounded FIFO queue. A full queue or expired wait receives HTTP 503. Retry 503
-responses with backoff; reduce payload size for 413 responses.
+responses with backoff; reduce payload size for 413 responses. A request whose
+body cannot be serialized for measurement is also rejected with 413. A waiting
+request cannot bypass the queue head; when the head aborts or times out, the
+next eligible waiter is reconsidered immediately.
 
 The existing provider completion/disconnect path releases the combined lease.
 Provider errors, non-streaming completion, streaming completion and cancellation

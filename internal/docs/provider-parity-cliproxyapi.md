@@ -9,6 +9,8 @@ Scope is provider contracts only: registration, sign-in, dispatch and model
 discovery. This document does not propose code changes, does not call provider
 APIs, and contains no credential values.
 
+[The AI Studio Build and hosted Devin follow-up](./aistudio-relay-parity-2034.md) records the verified delegation and model discovery on the merged DurinDoor base.
+
 ## Revisions
 
 | Side | Revision | Note |
@@ -166,7 +168,7 @@ These providers exist on both sides. The delta is in contract, not presence.
 | D5 | `gemini-interactions` | Upstream registers a distinct `gemini-interactions` provider whose executor serves the native Google Interactions API, with its own API-key group and its own inbound `/v1beta/interactions` route. DurinDoor has no Interactions provider and no `/v1beta/interactions` route; its Gemini-native surface is limited to `/v1beta/models/*action`. | upstream `sdk/cliproxy/service_executors.go` L375–L376, `internal/api/server_routes.go` L153, `config.example.yaml` `api-keys.interactions`; DurinDoor `src/app/api/v1beta/models/[...path]/route.js` (no sibling `interactions` route) | `tests/unit/gemini-interactions-provider.test.js`: POST to `/v1beta/interactions` against a mock upstream and assert the request is forwarded in Interactions shape with the credential attached; assert the route returns a JSON 404 today, so the test fails until the route exists. |
 | D6 | `vertex` | DurinDoor's `vertex` provider is API-key/service-account based against `aiplatform.googleapis.com` with a fixed model list. Upstream imports a Vertex service-account JSON (`--vertex-import`), can namespace model names by import prefix, and registers a separate `vertex` executor. | `open-sse/providers/registry/vertex.js` L20–L26; upstream `cmd/server/main.go` L172–L173 and `internal/auth/vertex/` | `tests/unit/vertex-service-account-import.test.js`: import a mock service-account JSON and assert the resulting credential produces a signed request to the Vertex endpoint with the imported project and location. |
 | D7 | `aistudio` | Upstream routes AI Studio Build through a WebSocket relay (`wsrelay.Manager`), which changes connection reuse and failure behavior. DurinDoor's equivalent provider (`gemini-cli`) uses HTTP against `cloudcode-pa.googleapis.com/v1internal` and has no WebSocket relay path. | upstream `internal/runtime/executor/aistudio_executor.go` L29–L49; DurinDoor `open-sse/providers/registry/gemini-cli.js` and `open-sse/executors/gemini-cli.js` | `tests/unit/aistudio-websocket-relay.test.js`: with a mock WebSocket relay, assert a chat request is carried over the relay and that a relay disconnect produces a retryable outcome rather than a terminal error. |
-| D8 | `antigravity` | DurinDoor and upstream both ship a dedicated Antigravity provider with OAuth, but the model-discovery contract differs: upstream probes `fetchAvailableModels` with an HTTP/1.1-only, ALPN-free transport and persists per-account capability hints in credential metadata; DurinDoor's probe goes through the shared `proxyAwareFetch` path with no protocol control and no persisted per-account hint set. | upstream `sdk/auth/antigravity_models.go` (`configureAntigravityHTTP11Transport`, `BuildPersistedAntigravityCapabilityHints`); DurinDoor `open-sse/providers/registry/antigravity.js` L38–L51, `open-sse/services/usage/google.js`, `open-sse/services/projectId.js` | See the Antigravity section below for the specific acceptance test. |
+| D8 | `antigravity` | DurinDoor and upstream both ship a dedicated Antigravity provider with OAuth, but the model-discovery contract differed: upstream probes `fetchAvailableModels` with an HTTP/1.1-only, ALPN-free transport and persists per-account capability hints in credential metadata. Since the #2034 change, DurinDoor's probe sends the account's own project, and the remaining delta is the transport's protocol selection and the absent capability-hint store. | upstream `sdk/auth/antigravity_models.go` (`configureAntigravityHTTP11Transport`, `BuildPersistedAntigravityCapabilityHints`); DurinDoor `open-sse/services/antigravityCatalog.js`, `src/app/api/providers/[id]/models/modelsConfig.js`, `src/app/api/providers/[id]/models/fetchConnectionModels.js` | `tests/unit/antigravity-project-catalog.test.js`: two synthetic signed-in connections must each reach the pinned provider endpoint with their own project and bearer; an invalid project must be omitted; an unauthorized answer must classify as an auth error and a malformed one as transient, without discarding a known catalog. |
 | D9 | `kimi` | Upstream's Kimi is an OAuth provider with three provider ids (`kimi`, `kimi-ai`, `kimi.ai`/`kimi.com`) that share one executor and one model set. DurinDoor's `kimi` entry is API-key only, against `api.moonshot.ai/anthropic/v1/messages`; the OAuth Kimi surface is a different provider id (`kimi-coding`, alias `kmc`, device-code OAuth against `api.kimi.com/coding/v1/messages`). | `open-sse/providers/registry/kimi.js` L4–L14; `open-sse/providers/registry/kimi-coding.js`; upstream `sdk/cliproxy/service_executors.go` L394–L395, `sdk/auth/kimi.go` | `tests/unit/kimi-oauth-alias-parity.test.js`: assert `kimi`, `kimi-ai`, `kimi.ai` and `kimi.com` all resolve to one Kimi executor and one shared model list, and that the OAuth device-code credential refreshes without a new sign-in. |
 | D10 | `xai` | DurinDoor ships `xai` with `authModes: ["oauth", "apikey"]` and three transports (`openai`, `openai-responses`, `openai-responses-oauth`), plus image, video, TTS, STT and realtime service kinds. Upstream's xAI executor is also HTTP plus WebSocket, but upstream's model list is static while DurinDoor sets `passthroughModels` to tolerate model ids that ship ahead of the registry. | `open-sse/providers/registry/xai.js` L16–L36, L62–L79; upstream `internal/runtime/executor/xai_executor.go`, `internal/runtime/executor/xai_websockets_executor.go` | `tests/unit/xai-passthrough-model-id.test.js`: request an unknown `grok-*` model id and assert it is forwarded rather than rejected by catalog validation, and that the OAuth and API-key transports differ only in the auth header. |
 | D11 | `devin` | Upstream's `devin` is a chat-capable provider with an OAuth flow and a live model catalog. DurinDoor's `devin` is a credential-and-catalog-only cloud-agent entry with `transport: null` and `serviceKinds: ["agent"]`; chat is explicitly unsupported, and the LLM-style surface is a separate provider id (`devin-cli`, ACP over stdio). | `open-sse/providers/registry/devin.js` (header comment and L20–L35); `open-sse/providers/registry/devin-cli.js`; upstream `internal/runtime/executor/devin_executor.go`, `sdk/auth/devin.go` | `tests/unit/devin-agent-kind-routing.test.js`: assert a Devin connection advertises only the `agent` kind in `/v1/models`, that a chat request for that provider is rejected with a clear error, and that `devin-cli` remains separately routable. |
@@ -199,8 +201,9 @@ written to accept an equivalent design.
 
 ## Antigravity observations
 
-Recorded separately as requested. No Antigravity implementation was edited, and
-no proposal below has been applied.
+Recorded separately as requested. Observation 3 has since been applied as the
+account-scoped discovery change for #2034; the rest is inventory, not a
+recommendation.
 
 1. **Upstream pins the model probe to HTTP/1.1 without ALPN.** The upstream fix
    (`d0c90bb`, "fix(antigravity): enforce HTTP/1.1 without ALPN in model probe")
@@ -210,17 +213,26 @@ no proposal below has been applied.
    `configureAntigravityHTTP11Transport`. DurinDoor's equivalent probe goes
    through `proxyAwareFetch` with no protocol control, so the wire shape is not
    pinned. Whether that matters in practice is unverified here: no live Antigravity
-   call was made.
+   call was made. The shared transport was left intact; see
+   [`antigravity-2034.md`](./antigravity-2034.md) for the recorded delta.
 2. **Upstream persists per-account capability hints.** Upstream stores the probed
    model ids and web-search model ids in credential metadata under
    `antigravity_capability_hints`, together with the project id and the sanitized
    endpoint, and refuses to persist an unknown (nil) catalog as an authoritative
    empty set. DurinDoor stores the quota response but has no equivalent persisted
-   per-account model-hint set that survives a restart.
+   per-account model-hint set that survives a restart. This was re-checked for
+   #2034 and is not applicable in this base: no existing durable per-connection
+   store can hold the hints without a transfer-surface change, and no reader
+   consumes them. Recorded as a limitation in
+   [`antigravity-2034.md`](./antigravity-2034.md).
 3. **Upstream treats an unknown catalog as transient, an unauthorized one as an
    auth error.** The upstream probe returns three distinct statuses, and only the
-   auth-error status triggers credential handling. A DurinDoor equivalent split
-   was not located.
+   auth-error status triggers credential handling. Applied for #2034: the
+   Antigravity catalog probe classifies 401 and 403 as `auth_error` and every
+   other non-2xx, an unreadable body and an unclassifiable payload as
+   `transient`, and a failed probe no longer answers with an empty catalog.
+   Sources: `open-sse/services/antigravityCatalog.js`,
+   `src/app/api/providers/[id]/models/fetchConnectionModels.js`.
 4. **DurinDoor ships two Antigravity-family entries.** `antigravity` (alias `ag`,
    `daily-cloudcode-pa.googleapis.com`) and `agy` (alias `agy`). `agy` is built by
    spreading the `antigravity` entry, so it keeps the same host, OAuth client,
@@ -237,14 +249,17 @@ no proposal below has been applied.
    develop the Antigravity executor (reasoning replay alone is several thousand
    lines upstream). The deprecation is a DurinDoor product decision; this
    inventory records it, not a recommendation to reverse it.
-6. **Suggested mock acceptance test for observation 1 and 2** (not written, not
-   run): `tests/unit/antigravity-model-probe-hints.test.js` — serve
-   `v1internal:fetchAvailableModels` from a mock, assert the probe request shape
-   matches the upstream contract (single `project` field, bearer token, the
-   Antigravity user agent), assert an unauthorized response is classified as an
-   auth error and a malformed response as transient, and assert that a
-   successful probe persists a capability-hint set that a later probe with an
-   unknown catalog does not overwrite with an empty authoritative set.
+6. **Mock acceptance test for observation 3** (written, run):
+   `tests/unit/antigravity-project-catalog.test.js` drives the real
+   `GET /api/providers/[id]/models` route with two synthetic signed-in
+   connections against a closed outbound mock. It asserts the pinned endpoint,
+   the single `project` field carrying each account's own project, the bearer
+   token, the Antigravity user agent, the omitted invalid project, the
+   unauthorized answer classified as an auth error, the malformed answer
+   classified as transient, and that a failed probe leaves the known catalog in
+   place. Observation 1 and the capability-hint persistence of observation 2 are
+   not covered by it: the first was left unchanged on purpose, the second is not
+   applicable in this base.
 
 ## Uncertainty and related issues
 

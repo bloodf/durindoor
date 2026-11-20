@@ -172,10 +172,24 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  *
  * @param {string} connectionId
  * @param {object} newCredentials
+ * @param {object} [options]
+ * @param {object} [options.expectedRefreshContext] Sending session required for cookie rotation
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext } = {}) {
+  const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
+    // Persist only the cookie, and only while the sending session is current.
+    if (isString(rotatedApiKey) && rotatedApiKey) {
+      if (expectedRefreshContext?.authType !== "cookie" ||
+          expectedRefreshContext.id !== connectionId || !expectedRefreshContext.apiKey) return false;
+      const result = await updateProviderConnection(connectionId, { apiKey: rotatedApiKey }, {
+        expectedRefreshContext,
+        returnCommitResult: true
+      });
+      return result?.applied === true;
+    }
+
     const updates = {};
 
     if (newCredentials.accessToken) updates.accessToken = newCredentials.accessToken;
@@ -207,12 +221,6 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
-    // Web-cookie providers (chatgpt-web) rotate their session cookie; only this
-    // explicit field may replace the stored apiKey.
-    if (isString(newCredentials.rotatedApiKey) && newCredentials.rotatedApiKey) {
-      updates.apiKey = newCredentials.rotatedApiKey;
-    }
-
     const result = await updateProviderConnection(connectionId, updates);
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
@@ -220,10 +228,9 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
     });
     return !!result;
   } catch (error) {
-    log.error("TOKEN_REFRESH", "Error updating credentials in localDb", {
-      connectionId,
-      error: error.message
-    });
+    const details = { connectionId };
+    if (!rotatedApiKey) details.error = error.message;
+    log.error("TOKEN_REFRESH", "Error updating credentials in localDb", details);
     return false;
   }
 }

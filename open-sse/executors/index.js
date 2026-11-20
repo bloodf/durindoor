@@ -44,6 +44,7 @@ import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { WindsurfExecutor } from "./windsurf.js";
+import { CerebriumExecutor } from "./cerebrium.js";
 import { DefaultExecutor } from "./default.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
 import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
@@ -70,6 +71,7 @@ const executors = {
   "azure-openai": new AzureOpenAIExecutor(),
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
+  cerebrium: new CerebriumExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
   "ghe-copilot": new GheCopilotExecutor(),

@@ -1,3 +1,5 @@
+import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -70,6 +72,15 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
   // Model discovery is connection traffic too. Resolve the durable OAuth
   // egress contract once and reuse it for initial, refresh, and retry calls.
   const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+
+  if (connection.provider === "cerebrium") {
+    const baseUrl = cerebriumBaseUrl(connection.providerSpecificData?.baseUrl);
+    if (!baseUrl || !connection.apiKey) return { error: "Cerebrium requires a deployment /run URL and project API key", status: 400 };
+    const res = await guardedProbeFetch(`${baseUrl}/models`, { headers: { Authorization: `Bearer ${connection.apiKey}` }, signal: AbortSignal.timeout(8000) }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
+    if (!res.ok) return { error: `Model discovery failed: ${res.status}`, status: res.status };
+    const data = await res.json();
+    return { models: parseOpenAIStyleModels(data) };
+  }
 
   if (isOpenAICompatibleProvider(connection.provider)) {
     return fetchCompatibleModels(connection, (token) => {

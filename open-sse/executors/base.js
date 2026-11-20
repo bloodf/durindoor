@@ -427,6 +427,7 @@ export class BaseExecutor {
         beginDispatch();
         let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
           method: "POST",
+          redirect: this.provider === "cerebrium" ? "error" : "follow",
           headers,
           body: bodyStr,
           signal: mergedSignal
@@ -458,6 +459,7 @@ export class BaseExecutor {
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
               method: "POST",
+              redirect: this.provider === "cerebrium" ? "error" : "follow",
               headers,
               body: bodyStr,
               signal: mergedSignal

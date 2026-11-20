@@ -793,8 +793,9 @@ function ProviderDetail({ providerId }) {
       const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/models?refresh=1`, {
         cache: "no-store"
       });
-      const data = response.ok ? await response.json() : null;
+      const data = await response.json();
       if (providerGenerationRef.current !== requestGeneration) return;
+      if (!response.ok) { alert(data.error || "Failed to fetch models"); return; }
       setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
       setCatalogEvidence(data ? { source: data.source, degraded: data.degraded } : null);
       setModelsFetchedAt(new Date());
@@ -1699,7 +1700,7 @@ function ProviderDetail({ providerId }) {
           </button>
         }
 
-        {(OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher &&
+        {(providerId === "cerebrium" || (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher) &&
         <button
           onClick={handleSyncModels}
           disabled={syncingModels}

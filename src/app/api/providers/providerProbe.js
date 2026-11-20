@@ -1,3 +1,4 @@
+import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
@@ -206,6 +207,11 @@ export function buildProviderProbeHeaders(cfg, apiKey) {
 }
 
 export function buildRegistryProviderProbe(provider, apiKey, providerSpecificData = {}) {
+  if (provider === "cerebrium") {
+    const base = cerebriumBaseUrl(providerSpecificData?.baseUrl);
+    if (!base || !apiKey) return null;
+    return { url: `${base}/models`, options: { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8000) }, accepts: "standard" };
+  }
   const cfg = PROVIDERS[provider];
   if (!cfg?.baseUrl) return null;
 

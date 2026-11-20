@@ -60,11 +60,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
   const isLaya = provider === "laya";
+  const isCerebrium = provider === "cerebrium";
   // Self-hosted providers store their origin per connection rather than taking
   // it from the registry, so they need the host field.
-  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya;
-  const hostFieldLabel = isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
-  const hostFieldPlaceholder = isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
+  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya || isCerebrium;
+  const hostFieldLabel = isCerebrium ? "Deployment URL (ending in /run)" : isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
+  const hostFieldPlaceholder = isCerebrium ? "https://api.cortex.cerebrium.ai/v4/project/app/run" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
   const isCookie = authType === "cookie";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
@@ -216,6 +217,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const handleSubmit = async () => {
     if (!provider) return;
+    if (isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim())) return;
     // Self-hosted providers are keyless and auto-named, so neither an API key
     // nor a typed name can be required — the submit would be unreachable.
     if (!hasConfigurableHost && !apiKeySatisfied()) return;
@@ -608,7 +610,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         ) : null}
         <div className="flex gap-2">
-          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim()) || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" className="w-full">

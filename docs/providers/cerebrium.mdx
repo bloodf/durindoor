@@ -1,0 +1,7 @@
+# Cerebrium deployment inference
+
+Create a Cerebrium connection with the project API key and the deployment URL ending in `/run`, for example `https://api.cortex.cerebrium.ai/v4/<project>/<app>/run`. Each connection targets its own deployment; there is no shared model catalog. Changing the deployment requires an operator to provide the key again.
+
+DurinDoor appends `/chat/completions` for OpenAI-compatible inference and `/models` for discovery. Discovery only works if the deployed application exposes that endpoint; otherwise add the deployed model ID manually. The deployment determines whether JSON and streaming responses are supported. The key is sent as a Bearer token to the configured deployment. HTTPS is required except for loopback development.
+
+See [Cerebrium's deployment example](https://cerebrium.ai/blog/deploying-deepseek-r1-a-guide-to-a-serverless-high-performaning-openai-compatible-endpoint).

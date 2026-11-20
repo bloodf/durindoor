@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 341 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 344 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -33,7 +33,8 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | AnySearch | `anysearch` | apikey | 0 | [site](https://anysearch.com) |
 | Api.airforce | `api-airforce` | apikey | 7 | [site](https://api.airforce) |
 | Apmix | `apmix` | apikey | 0 | [site](https://apmix.ai) |
-| Arcee AI | `arcee-ai` | apikey | 0 | [site](https://arcee.ai) |
+| Arcee Conductor | `arcee-ai` | apikey | 0 | [site](https://arcee.ai) |
+| Arcee Platform | `arcee-platform` | apikey | 0 | [site](https://platform.arcee.ai) |
 | AssemblyAI | `assemblyai` | apikey | 5 | [site](https://assemblyai.com) |
 | Atlas Cloud | `atlascloud` | apikey | 9 | [site](https://www.atlascloud.ai) |
 | Augment Auggie CLI | `auggie` | none | 12 | [site](https://augmentcode.com) |
@@ -252,6 +253,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | OpenCode Free | `opencode` | none | 3 |  |
 | OpenCode Go | `opencode-go` | apikey | 20 | [site](https://opencode.ai/auth) |
 | OpenCode Zen | `opencode-zen` | apikey | 82 | [site](https://opencode.ai/zen) |
+| Openference | `openference` | oauth | 0 | [site](https://openference.com) |
 | Openference (API key) | `openference-api` | apikey | 0 | [site](https://openference.com) |
 | OpenRouter | `openrouter` | freeTier | 19 | [site](https://openrouter.ai) |
 | OpenVecta | `openvecta` | apikey | 0 | [site](https://openvecta.com) |
@@ -283,6 +285,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Recraft | `recraft` | apikey | 2 | [site](https://recraft.ai) |
 | Regolo | `regolo` | apikey | 0 |  |
 | Reka | `reka` | freeTier | 3 | [site](https://docs.reka.ai/chat/overview) |
+| Replicate | `replicate` | apikey | 1 | [site](https://replicate.com) |
 | Requesty | `requesty` | freeTier | 0 | [site](https://requesty.ai) |
 | Routeway | `routeway` | apikey | 8 |  |
 | Runway ML | `runwayml` | apikey | 4 | [site](https://runwayml.com) |

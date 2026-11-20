@@ -1,0 +1,12 @@
+---
+title: Arcee Platform and Conductor
+description: Connect Arcee Platform and keep existing Conductor connections separate.
+---
+
+# Arcee Platform and Conductor
+
+Choose **Arcee Platform** (`arcee-platform`) for the public Arcee Platform inference API. Generate a key in the [Platform dashboard](https://platform.arcee.ai/api/api-keys), add it to a new Platform connection, and discover the models available to that account. The Platform uses `https://api.arcee.ai/api/v1` and accepts model IDs that are not in a static catalog.
+
+Existing **Arcee Conductor** connections retain the `arcee-ai` provider ID and `arcee` alias and continue using `https://conductor.arcee.ai/v1`. They are not migrated to Platform. Use the key issued for each service only with its corresponding connection; create a separate Platform connection to use the public endpoint.
+
+The Platform chat and model endpoints are documented in [Your First API Call](https://docs.arcee.ai/api-reference/your-first-api-call) and [Models](https://docs.arcee.ai/api-reference/models).

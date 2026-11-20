@@ -1,6 +1,7 @@
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
+import { hasResponsesContentItem } from "./responsesContent.js";
 
 const encoder = new TextEncoder();
 const GRACE_MS = 1000;
@@ -9,6 +10,9 @@ const GRACE_MS = 1000;
 export function hasResponsesSnapshotOutput(payload) {
   if (!["response.completed", "response.done"].includes(payload?.type) || payload?.response?.status === "failed") return false;
   return Array.isArray(payload?.response?.output) && payload.response.output.some((item) => {
+    if (item?.type === "image_generation_call") {
+      return payload.response.status === "completed" && item.status === "completed" && hasResponsesContentItem(item);
+    }
     if (item?.type === "message" && Array.isArray(item.content)) {
       return item.content.some((part) =>
         part?.type === "output_text" && isString(part.text) && part.text.trim() ||

@@ -118,9 +118,23 @@ function textCompletion(metadata, content) {
   };
 }
 
-function completionResponse(completion, stream) {
-  if (!stream) return Response.json(completion);
-  const { id, created, model, choices, usage } = completion;
+/**
+ * T3 Chat reports no token counts. Estimate them the way the other web-cookie
+ * transports do (about four characters per token) so a non-streamed reply still
+ * reaches Usage. The streaming path is estimated by the gateway.
+ */
+function estimatedUsage(completion, requestBody) {
+  const promptChars = JSON.stringify(requestBody?.messages ?? []).length;
+  const completionChars = String(completion?.choices?.[0]?.message?.content ?? "").length;
+  const promptTokens = Math.ceil(promptChars / 4);
+  const completionTokens = Math.ceil(completionChars / 4);
+  return { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens };
+}
+
+function completionResponse(completion, stream, requestBody) {
+  const body = completion.usage ? completion : { ...completion, usage: estimatedUsage(completion, requestBody) };
+  if (!stream) return Response.json(body);
+  const { id, created, model, choices, usage } = body;
   const metadata = { id, created, model, object: "chat.completion.chunk" };
   const deltas = choices.map(({ index, message }) => ({ index, delta: message, finish_reason: null }));
   const terminal = choices.map(({ index, finish_reason }) => ({ index, delta: {}, finish_reason }));
@@ -194,17 +208,17 @@ export class T3ChatWebExecutor extends BaseExecutor {
           const data = JSON.parse(raw);
           if (data?.error) return fail(502, "T3 Chat returned an error.");
           if (Array.isArray(data?.choices) && data.choices.length) {
-            return { ...result, response: completionResponse({ ...metadata, ...data }, stream) };
+            return { ...result, response: completionResponse({ ...metadata, ...data }, stream, payload) };
           }
           const content = textDelta(data);
-          if (content !== null) return { ...result, response: completionResponse(textCompletion(metadata, content), stream) };
+          if (content !== null) return { ...result, response: completionResponse(textCompletion(metadata, content), stream, payload) };
         } else {
           const parts = [];
           for (const line of raw.split("\n")) {
             if (!line.trim()) continue;
             const { content, done } = readTextEvent(line);
             if (content !== null) parts.push(content);
-            if (done) return { ...result, response: completionResponse(textCompletion(metadata, parts.join("")), false) };
+            if (done) return { ...result, response: completionResponse(textCompletion(metadata, parts.join("")), false, payload) };
           }
         }
       } else {

@@ -32,7 +32,9 @@ Google redirects to `http://localhost:<dashboard port>/callback`. If you opened 
 </Step>
 </Steps>
 
-The connection can be saved before Google project onboarding finishes. If the project is missing, DurinDoor retries onboarding in the background and looks it up again before routing. Wait for onboarding and verify a request before treating the connection as ready.
+DurinDoor loads the account's Cloud Code project before saving the connection. If Google has not assigned one, it waits for onboarding and saves the returned project. If onboarding fails or returns no project, the connection is not saved; retry after resolving the account's project setup.
+
+Onboarding is a long-running Google operation, so the sign-in can wait for it. The wait is bounded: `ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS` polls (default 10) with `ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS` between them (default 5000). Lower them if a sign-in should fail faster, or raise them if the account needs more rounds to provision.
 
 ## The agy id
 

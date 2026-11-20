@@ -186,6 +186,47 @@ function createQoderProviderHandlers(config) {
   };
 }
 
+/**
+ * Bounds for the Antigravity `onboardUser` long-running operation.
+ *
+ * `onboardUser` is a Google long-running operation: it answers `done:false`
+ * until the account's Cloud Code project is provisioned, so the caller has to
+ * re-send the same request. The bounds are operator-tunable through
+ * `ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS` and `ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS`.
+ *
+ * These are deliberately separate from the `ONBOARD_MAX_ATTEMPTS` /
+ * `ONBOARD_RETRY_DELAY_MS` variables used by the runtime project-discovery
+ * path (`open-sse/services/projectId.js`): that path runs per request with
+ * anti-abuse spacing, while this path runs once per sign-in and blocks the
+ * OAuth callback until the project is known. Keeping the names apart means an
+ * operator who already tuned the runtime knobs does not silently shorten the
+ * sign-in poll.
+ *
+ * @param {string} name  - environment variable name
+ * @param {number} fallback - default used when the variable is unset or invalid
+ * @param {number} min - smallest accepted value
+ * @returns {number}
+ */
+function antigravityOnboardBound(name, fallback, min) {
+  const raw = process.env[name];
+  // An unset or empty variable means "use the default"; only a real number
+  // overrides it.
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < min) return fallback;
+  return Math.floor(value);
+}
+
+/** Maximum `onboardUser` polls before the sign-in fails closed. */
+function antigravityOnboardMaxAttempts() {
+  return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS", 10, 1);
+}
+
+/** Delay between two `onboardUser` polls, in milliseconds. */
+function antigravityOnboardRetryDelayMs() {
+  return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS", 5000, 0);
+}
+
 // Provider configurations
 const PROVIDERS = {
   claude: {
@@ -662,51 +703,53 @@ const PROVIDERS = {
       // Load Code Assist to get project ID and tier
       let projectId = "";
       let tierId = "legacy-tier";
-      try {
-        const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
-          method: "POST",
-          headers: loadHeaders,
-          body: JSON.stringify({ metadata }),
-          proxyOptions
-        });
-        if (loadRes.ok) {
-          const data = await loadRes.json();
-          projectId = data.cloudaicompanionProject?.id || data.cloudaicompanionProject || "";
-          if (Array.isArray(data.allowedTiers)) {
-            for (const tier of data.allowedTiers) {
-              if (tier.isDefault && tier.id) {
-                tierId = tier.id.trim();
-                break;
-              }
-            }
+      const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
+        method: "POST",
+        headers: loadHeaders,
+        body: JSON.stringify({ metadata }),
+        proxyOptions
+      });
+      if (!loadRes.ok) throw new Error(`Antigravity project lookup failed: ${loadRes.status}`);
+      const data = await loadRes.json();
+      const project = data.cloudaicompanionProject;
+      projectId = isString(project) ? project.trim() :
+      isString(project?.id) ? project.id.trim() : "";
+      if (Array.isArray(data.allowedTiers)) {
+        for (const tier of data.allowedTiers) {
+          if (tier.isDefault && tier.id) {
+            tierId = tier.id.trim();
+            break;
           }
         }
-      } catch (e) {
-        console.log("Failed to load code assist:", e);
       }
 
-      // Fire-and-forget onboarding — does not block DB save
-      if (projectId) {
-        const doOnboard = async () => {
-          for (let i = 0; i < 10; i++) {
-            try {
-              const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
-                method: "POST",
-                headers: loadHeaders,
-                body: JSON.stringify({ tierId, metadata }),
-                proxyOptions
-              });
-              if (onboardRes.ok) {
-                const result = await onboardRes.json();
-                if (result.done === true) break;
-              }
-            } catch (e) {
-              break;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+      // A new account can have no project until onboarding completes. Persist
+      // only the project associated with this token, never a placeholder.
+      if (!projectId) {
+        const maxAttempts = antigravityOnboardMaxAttempts();
+        const retryDelayMs = antigravityOnboardRetryDelayMs();
+        for (let i = 0; i < maxAttempts; i++) {
+          const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
+            method: "POST",
+            headers: loadHeaders,
+            body: JSON.stringify({ tierId, metadata }),
+            proxyOptions
+          });
+          if (!onboardRes.ok) throw new Error(`Antigravity onboarding failed: ${onboardRes.status}`);
+          const result = await onboardRes.json();
+          // onboardUser is a long-running operation: Google answers `done:false`
+          // until the project is provisioned. Only a settled `done:true` response
+          // carries the project, so keep polling instead of reading a missing
+          // project as "this account owns no project".
+          if (result.done === true) {
+            const project = result.response?.cloudaicompanionProject;
+            projectId = isString(project) ? project.trim() :
+            isString(project?.id) ? project.id.trim() : "";
+            break;
           }
-        };
-        doOnboard().catch(() => {});
+          if (i < maxAttempts - 1) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        }
+        if (!projectId) throw new Error("Antigravity onboarding did not return a project ID");
       }
 
       return { userInfo, projectId };

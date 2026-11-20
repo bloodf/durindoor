@@ -1074,7 +1074,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   Object.defineProperty(preflightCaps, "customKeys", { value: new Set(operatorKeys), enumerable: false });
   // Dispatch/clamping and preflight consume the same resolved ceiling, while
   // BaseExecutor separately reserves explicit output or a documented default.
-  requestContext = Object.freeze({ ...requestContext, modelCapabilities: preflightCaps });
+  // Capture translation provenance once so OAuth retries reuse the same
+  // frozen dispatch context, including the resolved limits.
+  requestContext = Object.freeze({
+    ...requestContext,
+    modelCapabilities: preflightCaps,
+    translatedToCodex: provider === "codex" && !passthrough && sourceFormat !== targetFormat,
+  });
   const knownContext = preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0;
   const maxInput = Number.isFinite(preflightCaps.maxInput) && preflightCaps.maxInput > 0 ? preflightCaps.maxInput : null;
   if (knownContext || maxInput !== null) {

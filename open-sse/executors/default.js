@@ -19,7 +19,7 @@ import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
-import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 // Official API keys must not identify as Claude Code; OAuth and gateways retain their own identity.
 function isOfficialAnthropicApiKey(provider, credentials) {
   if (provider !== "anthropic" && !provider?.startsWith("anthropic-compatible-")) return false;
@@ -444,8 +444,29 @@ export class DefaultExecutor extends BaseExecutor {
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
-      applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
+      // Messages always uses max_tokens, independently of OpenAI model-name rules.
+      if (transportFormat === FORMATS.CLAUDE) {
+        if (transformed.max_completion_tokens !== undefined) {
+          transformed.max_tokens ??= transformed.max_completion_tokens;
+          delete transformed.max_completion_tokens;
+        }
+      } else {
+        applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
+      }
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
+      // Native DeepSeek V4 rejects forced tool calls while thinking is enabled.
+      const deepseekModel = String(model || "").split("/").pop();
+      const thinking = transformed.thinking;
+      const thinkingEnabled = isRecord(thinking) ?
+        thinking.type !== "disabled" : String(transformed.reasoning_effort || "").trim().toLowerCase() !== "none";
+      const choice = transformed.tool_choice;
+      const forcedChoice = choice === "required" || choice === "any" ||
+        isRecord(choice) &&
+        ["any", "tool", "function"].includes(String(choice.type || "").toLowerCase());
+      if (this.provider === "deepseek" && transportFormat === FORMATS.OPENAI &&
+        /^deepseek-(?:v4|flash)(?:[._-]|$)/i.test(deepseekModel) && thinkingEnabled && forcedChoice) {
+        delete transformed.tool_choice;
+      }
       /**
        * Convert the translator's Chat-compatible reasoning field only at the
        * final Responses wire boundary. Keeping this out of translateRequest

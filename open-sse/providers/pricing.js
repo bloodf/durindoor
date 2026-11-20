@@ -355,6 +355,11 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  // Gemini Developer API standard paid tier; implicit cache reads only.
+  // https://ai.google.dev/gemini-api/docs/pricing#gemini-4-hydrogen
+  "gemini-interactions": {
+    "gemini-4-hydrogen": { input: 1.50, output: 7.50, cached: 0.075, reasoning: 7.50 },
+  },
   codex: {
     "gpt-6.2-sol": { input: 2, output: 10, cached: 0.1, reasoning: 10, cache_creation: 2.5 },
     "gpt-6.2-astra": { input: 8, output: 40, cached: 0.4, reasoning: 40, cache_creation: 10 },

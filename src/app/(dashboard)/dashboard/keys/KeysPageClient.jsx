@@ -41,7 +41,7 @@ import {
   formatKeyExpiry,
 } from "../endpoint/apiKeyExpiry";
 
-function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDelete, onModelAccess, onLimits, keyUsage, copied, policyInvalid, policyUsage }) {
+function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onRotate, onEdit, onDelete, onModelAccess, onLimits, keyUsage, copied, policyInvalid, policyUsage }) {
   const active = apiKey.isActive ?? true;
   const expiry = formatKeyExpiry(apiKey.expiresAt);
   const overflowReached = policyUsage.tokensExceeded || policyUsage.costExceeded;
@@ -164,6 +164,14 @@ function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDel
           onClick={() => onReveal(apiKey.id)}
         />
         <IconButton
+          icon="autorenew"
+          label={`Rotate API key ${apiKey.name}`}
+          variant="ghost"
+          size="md"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+          onClick={() => onRotate(apiKey)}
+        />
+        <IconButton
           icon="edit"
           label={`Edit ${apiKey.name}`}
           variant="ghost"
@@ -188,6 +196,7 @@ ApiKeyRow.propTypes = {
   apiKey: PropTypes.object.isRequired,
   onToggle: PropTypes.func.isRequired,
   onReveal: PropTypes.func.isRequired,
+  onRotate: PropTypes.func.isRequired,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onModelAccess: PropTypes.func.isRequired,
@@ -222,8 +231,9 @@ export default function KeysPageClient() {
   const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
   const [newKeyCustomExpiresAt, setNewKeyCustomExpiresAt] = useState("");
   const [keyStatus, setKeyStatus] = useState(null);
-  const [createdKey, setCreatedKey] = useState(null);
-  const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
+  // A secret that is shown exactly once: on creation and after a rotation.
+  // The modal is the only place the literal value is rendered.
+  const [oneTimeSecret, setOneTimeSecret] = useState(null);
   const keyWrites = useRef(new Set());
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
@@ -426,8 +436,7 @@ export default function KeysPageClient() {
       const data = await res.json();
 
       if (res.ok) {
-        setCreatedKey(data.key);
-        setCreatedKeyExpiresAt(data.expiresAt || null);
+        setOneTimeSecret({ secret: data.key, title: "API Key Created", expiresAt: data.expiresAt || null });
         await fetchData();
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
@@ -479,6 +488,37 @@ export default function KeysPageClient() {
           setConfirmState((prev) => ({ ...prev, pending: false, error: error.message || "Key could not be revoked. Retry." }));
           setKeyStatus({ type: "error", message: error.message || "Key could not be revoked" });
         } finally { keyWrites.current.delete(id); }
+      },
+    });
+  };
+
+  /**
+   * Replace a key's secret. The server keeps the key's row, so its id, access
+   * and usage survive the swap; only the credential changes. The new secret is
+   * shown once, in the one-time secret modal.
+   */
+  const handleRotateKey = (key) => {
+    setConfirmState({
+      title: "Rotate API Key",
+      message: `Replace the secret of "${key.name}"? The current secret stops working immediately. The key keeps its id, access and usage.`,
+      onConfirm: async () => {
+        if (keyWrites.current.has(key.id)) return;
+        keyWrites.current.add(key.id);
+        setConfirmState((prev) => ({ ...prev, pending: true, error: "" }));
+        try {
+          const res = await fetch(`/api/keys/${key.id}/rotate`, { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Key could not be rotated. The current secret still works. Retry.");
+          }
+          setConfirmState(null);
+          setOneTimeSecret({ secret: data.key, title: "API Key Rotated", expiresAt: data.expiresAt || null });
+          setKeyStatus({ type: "success", message: "API key rotated" });
+          await fetchData();
+        } catch (error) {
+          setConfirmState((prev) => ({ ...prev, pending: false, error: error.message || "Key could not be rotated. The current secret still works. Retry." }));
+          setKeyStatus({ type: "error", message: error.message || "API key could not be rotated" });
+        } finally { keyWrites.current.delete(key.id); }
       },
     });
   };
@@ -693,6 +733,7 @@ export default function KeysPageClient() {
                       groupLabels={groupLabelsForKey(key, groups)}
                       onToggle={requestToggleKey}
                       onReveal={revealAndCopyKey}
+                      onRotate={handleRotateKey}
                       onEdit={beginEditKey}
                       onDelete={handleDeleteKey}
                       onModelAccess={setModelAccessKey}
@@ -899,12 +940,13 @@ export default function KeysPageClient() {
         </div>
       </Modal>
 
-      {/* Created Key Modal */}
+      {/* One-time secret. Creation and rotation both land here: the literal
+          value is rendered once and never listed again. */}
       <Modal
-        open={!!createdKey}
-        title="API Key Created"
+        open={!!oneTimeSecret}
+        title={oneTimeSecret?.title || "API Key"}
         size="md"
-        onClose={() => { setCreatedKey(null); setCreatedKeyExpiresAt(null); }}
+        onClose={() => setOneTimeSecret(null)}
       >
         <div className="flex flex-col gap-4">
           <div className="rounded-dd-lg border border-dd-warning bg-dd-warning/10 p-4 text-dd-warning">
@@ -913,25 +955,25 @@ export default function KeysPageClient() {
           </div>
           <div className="flex gap-2">
             <Input
-              value={createdKey || ""}
+              value={oneTimeSecret?.secret || ""}
               readOnly
-              aria-label="Newly created API key"
+              aria-label="Newly issued API key"
               className="flex-1 font-mono text-[13px]"
             />
             <Button
               variant="secondary"
-              icon={copied === "created_key" ? "check" : "content_copy"}
-              onClick={() => copy(createdKey, "created_key")}
+              icon={copied === "one_time_secret" ? "check" : "content_copy"}
+              onClick={() => copy(oneTimeSecret?.secret || "", "one_time_secret")}
             >
-              {copied === "created_key" ? "Copied!" : "Copy"}
+              {copied === "one_time_secret" ? "Copied!" : "Copy"}
             </Button>
           </div>
           <p className="text-xs text-dd-muted">
-            Expiry: {createdKeyExpiresAt ? new Date(createdKeyExpiresAt).toLocaleString() : "Never expires"}
+            Expiry: {oneTimeSecret?.expiresAt ? new Date(oneTimeSecret.expiresAt).toLocaleString() : "Never expires"}
           </p>
           <Button
             variant="primary"
-            onClick={() => { setCreatedKey(null); setCreatedKeyExpiresAt(null); }}
+            onClick={() => setOneTimeSecret(null)}
           >
             Done
           </Button>

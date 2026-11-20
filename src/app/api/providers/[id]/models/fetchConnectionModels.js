@@ -120,6 +120,8 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
 
   const config = PROVIDER_MODELS_CONFIG[connection.provider];
   if (!config) {
+    // Platform model discovery must never borrow a Coding OAuth token.
+    if (connection.provider === "kimi" && !connection.apiKey) return { error: "No valid token found", status: 401 };
     // Generic fallback for registry providers that declare a modelsFetcher
     // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
     const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;

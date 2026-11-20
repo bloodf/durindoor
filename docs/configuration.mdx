@@ -1,8 +1,8 @@
 ---
 title: Configuration
-description: Configure model service tiers and provider-specific routing.
+description: Configure model service tiers and provider-specific routing, including LLMTR.
 ---
 
-OpenAI and Codex model IDs accept `(fast)` for priority service and `(standard)` for standard service. Combine a tier with a reasoning modifier, for example `cx/gpt-6.1-sol(xhigh,fast)`; the explicit tier overrides the request's `service_tier`. Availability and charges are determined by the upstream provider.
+OpenAI and Codex model IDs accept `(fast)` for priority service and `(standard)` for standard service. Combine a tier with a reasoning modifier, for example `cx/gpt-6.1-sol(xhigh,fast)`; the explicit tier overrides the request's `service_tier`. No other provider accepts a service tier: on every other provider `(fast)` and `(standard)` are part of the model ID and are sent to the provider unchanged, so a model that really ends in that text still routes. Availability and charges are determined by the upstream provider.
 
 LLMTR uses an API key from its dashboard. Add the LLMTR provider and route its first-party Qwen model as `lt/llmtr/qwen3-8-27b`; other Chat Completions model IDs can be used with the `lt/` prefix. Model availability and pricing are controlled by LLMTR. A connection test sends a minimal Chat Completions request, which may incur usage; the public model catalog does not validate keys.

@@ -6,9 +6,24 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({ createRequestLogger: v
 vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => ({})) }));
 vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn() }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn() }));
-vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: transport }));
+// The physical dispatch is where the gateway admits or denies quota capacity.
+// Reproduce that boundary here so a local denial is proven to happen before
+// any send, and so the dispatch ticket lands on the physical upstream
+// Response exactly as it does in production.
+vi.mock("open-sse/utils/proxyFetch.js", async () => {
+  const attemptContext = await import("../../open-sse/services/providerAttemptContext.js");
+  return {
+    proxyAwareFetch: vi.fn((url, init, proxyOptions) =>
+      attemptContext.runProviderAttemptDispatch(() => transport(url, init, proxyOptions))),
+  };
+});
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "fixture", updateKimchiUserAgent: vi.fn() }));
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
+import {
+  runWithProviderAttemptContext,
+  settleProviderAttemptDispatch,
+} from "../../open-sse/services/providerAttemptContext.js";
+import { QuotaDispatchUnavailableError } from "../../open-sse/services/quota/dispatch.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
@@ -22,6 +37,27 @@ const body = { messages: [{ role: "system", content: "Be brief" }, { role: "user
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const execute = (options = {}) => getExecutor("nlpc").execute({ model, body, stream: false, credentials: { apiKey: "fixture-account-a" }, ...options });
 const bytes = (...parts) => new ReadableStream({ start(c) { for (const part of parts) c.enqueue(new TextEncoder().encode(part)); c.close(); } });
+// A quota reservation ticket stands in for the gateway's reservation ledger.
+const quotaTicket = (reservationId) => ({
+  tracked: true,
+  reservationId,
+  heartbeat: vi.fn(),
+  settle: vi.fn(async () => ({ changed: true })),
+  release: vi.fn(async (reason) => ({ changed: true, reason })),
+});
+const chatOptions = (overrides = {}) => {
+  const requestBody = { model, stream: false, messages: [{ role: "user", content: "Question" }] };
+  return {
+    body: requestBody,
+    modelInfo: { provider: "nlpcloud", model },
+    credentials: { apiKey: "fixture-account-b" },
+    connectionId: "selected",
+    clientRawRequest: { endpoint: "/v1/chat/completions", body: requestBody, headers: { accept: "application/json" } },
+    sourceFormatOverride: FORMATS.OPENAI,
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    ...overrides,
+  };
+};
 
 beforeEach(() => { transport.mockReset(); vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network"); })); });
 afterEach(() => vi.unstubAllGlobals());
@@ -126,5 +162,115 @@ describe("NLP Cloud provider", () => {
     transport.mockResolvedValueOnce(new Response(bytes("partial")));
     const { response } = await execute({ stream: true });
     await expect(response.text()).rejects.toThrow("ended before completion");
+  });
+});
+
+describe("NLP Cloud quota dispatch", () => {
+  it("denies a local quota request without sending anything upstream", async () => {
+    const denial = new QuotaDispatchUnavailableError("capacity_exhausted");
+    const beginQuotaDispatch = vi.fn(async () => { throw denial; });
+
+    await expect(runWithProviderAttemptContext(null, () => execute(), { beginQuotaDispatch }))
+      .rejects.toBe(denial);
+
+    expect(transport).not.toHaveBeenCalled();
+    expect(beginQuotaDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports local quota unavailability through chatCore without sending", async () => {
+    const quota = {
+      tracked: true,
+      beginDispatch: vi.fn(async () => { throw new QuotaDispatchUnavailableError("capacity_exhausted"); }),
+      heartbeat: vi.fn(),
+      settle: vi.fn(async () => ({ changed: true })),
+    };
+
+    const result = await handleChatCore(chatOptions({ quotaReservation: quota }));
+
+    expect(result).toMatchObject({
+      success: false,
+      status: 503,
+      quotaCapacityUnavailable: true,
+      quotaReason: "capacity_exhausted",
+    });
+    expect(transport).not.toHaveBeenCalled();
+    expect(quota.beginDispatch).toHaveBeenCalledTimes(1);
+    expect(quota.settle).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dispatch ticket on the shaped JSON success response", async () => {
+    const ticket = quotaTicket("reservation-json");
+    const upstream = json({ response: "Hello" });
+    transport.mockResolvedValueOnce(upstream);
+
+    const { response } = await runWithProviderAttemptContext(null, () => execute(), {
+      beginQuotaDispatch: async () => ticket,
+    });
+
+    expect(await settleProviderAttemptDispatch(response, { success: true, reason: "success" })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success: true, reason: "success" });
+    // The physical upstream response no longer owns the ticket.
+    expect(await settleProviderAttemptDispatch(upstream, { success: true, reason: "success" })).toEqual({ changed: false });
+  });
+
+  it("keeps the dispatch ticket on the shaped SSE response", async () => {
+    const ticket = quotaTicket("reservation-sse");
+    const upstream = new Response(bytes("Hello [DONE]"), { headers: { "Content-Type": "text/event-stream" } });
+    transport.mockResolvedValueOnce(upstream);
+
+    const { response } = await runWithProviderAttemptContext(null, () => execute({ stream: true }), {
+      beginQuotaDispatch: async () => ticket,
+    });
+
+    expect(await settleProviderAttemptDispatch(response, { success: true, reason: "success" })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success: true, reason: "success" });
+    expect(await settleProviderAttemptDispatch(upstream, { success: true, reason: "success" })).toEqual({ changed: false });
+  });
+
+  it("keeps the dispatch ticket on a provider HTTP failure so it is released, not committed", async () => {
+    const ticket = quotaTicket("reservation-http-error");
+    const upstream = json({ detail: "upstream rejected request" }, 429);
+    transport.mockResolvedValueOnce(upstream);
+
+    const { response } = await runWithProviderAttemptContext(null, () => execute(), {
+      beginQuotaDispatch: async () => ticket,
+    });
+
+    expect(response.status).toBe(429);
+    expect(await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success: false, reason: "fallback" });
+  });
+
+  it("keeps the dispatch ticket on a malformed provider response", async () => {
+    const ticket = quotaTicket("reservation-malformed");
+    const upstream = json({ unexpected: true });
+    transport.mockResolvedValueOnce(upstream);
+
+    const { response } = await runWithProviderAttemptContext(null, () => execute(), {
+      beginQuotaDispatch: async () => ticket,
+    });
+
+    expect(response.status).toBe(502);
+    expect(await settleProviderAttemptDispatch(response, { success: false, reason: "upstream_error" })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success: false, reason: "upstream_error" });
+  });
+
+  it("settles the returned response and body exactly once on fallback", async () => {
+    const ticket = quotaTicket("reservation-fallback");
+    transport.mockResolvedValueOnce(json({ response: "Hello" }));
+
+    const { response } = await runWithProviderAttemptContext(null, () => execute(), {
+      beginQuotaDispatch: async () => ticket,
+    });
+
+    expect(await settleProviderAttemptDispatch(response.body, { success: false, reason: "fallback" })).toEqual({ changed: true });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success: false, reason: "fallback" });
+    expect(await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" })).toEqual({ changed: false });
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
   });
 });

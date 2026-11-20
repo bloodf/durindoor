@@ -392,7 +392,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     if (transformed && isObject(transformed)) {
       // Cohere compatibility accepts only high when a reasoning effort is supplied.
-      if (this.provider === "cohere" && typeof transformed.reasoning_effort === "string") {
+      if (this.provider === "cohere" && isString(transformed.reasoning_effort)) {
         transformed.reasoning_effort = "high";
       }
       // The official OpenAI transport is force-streamed even for JSON clients.

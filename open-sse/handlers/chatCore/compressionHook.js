@@ -41,6 +41,7 @@ import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/c
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
 import { gateStep } from "../../services/compression/fidelityGate.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
+import { serializeCachedPrefix } from "../../translator/concerns/openrouterAnthropicCache.js";
 
 try {
   registerBuiltinEngines();
@@ -78,6 +79,9 @@ function engineStepOptions(engine, entry, log) {
  *        schemas, media, signatures, error results, instructions, fenced code)
  *        are always gated per step; textInvariants adds the opt-in number /
  *        URL / JSON-key / negation checks. A failing step is rolled back.
+ *        protectCachedPrefix: true (OpenRouter anthropic/* only) rolls back any
+ *        step that rewrites the cached prefix (tools + messages through the last
+ *        cache_control marker), so a prompt-cache hit is never invalidated.
  * @returns {Promise<{body: object, headerValue: string|null}>}
  */
 export async function runCompressionSeam(body, deps, cfg = {}) {
@@ -152,9 +156,13 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       const engine = getEngine(id);
       const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
       const opts = { config: cfg.applyOpts || {}, stepConfig: step };
+      const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;
       const res = await engine.apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
         throw new Error(`engine ${id} returned malformed result`);
+      }
+      if (prefixBefore !== null && prefixBefore !== serializeCachedPrefix(res.body)) {
+        throw new Error("cached prompt prefix would change");
       }
       const verdict = gateStep(stepInput, res.body, cfg.fidelityGate);
       if (!verdict.passed) {

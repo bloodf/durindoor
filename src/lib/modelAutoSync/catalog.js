@@ -216,7 +216,10 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
     ownRecord(providerCaps, canonicalModel) || ownRecord(providerCaps, model.id) : null;
   const exactDeclaration = catalogMatchesKind ?
     ownRecord(MODEL_CAPABILITIES, canonicalModel) || ownRecord(MODEL_CAPABILITIES, model.id) : null;
-  const patternDeclaration = catalogMatchesKind && !providerDeclaration && !exactDeclaration ?
+  // An image id can start with its chat sibling's id ("gpt-6.1-sol-image"), so a
+  // family pattern (and the limits it carries) describes the chat model, not the row.
+  const imageRow = kind === "image";
+  const patternDeclaration = catalogMatchesKind && !imageRow && !providerDeclaration && !exactDeclaration ?
     PATTERN_CAPABILITIES.find(({ pattern }) => matchPattern(pattern, canonicalModel) || matchPattern(pattern, model.id))?.caps : null;
   const declared = providerDeclaration || exactDeclaration || patternDeclaration || {};
   const registryCapabilities = extractApiCapabilities(catalogMatchesKind ? registered : null);
@@ -228,7 +231,8 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
   const curated = { ...registryCapabilities, ...Object.fromEntries(Object.keys(declared).map((key) => [key, resolved[key]])) };
   const limits = catalogMatchesKind ? resolveModelLimits(canonicalProvider, canonicalModel, null, null, null, true) : null;
   // A transport's configured default is not a model's supported capacity.
-  const usableLimits = limits?.known && (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
+  const usableLimits = limits?.known && !(imageRow && limits.source === "pattern") &&
+    (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
   if (usableLimits) {
     curated.contextWindow = limits.contextWindow;
     curated.maxOutput = declared.maxOutput === null ? null : limits.maxOutput;

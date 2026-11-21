@@ -1,0 +1,20 @@
+# DeepSeek Web
+
+DeepSeek Web connects to the first-party chat API at [chat.deepseek.com](https://chat.deepseek.com). The pinned OmniRoute implementation (release/v3.8.55, `open-sse/executors/deepseek-web.ts`) authenticates with the `userToken` held in browser local storage. A browser Cookie header alone is not a supported credential; the API exchanges the userToken for a short-lived access token.
+
+## Setup
+
+1. Sign in to [DeepSeek Chat](https://chat.deepseek.com).
+2. In browser developer tools, open Application/Storage → Local Storage for `https://chat.deepseek.com` and copy the `userToken` value. Keep it private; it grants access to your account.
+3. Add a DeepSeek Web connection and paste the value as its credential. The cookie-capture extension cannot capture this local-storage value; use the dashboard credential field.
+4. Choose a listed model such as `deepseek-chat`, `deepseek-reasoner`, or a V4 model.
+
+The web app session can expire. Replace the stored userToken with a fresh value after an authentication error. Model access, search availability, and quotas are controlled by DeepSeek. Requests use the site's private web API and can stop working when DeepSeek changes it. The integration does not claim compatibility with a pasted Cookie header or HAR export.
+
+## Source
+
+- [OmniRoute provider entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/deepseek/web/index.ts)
+- [OmniRoute executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/deepseek-web.ts)
+- [DeepSeek Chat](https://chat.deepseek.com)
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

@@ -28,6 +28,20 @@ import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.j
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { decodeToolCallId } from "../concerns/signatureTransport.js";
 
+const BILLING_LINE_RE = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i;
+
+/**
+ * Drop Claude Code's `x-anthropic-billing-header:` line from a system message. It rotates every
+ * turn, so it breaks the prompt prefix cache, and it means nothing to Gemini. Only that leading
+ * line goes; every other client text is untouched. Each text part is stripped on its own because
+ * extractTextContent joins parts without a separator.
+ */
+function stripBillingLine(content) {
+  if (isString(content)) return content.replace(BILLING_LINE_RE, "");
+  if (!Array.isArray(content)) return content;
+  return content.map((part) => isObject(part) && isString(part.text) ? { ...part, text: part.text.replace(BILLING_LINE_RE, "") } : part);
+}
+
 /** Own-key map: OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode. */
 const OPENAI_TOOL_CHOICE_TO_GEMINI_MODE = new Map([
   ["auto", "AUTO"],
@@ -208,10 +222,13 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       const content = msg.content;
 
       if (role === ROLE.SYSTEM && body.messages.length > 1) {
+        const rawText = isString(content) ? content : extractTextContent(content);
+        const stripped = stripBillingLine(content);
+        const systemText = isString(stripped) ? stripped : extractTextContent(stripped);
+        // A system message that was only the billing line leaves no empty part behind.
+        if (systemText === "" && rawText !== "") continue;
         result.systemInstruction ??= { role: GEMINI_ROLE.USER, parts: [] };
-        result.systemInstruction.parts.push({
-          text: isString(content) ? content : extractTextContent(content)
-        });
+        result.systemInstruction.parts.push({ text: systemText });
       } else if (role === ROLE.USER || role === ROLE.SYSTEM && body.messages.length === 1) {
         const parts = convertOpenAIContentToParts(content);
         if (parts.length > 0) {
@@ -306,6 +323,19 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               }
 
               let resp = toolResponses[fid];
+              // Inline tool-result media (base64 images, audio, files) stays a Gemini media part:
+              // as JSON inside the result text the model could not read it. What is left (text,
+              // remote image URLs) remains the result; all-text leftovers join into one string.
+              if (Array.isArray(resp)) {
+                const inlineParts = resp.map((item) => convertOpenAIContentToParts([item]).filter((part) => part.inlineData));
+                if (inlineParts.some((found) => found.length > 0)) {
+                  toolParts.push(...inlineParts.flat());
+                  const rest = resp.filter((_, index) => inlineParts[index].length === 0);
+                  resp = rest.every((item) => item?.type === OPENAI_BLOCK.TEXT && isString(item.text)) ?
+                  rest.map((item) => item.text).join("\n") :
+                  rest;
+                }
+              }
               let parsedResp = sanitizeFunctionResponseResult(tryParseJSON(resp));
               if (parsedResp === null) {
                 parsedResp = { result: resp };

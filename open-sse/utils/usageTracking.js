@@ -702,6 +702,111 @@ export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI
 }
 
 /**
+ * Character length of a string value. Non-strings contribute nothing.
+ * @param {unknown} value
+ * @returns {number}
+ */
+function textLength(value) {
+  return isString(value) ? value.length : 0;
+}
+
+/**
+ * Character length of a tool payload. A string is counted as written; any
+ * other value is measured from its JSON form.
+ * @param {unknown} value
+ * @returns {number}
+ */
+function payloadLength(value) {
+  if (isString(value)) return value.length;
+  try { return JSON.stringify(value ?? "").length; } catch { return 0; }
+}
+
+/**
+ * Sum text lengths of a string or an array of content blocks.
+ * @param {unknown} content
+ * @returns {number}
+ */
+function contentLength(content) {
+  if (isString(content)) return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.reduce((sum, block) => sum + (isString(block) ? block.length : textLength(block?.text)), 0);
+}
+
+/**
+ * Measure the generated output of a completed non-streaming response in
+ * characters so a missing usage object can be estimated. Counts assistant
+ * text, reasoning and tool-call payloads across the response dialects the
+ * non-streaming handler emits (OpenAI Chat, Claude Messages, Responses,
+ * Gemini candidates, Ollama).
+ * @param {object} response - Client-shaped or provider response body.
+ * @returns {number} Output length in characters, 0 when nothing measurable.
+ */
+export function measureResponseOutputLength(response) {
+  if (!response || !isObject(response) || Array.isArray(response)) return 0;
+  let total = 0;
+
+  if (Array.isArray(response.choices)) {
+    for (const choice of response.choices) {
+      const message = choice?.message;
+      if (!message || !isObject(message)) continue;
+      total += contentLength(message.content) + textLength(message.reasoning_content) + textLength(message.reasoning);
+      for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
+        total += textLength(call?.function?.name) + payloadLength(call?.function?.arguments);
+      }
+      if (message.function_call) {
+        total += textLength(message.function_call.name) + payloadLength(message.function_call.arguments);
+      }
+    }
+    return total;
+  }
+  if (response.type === "message" && Array.isArray(response.content)) {
+    for (const block of response.content) {
+      if (block?.type === "text") total += textLength(block.text);
+      else if (block?.type === "thinking") total += textLength(block.thinking);
+      else if (block?.type === "tool_use") total += textLength(block.name) + payloadLength(block.input);
+    }
+    return total;
+  }
+  if (Array.isArray(response.output)) {
+    for (const item of response.output) {
+      if (item?.type === "message") total += contentLength(item.content);
+      else if (item?.type === "reasoning") total += contentLength(item.summary);
+      else if (item?.type === "function_call") total += textLength(item.name) + payloadLength(item.arguments);
+    }
+    return total;
+  }
+  const candidates = response.candidates ?? response.response?.candidates;
+  if (Array.isArray(candidates)) {
+    for (const candidate of candidates) {
+      const parts = candidate?.content?.parts;
+      if (!Array.isArray(parts)) continue;
+      for (const part of parts) {
+        total += textLength(part?.text);
+        if (part?.functionCall) total += textLength(part.functionCall.name) + payloadLength(part.functionCall.args);
+      }
+    }
+    return total;
+  }
+  if (response.message && isObject(response.message)) {
+    const calls = response.message.tool_calls;
+    return textLength(response.message.content) + (Array.isArray(calls) ? payloadLength(calls) : 0);
+  }
+  return textLength(response.response);
+}
+
+/**
+ * Estimate usage for a successful non-streaming response whose provider sent
+ * no usage object. The result is flagged `estimated: true`; reported usage
+ * must always be preferred by the caller.
+ * @param {object} requestBody - Request sent to the provider.
+ * @param {object} response - Completed response body.
+ * @returns {object} Estimated OpenAI-shaped usage.
+ */
+export function estimateNonStreamingUsage(requestBody, response) {
+  return estimateUsage(requestBody, measureResponseOutputLength(response), FORMATS.OPENAI);
+}
+
+/**
  * Log usage with cache info (green color)
  */
 export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null) {

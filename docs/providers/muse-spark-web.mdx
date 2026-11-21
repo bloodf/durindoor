@@ -1,0 +1,49 @@
+---
+title: Muse Spark Web
+description: Why Muse Spark Web chat dispatch stays disabled, and what a compatible session contract would need.
+---
+
+Muse Spark Web (`muse-spark-web`, alias `ms-web`) is a [web cookie provider](./web-cookie.mdx). You can import or paste an `ecto_1_sess` session and save the connection, but **chat requests are not dispatched**. Every route (Chat Completions, Responses, Messages) answers HTTP 501 with `type: "provider_port_pending"`, and no request is sent to meta.ai. The saved cookie is never transmitted. Validate and Test Connection are skipped for the same reason.
+
+There is no `enableSessionDispatch` option. A per-connection flag cannot be added honestly, because the upstream contract cannot be reproduced without a browser (below).
+
+## Why parity is impossible without a browser
+
+The contract was read from OmniRoute (MIT) at pin `4265bb2ad5477450a07d3a43ea33a62c6c874878` (`release/v3.8.55`):
+
+- [registry entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/muse-spark-web/index.ts)
+- [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web.ts)
+- [fresh access token](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/fresh-access-token.ts)
+- [WebSocket frame builder](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/ws-frame.ts)
+- [captured frame templates](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/ws-templates.ts)
+- [response parser](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/response-parser.ts)
+
+The pinned flow for one chat turn is:
+
+1. **Token bootstrap.** A POST to `https://www.meta.ai/api/graphql` with the Heisenberg `doc_id` refreshes the `ecto_1_sess` cookie. That step works over plain `fetch`. The WebSocket `Authorization` value (`ecto1:...`) is not returned there. It exists only in the server-rendered meta.ai page, which answers plain requests with a 403 JavaScript challenge. The upstream source says so directly: "Plain fetch to meta.ai returns 403 (JS challenge), so we use the shared browserPool to load the page in headless Chromium and extract the token". Its extraction (`ACCESS_TOKEN_RE`) runs against `page.content()` from Playwright.
+2. **Warm-up and mode switch.** Two GraphQL POSTs (`e7f80258...` and `c32bbe99...`) create the conversation and set the mode (`think_fast` or `think_hard`).
+3. **Chat.** The prompt goes over `wss://gateway.meta.ai/ws/clippy` as binary frames. The frame is a base64 protobuf template captured from Meta's web client. The executor patches conversation id, message ids, timestamps and prompt text at fixed field paths. The template header records that stale captures made the gateway fall silent and that it validates fields such as `mode_thinking`.
+4. **Response.** WebSocket `full` and `patch` JSON events carry text deltas under `/sections/0/view_model/primitive/text`.
+
+The token lives about five minutes and the gateway rejects stale tokens after a few messages (upstream issue #10727). A gateway that serves requests over time therefore has to obtain a fresh token before most turns, and the only upstream way to do that is headless Chromium.
+
+DurinDoor's rules for this work forbid a browser in the dispatch path, and the registered web-cookie flow stores only the session cookie. The remaining non-browser input is an operator pasting an `ecto1:` token by hand. That token expires in minutes, so a connection built on it would stop working almost immediately. It cannot serve as a gateway provider, and a mock-only implementation would claim a compatibility that no live session can have.
+
+## Why the existing GraphQL executor is not enabled
+
+`open-sse/executors/muse-spark-web.js` implements a different, older request shape: a single GraphQL POST with `doc_id` `29ae946c82d1f301196c6ca2226400b5`, `mode_fast` and `Accept: text/event-stream`. That `doc_id` and the `mode_fast` name do not appear anywhere in the pinned upstream executor, which has moved chat to the WebSocket flow above. The same upstream file records that earlier GraphQL send operations were retired when Meta changed its schema. No source at any of the three pins establishes that this shape still works, so its parser tests prove parsing only, not request compatibility.
+
+The other two reference pins add nothing for this provider. A file listing of CLIProxyAPI at `f5c5681a8361c9da53e93c60b6507816eee7468b` shows only Meta device-code sign-in and Muse Code client paths (`internal/auth/meta`, `internal/client/musecode`), a different identity from the meta.ai web session, and no `ecto`, `clippy` or Muse Spark Web path. EasyCLIProxyAPI at `e4223d5eefa22a3301ca7e2a28d05897432b07f9` lists no Muse Spark Web path either. See `internal/docs/muse-spark-web-2034.md` for the earlier investigation notes.
+
+## What would unblock it
+
+Any one of these, with an authorization to use it:
+
+- A documented non-browser way to obtain the `ecto1:` access token from an `ecto_1_sess` cookie.
+- A supported Meta endpoint for the web session that does not need a WebSocket token.
+
+Until then, use the separate Muse Code (`muse-code`) or Meta Llama (`meta-llama`) providers listed in the [catalog](./catalog.mdx), or another provider. Delete a saved Muse Spark Web connection if you no longer need it; it holds a live credential that nothing in DurinDoor uses.
+
+## Compatibility
+
+The guard also covers the alias `ms-web`. Direct executor access and translate-path URL and header building fail closed without a credential in the output. The three registered model ids (`muse-spark`, `muse-spark-thinking`, `muse-spark-contemplating`) are a static catalog and not evidence of live discovery.

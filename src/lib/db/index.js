@@ -557,6 +557,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeyUsageTotals`);
     db.run(`DELETE FROM apiKeyProviderConnections`);
+    // Captures belong to the pre-import keys, even when an imported ID matches.
+    db.run('DELETE FROM "sessionCaptureTurns"');
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);

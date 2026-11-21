@@ -1,3 +1,4 @@
+import { isOpenRouterAnthropicModel, capOpenAICacheBreakpoints } from "./concerns/openrouterAnthropicCache.js";
 import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
@@ -16,11 +17,12 @@ import { mergeHistoricalToolIdentities } from "./response/openai-responses/histo
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
+import { ownMessages } from "./concerns/callerMessages.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
 // var (not let): hoisted as undefined so register() can run during circular import (no TDZ).
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";var requestRegistry;
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";var requestRegistry;
 var responseRegistry;
 
 // Register translator
@@ -71,10 +73,72 @@ function detectClientLastRole(body) {
 const isGeminiRequestSource = (format) => format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI;
 const isGeminiFamilyTarget = (format) => isGeminiRequestSource(format) || format === FORMATS.ANTIGRAVITY || format === FORMATS.VERTEX;
 
+const XIAOMI_ACCOUNT_MODELS = new Set([
+  "mimo-v2.6-pro",
+  "mimo-v2.6-flash",
+  "mimo-v2.6-pro-ultraspeed"
+]);
+const XIAOMI_ACCOUNT_COOKIE_KEY = "__mimoAccountCookie";
+
+function bareXiaomiModel(model) {
+  const s = String(model || "");
+  const i = s.lastIndexOf("/");
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+/**
+ * Return true only when request-local dispatch data proves the Xiaomi request
+ * stays on the cloud OpenAI API rather than switching to the Desktop account-service
+ * route in `XiaomiMimoExecutor.execute()`.
+ */
+function isDefiniteXiaomiCloudOpenAIRoute(model, credentials, openAITransport) {
+  if (!isRecord(credentials) || !isString(openAITransport?.baseUrl)) return false;
+  const isAccountModel = XIAOMI_ACCOUNT_MODELS.has(bareXiaomiModel(model));
+  if (isAccountModel && (credentials[XIAOMI_ACCOUNT_COOKIE_KEY] || credentials.providerSpecificData?.mimoPassToken)) {
+    return false;
+  }
+  const rt = credentials.runtimeTransport;
+  if (rt?.format && rt.format !== FORMATS.OPENAI) return false;
+  if (rt?.baseUrl && rt.baseUrl !== openAITransport.baseUrl) return false;
+  const apiKey = isString(credentials.apiKey) ? credentials.apiKey.trim() : "";
+  if (apiKey.startsWith("sk-")) return true;
+  const hasSessionAuth = Boolean(
+    credentials[XIAOMI_ACCOUNT_COOKIE_KEY] ||
+    credentials.providerSpecificData?.mimoPassToken ||
+    credentials.providerSpecificData?.authMethod === "session" ||
+    credentials.authType === "oauth"
+  );
+  if (hasSessionAuth) return false;
+  if (apiKey.length > 0) return true;
+  return rt?.format === FORMATS.OPENAI && rt?.baseUrl === openAITransport.baseUrl;
+}
+
+/**
+ * Resolve explicit OpenAI `cache_control` preservation from provider-wide or
+ * transport-scoped registry quirks without opting Xiaomi's account route in.
+ */
+function shouldPreserveOpenAICacheControl(targetFormat, provider, model, credentials) {
+  if (targetFormat !== FORMATS.OPENAI || !provider) return false;
+  // OpenRouter relays explicit breakpoints only for anthropic/* models (OmniRoute #19755).
+  if (isOpenRouterAnthropicModel(provider, model)) return true;
+  const providerConfig = PROVIDERS[provider];
+  if (providerConfig?.quirks?.preserveCacheControl === true) return true;
+  const openAITransport = Array.isArray(providerConfig?.transports) ?
+    providerConfig.transports.find((transport) => transport?.format === FORMATS.OPENAI) :
+    null;
+  if (openAITransport?.quirks?.preserveCacheControl !== true) return false;
+  if (provider === "xiaomi-mimo") {
+    return isDefiniteXiaomiCloudOpenAIRoute(model, credentials, openAITransport);
+  }
+  return credentials?.runtimeTransport?.format === FORMATS.OPENAI &&
+    (!openAITransport.baseUrl || credentials.runtimeTransport?.baseUrl === openAITransport.baseUrl);
+}
+
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
   ensureInitialized();
-  let result = body;
+  // Own the message list so the rewrites below never mutate the caller's messages.
+  let result = ownMessages(body);
   // Role the client actually ended on, before any translator drops an emptied turn.
   const clientLastRole = detectClientLastRole(body);
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
@@ -159,14 +223,25 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const thinkingIntent = translationContext?.thinkingIntent ??
   parsedModel.override ??
   claudeGeminiBudgetIntent ??
-  captureThinking(directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result);
+  captureThinking(
+    directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result,
+    translationContext?.capabilityModel || translationModel,
+    provider,
+    translationContext?.modelCapabilities
+  );
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
+  const preserveCacheControl = shouldPreserveOpenAICacheControl(
+    targetFormat,
+    provider,
+    translationContext?.capabilityModel || translationModel,
+    credentials
+  );
   const resolvedTranslationContext = Object.freeze({
     ...(translationContext || {}),
     provider,
-    preserveCacheControl: targetFormat === FORMATS.OPENAI && PROVIDERS[provider]?.quirks?.preserveCacheControl === true,
+    preserveCacheControl,
     thinkingIntent,
     clientSessionId
   });
@@ -280,10 +355,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // Responses/Gemini sources only expose messages[] after translation.
     if (isObject(result)) repairDisplacedToolResults(result);
     result = filterToOpenAIFormat(result, {
-      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
+      preserveCacheControl,
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||
         getCapabilitiesForModel(provider, translationModel).videoInput === true
     });
+    // Anthropic allows four breakpoints; OpenRouter anthropic/* only (other providers unchanged).
+    if (preserveCacheControl && isOpenRouterAnthropicModel(provider, translationContext?.capabilityModel || translationModel)) {
+      result = capOpenAICacheBreakpoints(result);
+    }
     // Poe rejects image-only user turns with 400; Poe-only, other providers unchanged.
     if (Array.isArray(result?.messages)) result.messages = ensurePoeUserTurnHasText(result.messages, provider);
     /**

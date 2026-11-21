@@ -288,12 +288,128 @@ function isComposerModel(model) {
   return /^composer(?:-|$)/i.test(modelId);
 }
 
+const COMPOSER_THINK_END = "</think>";
+const COMPOSER_FRAMING_PAIRS = [
+  ["<|final|>", "<|/final|>"],
+  ["<｜final｜>", "<｜/final｜>"],
+];
+
+/**
+ * Stateful bounded extractor for Composer thinking deltas.
+ * Strips only the outer </think> boundary and paired opening/closing framing
+ * markers while keeping interior quoted markers, normal markup, and partial
+ * non-marker tails intact without replay or unbounded buffering.
+ */
+function createComposerThinkingExtractor() {
+  let phase = "thinking";
+  let thinkTail = "";
+  let openPending = "";
+  let expectedClose = null;
+  let closePending = "";
+
+  const pushBody = (chunk) => {
+    if (!chunk) return "";
+    if (!expectedClose) return chunk;
+
+    const combined = closePending + chunk;
+    // A complete closing marker followed only by whitespace may be the real
+    // end-of-stream marker; hold it (with the whitespace) until more content
+    // or finish() decides.
+    const trimmed = combined.trimEnd();
+    if (trimmed.length < combined.length && trimmed.endsWith(expectedClose)) {
+      const start = trimmed.length - expectedClose.length;
+      closePending = combined.slice(start);
+      return combined.slice(0, start);
+    }
+    const maxHold = Math.min(combined.length, expectedClose.length);
+    let holdLen = 0;
+    for (let len = maxHold; len >= 1; len--) {
+      if (combined.endsWith(expectedClose.slice(0, len))) {
+        holdLen = len;
+        break;
+      }
+    }
+    closePending = holdLen > 0 ? combined.slice(combined.length - holdLen) : "";
+    return holdLen > 0 ? combined.slice(0, combined.length - holdLen) : combined;
+  };
+
+  const pushOpening = (chunk) => {
+    const incoming = openPending === "" ? chunk.trimStart() : chunk;
+    if (!incoming) return "";
+    openPending += incoming;
+
+    for (const [open, close] of COMPOSER_FRAMING_PAIRS) {
+      if (openPending.startsWith(open)) {
+        const rest = openPending.slice(open.length);
+        openPending = "";
+        expectedClose = close;
+        phase = "body";
+        return pushBody(rest);
+      }
+    }
+
+    for (const [open] of COMPOSER_FRAMING_PAIRS) {
+      if (open.startsWith(openPending)) {
+        return "";
+      }
+    }
+
+    const literal = openPending;
+    openPending = "";
+    expectedClose = null;
+    phase = "body";
+    return literal;
+  };
+
+  return {
+    push(delta) {
+      if (!delta || phase === "done") return "";
+      if (phase === "thinking") {
+        const combined = thinkTail + delta;
+        const endIdx = combined.lastIndexOf(COMPOSER_THINK_END);
+        if (endIdx < 0) {
+          thinkTail = combined.slice(-(COMPOSER_THINK_END.length - 1));
+          return "";
+        }
+        thinkTail = "";
+        phase = "opening";
+        return pushOpening(combined.slice(endIdx + COMPOSER_THINK_END.length));
+      }
+      if (phase === "opening") {
+        return pushOpening(delta);
+      }
+      return pushBody(delta);
+    },
+    finish() {
+      const currentPhase = phase;
+      const pendingOpen = openPending;
+      const pendingClose = closePending;
+      const closeMarker = expectedClose;
+      phase = "done";
+      thinkTail = "";
+      openPending = "";
+      closePending = "";
+      expectedClose = null;
+
+      if (currentPhase === "opening") return pendingOpen;
+      if (currentPhase === "body" && pendingClose) {
+        // Real closing marker at end of stream: drop it, keep any trailing
+        // whitespace verbatim (same as the unframed/no-marker path does).
+        if (closeMarker && pendingClose.startsWith(closeMarker)
+          && pendingClose.slice(closeMarker.length).trim() === "") {
+          return pendingClose.slice(closeMarker.length);
+        }
+        return pendingClose;
+      }
+      return "";
+    },
+  };
+}
+
 function visibleComposerContentFromThinking(thinking) {
   if (!thinking) return "";
-  const endTag = "</think>";
-  const endIdx = thinking.lastIndexOf(endTag);
-  if (endIdx < 0) return "";
-  return thinking.slice(endIdx + endTag.length).trimStart();
+  const extractor = createComposerThinkingExtractor();
+  return extractor.push(thinking) + extractor.finish();
 }
 
 function decompressPayload(payload, flags, maxOutputLength = MAX_PROVIDER_BODY_BYTES) {
@@ -832,7 +948,9 @@ export class CursorExecutor extends BaseExecutor {
     }
     const headers = this.buildHeaders(credentials);
     const requestController = new AbortController();
-    if (signal?.addEventListener) {
+    if (signal?.aborted) {
+      requestController.abort(signal.reason);
+    } else if (signal?.addEventListener) {
       signal.addEventListener("abort", () => requestController.abort(signal.reason), { once: true });
     }
 
@@ -907,14 +1025,26 @@ export class CursorExecutor extends BaseExecutor {
     let pending = Buffer.alloc(0);
     let finished = false;
     let thinkingAcc = "";
-    let emittedVisible = 0;
+    let composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
+    let emittedNativeText = false;
     let emittedText = false;
 
+    const flushComposerPending = (onEvent) => {
+      if (!composerExtractor || emittedNativeText) return;
+      const tail = composerExtractor.finish();
+      if (tail) {
+        emittedText = true;
+        onEvent({ type: "text", value: tail });
+      }
+    };
+
     const flushThinkingFallback = (onEvent) => {
+      if (composerModel) {
+        flushComposerPending(onEvent);
+        return;
+      }
       if (emittedText || !thinkingAcc) return;
-      const fallback = composerModel
-        ? visibleComposerContentFromThinking(thinkingAcc)
-        : thinkingAcc.trim();
+      const fallback = thinkingAcc.trim();
       if (fallback) {
         emittedText = true;
         onEvent({ type: "text", value: fallback });
@@ -945,6 +1075,7 @@ export class CursorExecutor extends BaseExecutor {
               if (update.has(1)) {
                 const textDelta = extractAgentString(decodeMessage(update.get(1)[0].value), 1);
                 if (textDelta) {
+                  emittedNativeText = true;
                   emittedText = true;
                   onEvent({ type: "text", value: textDelta });
                 }
@@ -954,15 +1085,16 @@ export class CursorExecutor extends BaseExecutor {
               if (update.has(4)) {
                 const thinkingDelta = extractAgentString(decodeMessage(update.get(4)[0].value), 1);
                 if (thinkingDelta) {
-                  thinkingAcc += thinkingDelta;
                   if (composerModel) {
-                    const visible = visibleComposerContentFromThinking(thinkingAcc);
-                    if (visible.length > emittedVisible) {
-                      const deltaContent = visible.slice(emittedVisible);
-                      emittedVisible = visible.length;
-                      emittedText = true;
-                      onEvent({ type: "text", value: deltaContent });
+                    if (!emittedNativeText && composerExtractor) {
+                      const deltaContent = composerExtractor.push(thinkingDelta);
+                      if (deltaContent) {
+                        emittedText = true;
+                        onEvent({ type: "text", value: deltaContent });
+                      }
                     }
+                  } else {
+                    thinkingAcc += thinkingDelta;
                   }
                 }
               }
@@ -995,6 +1127,7 @@ export class CursorExecutor extends BaseExecutor {
                 const name = mcp.toolName || mcp.name;
                 if (name) {
                   log?.info?.("CURSOR", `AgentService MCP tool_call ${name}`);
+                  if (composerModel) flushComposerPending(onEvent);
                   finished = true;
                   onEvent({
                     type: "tool_call",
@@ -1027,7 +1160,12 @@ export class CursorExecutor extends BaseExecutor {
             }
           });
         }
-        if (!finished) finishTurn();
+        if (!finished) {
+          if (requestController.signal.aborted) {
+            throw cursorAbortError(requestController.signal.reason);
+          }
+          finishTurn();
+        }
       } finally {
         try { session.end(); } catch {}
         try { session.close(); } catch {}
@@ -1039,8 +1177,9 @@ export class CursorExecutor extends BaseExecutor {
     const runAgentTurn = async (onEvent) => {
       finished = false;
       emittedText = false;
+      emittedNativeText = false;
       thinkingAcc = "";
-      emittedVisible = 0;
+      composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
       pending = Buffer.alloc(0);
       await consume(onEvent);
       return { sawContent: emittedText };
@@ -1190,7 +1329,9 @@ export class CursorExecutor extends BaseExecutor {
             controller.enqueue(encoder.encode(SSE_DONE));
             controller.close();
           }
-        }).catch((error) => controller.error(error));
+        }).catch((error) => {
+          try { controller.error(error); } catch {}
+        });
       },
       cancel() {
         requestController.abort();
@@ -1462,8 +1603,8 @@ export class CursorExecutor extends BaseExecutor {
     const chunks = [];
     let offset = 0;
     let totalContent = "";
-    let totalThinking = "";
-    let emittedComposerThinkingContentLength = 0;
+    let emittedNativeText = false;
+    const composerExtractor = isComposerModel(model) ? createComposerThinkingExtractor() : null;
     const toolCalls = [];
     const toolCallsMap = new Map(); // Track streaming tool calls by ID
     const finalizedIds = new Set();
@@ -1581,6 +1722,7 @@ export class CursorExecutor extends BaseExecutor {
       }
 
       if (result.text) {
+        emittedNativeText = true;
         totalContent += result.text;
         chunks.push(chatChunkSse({
           id: responseId, created, model,
@@ -1591,12 +1733,9 @@ export class CursorExecutor extends BaseExecutor {
         }));
       }
 
-      if (isComposerModel(model) && result.thinking) {
-        totalThinking += result.thinking;
-        const visibleContent = visibleComposerContentFromThinking(totalThinking);
-        if (visibleContent.length > emittedComposerThinkingContentLength) {
-          const deltaContent = visibleContent.slice(emittedComposerThinkingContentLength);
-          emittedComposerThinkingContentLength = visibleContent.length;
+      if (composerExtractor && result.thinking && !emittedNativeText) {
+        const deltaContent = composerExtractor.push(result.thinking);
+        if (deltaContent) {
           totalContent += deltaContent;
           chunks.push(chatChunkSse({
             id: responseId, created, model,
@@ -1610,6 +1749,20 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     if (frameCount === 0) return createCursorStreamErrorResponse("Cursor returned an empty protobuf stream");
+
+    if (composerExtractor && !emittedNativeText) {
+      const tail = composerExtractor.finish();
+      if (tail) {
+        totalContent += tail;
+        chunks.push(chatChunkSse({
+          id: responseId, created, model,
+          delta:
+          chunks.length === 0 && toolCalls.length === 0 ?
+          { role: "assistant", content: tail } :
+          { content: tail }
+        }));
+      }
+    }
 
     debugLog(
       `[CURSOR BUFFER SSE] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, toolCalls array: ${toolCalls.length}`

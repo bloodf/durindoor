@@ -1,6 +1,6 @@
 # #1073 Cursor Composer marker withdrawal
 
-**Status: withdrawn.** The #4842 Cursor Composer final-marker port is pending product and gate work. The unpublished candidate that proposed it has been withdrawn from the product tree, and the shipped Cursor route is byte-for-byte identical to its state before that candidate.
+**Status: withdrawn (superseded by complete boundary-preserving port).** The unpublished candidate `be88c41bb06a05a503b762a3cef3d978f6bb1d91` documented below was withdrawn from the product tree, restoring the Cursor route byte-for-byte to its pre-candidate state. The subsequent boundary-preserving replacement and its offline verification are recorded in [the complete #4842 report](1073-cursor-composer-markers-complete-4842.md).
 
 ## The withdrawn candidate
 
@@ -64,6 +64,6 @@ test -s internal/docs/port-reports/1073-cursor-composer-marker-withdrawal.md
 
 The first command exits `0`, showing the three files at `HEAD` equal the candidate's first parent. The second confirms this report is present and non-empty. The third runs the two direct Cursor unit files against the restored executor; both pass. All three results are recorded in the withdrawal commit body.
 
-## Pending product and gate work
+## Follow-up status
 
-The #4842 framing question is unresolved, not closed. A complete replacement needs a product decision on how a framing marker is distinguished from a quoted marker inside answer text, and it needs gate work before it can land: the replacement must carry its own offline fixtures, must not restate the withdrawn candidate's marker-stripping assertions, and must land under the local CI mode that its changed paths require. No claim in this report establishes live provider behavior.
+The boundary-vs-quoted marker distinction and independent offline fixtures required after this withdrawal have been completed in [the complete #4842 report](1073-cursor-composer-markers-complete-4842.md). No claim in this report establishes live provider behavior.

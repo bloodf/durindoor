@@ -9,6 +9,8 @@ import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
+import { validateMaxaiSession } from "open-sse/executors/maxai.js";
+import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -32,6 +34,8 @@ const SPECIALTY_VALIDATORS = {
   bedrock: validateBedrockSignedProvider,
   dify: validateDifyProvider,
   "chatgpt-web": validateChatgptWebSession,
+  maxai: ({ apiKey, fetcher, providerSpecificData }) => validateMaxaiSession({ apiKey, providerSpecificData }, fetcher),
+  lmarena: ({ apiKey, fetcher, providerSpecificData }) => validateLmarenaSession({ apiKey, providerSpecificData }, fetcher),
 };
 
 const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";

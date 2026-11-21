@@ -1,0 +1,145 @@
+---
+title: Gemini Web
+description: Connect a gemini.google.com session with your own Google cookies, capture them with the extension or a pasted header, and understand the limits.
+---
+
+Gemini Web (`gemini-web`, alias `gweb`) sends chat requests through your signed-in gemini.google.com session. You supply your own Google cookies once; DurinDoor opens the Gemini page in a headless Chromium with those cookies, types your prompt, and returns the answer the page itself receives. There is no API key and nothing is sent to Google except what the Gemini web app would send for you.
+
+<Callout type="warn">
+This drives the consumer Gemini web app, not the Gemini API. It depends on gemini.google.com's page and its private `StreamGenerate` endpoint, which change without notice, and it spends your account's own limits. Your Google cookies are a full login for that account. Use it for a personal gateway, keep it behind scoped DurinDoor keys, and expect Google to rate limit automated use.
+</Callout>
+
+## Requirements
+
+- A Google account that is signed in to gemini.google.com in a normal browser.
+- Playwright with its Chromium build on the host that runs DurinDoor (`npx playwright install chromium`). A missing browser answers `503` with that instruction and does not count against the connection.
+- Optional: `GEMINI_WEB_RESPONSE_TIMEOUT_MS` (1000 to 600000, default 30000) sets how long a request waits for the page's answer.
+
+## Models
+
+| Id | Gemini UI mode |
+| --- | --- |
+| `gemini-3.1-pro` | The mode gemini.google.com opens to |
+| `gemini-3.7-flash` | Flash |
+| `gemini-3.1-flash-lite` | Flash-Lite |
+
+The list is curated. Model discovery returns it without a request and without sending a cookie. Your account decides which modes it can actually switch to.
+
+Before anything is typed, DurinDoor switches the page to the requested mode and reads the active-mode indicator back. A mode it cannot confirm is rejected with `400` and `unsupported_control_for_provider` instead of answering under a label that never ran. The page selectors are best-effort guesses at Gemini's markup, so a Gemini UI change can turn a non-default model into that `400` until the selectors are updated; the default `gemini-3.1-pro` needs no interaction.
+
+## Capture the cookies
+
+The session is two cookies on `.google.com`:
+
+| Cookie | Required | Notes |
+| --- | --- | --- |
+| `__Secure-1PSID` | Yes | The session |
+| `__Secure-1PSIDTS` | Yes | Session timestamp; Google rotates it |
+| `__Secure-1PSIDCC` | No | Rotates too; kept if you include it |
+
+Any other cookie in the import is rejected by the dashboard and extension contract. A pasted connection test accepts a Cookie header with extra cookies and uses only what the page needs.
+
+### Cookie capture extension
+
+With the [cookie capture extension](./cookie-capture-extension.mdx) paired to your gateway, open the **Gemini Web** entry while signed in to gemini.google.com and send the session. The extension reads only the two approved cookie names for `https://gemini.google.com`.
+
+### Dashboard import
+
+On **Providers**, choose **Gemini Web** and add a connection. Any of these can be pasted:
+
+- the full `Cookie` request header from a gemini.google.com request, with or without the `Cookie:` prefix
+- a copied cURL command for such a request
+- a HAR file saved from DevTools, read locally in the browser
+- a bare `__Secure-1PSID` value, or browser-export JSON such as `{"cookies":{"__Secure-1PSID":"...","__Secure-1PSIDTS":"..."}}`
+
+To copy the header by hand: sign in at gemini.google.com, open DevTools, Network, reload, select a request to `gemini.google.com`, and copy the `Cookie` request header value. The Application tab shows the same cookies but can be stale.
+
+### Check the session
+
+The **Check** button makes one read-only `GET https://gemini.google.com/app` with the pasted cookies and does not follow redirects. A signed-in page carries a `SNlM0e` token, which is the only thing that counts as valid: a signed-out landing page also answers `200` to a junk cookie. A redirect to `accounts.google.com/ServiceLogin` is an expired session. `401` or `403` is a rejected credential. `429` and `5xx` are reported as unavailable, not as a bad cookie. No conversation is created.
+
+## What it does
+
+- **Isolation.** One Chromium process is shared, but every request gets a fresh browser context with that connection's cookies and closes it afterwards. Two connections never share a page or a cookie jar. The process closes after 60 seconds idle.
+- **Conversation.** Each request is a new Gemini chat. The history in `messages[]` is flattened into one prompt (`System:`, `Previous conversation:`, `Current user message:`), so follow-ups keep context without a stored conversation id.
+- **Streaming.** Gemini's `StreamGenerate` answers one body of cumulative snapshots. DurinDoor keeps the last snapshot and replays it as one content chunk, a `stop` chunk and `[DONE]`. `stream: true` therefore delivers the whole answer at once. The Anthropic Messages route translates the same chunks into Messages events.
+- **Rotation.** Google rotates `__Secure-1PSID*` while a session is open. When it does, the new values are written back to the connection. Other cookies are never stored.
+- **Tools.** Native function calling is not available. Tools are prompt-emulated: the model is asked to answer with a `<tool>{...}</tool>` block, which is parsed into `tool_calls`. A malformed block stays plain text.
+
+## Errors
+
+| Status | Cause | What to do |
+| --- | --- | --- |
+| `401` | No cookie, a redirect to the Google sign-in page, or a `401` from `StreamGenerate` | Capture the cookies again |
+| `403` | Google rejected the session | Capture the cookies again; check the account |
+| `429` | Account usage limit or Google rate limit | Wait, or route to another connection |
+| `400` | A forced `tool_choice` (`required`, `any`, a named function), an unconfirmed model mode, `reasoning_effort` above `minimal` that the page cannot confirm, or no readable user message | Remove the control or change the model |
+| `499` / `504` | The client cancelled, or the request timed out | Retry |
+| `502` | `StreamGenerate` never answered, or answered a body that could not be read | Retry; the error body lists the endpoints the page called |
+| `503` | Chromium is not installed | Run `npx playwright install chromium` |
+
+## Limits
+
+- Images, files, audio and other attachments are not sent. A message whose content has any non-text part is dropped from the prompt, and a request with no readable user message answers `400`.
+- No token usage is reported; `usage` is zero.
+- No reasoning content. `reasoning_effort` above `minimal` tries to turn on Gemini's Extended Thinking and is rejected if it cannot be confirmed.
+- Per-account limits, plan features and regional availability are Google's, and DurinDoor does not verify them.
+- Each request launches a browser context, so latency is higher than an API provider.
+
+## Sources
+
+- Port source: OmniRoute (MIT), `release/v3.8.55` at `4265bb2ad5477450a07d3a43ea33a62c6c874878`:
+  - [`open-sse/config/providers/registry/gemini/web/index.ts`](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/gemini/web/index.ts)
+  - [`open-sse/executors/gemini-web.ts`](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/gemini-web.ts) and `open-sse/executors/gemini-web/`
+  - [`open-sse/utils/geminiCookies.ts`](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/utils/geminiCookies.ts)
+  - `validateGeminiWebProvider` in [`src/lib/providers/validation/webProvidersB.ts`](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/providers/validation/webProvidersB.ts)
+- Service: [gemini.google.com](https://gemini.google.com). Its terms are Google's; you are responsible for using your own account within them.
+- Tracking: issue #1190, tracker #2034.
+
+{/*
+Registration steps (for the registration batch; the provider unit does not edit shared files)
+
+Staged files, already in place:
+  open-sse/providers/private/gemini-web.js      registry entry (default export), geminiWebCookieProfile, GEMINI_WEB_MODELS
+  open-sse/executors/gemini-web.js              GeminiWebExecutor, validateGeminiWebSession, cookie helpers
+  tests/unit/gemini-web-provider.test.js        composes both through isolated vi.mocks; remove the mocks once registered
+
+Wire exactly these:
+1. Registry promotion: move open-sse/providers/private/gemini-web.js to open-sse/providers/registry/gemini-web.js
+   (keep the named exports or split the profile out), add the import and the entry to open-sse/providers/registry/index.js,
+   and give it a unique `priority`. Keep `cookieImport` unset: the entry's `webLogin` already carries the origin and cookie
+   names, and cookieImportConfig() reuses it. Add "gemini-web" to the in-page sign-in lists only if Google SSO works in the
+   embedded page (it usually does not; leave it manual/import/extension).
+2. open-sse/executors/index.js: import { GeminiWebExecutor } from "./gemini-web.js"; add `"gemini-web": new GeminiWebExecutor()`
+   to the executors map; add the matching `export { GeminiWebExecutor }` line.
+3. Validation: in src/app/api/providers/providerProbe.js add `"gemini-web": validateGeminiWebSession` (import it from
+   open-sse/executors/gemini-web.js) to SPECIALTY_VALIDATORS. REQUIRED: without it the generic probe sends the cookie as a
+   Bearer token to gemini.google.com/app. It is a read-only GET and creates no conversation, so do NOT add gemini-web to
+   CONVERSATION_PROBE_PROVIDERS in src/lib/providers/conversationProbe.js. Check src/app/api/providers/validate/route.js
+   and the [id]/test route reach it for a cookie-auth provider.
+4. Model discovery: add "gemini-web" to the local-catalog branch of
+   src/app/api/providers/[id]/models/fetchConnectionModels.js (next to t3-web / adapta-web) so discovery returns
+   getProviderModels("gemini-web") without a request; modelsConfig.js needs no entry because there is no list endpoint.
+5. extensions/provider-cookie-capture/providers.js: add "gemini-web" with geminiWebCookieProfile's
+   { label: "Gemini Web", origin: "https://gemini.google.com", cookieNames: ["__Secure-1PSID", "__Secure-1PSIDTS"], cookiePrefixes: [] }.
+   The extension reads cookies the origin host sends, so check that chrome.cookies returns the .google.com cookies for it.
+6. extensions/provider-cookie-capture/manifest.json: add host permission "https://gemini.google.com/*" (and the
+   .google.com cookie access the manifest needs for the two cookie names); review the extension's CSP and its provider-table
+   parity test (tests/unit/provider-cookie-capture-extension.test.js).
+7. Dashboard import: nothing to add beyond the registry entry; confirm the import dialog lists "Gemini Web" and that
+   src/shared/utils/cookieImportContract.js resolves the contract (tests/unit/provider-cookie-import-contracts.test.js).
+   Confirm cURL, Cookie header and HAR parsing accept .google.com cookies for the gemini.google.com origin.
+8. src/shared/components/ProviderIcon.js and src/shared/ui/components/ProviderLogo.jsx: add a "gemini-web" icon/logo
+   (the registry display uses icon "auto_awesome", textIcon "GW", color "#4285F4").
+9. docs/providers/catalog.mdx, docs/providers/index.mdx, docs/providers/meta.json: list Gemini Web; add it to the
+   docs/providers/web-cookie.mdx table (Cookie header or the two cookie values; dashboard import and extension; runnable).
+   Confirm the docs site renders the JSX comment at the end of this file as nothing.
+10. src/app/api/providers/[id]/models/modelsConfig.js: no entry (see 4). open-sse/AGENT-INDEX.md: add the two files.
+11. Stories: src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx and tests/e2e/storybook-surfaces.json,
+    for the new provider card.
+12. Dependencies: playwright is already a root dependency (1.63.0); the executor imports it lazily, so hosts without
+    it fail only Gemini Web requests (503). Confirm the Docker/web image installs Chromium or document it.
+13. Tests: in tests/unit/gemini-web-provider.test.js drop the registry and executor vi.mocks and import the real
+    registry entry; keep the playwright mock. Run the provider-cookie-import and extension suites.
+14. Close issue #1190 in the registration commit ("Closes #1190", "Refs #2034").
+*/}

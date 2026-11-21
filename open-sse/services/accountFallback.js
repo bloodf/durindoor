@@ -1,4 +1,4 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
+import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
@@ -15,6 +15,34 @@ export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
+}
+
+const DASHSCOPE_PROVIDERS = new Set([
+  "alibaba",
+  "alibaba-cn",
+  "alicode",
+  "alicode-intl",
+  "bailian-coding-plan",
+  "qwen-cloud",
+  "qwen-cloud-token-plan",
+]);
+const DASHSCOPE_UNPAID_CODES = new Set(["arrearage", "accessdenied.unpurchased"]);
+
+// OmniRoute #19684: DashScope reports unpaid accounts on 400/403 with a vendor
+// code in error.code or at the top level. Messages and parameters can echo user input.
+function isDashScopeDeadAccount(provider, status, errorText, structuredError) {
+  if (!DASHSCOPE_PROVIDERS.has(provider) || (Number(status) !== 400 && Number(status) !== 403)) return false;
+
+  let body = structuredError ?? errorText;
+  if (isString(body)) {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  const code = body?.error?.code ?? body?.code;
+  return isString(code) && DASHSCOPE_UNPAID_CODES.has(code.toLowerCase());
 }
 
 /**
@@ -66,11 +94,15 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   }
 
   // OpenRouter capability and routing preferences describe this request, not
-  // model health. Keep ordinary missing-model 404s on their existing path.
+  // model health. A model OpenRouter removed answers the same 404 on every key,
+  // and its passthrough id collapses to the account-wide lock scope, so cooling
+  // the key down would refuse every other OpenRouter model for the whole window.
+  // Keep other missing-model 404s on their existing path.
   if (Number(status) === 404 && provider === "openrouter" && (
     /\bno endpoints found that support\b/i.test(normalizedText) ||
     /\bno allowed providers\b/i.test(normalizedText) ||
-    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText)
+    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText) ||
+    /\bno longer available on openrouter\b/i.test(normalizedText)
   )) {
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
@@ -79,6 +111,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   const terminalRule = ERROR_RULES.find((rule) => rule.status === status && rule.fallback === false);
   if (terminalRule) {
     return { shouldFallback: false, cooldownMs: 0, newBackoffLevel: backoffLevel, scope: null };
+  }
+
+  // Unpaid DashScope account: park the key on the terminal billing cooldown instead of
+  // treating a 400 as request-scoped or retrying a dead 403 key on the short cooldown.
+  if (isDashScopeDeadAccount(provider, status, errorText, structuredError)) {
+    return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
@@ -437,6 +475,24 @@ export function getUnavailableUntil(cooldownMs) {
   return new Date(Date.now() + cooldownMs).toISOString();
 }
 
+const TERMINAL_ACCOUNT_STATES = new Set(["banned", "deactivated", "expired", "credits_exhausted"]);
+
+/**
+ * True for an account whose state is terminal (deactivated, banned, expired
+ * or out of credits) or that was switched off. Such accounts are never
+ * temporary cooldown candidates: no timer on them predicts recovery.
+ * @param {object|null} account
+ * @returns {boolean}
+ */
+export function isTerminalAccount(account) {
+  if (!account) return false;
+  if (account.isActive === false) return true;
+  for (const field of [account.testStatus, account.status]) {
+    if (isString(field) && TERMINAL_ACCOUNT_STATES.has(field.trim().toLowerCase())) return true;
+  }
+  return false;
+}
+
 /**
  * Get the earliest rateLimitedUntil from a list of accounts
  * @param {Array} accounts - Array of account objects with rateLimitedUntil
@@ -446,6 +502,9 @@ export function getEarliestRateLimitedUntil(accounts) {
   let earliest = null;
   const now = Date.now();
   for (const acc of accounts) {
+    // Deactivated accounts do not recover when a timer expires, so their
+    // deadline must never become a sibling's retry hint.
+    if (isTerminalAccount(acc)) continue;
     if (!acc.rateLimitedUntil) continue;
     const until = new Date(acc.rateLimitedUntil).getTime();
     if (until <= now) continue;

@@ -46,6 +46,7 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "oidcLoginLabel",
   "tunnelDashboardAccess",
   "enableObservability",
+  "enableSessionCapture",
   "outboundProxyEnabled",
   "outboundProxyUrl",
   "outboundNoProxy",

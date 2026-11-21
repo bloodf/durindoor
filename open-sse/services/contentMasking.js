@@ -47,6 +47,45 @@ const CREDENTIAL_PATTERNS = [
 // Generic OpenAI-compatible `sk-` keys. Must stay last so specific labels win.
 { name: "openai_compatible", regex: /(?<![A-Za-z0-9])sk-[A-Za-z0-9._~+/=-]{20,}/g, label: "openai_compatible" }];
 
+// Secrets pasted from env/config files often have no recognizable provider prefix.
+// Keep the label and separator, and require a long value to avoid masking prose.
+// Variable and expression references (process.env.X, os.environ[...], $VAR,
+// ${VAR}, bare identifiers, calls) and placeholders are never masked: only a
+// literal secret is. maskText also runs on responses, so ordinary code must
+// come back unchanged.
+const SECRET_LABEL = String.raw`(?<![A-Za-z0-9_-])[A-Za-z0-9_-]*(?:password|passwd|secret|secret[_-]?key|secret[_-]?access[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token)["']?\s*[:=]\s*["']?`;
+const SECRET_VALUE_CHAR = String.raw`[A-Za-z0-9._~+/=!@#$%^*:-]`;
+const SECRET_MIN_LENGTH = 12;
+const IDENT = String.raw`[A-Za-z_$][A-Za-z0-9_$]*`;
+// process.env.X, env.X, import.meta.env.X, config.apiKey, settings.secrets.db
+const MEMBER_EXPRESSION_RE = new RegExp(`^${IDENT}(?:\\.${IDENT})+$`);
+// Bare identifier without a digit: a variable name, not a generated secret.
+const DIGITLESS_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z_$]*$/;
+// SCREAMING_SNAKE constant names such as OPENAI_API_KEY or SECRET_V2.
+const CONSTANT_NAME_RE = /^[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)+$/;
+const PLACEHOLDER_RE = /^(.)\1+$|redacted|placeholder|changeme|change[_-]me|replace[_-]?me|example|dummy|your[_-]|[_-]here$|^<|^\[|^xxx/i;
+
+function isLiteralSecret(value, quoted, nextChar) {
+  if (value.length < SECRET_MIN_LENGTH) return false;
+  if (PLACEHOLDER_RE.test(value)) return false;
+  if (quoted) return true;
+  // Call or index expression: os.getenv("X"), os.environ["X"], ENV.fetch(...).
+  if (nextChar === "(" || nextChar === "[") return false;
+  if (MEMBER_EXPRESSION_RE.test(value)) return false;
+  if (DIGITLESS_IDENTIFIER_RE.test(value)) return false;
+  if (CONSTANT_NAME_RE.test(value)) return false;
+  return true;
+}
+
+CREDENTIAL_PATTERNS.splice(CREDENTIAL_PATTERNS.length - 1, 0, {
+  name: "labelled_secret",
+  regex: new RegExp(`(${SECRET_LABEL})(?![$%])(${SECRET_VALUE_CHAR}{${SECRET_MIN_LENGTH},})`, "gi"),
+  label: "secret",
+  accept: (_match, labelledPrefix, value, offset, input) =>
+    isLiteralSecret(value, /["']$/.test(labelledPrefix), input[offset + _match.length]),
+  replace: (_match, labelledPrefix) => `${labelledPrefix}[REDACTED:secret]`
+});
+
 
 function luhn(digits) {
   let sum = 0;
@@ -83,9 +122,10 @@ function applyPatterns(text, patterns, counts, replacement) {
   let out = text;
   for (const p of patterns) {
     p.regex.lastIndex = 0;
-    out = out.replace(p.regex, (match) => {
-      if (p.accept && !p.accept(match)) return match;
+    out = out.replace(p.regex, (match, ...captures) => {
+      if (p.accept && !p.accept(match, ...captures)) return match;
       counts[p.name] = (counts[p.name] ?? 0) + 1;
+      if (p.replace) return p.replace(match, ...captures);
       return replacement(p);
     });
   }

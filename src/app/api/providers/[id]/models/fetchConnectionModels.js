@@ -11,6 +11,7 @@ import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/provid
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
 // Safety cap on paginated list endpoints (1000 models/page for Gemini).
@@ -112,6 +113,22 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     if (data.errors?.length) return { error: data.errors.map((entry) => entry.message || "GraphQL error").join("; "), status: 502 };
     const models = (data.data?.llm_config || []).map((row) => ({ id: row.model_reference || row.model_id || row.id, name: row.display_label || row.model_reference || row.model_id || row.id, owned_by: "promptql" })).filter((row) => row.id);
     return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
+  }
+
+  // Zed-hosted lists models only after a per-connection LLM-token exchange, and only
+  // for connections that opted in with providerSpecificData.enableSessionDispatch.
+  if (connection.provider === "zed-hosted") {
+    try {
+      const zedProxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+      const models = await discoverZedHostedModels({
+        accessToken: connection.accessToken || connection.apiKey,
+        providerSpecificData: connection.providerSpecificData || {},
+      }, { proxyOptions: zedProxyOptions, signal: signal || AbortSignal.timeout(15000) });
+      return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 502;
+      return { error: sanitizeErrorMessage(error?.message || "Zed model discovery failed"), status: status === 403 && error?.code !== "zed_hosted_dispatch_disabled" ? 401 : status };
+    }
   }
 
   if (connection.provider === "yuanbao-web") {

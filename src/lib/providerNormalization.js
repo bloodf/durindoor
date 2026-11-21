@@ -61,6 +61,11 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
   { ...providerSpecificData } :
   {};
 
+  if (Object.hasOwn(next, "strictChatHistory")) {
+    next.strictChatHistory = provider?.startsWith("openai-compatible-") &&
+      !provider.startsWith("openai-compatible-responses-") && next.strictChatHistory === true;
+  }
+
   if (Object.hasOwn(next, "managementApiKey")) next.managementApiKey = null;
 
   if (provider === "codex") {

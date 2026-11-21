@@ -47,6 +47,8 @@ describe("early keepalive SSE reader failures", () => {
     ["chat", ["data: one\n", "\n"]],
     ["responses", ["event: message\r\ndata: one\r", "\n\r\n"]],
     ["claude", ["data: one\n\n"]],
+    ["chat", ["data: one\n\r", "\n"]],
+    ["responses", ["data: one\r", "\n", "\n"]],
   ])("appends one generic %s error after a complete split event", async (format, chunks) => {
     const { reader, send } = await setup(format);
     for (const chunk of chunks) {

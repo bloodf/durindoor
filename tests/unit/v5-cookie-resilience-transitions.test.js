@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 // Auth imports the real machineId utility; only its host provider is synthetic.
@@ -17,6 +17,43 @@ let a;
 let b;
 let originalA;
 let originalB;
+
+// The db and auth entry points drag in the whole provider registry and the
+// SQLite migration set. The first import of that graph in a worker pays the
+// complete module transform, which already measured ~9s on an idle machine and
+// outlasts Vitest's default 10s hook ceiling as soon as the machine is
+// loaded. The warm-up below pays that one-time cost outside the per-test
+// budget; every test still imports both modules fresh after
+// vi.resetModules(), so the per-test isolation is unchanged.
+const SETUP_TIMEOUT_MS = 90_000;
+
+beforeAll(async () => {
+  const warmRoot = fs.mkdtempSync(path.join(os.tmpdir(), "resilience-db-warmup-"));
+  try {
+    // The import-time DATA_DIR has to stay inside the fixture: an unset one
+    // resolves to the real ~/.9router, which the warm-up must never touch.
+    vi.stubEnv("DATA_DIR", path.join(warmRoot, "data"));
+    vi.stubEnv("HOME", path.join(warmRoot, "home"));
+    vi.stubEnv("DURINDOOR_DATABASE_ENGINE", "sqlite");
+    for (const key of ["DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE", "DURINDOOR_DATABASE_ENV_SOURCE_JSON"]) {
+      vi.stubEnv(key, undefined);
+    }
+    fs.mkdirSync(process.env.HOME, { recursive: true });
+    delete global._dbAdapter;
+    vi.resetModules();
+    vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External HTTP is forbidden in resilience fixtures"); }));
+    await import("@/lib/db/index.js");
+    await import("../../src/sse/services/auth.js");
+  } finally {
+    // Release the warm-up's own request-details registration before the
+    // temporary database goes away, so no listener outlives the fixture.
+    await disposeLoadedRequestDetailsRepo();
+    delete global._dbAdapter;
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    fs.rmSync(warmRoot, { recursive: true, force: true });
+  }
+}, SETUP_TIMEOUT_MS);
 
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "resilience-db-"));
@@ -45,7 +82,11 @@ beforeEach(async () => {
   });
   originalA = await db.getProviderConnectionById(a.id);
   originalB = await db.getProviderConnectionById(b.id);
-});
+  // The setup builds a fresh SQLite database, runs the full migration set and
+  // re-imports the auth entry point. Under a loaded machine that can outlast
+  // Vitest's default 10 second hook ceiling, so the hook carries the same
+  // explicit budget the other database-backed suites in this package use.
+}, SETUP_TIMEOUT_MS);
 
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();
@@ -58,7 +99,7 @@ afterEach(async () => {
     fs.rmSync(root, { recursive: true, force: true });
     root = undefined;
   }
-});
+}, SETUP_TIMEOUT_MS);
 
 async function fail(at, model = M1, status = 429, message = "rate limit") {
   return auth.markAccountUnavailable(a.id, status, message, "codex", model, null, { attemptStartedAt: at });

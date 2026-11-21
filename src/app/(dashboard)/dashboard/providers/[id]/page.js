@@ -2192,7 +2192,7 @@ function ProviderDetail({ providerId }) {
               }
                   </div>
                   {oneByOneSummary.unavailable > 0 && <ul aria-label="Unavailable connection tests" className="mt-2">
-                    {connections.filter((conn) => oneByOneResults[conn.id]?.state === "unavailable").map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id}: {oneByOneResults[conn.id].error || "Provider unavailable - try again later"}</li>)}
+                    {connections.filter((conn) => oneByOneResults[conn.id]?.state === "unavailable").map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id}: Provider unavailable - try again later</li>)}
                   </ul>}
                   {hiddenTestResultCount > 0 && <div className="mt-2 flex flex-wrap items-center gap-2" role="status">
                     <span>{hiddenTestResultCount} completed {hiddenTestResultCount === 1 ? "result" : "results"} hidden by the filter.</span>

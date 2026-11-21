@@ -189,7 +189,7 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   let stopKeepalive = () => {};
   let upstreamReader = null;
   let aborted = false;
-  // Keep only the suffix needed to recognize an LF or CRLF event boundary.
+  // Keep only the suffix needed to recognize two independently terminated SSE lines.
   let sseSuffix = "";
   let sseAtBoundary = true;
   const admissionSelection = createClientAdmissionSelection();
@@ -251,9 +251,10 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
               if (done) break;
               if (value) {
                 controller.enqueue(value);
-                for (const byte of value) {
-                  sseSuffix = (sseSuffix + String.fromCharCode(byte)).slice(-4);
-                  sseAtBoundary = sseSuffix.endsWith("\n\n") || sseSuffix.endsWith("\r\n\r\n");
+                if (value.length) {
+                  const tail = value.subarray(Math.max(0, value.length - 4));
+                  sseSuffix = (sseSuffix + String.fromCharCode(...tail)).slice(-4);
+                  sseAtBoundary = /\r?\n\r?\n$/.test(sseSuffix);
                 }
               }
             }

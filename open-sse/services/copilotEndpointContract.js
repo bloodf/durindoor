@@ -22,12 +22,23 @@
  * the executor decides by model name before this contract is consulted.
  */
 
+import crypto from "crypto";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const COPILOT_ENDPOINT_CONTRACT_VERSION = 1;
 
 export const COPILOT_ENDPOINT_CHAT = "chat";
 export const COPILOT_ENDPOINT_RESPONSES = "responses";
+
+/**
+ * Generation of an account that carries no routing metadata at all.
+ *
+ * "No contract" is a state, not a missing value: an account that never ran
+ * discovery and an account whose contract was cleared both read as this
+ * generation, so a learned route survives neither the appearance nor the
+ * disappearance of a contract.
+ */
+export const COPILOT_ROUTE_GENERATION_ABSENT = "absent";
 
 /** Declared endpoint paths that mean "the chat route serves this model". */
 const CHAT_PATHS = new Set(["chat/completions", "chat-completions", "messages"]);
@@ -156,4 +167,60 @@ export function resolveCopilotEndpointRoute(contract, modelId) {
     return COPILOT_ENDPOINT_RESPONSES;
   }
   return COPILOT_ENDPOINT_CHAT;
+}
+
+/**
+ * Canonical form of a contract: the routing facts only, in a stable order.
+ *
+ * Two contracts that state the same routes produce the same form, so a
+ * catalog refresh that reorders its rows is not a new generation. Only the
+ * routes themselves (and the contract version) are kept — nothing secret
+ * ever reaches this fingerprint.
+ *
+ * @param {unknown} contract
+ * @returns {{ version: unknown, models: { id: string, supportedEndpoints: string[], targetFormat: string|null }[] }|null}
+ */
+function canonicalCopilotContract(contract) {
+  if (!isRecord(contract) || !Array.isArray(contract.models)) return null;
+  const models = [];
+  for (const entry of contract.models) {
+    if (!isRecord(entry)) continue;
+    const endpoints = Array.isArray(entry.supportedEndpoints) ? entry.supportedEndpoints : [];
+    models.push({
+      id: isString(entry.id) ? entry.id.trim() : "",
+      supportedEndpoints: endpoints.filter(isString).map((value) => value.trim()).sort(),
+      targetFormat: isString(entry.targetFormat) ? entry.targetFormat : null,
+    });
+  }
+  models.sort((left, right) => left.id.localeCompare(right.id));
+  return { version: contract.version ?? null, models };
+}
+
+/**
+ * Generation of one account's routing metadata.
+ *
+ * The generation answers "is the routing metadata the executor sees now the
+ * same metadata the learned routes were learned under?". It is derived from
+ * the discovered contract only — the catalog's own endpoint statements — so
+ * it carries no account, host or token material.
+ *
+ * - A contract is present and readable → a content fingerprint. A refreshed
+ *   catalog that changed the routes produces a different generation, which
+ *   expires the learned routes learned under the old one.
+ * - No contract at all → {@link COPILOT_ROUTE_GENERATION_ABSENT}. That is a
+ *   real generation, not a missing value: a learned route stays valid until
+ *   routing metadata appears, and dies again when it disappears.
+ * - A contract that is present but not readable (not an object, no model
+ *   list) → null. No trustworthy generation is available, so the caller must
+ *   not trust a learned route against it.
+ *
+ * @param {unknown} contract - the stored Copilot endpoint contract
+ * @returns {string|null} the generation, or null when it cannot be trusted
+ */
+export function computeCopilotRouteGeneration(contract) {
+  if (contract === null || contract === undefined) return COPILOT_ROUTE_GENERATION_ABSENT;
+  const canonical = canonicalCopilotContract(contract);
+  if (!canonical) return null;
+  const digest = crypto.createHash("sha256").update(JSON.stringify(canonical)).digest("hex").slice(0, 16);
+  return `v${canonical.version ?? 0}:${digest}`;
 }

@@ -8,6 +8,7 @@ import "open-sse/index.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
 import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
+import { readBoundedResponseText } from "open-sse/utils/error.js";
 
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
@@ -1003,7 +1004,7 @@ const PROVIDERS = {
         proxyOptions
       });
       if (!loadRes.ok) throw new Error(`Antigravity project lookup failed: ${loadRes.status}`);
-      const data = await loadRes.json();
+      const data = JSON.parse(await readBoundedResponseText(loadRes, { maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true }));
       const project = data.cloudaicompanionProject;
       projectId = isString(project) ? project.trim() :
       isString(project?.id) ? project.id.trim() : "";
@@ -1029,7 +1030,7 @@ const PROVIDERS = {
             proxyOptions
           });
           if (!onboardRes.ok) throw new Error(`Antigravity onboarding failed: ${onboardRes.status}`);
-          const result = await onboardRes.json();
+          const result = JSON.parse(await readBoundedResponseText(onboardRes, { maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true }));
           // onboardUser is a long-running operation: Google answers `done:false`
           // until the project is provisioned. Only a settled `done:true` response
           // carries the project, so keep polling instead of reading a missing

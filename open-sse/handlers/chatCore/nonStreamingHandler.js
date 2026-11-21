@@ -28,6 +28,7 @@ import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
+import { createGeminiPlaceholderStripper } from "../../translator/concerns/geminiPlaceholderArgs.js";
 import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -377,6 +378,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const usage = response.usageMetadata || responseBody.usageMetadata;
     let textContent = "",reasoningContent = "";
     const toolCalls = [];
+    // Drop the compatibility-only `reason` the Gemini cleaner added to empty object schemas.
+    const stripPlaceholderArgs = createGeminiPlaceholderStripper({ clientTools: options.requestBody?.tools, providerBody: options.providerBody, toolNameMap: options.toolNameMap });
 
     if (content?.parts) {
       for (const part of content.parts) {
@@ -391,7 +394,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           toolCalls.push({
             id: encodeToolCallIdWithSignature(rawId, partSignature),
             type: "function",
-            function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) }
+            function: { name: part.functionCall.name, arguments: JSON.stringify(stripPlaceholderArgs(part.functionCall.name, part.functionCall.args || {})) }
           });
         }
         // Handle inline image data (from image generation models)
@@ -641,7 +644,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       responseBody,
       responseFormat,
       sourceFormat,
-      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
+      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body, providerBody: finalBody || translatedBody }
     );
 
     /**

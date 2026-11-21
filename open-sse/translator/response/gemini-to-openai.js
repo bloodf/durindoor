@@ -9,6 +9,7 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { stripAnsiCodes } from "../../utils/streamHelpers.js";
 import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js";
 import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
+import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Build chunk meta for current gemini state
@@ -29,7 +30,8 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   const rawName = functionCall.name;
   // Restore original tool name from mapping (AG cloaking)
   const fcName = state.toolNameMap?.get(rawName) || rawName;
-  const fcArgs = functionCall.args || {};
+  // Drop the compatibility-only `reason` the Gemini cleaner added to empty object schemas.
+  const fcArgs = geminiPlaceholderStripperFor(state)(rawName, functionCall.args || {});
   const toolCallIndex = state.functionIndex++;
   // Prefer the upstream-provided call id (Gemini 3 sends one) — it round-trips to
   // functionResponse without name reconstruction. Fall back to a generated id.

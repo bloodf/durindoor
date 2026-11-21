@@ -7,7 +7,25 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "capture-1131-"));
 const original = process.env.DATA_DIR;
 process.env.DATA_DIR = dir;
 const session = "550e8400-e29b-41d4-a716-446655440000";
+const otherSession = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
 let db, capture, settings;
+
+function insertTurn(id, apiKeyId, sessionId, value, createdAt, expiresAt) {
+  const content = JSON.stringify(value);
+  db.run(
+    `INSERT INTO "sessionCaptureTurns" ("id", "apiKeyId", "sessionId", "content", "byteSize", "createdAt", "expiresAt")
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, apiKeyId, sessionId, content, Buffer.byteLength(content, "utf8"), createdAt, expiresAt]
+  );
+}
+
+function countTurns(where, params = []) {
+  return db.get(`SELECT COUNT(*) AS n FROM "sessionCaptureTurns" ${where}`, params).n;
+}
+
+const expiredAt = () => new Date(Date.now() - 60_000).toISOString();
+const liveAt = () => new Date().toISOString();
+const futureAt = () => new Date(Date.now() + 3_600_000).toISOString();
 
 beforeAll(async () => {
   const driver = await import("@/lib/db/driver.js");
@@ -80,5 +98,75 @@ describe("session capture storage", () => {
     expect(await capture.readSessionTurns(args)).toEqual([]);
     await capture.pruneSessionTurns();
     expect(db.get('SELECT COUNT(*) AS n FROM "sessionCaptureTurns"').n).toBe(0);
+  });
+
+  it("physically removes expired rows on read", async () => {
+    const args = { credential: "secret-owner", session, consent: true };
+    expect(await capture.captureSessionTurn({ ...args, turn: "kept" })).toBe(true);
+    insertTurn("expired-owner", "owner", session, "gone", expiredAt(), expiredAt());
+    expect(countTurns('WHERE "id" = ?', ["expired-owner"])).toBe(1);
+
+    const rows = await capture.readSessionTurns(args);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].content).toBe("kept");
+    // The expired row is deleted, not only filtered out of the result set.
+    expect(countTurns('WHERE "id" = ?', ["expired-owner"])).toBe(0);
+    expect(countTurns('WHERE "apiKeyId" = ? AND "sessionId" = ?', ["owner", session])).toBe(1);
+    await capture.deleteSessionTurns(args);
+  });
+
+  it("prunes only the authenticated key and keeps other keys intact", async () => {
+    const args = { credential: "secret-owner", session, consent: true };
+    insertTurn("expired-other", "other", otherSession, "gone", expiredAt(), expiredAt());
+    insertTurn("kept-other", "other", otherSession, "kept", liveAt(), futureAt());
+    insertTurn("expired-owner", "owner", otherSession, "gone", expiredAt(), expiredAt());
+
+    expect(await capture.readSessionTurns(args)).toEqual([]);
+    // The owner's expired content is pruned across the key's sessions.
+    expect(countTurns('WHERE "id" = ?', ["expired-owner"])).toBe(0);
+    // Another key's rows are never touched by this key's read.
+    expect(countTurns('WHERE "id" = ?', ["expired-other"])).toBe(1);
+    expect(countTurns('WHERE "id" = ?', ["kept-other"])).toBe(1);
+
+    // The other key still authorizes and reads its own live content, and its
+    // own read prunes its own expired rows.
+    const other = await capture.readSessionTurns({ credential: "secret-other", session: otherSession });
+    expect(other).toHaveLength(1);
+    expect(other[0].content).toBe("kept");
+    expect(countTurns('WHERE "id" = ?', ["expired-other"])).toBe(0);
+    expect(countTurns('WHERE "id" = ?', ["kept-other"])).toBe(1);
+    await capture.deleteSessionTurns({ credential: "secret-other", session: otherSession });
+  });
+
+  it("prunes expired rows on read after capture writes are disabled", async () => {
+    const args = { credential: "secret-owner", session, consent: true };
+    insertTurn("expired-disabled", "owner", session, "gone", expiredAt(), expiredAt());
+    await settings.updateSettings({ enableSessionCapture: false });
+    try {
+      expect(await capture.readSessionTurns(args)).toEqual([]);
+      expect(countTurns('WHERE "id" = ?', ["expired-disabled"])).toBe(0);
+    } finally {
+      await settings.updateSettings({ enableSessionCapture: true });
+    }
+  });
+
+  it("keeps authentication failures and bounded reads intact", async () => {
+    const args = { credential: "secret-owner", session, consent: true };
+    insertTurn("expired-unauthorized", "owner", session, "gone", expiredAt(), expiredAt());
+
+    await expect(capture.readSessionTurns({ credential: "not-a-key", session })).rejects.toThrow("Authentication required");
+    // A rejected read prunes nothing.
+    expect(countTurns('WHERE "id" = ?', ["expired-unauthorized"])).toBe(1);
+    await expect(capture.readSessionTurns({ credential: "secret-owner", session: "not-a-session" })).rejects.toThrow("Invalid session");
+    await expect(capture.readSessionTurns({ ...args, limit: 101 })).rejects.toThrow("Invalid limit");
+    await expect(capture.readSessionTurns({ ...args, limit: 0 })).rejects.toThrow("Invalid limit");
+
+    insertTurn("bounded-1", "owner", session, "one", liveAt(), futureAt());
+    insertTurn("bounded-2", "owner", session, "two", liveAt(), futureAt());
+    // The read stays bounded to the requested limit.
+    expect(await capture.readSessionTurns({ ...args, limit: 1 })).toHaveLength(1);
+    expect(await capture.readSessionTurns({ ...args, limit: 100 })).toHaveLength(2);
+    expect(countTurns('WHERE "id" = ?', ["expired-unauthorized"])).toBe(0);
+    await capture.deleteSessionTurns(args);
   });
 });

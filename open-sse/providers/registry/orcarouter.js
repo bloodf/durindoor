@@ -33,7 +33,13 @@ export default {
   transport: {
     baseUrl: `${API_BASE}/chat/completions`,
     validateUrl: `${API_BASE}/models`,
-    format: "openai"
+    format: "openai",
+    // OmniRoute's pinned OrcaRouter registration sends these gateway
+    // attribution headers on its OpenAI-compatible requests.
+    headers: {
+      "HTTP-Referer": "https://endpoint-proxy.local",
+      "X-Title": "Endpoint Proxy"
+    }
   },
   // Authorize/exchange only. `tokenUrl` is the code-exchange endpoint, NOT a
   // refresh endpoint: the PKCE flow returns a durable API key and OrcaRouter

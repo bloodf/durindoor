@@ -324,46 +324,15 @@ export function filterCatalog(models, options = {}) {
  * underlying models (open-sse/providers/capabilities.js and thinkingLevels.js).
  */
 export const ORCAROUTER_SEED_MODELS = [
-{
-  id: "openai/gpt-5.5",
-  name: "GPT-5.5",
-  contextLength: 400000,
-  inputModalities: ["text", "image"],
-  endpointTypes: ["openai"],
-  reasoning: true,
-  reasoningEfforts: ["low", "medium", "high", "xhigh"]
-},
-{
-  id: "anthropic/claude-opus-4.8",
-  name: "Claude Opus 4.8",
-  contextLength: 1000000,
-  inputModalities: ["text", "image"],
-  endpointTypes: ["anthropic"],
-  reasoning: true
-},
-{
-  id: "google/gemini-3.5-flash",
-  name: "Gemini 3.5 Flash",
-  contextLength: 1048576,
-  inputModalities: ["text", "image", "audio", "video"],
-  endpointTypes: ["gemini"],
-  reasoning: true
-},
-{
-  id: "deepseek/deepseek-v4-pro",
-  name: "DeepSeek V4 Pro",
-  contextLength: 1000000,
-  inputModalities: ["text"],
-  endpointTypes: ["openai"],
-  reasoning: true
-},
-{
-  id: "orcarouter/auto",
-  name: "OrcaRouter Auto",
-  contextLength: 200000,
-  inputModalities: ["text"],
-  endpointTypes: ["openai"]
-}];
+  { id: "orcarouter/auto", name: "Auto (smart routing)", contextLength: 128000, inputModalities: ["text"], endpointTypes: ["openai"], reasoning: true },
+  { id: "openai/gpt-5.5", name: "GPT-5.5", contextLength: 1050000, inputModalities: ["text", "image"], endpointTypes: ["openai"], reasoning: true, reasoningEfforts: ["low", "medium", "high", "xhigh", "max"] },
+  { id: "google/gemini-3.6-flash", name: "Gemini 3.6 Flash", contextLength: 1048576, inputModalities: ["text", "image", "audio", "video"], endpointTypes: ["gemini"], reasoning: true },
+  { id: "anthropic/claude-opus-4.8", name: "Claude Opus 4.8", contextLength: 1000000, inputModalities: ["text", "image"], endpointTypes: ["anthropic"], reasoning: true, reasoningEfforts: ["low", "medium", "high", "xhigh", "max"] },
+  { id: "grok/grok-4.3", name: "Grok 4.3", contextLength: 1000000, inputModalities: ["text", "image"], endpointTypes: ["openai"], reasoning: true },
+  { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", contextLength: 1048576, inputModalities: ["text"], endpointTypes: ["openai"], reasoning: true },
+  { id: "minimax/minimax-m2.7", name: "MiniMax M2.7", contextLength: 204800, inputModalities: ["text"], endpointTypes: ["openai"], reasoning: true },
+  { id: "qwen/qwen3.7-max", name: "Qwen3.7 Max", contextLength: 1000000, inputModalities: ["text"], endpointTypes: ["openai"] }
+];
 
 /**
  * The seed, filtered for the same entry point the caller asked for.

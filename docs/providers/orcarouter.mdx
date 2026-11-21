@@ -1,0 +1,5 @@
+# OrcaRouter
+
+OrcaRouter uses bearer API keys at `https://api.orcarouter.ai/v1`. Its model catalog is discovered from `/models`; the checked-in catalog is a cold-start fallback and is not merged into a successful live response. Requests include the `HTTP-Referer` and `X-Title` attribution headers used by the pinned OmniRoute registration.
+
+Offline verification covers provider registration, key forwarding, model discovery, fallback on 401/429, and account credential isolation using closed mocks. The OpenAI-compatible route handles JSON and SSE; Anthropic-format requests are translated to the OpenAI chat contract before dispatch. These checks do not establish live account acceptance, current model availability, quota behavior, or OrcaRouter's live error payloads. Those require an OrcaRouter account and were not exercised here.

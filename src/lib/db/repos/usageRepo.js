@@ -1,3 +1,4 @@
+import { MAX_ATTRIBUTION_VALUES, validAttributionValue } from "../../usageAttribution.js";
 import { EventEmitter } from "events";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
@@ -955,10 +956,22 @@ export async function saveRequestUsage(entry) {
       // even when the secret changes later.
       const apiKeyId = apiKeyIdForSync(db, entry.apiKey, entry.apiKeyId);
       attributedApiKeyId = apiKeyId;
+      // The writer lock serializes admission of new labels across concurrent writes.
+      // Existing labels continue to work at the cap; excess labels are discarded,
+      // never the billable usage event. Only retained history counts toward the cap.
+      const boundedLabel = (column, value) => {
+        if (!apiKeyId || !validAttributionValue(value)) return null;
+        const existing = db.get(`SELECT 1 AS found FROM usageHistory WHERE apiKeyId = ? AND ${column} = ? LIMIT 1`, [apiKeyId, value]);
+        if (existing) return value;
+        const count = db.get(`SELECT COUNT(DISTINCT ${column}) AS count FROM usageHistory WHERE apiKeyId = ?`, [apiKeyId]);
+        return Number(count?.count || 0) < MAX_ATTRIBUTION_VALUES ? value : null;
+      };
+      const usageSessionId = boundedLabel("usageSessionId", entry.usageAttribution?.sessionId);
+      const usageProjectId = boundedLabel("usageProjectId", entry.usageAttribution?.projectId);
       const historyColumns = [
         "timestamp", "provider", "model", "connectionId", "apiKey", "endpoint",
         "promptTokens", "completionTokens", "cost", "status", "tokens", "meta",
-        "usageEventId", "comboId", "comboName",
+        "usageEventId", "comboId", "comboName", "usageSessionId", "usageProjectId",
         "cachedTokens", "reasoningTokens", "cacheCreationTokens",
         "latencyMs", "ttftMs", ...USAGE_COST_FIELDS,
       ];
@@ -967,7 +980,7 @@ export async function saveRequestUsage(entry) {
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost, entry.status || "ok",
         stringifyJson(tokens), stringifyJson(entry.meta), usageEventId || null,
-        entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens)),
+        entry.comboId || null, entry.comboName || null, usageSessionId, usageProjectId, ...Object.values(usageTokenColumns(tokens)),
         latencyMs, ttftMs, ...USAGE_COST_FIELDS.map((field) => costSplit[field]),
       ];
       // A database that predates the stable id keeps its old shape; its rows
@@ -2343,4 +2356,19 @@ export async function getTokenSaverStats(period = "7d", now = new Date()) {
     agg.dailyPoints = [];
     return agg;
   }
+}
+
+/** Bounded self-service report, scoped solely by the authenticated stable key ID. */
+export async function listKeyUsageSessions(apiKeyId, limit = 50) {
+  if (!apiKeyId) return [];
+  const db = await getAdapter();
+  const pageLimit = Number.isInteger(limit) ? Math.min(100, Math.max(1, limit)) : 50;
+  return db.all(`SELECT usageSessionId AS sessionId, usageProjectId AS projectId,
+      COUNT(*) AS requests, COALESCE(SUM(promptTokens), 0) AS promptTokens,
+      COALESCE(SUM(completionTokens), 0) AS completionTokens,
+      SUM(cost) AS cost, SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unknownCostRequests,
+      MAX(timestamp) AS lastUsed
+    FROM usageHistory WHERE apiKeyId = ? AND (usageSessionId IS NOT NULL OR usageProjectId IS NOT NULL)
+    GROUP BY usageSessionId, usageProjectId ORDER BY MAX(timestamp) DESC, usageSessionId, usageProjectId
+    LIMIT ?`, [apiKeyId, pageLimit]);
 }

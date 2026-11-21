@@ -86,8 +86,12 @@ export function getFusionRequiredInput(body) {
   return body?.[FUSION_REQUIRED_INPUT] || [];
 }
 
-export function comboPolicyRejection() {
-  const response = annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied"), "policy");
+export function comboPolicyRejection(toolOutputVision = false) {
+  const response = annotateClientAdmissionFailure(errorResponse(
+    HTTP_STATUS.FORBIDDEN,
+    "Access denied",
+    toolOutputVision ? { code: "capability_unavailable" } : null
+  ), "policy");
   response[LOCAL_POLICY_REJECTION] = true;
   return response;
 }
@@ -507,12 +511,21 @@ export function detectToolOutputCapabilities(body) {
       }
     }
   };
-  for (const m of trailingUserItems(body.messages)) {
-    if (m?.role === "tool" || m?.role === "function") scan(m.content);
-    if (Array.isArray(m?.content)) for (const b of m.content) if (b?.type === "tool_result") scan(b.content);
-  }
+  const scanToolMessage = (message) => {
+    if (message?.role === ROLE.TOOL || message?.role === OPENAI_BLOCK.FUNCTION) scan(message.content);
+    if (Array.isArray(message?.content)) {
+      for (const block of message.content) {
+        if (block?.type === CLAUDE_BLOCK.TOOL_RESULT) scan(block.content);
+      }
+    }
+  };
+  for (const message of trailingUserItems(body.messages)) scanToolMessage(message);
   for (const it of trailingUserItems(body.input)) {
-    if (it?.type === "function_call_output" || it?.type === "custom_tool_call_output") scan(it.output);
+    if (it?.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || it?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) {
+      scan(it.output);
+    } else {
+      scanToolMessage(it);
+    }
   }
   for (const c of trailingUserItems(body.contents || body.request?.contents)) {
     if (Array.isArray(c?.parts)) for (const p of c.parts) scan(p?.functionResponse?.parts);
@@ -579,7 +592,9 @@ export function detectRequiredCapabilities(body) {
 
   // Modalities: current user turn only (trailing user run across each known shape).
   for (const m of trailingUserItems(body.messages)) scanMessage(m); // openai / claude / hermes / ollama
-  for (const it of trailingUserItems(body.input)) scanContent(it.content); // responses
+  for (const it of trailingUserItems(body.input)) {
+    if (it?.role !== ROLE.TOOL && it?.role !== OPENAI_BLOCK.FUNCTION) scanContent(it?.content);
+  }
   const contents = body.contents || body.request?.contents; // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
   for (const cap of detectToolOutputCapabilities(body)) required.add(cap);
@@ -1297,7 +1312,8 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
  * Handle combo chat with fallback
  * @param {Object} options
  * @param {string[]} options.models - Array of model strings to try
- * @param {Function} options.handleSingleModel - Function to handle single model: (body, modelStr) => Promise<Response>
+ * @param {Function} options.handleSingleModel - Dispatch callback (body, modelStr, signal, attemptOptions).
+ *   Tool-output vision attempts set attemptOptions.reportComboPolicyRejections.
  * @param {Object} options.log - Logger object
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
@@ -1543,9 +1559,10 @@ export async function handleComboChat({
   }
   // Fusion requirements survive nested routing even when the nested router's
   // own auto-switch is off. Ordinary fallback keeps its tool-only admission.
+  const toolOutputMedia = autoSwitch ? detectToolOutputCapabilities(body) : new Set();
   const inputMedia = [...new Set([
     ...getFusionRequiredInput(body),
-    ...(autoSwitch ? detectToolOutputCapabilities(body) : [])
+    ...toolOutputMedia
   ])];
   if (inputMedia.length > 0) {
     const capable = filterByInputCapabilities(rotatedModels, inputMedia, capabilitiesMap);
@@ -1627,6 +1644,10 @@ export async function handleComboChat({
     affinityReleased = true;
   };
 
+  const dispatch = toolOutputMedia.has("vision") ?
+    (attemptBody, model, attemptSignal) => handleSingleModel(attemptBody, model, attemptSignal, { reportComboPolicyRejections: true }) :
+    handleSingleModel;
+
   for (let i = 0; i < rotatedModels.length; i++) {
     if (signal?.aborted) return abortedResponse();
     const modelStr = rotatedModels[i];
@@ -1657,7 +1678,7 @@ export async function handleComboChat({
       try {
         if (comboTimeoutMs > 0) {
           result = await Promise.race([
-          handleSingleModel(attemptBody, modelStr, attemptSignal),
+          dispatch(attemptBody, modelStr, attemptSignal),
           new Promise((_, reject) => {
             timeoutTimer = setTimeout(() => {
               const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
@@ -1669,7 +1690,7 @@ export async function handleComboChat({
           })]
           );
         } else {
-          result = await handleSingleModel(attemptBody, modelStr, attemptSignal);
+          result = await dispatch(attemptBody, modelStr, attemptSignal);
         }
       } finally {
         if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -1735,7 +1756,7 @@ export async function handleComboChat({
           }
         } else if (checkEmptyBody && !body?.stream && await isBodyEmpty(result)) {
           log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
-          const retryResult = await handleSingleModel(body, modelStr);
+          const retryResult = await dispatch(body, modelStr);
           if (!retryResult.ok || await isBodyEmpty(retryResult)) {
             if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
             releaseFailedAffinity(modelStr, i);
@@ -1812,7 +1833,11 @@ export async function handleComboChat({
         requestScopedResult ??= result;
         continue;
       }
-      if (result[LOCAL_POLICY_REJECTION]) localPolicyRejections++;
+      if (result[LOCAL_POLICY_REJECTION]) {
+        localPolicyRejections++;
+        releaseFailedAffinity(modelStr, i);
+        continue;
+      }
 
       // Check if should fallback to next model
       const { shouldFallback, cooldownMs, requestScoped, terminal } = checkFallbackError(
@@ -1902,9 +1927,10 @@ export async function handleComboChat({
     }
   }
 
-  // Nested fusion callers need the trusted marker after fallback aggregation.
-  // Every candidate must reject locally; upstream failures and timeouts do not count.
-  if (localPolicyRejections > 0 && localPolicyRejections === rotatedModels.length) return comboPolicyRejection();
+  // Keep the trusted marker through nested fallback. Every candidate must reject locally.
+  if (localPolicyRejections > 0 && localPolicyRejections === rotatedModels.length) {
+    return comboPolicyRejection(toolOutputMedia.has("vision"));
+  }
 
   // A member rejected the request itself: return its own response (status and
   // body) instead of the synthesized envelope, so the client sees the real cause.
@@ -2150,6 +2176,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     ...getFusionRequiredInput(body),
     ...(autoSwitch ? [...detectRequiredCapabilities(body)].filter((cap) => HARD_CAPS.has(cap)) : [])
   ])];
+  const toolOutputVision = requiredInput.includes("vision") && detectToolOutputCapabilities(body).has("vision");
   const capableModels = filterByInputCapabilities(eligibleModels, requiredInput, capabilitiesMap);
   // Fusion cannot synthesize missing media. Validate the panel and any explicit
   // judge before fan-out; never silently replace an operator-selected judge.
@@ -2182,7 +2209,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     if (judgeModel && judgeModel.trim()) {
 
       // fall through to shared fan-out/judge path with a one-member panel
-    } else {return handleSingleModel(dispatchBody, panel[0]);
+    } else {
+      const result = await handleSingleModel(dispatchBody, panel[0]);
+      return toolOutputVision && result?.[LOCAL_POLICY_REJECTION] ? comboPolicyRejection(true) : result;
     }
   }
 
@@ -2271,7 +2300,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // 3. Degrade gracefully when the panel is too thin to fuse.
   if (answers.length === 0) {
     if (pendingIndexes.length === 0 && settled.every((res) => res?.[LOCAL_POLICY_REJECTION] === true)) {
-      return comboPolicyRejection();
+      return comboPolicyRejection(toolOutputVision);
     }
     log.warn("FUSION", "All panel models failed");
     return new Response(

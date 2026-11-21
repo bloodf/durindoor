@@ -1,0 +1,10 @@
+/* Public-site foundation. Keep these scoped to public surfaces so the demo
+   continues to use the application's own theme tokens. */
+:where(.dd-home, .dd-docs) {
+  --site-content-width: 1200px;
+  --site-gutter: clamp(16px, 4vw, 40px);
+  --site-space-section: clamp(80px, 12vw, 150px);
+  --site-radius: 12px;
+  --site-focus-width: 2px;
+  --site-focus-offset: 3px;
+}

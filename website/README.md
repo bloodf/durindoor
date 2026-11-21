@@ -99,6 +99,29 @@ live proxy deletion guard. Pass a paths file (`/api/path` or
 `METHOD /api/path {"json":"body"}` per line) to check specific routes; a missing
 route, a throwing handler or a 5xx response exits non-zero.
 
+## Browser tests
+
+The Playwright suites (`tests/docs.spec.mjs`, `tests/marketing.spec.mjs` and
+`tests/public-verification.spec.mjs`) keep their screenshot, console,
+accessibility and responsive checks, and they own exactly one host server for
+the length of the run:
+
+- `scripts/transient-server.mjs` starts the production build with
+  `next start --hostname 127.0.0.1`, so the socket is reachable from this
+  machine only.
+- The server starts with the test run and stops with it. Playwright tears the
+  process group down, and the launcher forwards the shutdown signal to the
+  server it started.
+- The suite never attaches to a server that already exists. An occupied port
+  fails the run instead of reusing it; `WEBSITE_TRANSIENT_PORT` selects another
+  port when the default `3100` is taken.
+- No systemd unit, cron job, service or daemon is created, and nothing is left
+  listening after the run.
+
+`tests/global-setup.mjs` enforces the contract before the first test: the
+browser target is `http://127.0.0.1:<port>`, the answering process is the one
+this run started, and no other interface of the host answers on that port.
+
 ## Deploy
 
 Vercel project `durindoor` (team `hr-teconologia`), Root Directory `website`,
@@ -143,6 +166,48 @@ Clipboard actions show failure feedback and allow another attempt. The model-res
 
 Docs retain their existing parchment and forest reading themes. A mobile theme action remains available in the header while the sidebar is closed. English guides declare English even when the marketing locale differs. Canonical links and social cards use `NEXT_PUBLIC_SITE_URL`, defaulting to the deployed DurinDoor site. The sitemap includes only the homepage and public MDX collection; simulated dashboard, login and preview routes declare noindex.
 
-The sample dashboard entry shows a recoverable error with Retry and Docs actions if the browser-local sample session cannot initialize. It does not contact a provider. Tests for these changes live in `tests/unit/visant-marketing-docs.test.js` and `website/tests/marketing.spec.mjs`. Run the browser suite against a production build with `DOCS_BASE_URL=http://127.0.0.1:3100`; `WEBSITE_CHROMIUM_EXECUTABLE` optionally selects an installed headless Chromium binary.
+The sample dashboard entry shows a recoverable error with Retry and Docs actions if the browser-local sample session cannot initialize. It does not contact a provider. Tests for these changes live in `tests/unit/visant-marketing-docs.test.js` and `website/tests/marketing.spec.mjs`. Run the browser suite against a local production build; it starts its own transient server on `127.0.0.1` and stops it when the run ends. `WEBSITE_CHROMIUM_EXECUTABLE` optionally selects an installed headless Chromium binary. On Linux hosts without a system Fontconfig configuration, the suite supplies a fallback that discovers the bundled site fonts; an explicit `FONTCONFIG_FILE` takes precedence.
 
 The shared endpoint provider-health table has a named keyboard-focusable horizontal scroll region. This single semantic accessibility change is the only production component adjustment required by the marketing review; the demo still imports the production component directly.
+
+## Docker website verification
+
+From the repository root, run `sh website/scripts/verify-docker.sh` with Docker
+available. The image installs the locked website dependencies and Chromium, then
+builds the website. A temporary container runs all existing Playwright suites,
+plus a strict sweep of every sitemap page at 1280px and 360px. The sweep fails
+on any browser console error, uncaught page error, or axe violation and saves
+full-page screenshots under
+`website/verification-artifacts/<run-id>/screenshots/`; the existing marketing
+screenshots are saved alongside them. Inside the container the suite starts its
+own transient server on the container's loopback interface and stops it when the
+run ends. No host port is published. The runner removes only its uniquely named
+container and image, including on interruption; artifact directories are
+retained for inspection.
+Docker verification has to pass on a Docker-capable machine; a local build alone
+does not establish browser or accessibility results.
+
+### Public design foundation
+
+Public layouts share spacing, content width and focus-ring tokens in
+`src/styles/site/tokens.css`; keep dashboard styling scoped to the application.
+The homepage and docs use the same persisted theme preference. The marketing
+Playwright suite covers keyboard interactions, 360px and desktop layouts, axe
+checks and screenshots against the transient loopback server it starts itself.
+
+The homepage FAQ links to the network-server and web-cookie guides, including
+extension pairing limitations. Its native disclosure controls work with keyboard
+and touch; FAQ and audience copy are maintained in every homepage locale.
+
+The published-page audits read the built sitemap when collecting tests, divide
+its routes into batches, and compare it with the served sitemap in every batch.
+Each route still receives all viewport, console, accessibility and screenshot
+checks. Progress identifies the route and operation, and navigation has a
+bounded timeout so a stalled request identifies the affected page.
+The homepage resolver keeps its first render stable during hydration, then
+applies the visitor's reduced-motion preference and shows completed examples.
+Documentation section cards use second-level headings, the table of contents
+is a named navigation landmark, and scrollable code examples have distinct
+accessible names.
+The mobile documentation controls are a named navigation landmark, and the
+homepage main landmark has its own name alongside the embedded dashboard.

@@ -34,6 +34,11 @@ html:not(.dark) .dd-home :is(
     .fallback-log,
     .saver-pane,
     .constellation-stage,
+    .actual-demo,
+    .section-kinds,
+    .section-savers,
+    .section-quick,
+    .combo-example,
     .section-quota,
     .section-final,
     .site-footer
@@ -97,10 +102,6 @@ html:not(.dark) .dd-home :is(.feature-icon, .kind-icon) {
 
 html:not(.dark) .dd-home .feature-n {
   color: rgba(122, 91, 8, 0.8);
-}
-
-html:not(.dark) .dd-home .quick-step {
-  background: rgba(255, 255, 255, 0.6);
 }
 
 html:not(.dark) .dd-home .flow-step:hover {

@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { batches, verifySitemap } from "./sitemap-inventory.mjs";
 
 const screenshots = process.env.WEBSITE_REVIEW_SCREENSHOTS || "/tmp/durindoor-marketing-visant-screens";
 async function readyHome(page) {
@@ -67,6 +68,23 @@ test("clipboard denial is visible, retry succeeds, and the command stays readabl
   expect(startup).toContain('export JWT_SECRET="$(openssl rand -hex 32)"');
   expect(startup).toContain('export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"');
   expect(startup).toContain("npx durindoor --host 127.0.0.1");
+});
+
+test("mobile homepage has distinguishable landmarks", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const result = await new AxeBuilder({ page }).analyze();
+  expect(result.violations).toEqual([]);
+});
+
+test("reduced motion hydrates the resolver without page errors", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await expect(page.locator(".terminal-playback")).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
 test("model examples can be paused and selected by keyboard without waiting for typing", async ({ page }) => {
@@ -155,7 +173,7 @@ test("marketing and docs layouts retain readable themes without serious accessib
   test.setTimeout(180_000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   mkdirSync(screenshots, { recursive: true });
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 390, 360]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of ["/", "/docs", "/docs/getting-started/installation"]) {
       await page.goto(route, { waitUntil: "networkidle" });
@@ -166,7 +184,7 @@ test("marketing and docs layouts retain readable themes without serious accessib
         await expect(total).not.toHaveText("0");
         await expect(page.locator(".kinds-total-n [aria-hidden=true]")).toHaveText(await total.innerText());
       }
-      if (route === "/" && width === 390) {
+      if (route === "/" && (width === 390 || width === 360)) {
         const table = page.frameLocator('iframe[title="Live demo"]').getByRole("region", { name: "Provider health", exact: true });
         await table.focus();
         await expect(table).toBeFocused();
@@ -175,6 +193,16 @@ test("marketing and docs layouts retain readable themes without serious accessib
       const result = await new AxeBuilder({ page }).analyze();
       expect(result.violations.filter((violation) => ["serious", "critical"].includes(violation.impact)), `${route} ${width}`).toEqual([]);
       await page.screenshot({ path: join(screenshots, `${route.replaceAll("/", "-") || "home"}-${width}.png`), fullPage: false, animations: "disabled" });
+      if (route === "/") {
+        for (const theme of ["light", "dark"]) {
+          const isDark = await page.locator("html").evaluate((node) => node.classList.contains("dark"));
+          if (isDark !== (theme === "dark")) await page.locator(".site-nav").getByRole("button", { name: /Switch to (light|dark) mode/ }).click();
+          const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+          expect(audit.violations, `${route} ${width} ${theme}`).toEqual([]);
+          await page.screenshot({ path: join(screenshots, `home-${width}-${theme}.png`), fullPage: true, animations: "disabled" });
+        }
+        await page.locator(".site-nav").getByRole("button", { name: "Switch to light mode" }).click();
+      }
       if (route.startsWith("/docs")) {
         await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
         await page.evaluate(async () => {
@@ -190,4 +218,60 @@ test("marketing and docs layouts retain readable themes without serious accessib
       }
     }
   }
+});
+
+
+test("home theme control persists the reading preference", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const toggle = page.locator(".site-nav").getByRole("button", { name: /Switch to (light|dark) mode/ });
+  const wasDark = await page.locator("html").evaluate((node) => node.classList.contains("dark"));
+  await toggle.click();
+  await expect(page.locator("html")).toHaveClass(wasDark ? /^(?!.*\bdark\b).*$/ : /\bdark\b/);
+  await page.reload({ waitUntil: "networkidle" });
+  expect(await page.locator("html").evaluate((node) => node.classList.contains("dark"))).toBe(!wasDark);
+});
+
+// Audit every published route at every viewport in independent batches. Each
+// batch checks the served sitemap against the inventory used at collection.
+test.describe("published pages have responsive, accessible layouts without console errors", () => {
+  test.describe.configure({ mode: "parallel" });
+  for (const width of [1440, 390, 360]) {
+    for (const [index, routes] of batches.entries()) {
+      test(`${width}px batch ${index + 1}`, async ({ page, request }) => {
+        test.setTimeout(300_000);
+        await verifySitemap(request);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        mkdirSync(screenshots, { recursive: true });
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+        await page.setViewportSize({ width, height: 900 });
+        for (const route of routes) {
+          console.log(`Audit ${width} ${route}: navigation`);
+          await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
+          await expect(page.locator("h1").first(), route).toBeVisible();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${route} ${width}`).toBe(0);
+          console.log(`Audit ${width} ${route}: axe`);
+          const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+          expect(result.violations, `${route} ${width}`).toEqual([]);
+          console.log(`Audit ${width} ${route}: screenshot`);
+          await page.screenshot({ path: join(screenshots, `public-${route.replaceAll("/", "-") || "home"}-${width}.png`), animations: "disabled", fullPage: true });
+        }
+        expect(errors).toEqual([]);
+      });
+    }
+  }
+});
+
+test("FAQ answers link to the documented connection paths and work by keyboard", async ({ page }) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  const faq = page.locator("#faq");
+  const network = faq.getByText("Can I connect a model server on my network?", { exact: true });
+  await network.focus();
+  await page.keyboard.press("Enter");
+  await expect(faq.getByRole("link", { name: "Network LLM servers" })).toHaveAttribute("href", "/docs/providers/network-llm-servers");
+  await faq.getByText("How do web provider sign-ins work?", { exact: true }).click();
+  await expect(faq.getByText(/one-use pairing/)).toBeVisible();
+  await expect(faq.getByRole("link", { name: "Web cookie providers" })).toHaveAttribute("href", "/docs/providers/web-cookie");
 });

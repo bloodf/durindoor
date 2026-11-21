@@ -84,17 +84,6 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     };
   }
 
-  // MaxAI and Arena publish curated web-app catalogs in their staged registry
-  // entries; neither web session exposes a stable OpenAI-style /models route.
-  if (connection.provider === "maxai" || connection.provider === "lmarena") {
-    return {
-      provider: connection.provider,
-      connectionId: connection.id,
-      models: getProviderModels(connection.provider),
-      source: "local_catalog",
-    };
-  }
-
   // PromptQL exposes its model catalog through an authenticated GraphQL
   // operation rather than an OpenAI-style /models endpoint.
   if (connection.provider === "promptql") {

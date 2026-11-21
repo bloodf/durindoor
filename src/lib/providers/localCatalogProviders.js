@@ -4,4 +4,6 @@
 export const LOCAL_CATALOG_WEB_PROVIDERS = new Set([
   "t3-web", "adapta-web",
   "claude-web", "gemini-web", "deepseek-web", "doubao-web", "zai-web", "chatgpt-web-codex",
+  // MaxAI and Arena expose no stable OpenAI-style /models route; Cloudflare Playground is anonymous.
+  "maxai", "lmarena", "cloudflare-playground",
 ]);

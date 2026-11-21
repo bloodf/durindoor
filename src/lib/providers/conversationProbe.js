@@ -4,13 +4,13 @@
 // checks (e.g. perplexity-web GET /api/auth/session) create nothing and stay allowed.
 // suno and udio belong here too: their only generic probe POSTs the music submit endpoint,
 // which starts a billable generation on the account.
-const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "adapta-web", "yuanbao-web", "doubao-web", "zai-web", "suno", "udio"]);
+const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "adapta-web", "yuanbao-web", "doubao-web", "zai-web", "cloudflare-playground", "suno", "udio"]);
 
 // Web sessions whose dispatch is deliberately closed (#2034): the executor returns provider_port_pending
 // because no authorized, verified non-browser request contract exists. Validate and Test Connection must
 // not send the saved cookie anywhere either; the generic probe would POST it as a Bearer token to the
 // provider's chat endpoint (huggingface.co/chat/conversation creates a conversation).
-const GUARDED_WEB_SESSION_PROVIDERS = new Set(["muse-spark-web", "huggingchat"]);
+const GUARDED_WEB_SESSION_PROVIDERS = new Set(["muse-spark-web", "huggingchat", "twinmind", "hyperagent"]);
 
 export const isGuardedWebSessionProvider = (provider) => GUARDED_WEB_SESSION_PROVIDERS.has(provider);
 

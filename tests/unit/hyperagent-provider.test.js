@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const entry = (await import("../../open-sse/providers/private/hyperagent.js")).default;
-  return { ...actual, default: [...actual.default, entry] };
-});
 
-import entry from "../../open-sse/providers/private/hyperagent.js";
+import entry from "../../open-sse/providers/registry/hyperagent.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 
 describe("staged HyperAgent provider contract", () => {

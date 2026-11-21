@@ -2,11 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
 const routedFetch = vi.hoisted(() => vi.fn());
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/poe.js");
-  return { ...original, default: [...original.default.filter((row) => row.id !== entry.id), entry] };
-});
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const { PoeExecutor } = await import("../../open-sse/executors/poe.js");
@@ -27,7 +22,7 @@ import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/f
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import provider from "../../open-sse/providers/private/poe.js";
+import provider from "../../open-sse/providers/registry/poe.js";
 
 const KEY_A = "poe_synthetic_alpha";
 const KEY_B = "poe_synthetic_beta";

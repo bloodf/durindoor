@@ -24,6 +24,12 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__Secure-next-auth.session-token"],
     cookiePrefixes: ["__Secure-next-auth.session-token."],
   },
+  "chatplayground": {
+    label: "ChatPlayground",
+    origin: "https://app.chatplayground.ai",
+    cookieNames: ["__client", "__session"],
+    cookiePrefixes: [],
+  },
   "claude-web": {
     label: "Claude Web",
     origin: "https://claude.ai",
@@ -46,6 +52,18 @@ export const PROVIDERS = deepFreeze({
     label: "Grok Web",
     origin: "https://grok.com",
     cookieNames: ["sso"],
+    cookiePrefixes: [],
+  },
+  "lmarena": {
+    label: "Arena",
+    origin: "https://arena.ai",
+    cookieNames: ["arena-auth-prod-v1"],
+    cookiePrefixes: ["arena-auth-prod-v1."],
+  },
+  "maxai": {
+    label: "MaxAI",
+    origin: "https://www.maxai.co",
+    cookieNames: ["access_token", "device_id", "user_id"],
     cookiePrefixes: [],
   },
   "muse-spark-web": {

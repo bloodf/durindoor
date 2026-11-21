@@ -1,14 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import helyxai from "../../open-sse/providers/private/helyxai.js";
+import helyxai from "../../open-sse/providers/registry/helyxai.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 
 const routedFetch = vi.hoisted(() => vi.fn());
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const staged = (await import("../../open-sse/providers/private/helyxai.js")).default;
-  return { ...original, default: [...original.default, staged] };
-});
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: routedFetch }));
 

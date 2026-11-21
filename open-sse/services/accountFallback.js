@@ -1,4 +1,4 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
+import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
@@ -15,6 +15,20 @@ export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
+}
+
+// port(omniroute): #19684. DashScope (Alibaba Model Studio) reports an unpaid account as
+// 400/403 with code `Arrearage` or `AccessDenied.Unpurchased`; both stay true until the owner
+// pays. Anchored on the vendor code or its exact sentence and applied to 400/403 only: a 429
+// that quotes "good standing" is a throttle, and generic AccessDenied never matches.
+export const DASHSCOPE_DEAD_ACCOUNT_RE = /\barrearage\b|please make sure your account is in good standing|accessdenied\.unpurchased|please make sure you are eligible for using the model/i;
+
+function isDashScopeDeadAccount(status, normalizedText, structuredError) {
+  if (Number(status) !== 400 && Number(status) !== 403) return false;
+  if (DASHSCOPE_DEAD_ACCOUNT_RE.test(normalizedText)) return true;
+  const code = isString(structuredError?.error?.code) ? structuredError.error.code : structuredError?.code;
+  const type = isString(structuredError?.error?.type) ? structuredError.error.type : structuredError?.type;
+  return DASHSCOPE_DEAD_ACCOUNT_RE.test(`${isString(code) ? code : ""} ${isString(type) ? type : ""}`);
 }
 
 /**
@@ -79,6 +93,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   const terminalRule = ERROR_RULES.find((rule) => rule.status === status && rule.fallback === false);
   if (terminalRule) {
     return { shouldFallback: false, cooldownMs: 0, newBackoffLevel: backoffLevel, scope: null };
+  }
+
+  // Unpaid DashScope account: park the key on the terminal billing cooldown instead of
+  // treating a 400 as request-scoped or retrying a dead 403 key on the short cooldown.
+  if (isDashScopeDeadAccount(status, normalizedText, structuredError)) {
+    return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
@@ -437,6 +457,24 @@ export function getUnavailableUntil(cooldownMs) {
   return new Date(Date.now() + cooldownMs).toISOString();
 }
 
+const TERMINAL_ACCOUNT_STATES = new Set(["banned", "deactivated", "expired", "credits_exhausted"]);
+
+/**
+ * True for an account whose state is terminal (deactivated, banned, expired
+ * or out of credits) or that was switched off. Such accounts are never
+ * temporary cooldown candidates: no timer on them predicts recovery.
+ * @param {object|null} account
+ * @returns {boolean}
+ */
+export function isTerminalAccount(account) {
+  if (!account) return false;
+  if (account.isActive === false) return true;
+  for (const field of [account.testStatus, account.status]) {
+    if (isString(field) && TERMINAL_ACCOUNT_STATES.has(field.trim().toLowerCase())) return true;
+  }
+  return false;
+}
+
 /**
  * Get the earliest rateLimitedUntil from a list of accounts
  * @param {Array} accounts - Array of account objects with rateLimitedUntil
@@ -446,6 +484,9 @@ export function getEarliestRateLimitedUntil(accounts) {
   let earliest = null;
   const now = Date.now();
   for (const acc of accounts) {
+    // Deactivated accounts do not recover when a timer expires, so their
+    // deadline must never become a sibling's retry hint.
+    if (isTerminalAccount(acc)) continue;
     if (!acc.rateLimitedUntil) continue;
     const until = new Date(acc.rateLimitedUntil).getTime();
     if (until <= now) continue;

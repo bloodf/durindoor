@@ -892,14 +892,14 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
     // Convert user/assistant messages to input items
     if (msg.role === ROLE.USER || msg.role === ROLE.ASSISTANT) {
-      // Preserve reasoning_content as a reasoning item (before the message)
-      if (msg.role === ROLE.ASSISTANT && msg.reasoning_content) {
-        result.input.push({
-          type: RESPONSES_ITEM.REASONING,
-          summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: msg.reasoning_content }]
-        });
-      }
-
+      // Chat `reasoning_content` is NOT replayed as a Responses `reasoning`
+      // item. The Responses protocol only accepts a reasoning item the server
+      // issued: `ResponseReasoningItem.id` is required, and continuity for
+      // store=false backends rides on that same item's `encrypted_content` —
+      // never on a summary string. A client-built item is therefore invalid
+      // (OmniRoute #231: client-side ids caused 400 Invalid Request), and this
+      // fork never fabricates a server-generated id. Native Responses history
+      // keeps its own reasoning items through the `body.input` path above.
       const contentType = msg.role === ROLE.USER ? RESPONSES_ITEM.INPUT_TEXT : RESPONSES_ITEM.OUTPUT_TEXT;
       const content = isString(msg.content) ?
       [{ type: contentType, text: msg.content }] :

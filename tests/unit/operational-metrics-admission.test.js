@@ -1072,7 +1072,8 @@ describe("ef75 auth-wrapper coverage and selected Ollama transfer", () => {
     expect(response.status).toBe(200);
     expect(Object.fromEntries(response.headers)).toEqual({
       "cache-control": "no-cache, no-transform", connection: "keep-alive",
-      "content-type": "text/event-stream; charset=utf-8", "x-request-id": correlation.getRequestId(req),
+      "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no",
+      "x-request-id": correlation.getRequestId(req),
     });
     const reader = response.body.getReader(), decoder = new TextDecoder();
     expect(decoder.decode((await reader.read()).value)).toBe(route === "messages" ? 'event: ping\ndata: {"type":"ping"}\n\n' : ": keepalive\n\n");

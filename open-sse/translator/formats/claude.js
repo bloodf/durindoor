@@ -11,6 +11,7 @@ import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
+import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../concerns/thinking.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
@@ -147,6 +148,49 @@ function mergeAdjacentUserTurns(messages, index) {
   messages.splice(index + 1, 1);
 }
 
+// Anthropic rejects cache_control nested inside tool_result.content[]; the
+// breakpoint belongs on the tool_result block. Only the first-party Anthropic
+// targets are verified to enforce this, so compatible Claude-wire providers
+// keep their existing bodies.
+const TOOL_RESULT_CACHE_MARKER_TARGETS = new Set(["claude", "anthropic"]);
+
+export function normalizesToolResultCacheMarkers(provider) {
+  return TOOL_RESULT_CACHE_MARKER_TARGETS.has(provider);
+}
+
+function validCacheMarker(value) {
+  if (!isObject(value) || value === null || value.type !== "ephemeral") return null;
+  if (value.ttl === undefined) return { type: "ephemeral" };
+  return value.ttl === "5m" || value.ttl === "1h" ? { type: "ephemeral", ttl: value.ttl } : null;
+}
+
+/**
+ * Move the first valid nested tool_result.content marker onto the enclosing
+ * tool_result and drop every nested marker (malformed ones are never hoisted).
+ * An existing parent marker keeps precedence. Parts are copied rather than
+ * mutated, so caller-owned blocks stay untouched. Budget enforcement stays with
+ * the caller's existing cap/anchor logic.
+ */
+export function hoistToolResultCacheMarkers(body) {
+  if (!Array.isArray(body?.messages)) return body;
+  for (const message of body.messages) {
+    if (!Array.isArray(message?.content)) continue;
+    for (const block of message.content) {
+      if (!isObject(block) || block === null || block.type !== CLAUDE_BLOCK.TOOL_RESULT || !Array.isArray(block.content)) continue;
+      if (!block.content.some((part) => isObject(part) && part !== null && "cache_control" in part)) continue;
+      let hoisted = null;
+      block.content = block.content.map((part) => {
+        if (!isObject(part) || part === null || !("cache_control" in part)) return part;
+        const { cache_control, ...rest } = part;
+        hoisted ??= validCacheMarker(cache_control);
+        return rest;
+      });
+      if (hoisted && (block.cache_control === undefined || block.cache_control === null)) block.cache_control = hoisted;
+    }
+  }
+  return body;
+}
+
 /** Count request-wide Anthropic cache breakpoints. */
 function countCacheControlBlocks(body) {
   let count = 0;
@@ -182,8 +226,9 @@ function capCacheControlBlocks(body) {
   for (const block of remaining.slice(0, Math.max(0, remaining.length - keep))) delete block.cache_control;
 }
 // Re-anchor cache breakpoints on a Claude passthrough body after transformations.
-export function anchorClaudeCache(body) {
+export function anchorClaudeCache(body, provider = null) {
   if (!body || !isObject(body)) return body;
+  if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       delete msg.cache_control;
@@ -446,19 +491,62 @@ function buildThinkingPlaceholder(provider) {
   return block;
 }
 
+/** Room kept for the answer above a derived thinking budget, as in the reconcile step below. */
+const GLM_THINKING_RESPONSE_ROOM = 1024;
+
+/**
+ * Z.ai's Anthropic endpoint rejects an enabled thinking block that has no
+ * budget_tokens (HTTP 400 "missing field budget_tokens") or one below the
+ * lowest level budget. A valid explicit budget is kept. A missing or too-small
+ * one comes from the local level map: the effort already on the wire, else
+ * medium. A derived budget is clamped to the model's thinkingRange and to
+ * max_tokens minus answer room; when max_tokens cannot hold the floor, thinking
+ * is dropped instead of sending an invalid request. An explicit budget that
+ * does not fit max_tokens is left to the raise-then-fit step in
+ * reconcileClaudeThinkingBudget. Adaptive, disabled and absent thinking are untouched.
+ */
+function ensureGlmAnthropicThinkingBudget(body, provider) {
+  const thinking = body.thinking;
+  if (!isObject(thinking) || thinking.type !== "enabled") return;
+  const range = getCapabilitiesForModel(provider, body.model).thinkingRange;
+  const floor = Math.max(effortToBudget("low"), range?.min ?? 0);
+  const explicit = Number(thinking.budget_tokens);
+  if (Number.isFinite(explicit) && explicit >= floor) return;
+  if (Number.isFinite(explicit) && explicit > 0) {
+    thinking.budget_tokens = floor;
+    return;
+  }
+  const effort = String(body.reasoning_effort ?? "").toLowerCase();
+  let budget = effortToBudget(EFFORT_LEVELS.includes(effort) ? effort : "medium");
+  if (range?.max != null && budget > range.max) budget = range.max;
+  const maxTokens = Number(body.max_tokens);
+  if (Number.isFinite(maxTokens) && maxTokens > 0) {
+    budget = Math.min(budget, Math.floor(maxTokens) - GLM_THINKING_RESPONSE_ROOM);
+  }
+  if (budget < floor) {
+    delete body.thinking;
+    return;
+  }
+  body.thinking = { ...thinking, budget_tokens: budget };
+}
+
 /**
  * Keep Anthropic's strict token contract valid after unified thinking has
  * applied a budget. Shared by translated requests and native Claude
  * passthrough so neither path can send `budget_tokens >= max_tokens`.
  */
 export function reconcileClaudeThinkingBudget(body, provider = "claude", customMaxOutput = null) {
-  if (!body || !isObject(body) || !body.max_tokens) return body;
+  if (!body || !isObject(body)) return body;
+  const glmAnthropic = GLM_ANTHROPIC_PROVIDERS.has(provider);
+  if (!body.max_tokens && !glmAnthropic) return body;
 
   // Custom-model maxOutput overrides the static catalog ceiling; the thinking
   // budget is then fitted inside the already-clamped cap.
   const ceiling = (Number.isFinite(customMaxOutput) && customMaxOutput > 0 ? customMaxOutput : null) ?? (
   getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS);
   if (body.max_tokens > ceiling) body.max_tokens = ceiling;
+  if (glmAnthropic) ensureGlmAnthropicThinkingBudget(body, provider);
+  if (!body.max_tokens) return body;
 
   if (
   body.thinking?.type === "enabled" &&
@@ -806,6 +894,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   if (body.messages && Array.isArray(body.messages)) {
     const clientRole = clientLastRole ?? body.messages.at(-1)?.role;
     body.messages = removeNamelessToolHistory(body.messages);
+    // Before pass 1 so a hoisted marker obeys the same message-marker policy as any other.
+    if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
     const len = body.messages.length;
     const originalLastRole = clientRole;
     let filtered = [];

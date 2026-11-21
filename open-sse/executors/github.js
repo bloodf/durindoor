@@ -20,14 +20,22 @@ import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import { checkGitHubCreditLimit } from "../services/githubCreditLimit.js";
 import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
-import { resolveCopilotEndpointRoute } from "../services/copilotEndpointContract.js";
+import { resolveCopilotEndpointRoute, computeCopilotRouteGeneration } from "../services/copilotEndpointContract.js";
+import { CopilotLearnedRoutes } from "../services/copilotLearnedRoutes.js";
 import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export class GithubExecutor extends BaseExecutor {
   constructor(provider = "github", config = PROVIDERS[provider]) {
     super(provider, config);
-    this.knownCodexModels = new Map();
+    /**
+     * Learned route hints, keyed by account and API host. The entries carry
+     * the routing-metadata generation they were learned under, so a
+     * refreshed catalog expires them (see services/copilotLearnedRoutes.js).
+     * `knownCodexModels` is the store's map, kept under its historical name.
+     */
+    this.learnedRoutes = new CopilotLearnedRoutes();
+    this.knownCodexModels = this.learnedRoutes.entries;
   }
 
   /**
@@ -214,16 +222,21 @@ export class GithubExecutor extends BaseExecutor {
     }
 
     // Only use /responses for models that are explicitly known to need it — the
-    // account's discovered endpoint contract, or a cached escalation after
+    // account's discovered endpoint contract, or a learned escalation after
     // Copilot's own error — and that the /responses endpoint actually serves
     // (excludes Gemini/Claude, see #1062).
     // Keep learned fallbacks per connection and API host; anonymous calls retry
     // normally but cannot safely share a learned route with another account.
+    // A learned route is also bound to the generation of the routing metadata
+    // it was learned under: a refreshed catalog expires it, so the account
+    // probes its routes again instead of trusting a stale guess.
     const accountId = options.connectionId || options.credentials?.connectionId || options.credentials?.id;
     const cacheKey = accountId ? JSON.stringify([accountId, this.endpointUrl("baseUrl", options.credentials)]) : null;
     const route = this.copilotEndpointRoute(model, options.credentials);
+    const generation = computeCopilotRouteGeneration(options.credentials?.providerSpecificData?.copilotEndpointContract);
+    const learned = cacheKey ? this.learnedRoutes.has(cacheKey, model, generation) : false;
     if (this.supportsResponsesEndpoint(model) &&
-      (route === "responses" || (route === null && cacheKey && this.knownCodexModels.get(cacheKey)?.has(model)))) {
+      (route === "responses" || (route === null && learned))) {
       log?.debug("GITHUB", `Using /responses route for ${model}`);
       return this.executeWithResponsesEndpoint(options);
     }
@@ -249,10 +262,7 @@ export class GithubExecutor extends BaseExecutor {
 
       if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
         log?.warn("GITHUB", `Model ${model} requires /responses. Switching...`);
-        if (cacheKey) {
-          if (!this.knownCodexModels.has(cacheKey)) this.knownCodexModels.set(cacheKey, new Set());
-          this.knownCodexModels.get(cacheKey).add(model);
-        }
+        this.learnedRoutes.learn(cacheKey, model, generation);
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "fallback" });
         try {
           const cancellation = result.response.body?.cancel?.("switching GitHub route");

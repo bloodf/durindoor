@@ -146,3 +146,18 @@ Docs retain their existing parchment and forest reading themes. A mobile theme a
 The sample dashboard entry shows a recoverable error with Retry and Docs actions if the browser-local sample session cannot initialize. It does not contact a provider. Tests for these changes live in `tests/unit/visant-marketing-docs.test.js` and `website/tests/marketing.spec.mjs`. Run the browser suite against a production build with `DOCS_BASE_URL=http://127.0.0.1:3100`; `WEBSITE_CHROMIUM_EXECUTABLE` optionally selects an installed headless Chromium binary.
 
 The shared endpoint provider-health table has a named keyboard-focusable horizontal scroll region. This single semantic accessibility change is the only production component adjustment required by the marketing review; the demo still imports the production component directly.
+
+## Docker website verification
+
+From the repository root, run `pnpm -C website run verify:docker` with Docker
+available. The image installs the locked website dependencies and Chromium, then
+builds the website. A temporary container runs the production server and all
+existing Playwright suites, plus a strict sweep of every sitemap page at 1280px
+and 360px. The sweep fails on any browser console error, uncaught page error,
+or axe violation and saves full-page screenshots under
+`website/verification-artifacts/<run-id>/screenshots/`; the server log and
+existing marketing screenshots are saved alongside them. No host port is
+published. The runner removes only its uniquely named container and image,
+including on interruption; artifact directories are retained for inspection.
+Docker verification has to pass on a Docker-capable machine; a local build alone
+does not establish browser or accessibility results.

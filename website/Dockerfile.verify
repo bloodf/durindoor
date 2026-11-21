@@ -1,0 +1,8 @@
+FROM node:24.22.2-bookworm
+WORKDIR /repo
+RUN corepack enable && corepack prepare pnpm@12.18.0 --activate
+COPY . .
+RUN pnpm -C website install --frozen-lockfile && \
+    pnpm -C website exec playwright install --with-deps chromium && \
+    pnpm -C website run build
+WORKDIR /repo/website

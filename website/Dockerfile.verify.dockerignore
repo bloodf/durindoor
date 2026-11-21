@@ -1,0 +1,17 @@
+.git
+.github
+**/node_modules
+**/.next
+**/.next-*
+**/.env*
+**/.vercel
+.codegraph
+.omc
+website/verification-artifacts
+**/*.pem
+**/*.key
+**/.engine-token.txt
+**/.oauth-session.json
+**/.tmp-prov.json
+**/.tmp-providers.json
+**/data.sqlite

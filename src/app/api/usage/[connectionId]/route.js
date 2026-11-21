@@ -24,6 +24,14 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "adapta-web": "Adapta Web",
   "t3-web": "T3 Chat Web",
   "yuanbao-web": "Yuanbao Web",
+  "claude-web": "Claude Web",
+  "gemini-web": "Gemini Web",
+  "doubao-web": "Doubao Web",
+  "zai-web": "Z.ai Web",
+  "chatgpt-web-codex": "ChatGPT Web Codex",
+  chatplayground: "ChatPlayground",
+  lmarena: "Arena",
+  maxai: "MaxAI",
 };
 
 // Detect auth-expired messages returned by usage providers instead of throwing

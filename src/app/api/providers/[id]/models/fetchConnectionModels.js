@@ -2,6 +2,7 @@ import { antigravityForbiddenBackoff, recordAntigravityForbidden } from "open-ss
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
+import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
@@ -11,6 +12,7 @@ import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/provid
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
 // Safety cap on paginated list endpoints (1000 models/page for Gemini).
@@ -73,24 +75,50 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
-  // T3 Chat and Adapta publish a curated catalog; model discovery sends no
-  // session cookie.
-  if (connection.provider === "t3-web" || connection.provider === "adapta-web") {
+  // T3 Chat, Adapta and the staged web-session providers publish a curated
+  // catalog; model discovery sends no session cookie or token.
+  if (LOCAL_CATALOG_WEB_PROVIDERS.has(connection.provider)) {
     return {
       provider: connection.provider, connectionId: connection.id,
       models: getProviderModels(connection.provider), source: "local_catalog",
     };
   }
 
-  // MaxAI and Arena publish curated web-app catalogs in their staged registry
-  // entries; neither web session exposes a stable OpenAI-style /models route.
-  if (connection.provider === "maxai" || connection.provider === "lmarena") {
-    return {
-      provider: connection.provider,
-      connectionId: connection.id,
-      models: getProviderModels(connection.provider),
-      source: "local_catalog",
-    };
+  // PromptQL exposes its model catalog through an authenticated GraphQL
+  // operation rather than an OpenAI-style /models endpoint.
+  if (connection.provider === "promptql") {
+    const endpoint = PROVIDERS.promptql?.baseUrl;
+    const token = connection.providerSpecificData?.token || connection.providerSpecificData?.jwt || connection.apiKey;
+    if (!endpoint || !token) return { error: "PromptQL requires a playground JWT for model discovery", status: 401 };
+    const promptQlProxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    const response = await proxyAwareFetch(endpoint, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${String(token).replace(/^Bearer\\s+/i, "")}`, origin: "https://prompt.ql.app", referer: "https://prompt.ql.app/" },
+      body: JSON.stringify({ query: "query FetchLlmConfigs { llm_config(where: {deleted_at: {_is_null: true}}, order_by: {display_label: asc}) { id display_label model_reference model_id } }", operationName: "FetchLlmConfigs" }),
+      signal: signal || AbortSignal.timeout(8000),
+      cache: "no-store",
+    }, promptQlProxyOptions);
+    if (!response.ok) return { error: `PromptQL model discovery failed: ${response.status}`, status: response.status };
+    const data = await response.json();
+    if (data.errors?.length) return { error: data.errors.map((entry) => entry.message || "GraphQL error").join("; "), status: 502 };
+    const models = (data.data?.llm_config || []).map((row) => ({ id: row.model_reference || row.model_id || row.id, name: row.display_label || row.model_reference || row.model_id || row.id, owned_by: "promptql" })).filter((row) => row.id);
+    return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
+  }
+
+  // Zed-hosted lists models only after a per-connection LLM-token exchange, and only
+  // for connections that opted in with providerSpecificData.enableSessionDispatch.
+  if (connection.provider === "zed-hosted") {
+    try {
+      const zedProxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+      const models = await discoverZedHostedModels({
+        accessToken: connection.accessToken || connection.apiKey,
+        providerSpecificData: connection.providerSpecificData || {},
+      }, { proxyOptions: zedProxyOptions, signal: signal || AbortSignal.timeout(15000) });
+      return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 502;
+      return { error: sanitizeErrorMessage(error?.message || "Zed model discovery failed"), status: status === 403 && error?.code !== "zed_hosted_dispatch_disabled" ? 401 : status };
+    }
   }
 
   if (connection.provider === "yuanbao-web") {

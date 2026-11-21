@@ -22,7 +22,7 @@ const nativeCapabilities = {
 
 export default {
   id: "chatgpt-web-codex",
-  priority: 237,
+  priority: 253,
   alias: "cgpt-codex",
   uiAlias: "cgpt-codex",
   display: {

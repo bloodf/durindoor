@@ -22,7 +22,6 @@ export default {
     baseUrl: "https://tabitoken.com/v1/messages",
     format: "claude",
     validateUrl: "https://tabitoken.com/v1/models",
-    validateUrl: "https://tabitoken.com/v1/models",
     authType: "apikey",
     authHeader: "x-api-key",
     headers: { "anthropic-version": "2023-06-01" },

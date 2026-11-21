@@ -60,7 +60,7 @@ function okResponse(content) {
 }
 
 function errResponse(status = 503, message = "boom") {
-  const make = () => ({ ok: false, status, clone: make, json: async () => ({ error: { message } }) });
+  const make = () => ({ ok: false, status, clone: make, text: async () => JSON.stringify({ error: { message } }) });
   return make();
 }
 

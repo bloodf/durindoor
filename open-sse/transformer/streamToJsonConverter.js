@@ -8,15 +8,27 @@ import { MAX_RESPONSES_OUTPUT_ITEMS } from "../config/runtimeConfig.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
+import { isProviderKeepaliveEvent } from "../utils/providerKeepalive.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
+function readResponseMetadata(response) {
+  const id = response?.id;
+  const created = response?.created_at;
+  return {
+    id: isString(id) && id.trim() ? id : undefined,
+    created: Number.isSafeInteger(created) && created >= 0 ? created : undefined,
+  };
+}
 
 /**
  * Process a single SSE message and update state accordingly.
  */
-import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 function processSSEMessage(msg, state) {
   if (!msg.trim()) return;
   if (msg.trim().startsWith(":")) return;
+
+  const firstLine = msg.split(/\r?\n/, 1)[0];
+  if (isProviderKeepaliveEvent(firstLine) && /^(?:\r?\ndata: ?)*$/.test(msg.slice(firstLine.length))) return;
 
   const dataMatch = msg.match(/^data:\s*(.+)$/m);
   if (!dataMatch) {state.terminal.fail();return;}
@@ -36,8 +48,9 @@ function processSSEMessage(msg, state) {
   state.terminal.observe({ chunk: parsed, eventName: eventType });
 
   if (eventType === "response.created") {
-    state.responseId = parsed.response?.id || state.responseId;
-    state.created = parsed.response?.created_at || state.created;
+    const { id, created } = readResponseMetadata(parsed.response);
+    state.responseId = id ?? state.responseId;
+    state.created = created ?? state.created;
   } else if (eventType === "response.output_item.done") {
     const outputIndex = parsed.output_index ?? 0;
     if (
@@ -56,10 +69,10 @@ function processSSEMessage(msg, state) {
   } else if (["response.completed", "response.done", "response.incomplete"].includes(eventType)) {
     if (state.terminal.outcome === "success") {
       state.status = eventType === "response.incomplete" ? "incomplete" : "completed";
-      // Completed snapshots can contain items that never had an item.done frame.
+      // Terminal snapshots can contain items that never had an item.done frame.
       // Keep observed items authoritative and apply the same bounds and shape checks.
       const output = parsed.response?.output;
-      if (eventType !== "response.incomplete" && output !== undefined) {
+      if (output !== undefined) {
         if (!Array.isArray(output) || output.length > MAX_RESPONSES_OUTPUT_ITEMS ||
             output.some((item) => !item || !isObject(item) || Array.isArray(item))) {
           state.terminal.fail();
@@ -69,6 +82,9 @@ function processSSEMessage(msg, state) {
           if (!state.items.has(index)) state.items.set(index, item);
         });
       }
+      const { id, created } = readResponseMetadata(parsed.response);
+      state.responseId ??= id;
+      state.created ??= created;
     }
     if (parsed.response?.usage) {
       // Normalize aliases and flat provider fields without discarding any
@@ -91,8 +107,9 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
   }
 
   const state = {
-    responseId: "",
-    created: Math.floor(Date.now() / 1000),
+    responseId: undefined,
+    created: undefined,
+    fallbackCreated: Math.floor(Date.now() / 1000),
     status: "in_progress",
     usage: { ...EMPTY_RESPONSE },
     items: new Map(),
@@ -119,7 +136,7 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
   return {
     id: state.responseId || `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     object: "response",
-    created_at: state.created,
+    created_at: state.created ?? state.fallbackCreated,
     status: state.status,
     output,
     usage: state.usage

@@ -45,7 +45,7 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
   };
   const hasOutput = () => {
     const snapshot = getSnapshot?.();
-    return sawOutput || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
+    return sawOutput || snapshot?.hasTokenLimitTerminal || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
       Number(snapshot?.usage?.completion_tokens ?? snapshot?.usage?.output_tokens ?? snapshot?.usage?.candidatesTokenCount ?? 0) > 0;
   };
   const process = (controller, frame) => {

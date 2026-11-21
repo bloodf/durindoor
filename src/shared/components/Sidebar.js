@@ -9,6 +9,7 @@ import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import UpdatePanel from "./UpdatePanel";
 import useSettingsStore from "@/store/settingsStore";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Tooltip from "@/shared/ui/components/Tooltip.jsx";
 import {
@@ -55,6 +56,7 @@ function groupClasses(collapsed, active) {
 
 export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCollapse }) {
   const pathname = usePathname();
+  const v5 = useUiV5();
   const groupIdBase = useId();
   const collapsed = collapsedProp ?? false;
   const handleToggleCollapse = onToggleCollapse ?? (() => undefined);
@@ -94,7 +96,9 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
     return () => { cancelled = true; clearTimeout(timer); };
   }, [showUpdateNotifications]);
 
-  const renderItem = (item, indent = false) => {
+  const renderItem = (original, indent = false) => {
+    const icons = { "/dashboard/console-log": "console_log", "/dashboard/cli-tools": "cli_tools", "/dashboard/token-saver": "token_saver_stats", "/dashboard/token-saver/settings": "token_saver_settings", "/dashboard/mcp-gateway": "mcp_instances", "/dashboard/mcp-gateway/keys": "mcp_keys" };
+    const item = v5 ? { ...original, icon: icons[original.href] || original.icon, label: original.href === "/dashboard/token-saver" ? "Dashboard" : original.label } : original;
     if (item.requiresTranslator && !enableTranslator) return null;
     if (item.external) {
       return (
@@ -107,7 +111,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
             aria-label={collapsed ? `${item.label} (opens in a new tab)` : undefined}
             className={itemClasses(collapsed, false, indent)}
           >
-            <NavIcon icon={item.icon} isActive={false} size={indent ? "16" : "18"} />
+            <NavIcon v5={v5} icon={item.icon} isActive={false} size={indent ? "16" : "18"} />
             <span className={indent ? "text-sm" : "sidebar-label text-[13px] font-medium"}>{item.label}</span>
             <span aria-hidden="true" className="sidebar-label material-symbols-outlined ms-auto text-[14px]">open_in_new</span>
           </a>
@@ -124,7 +128,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
           aria-current={active ? "page" : undefined}
           className={itemClasses(collapsed, active, indent)}
         >
-          <NavIcon icon={item.icon} isActive={active} size={indent ? "16" : "18"} />
+          <NavIcon v5={v5} icon={item.icon} isActive={active} size={indent ? "16" : "18"} />
           <span className={indent ? "text-sm" : "sidebar-label text-[13px] font-medium"}>{item.label}</span>
         </Link>
       </SidebarTooltip>
@@ -145,7 +149,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
               aria-label={group.label}
               className={groupClasses(true, active)}
             >
-              <NavIcon icon={group.icon} isActive={active} />
+              <NavIcon v5={v5} icon={group.icon} isActive={active} />
             </Link>
           ) : (
             <button
@@ -155,7 +159,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
               aria-controls={groupId}
               className={cn("w-full", groupClasses(false, active))}
             >
-              <NavIcon icon={group.icon} isActive={active} />
+              <NavIcon v5={v5} icon={group.icon} isActive={active} />
               <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{group.label}</span>
               <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
             </button>
@@ -190,11 +194,11 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
         <SidebarTooltip collapsed={collapsed} label={entry.label}>
           {collapsed ? (
             <Link href={mediaChildren[0].href} onClick={onClose} aria-label={entry.label} className={groupClasses(true, active)}>
-              <NavIcon icon={entry.icon} isActive={active} />
+              <NavIcon v5={v5} icon={entry.icon} isActive={active} />
             </Link>
           ) : (
             <button type="button" onClick={() => toggleGroup(entry.key, active)} aria-expanded={open} aria-controls={groupId} className={cn("w-full", groupClasses(false, active))}>
-              <NavIcon icon={entry.icon} isActive={active} />
+              <NavIcon v5={v5} icon={entry.icon} isActive={active} />
               <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{entry.label}</span>
               <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
             </button>
@@ -212,7 +216,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
                   aria-current={childActive ? "page" : undefined}
                   className={itemClasses(false, childActive, true)}
                 >
-                  <NavIcon icon={child.icon} isActive={childActive} size="16" />
+                  <NavIcon v5={v5} icon={child.icon} isActive={childActive} size="16" />
                   <span className="text-sm">{child.label}</span>
                 </Link>
               );
@@ -294,7 +298,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
               aria-current={isActive(PROFILE_NAV_ITEM.href, true) ? "page" : undefined}
               className={itemClasses(collapsed, isActive(PROFILE_NAV_ITEM.href, true))}
             >
-              <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
+              <NavIcon v5={v5} icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
               <span className="sidebar-label text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
             </Link>
           </SidebarTooltip>

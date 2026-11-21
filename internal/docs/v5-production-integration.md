@@ -71,6 +71,8 @@ Production adopts V5 **in place**. The `.storybook/main.js` plugin `v5-review-co
 - **Storage keys.** Production never reads `durindoor:v5-review:*` keys. Usage layout uses `durindoor:usage-layout:v1` and Token Saver uses `durindoor:token-saver-layout:v1`. Storage failure keeps the current view, as the review contract requires.
 - **Forked review copies.** `usage/ReviewUsageStats.jsx`, `ReviewUsageChart.jsx`, `ReviewApiKeyLimitsCard.jsx` and `combos/Review*` are copies taken at #1313. Production has changed since then, for example with #2147 session capture and #2141 readiness diagnostics. Slices port the V5 *presentation* onto the current production component. They never swap a review copy in. The current production fetches and payloads are authoritative.
 
+The production shell keeps the existing navigation structure when V5 is off. With V5 on, navigation uses animated icons and calls the Token Saver overview Dashboard; the existing drawer and language workflows remain in place.
+
 ## 4. Surface table
 
 How to read the table:

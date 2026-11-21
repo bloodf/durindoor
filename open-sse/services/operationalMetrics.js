@@ -204,9 +204,11 @@ export function startOperationalMetricsRuntime() {
   const runtime = { startedAt: process.uptime(), lastTick: performance.now(), readingAvailable: false, stalls: 0, maxSeconds: 0, lastStall: null };
   runtime.timer = setInterval(() => {
     const now = performance.now();
-    const delay = now - runtime.lastTick - 1000;
+    // A timer may fire slightly early; only backwards monotonic time is invalid.
+    const elapsed = now - runtime.lastTick;
+    const delay = elapsed - 1000;
     runtime.lastTick = now;
-    if (!Number.isFinite(delay) || delay < 0) {
+    if (!Number.isFinite(elapsed) || elapsed < 0) {
       runtime.readingAvailable = false;
       if (!metrics.warnedSampler) {
         metrics.warnedSampler = true;

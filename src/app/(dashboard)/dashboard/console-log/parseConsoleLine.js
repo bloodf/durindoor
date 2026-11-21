@@ -83,13 +83,14 @@ export function parseConsoleLine(raw) {
   const message = stamp ? text.slice(stamp[0].length) : text;
   const request = parseRequest(message);
   const completion = parseCompletion(message);
-  return {
+  const entry = {
     ts: stamp ? stamp[1] : null,
     level: detectLevel(text),
     tag: detectTag(message),
     message,
     raw: text,
-    ...(request ? { request } : {}),
-    ...(completion ? { completion } : {}),
   };
+  if (request) entry.request = request;
+  if (completion) entry.completion = completion;
+  return entry;
 }

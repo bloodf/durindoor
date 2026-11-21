@@ -1,0 +1,15 @@
+# WorkBuddy
+
+WorkBuddy uses its own account and is separate from CodeBuddy. Its integration is staged and must be registered before it appears in the dashboard. Enable `providerSpecificData.enableSessionDispatch` on each connection to allow chat dispatch. The upstream gateway receives WorkBuddy client channel headers.
+
+## Sign in
+
+Start the WorkBuddy device sign-in, open the provided authorization URL, and complete sign-in. The gateway returns the token only once; save the completed connection. Refresh uses the connection's refresh token. If authentication fails, sign in again. Model discovery reads the authenticated `/v3/config` catalog; available models and quota depend on the account.
+
+The pinned upstream flow does not define a cookie credential or cookie validation probe. Extension capture and pasted cURL, Cookie headers, and HAR imports therefore cannot establish this OAuth connection. Use device sign-in; do not paste browser cookies as an access token.
+
+WorkBuddy requires streaming upstream. JSON clients receive an accumulated response. The gateway may reject unsupported models, malformed tool histories, expired credentials, or quota-exhausted accounts. Error status 401 indicates authentication failure and 429 indicates a rate or quota limit. Channel and history requirements may change upstream.
+
+Sources: [OmniRoute provider](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/workbuddy/index.ts), [device authorization](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/oauth/providers/workbuddy.ts), [gateway handling](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/utils/workbuddyGateway.ts), [refresh](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/tokenRefresh/providers/workbuddy.ts).
+
+<!-- Registration steps: promote the private provider to the registry and regenerate its index; wire the executor into executors/index.js; wire OAuth device flow and refresh; review extension providers.js and manifest host permissions (no cookie profile is defined upstream); add dashboard import and per-connection opt-in; add ProviderIcon/Logo, catalog, modelsConfig using the exported modelsConfig, and stories. -->

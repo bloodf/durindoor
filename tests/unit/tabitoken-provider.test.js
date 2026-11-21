@@ -1,15 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const routedFetch = vi.hoisted(() => vi.fn());
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const entry = (await import("../../open-sse/providers/private/tabitoken.js")).default;
-  return { ...actual, default: [...actual.default, entry] };
-});
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: routedFetch }));
 
-import entry from "../../open-sse/providers/private/tabitoken.js";
+import entry from "../../open-sse/providers/registry/tabitoken.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";

@@ -1,10 +1,10 @@
 /**
  * Issue #1189 scope: offline comparison of installed native Pollinations with
- * the distinct, uninstalled g4f.space Pollinations gateway (g4fpol). Raw upstream
+ * the distinct g4f.space Pollinations gateway (g4fpol), registered in batch B (#2034). Raw upstream
  * metadata is not runtime proof; g4f/web/app-server is not the native vendor.
  * Mocked tool/stream responses prove wire preservation only, not upstream
- * capabilities. Account-backed endpoint/auth/models/tool/stream verification is
- * unavailable; candidate capabilities must remain unadvertised.
+ * capabilities. The gateway is registered for its own g4f.space endpoints only;
+ * account-backed verification stays out of scope.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -61,7 +61,24 @@ describe("#1189 native Pollinations is not g4f-pollinations", () => {
     expect(transport).not.toHaveBeenCalled();
   });
 
-  it.each(["g4f-pollinations", "g4fpol"])("rejects uninstalled identity %s before validation or discovery I/O", async (provider) => {
+  it.each(["g4f-pollinations", "g4fpol"])("validates and discovers registered identity %s through g4f.space only", async (provider) => {
+    globalThis.fetch.mockResolvedValue(json({ data: [{ id: "openai" }, { id: "openai-fast" }] }));
+    transport.mockResolvedValue(json({ data: [{ id: "openai" }, { id: "openai-fast" }] }));
+    const response = await validate(provider);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ valid: true, error: null });
+    expect(await fetchConnectionModels({ id: "offline", provider: "g4f-pollinations", apiKey })).toMatchObject({
+      models: [{ id: "openai" }, { id: "openai-fast" }],
+    });
+    const urls = [...globalThis.fetch.mock.calls, ...transport.mock.calls].map(([url]) => url);
+    expect(urls).toEqual(["https://g4f.space/api/pollinations/v1/models", "https://g4f.space/api/pollinations/v1/models"]);
+    expect(getModelsByProviderId("g4f-pollinations").map((model) => model.id)).toEqual(["openai", "openai-fast"]);
+    expect(PROVIDERS["g4f-pollinations"]).toMatchObject({ baseUrl: candidateUrl, format: "openai" });
+    expect(PROVIDERS.pollinations.baseUrl).toBe(nativeUrl);
+  });
+
+  it("rejects the unregistered fleet id before validation or discovery I/O", async () => {
+    const provider = "fleet-unregistered-provider-1189";
     const response = await validate(provider);
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "Provider validation not supported" });
@@ -74,8 +91,8 @@ describe("#1189 native Pollinations is not g4f-pollinations", () => {
     expect(PROVIDERS[provider]).toBeUndefined();
   });
 
-  it.each(["g4f-pollinations", "g4fpol", "fleet-unregistered-provider-1189"])("rejects %s URL construction with status 400 before reading credentials", (provider) => {
-    const executor = getExecutor(provider);
+  it("rejects the unregistered fleet id URL construction with status 400 before reading credentials", () => {
+    const executor = getExecutor("fleet-unregistered-provider-1189");
     const buildHeaders = vi.spyOn(executor, "buildHeaders");
     const readApiKey = vi.fn(() => apiKey);
     const credentials = { get apiKey() { return readApiKey(); } };
@@ -92,8 +109,8 @@ describe("#1189 native Pollinations is not g4f-pollinations", () => {
     expect(error).toMatchObject({ status: 400 });
   });
 
-  it.each(["g4f-pollinations", "g4fpol", "fleet-unregistered-provider-1189"])("rejects %s execution with status 400 and zero credential dispatch", async (provider) => {
-    const executor = getExecutor(provider);
+  it("rejects the unregistered fleet id execution with status 400 and zero credential dispatch", async () => {
+    const executor = getExecutor("fleet-unregistered-provider-1189");
     const buildHeaders = vi.spyOn(executor, "buildHeaders");
     const readApiKey = vi.fn(() => apiKey);
     const credentials = { get apiKey() { return readApiKey(); } };
@@ -112,6 +129,21 @@ describe("#1189 native Pollinations is not g4f-pollinations", () => {
     expect.soft(buildHeaders).not.toHaveBeenCalled();
     expect.soft(readApiKey).not.toHaveBeenCalled();
     expect.soft(transport).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["g4f-pollinations", "g4fpol"])("dispatches registered %s to g4f.space with its own key, never the native gateway", async (provider) => {
+    const fixture = { choices: [{ message: { role: "assistant", content: "from g4f" }, finish_reason: "stop" }] };
+    transport.mockResolvedValue(json(fixture));
+    const { response, url } = await getExecutor(provider).execute({
+      model: "openai", body: { messages: [{ role: "user", content: "ping" }] }, stream: false,
+      credentials: { apiKey },
+    });
+    expect(url).toBe(candidateUrl);
+    expect(await response.json()).toEqual(fixture);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(transport.mock.calls[0][0]).toBe(candidateUrl);
+    expect(transport.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${apiKey}`);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 

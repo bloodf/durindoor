@@ -36,6 +36,11 @@ import { DeepSeekWebExecutor } from "./deepseek-web.js";
 import { DoubaoWebExecutor } from "./doubao-web.js";
 import { GeminiWebExecutor } from "./gemini-web.js";
 import { ZaiWebExecutor } from "./zai-web.js";
+import { ChatPlaygroundExecutor } from "./chatplayground.js";
+import { CloudflarePlaygroundExecutor } from "./cloudflare-playground.js";
+import { LmarenaExecutor } from "./lmarena.js";
+import { MaxaiExecutor } from "./maxai.js";
+import { PoeExecutor } from "./poe.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { PollinationsExecutor } from "./pollinations.js";
@@ -80,6 +85,10 @@ const claudeWebExecutor = new ClaudeWebExecutor();
 const deepSeekWebExecutor = new DeepSeekWebExecutor();
 const geminiWebExecutor = new GeminiWebExecutor();
 const zaiWebExecutor = new ZaiWebExecutor();
+const chatPlaygroundExecutor = new ChatPlaygroundExecutor();
+const cloudflarePlaygroundExecutor = new CloudflarePlaygroundExecutor();
+const lmarenaExecutor = new LmarenaExecutor();
+const maxaiExecutor = new MaxaiExecutor();
 
 const executors = {
   "adapta-web": new AdaptaWebExecutor(),
@@ -138,6 +147,15 @@ const executors = {
   gweb: geminiWebExecutor,
   "zai-web": zaiWebExecutor,
   zw: zaiWebExecutor,
+  chatplayground: chatPlaygroundExecutor,
+  cpl: chatPlaygroundExecutor,
+  "cloudflare-playground": cloudflarePlaygroundExecutor,
+  cfp: cloudflarePlaygroundExecutor,
+  lmarena: lmarenaExecutor,
+  lma: lmarenaExecutor,
+  maxai: maxaiExecutor,
+  mx: maxaiExecutor,
+  poe: new PoeExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),

@@ -41,6 +41,7 @@ const ALIASES = {
   "doubao-web": "doubao",
   "gemini-web": "gemini",
   "zai-web": "glm",
+  "cloudflare-playground": "cloudflare-ai",
 };
 
 // Local asset availability; provider metadata is not imported (it starts runtime services).

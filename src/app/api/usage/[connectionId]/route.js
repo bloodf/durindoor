@@ -29,6 +29,9 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "doubao-web": "Doubao Web",
   "zai-web": "Z.ai Web",
   "chatgpt-web-codex": "ChatGPT Web Codex",
+  chatplayground: "ChatPlayground",
+  lmarena: "Arena",
+  maxai: "MaxAI",
 };
 
 // Detect auth-expired messages returned by usage providers instead of throwing

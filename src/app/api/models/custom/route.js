@@ -27,6 +27,7 @@ export async function POST(request) {
     }
     return NextResponse.json({ success: true, model: added });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.log("Error adding custom model:", error);
     return NextResponse.json({ error: error.message || "Failed to add custom model" }, { status: error.status || 500 });
   }
@@ -45,6 +46,7 @@ export async function PATCH(request) {
     }
     return NextResponse.json({ success: true, model: updated });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.log("Error updating custom model:", error);
     return NextResponse.json({ error: error.message || "Failed to update custom model" }, { status: error.status || 500 });
   }

@@ -17,18 +17,32 @@ export function isRequestReplayBufferError(status, errorText) {
   return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
 }
 
-// port(omniroute): #19684. DashScope (Alibaba Model Studio) reports an unpaid account as
-// 400/403 with code `Arrearage` or `AccessDenied.Unpurchased`; both stay true until the owner
-// pays. Anchored on the vendor code or its exact sentence and applied to 400/403 only: a 429
-// that quotes "good standing" is a throttle, and generic AccessDenied never matches.
-export const DASHSCOPE_DEAD_ACCOUNT_RE = /\barrearage\b|please make sure your account is in good standing|accessdenied\.unpurchased|please make sure you are eligible for using the model/i;
+const DASHSCOPE_PROVIDERS = new Set([
+  "alibaba",
+  "alibaba-cn",
+  "alicode",
+  "alicode-intl",
+  "bailian-coding-plan",
+  "qwen-cloud",
+  "qwen-cloud-token-plan",
+]);
+const DASHSCOPE_UNPAID_CODES = new Set(["arrearage", "accessdenied.unpurchased"]);
 
-function isDashScopeDeadAccount(status, normalizedText, structuredError) {
-  if (Number(status) !== 400 && Number(status) !== 403) return false;
-  if (DASHSCOPE_DEAD_ACCOUNT_RE.test(normalizedText)) return true;
-  const code = isString(structuredError?.error?.code) ? structuredError.error.code : structuredError?.code;
-  const type = isString(structuredError?.error?.type) ? structuredError.error.type : structuredError?.type;
-  return DASHSCOPE_DEAD_ACCOUNT_RE.test(`${isString(code) ? code : ""} ${isString(type) ? type : ""}`);
+// OmniRoute #19684: DashScope reports unpaid accounts on 400/403 with a vendor
+// code in error.code or at the top level. Messages and parameters can echo user input.
+function isDashScopeDeadAccount(provider, status, errorText, structuredError) {
+  if (!DASHSCOPE_PROVIDERS.has(provider) || (Number(status) !== 400 && Number(status) !== 403)) return false;
+
+  let body = structuredError ?? errorText;
+  if (isString(body)) {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  const code = body?.error?.code ?? body?.code;
+  return isString(code) && DASHSCOPE_UNPAID_CODES.has(code.toLowerCase());
 }
 
 /**
@@ -101,7 +115,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
 
   // Unpaid DashScope account: park the key on the terminal billing cooldown instead of
   // treating a 400 as request-scoped or retrying a dead 403 key on the short cooldown.
-  if (isDashScopeDeadAccount(status, normalizedText, structuredError)) {
+  if (isDashScopeDeadAccount(provider, status, errorText, structuredError)) {
     return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
   }
 

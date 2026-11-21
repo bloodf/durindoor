@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { CursorExecutor } from "../../open-sse/executors/cursor.js";
-import { decodeMessage, encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";
+import { decodeMessage, encodeAgentValue, encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";
 
 const LEN = 2;
 
@@ -28,6 +28,23 @@ function thinkingFrame(text) {
 function turnEndedFrame() {
   const update = Buffer.from(encodeField(14, LEN, new Uint8Array()));
   return Buffer.from(wrapConnectRPCFrame(encodeField(1, LEN, update)));
+}
+
+function mcpExecRequestFrame({ name, toolCallId = "call_mcp_1", args = {} }) {
+  const argEntries = Object.entries(args).map(([key, value]) =>
+    Buffer.from(encodeField(2, LEN, Buffer.concat([
+      Buffer.from(encodeField(1, LEN, key)),
+      Buffer.from(encodeField(2, LEN, encodeAgentValue(value))),
+    ])))
+  );
+  const mcpArgs = Buffer.concat([
+    Buffer.from(encodeField(1, LEN, name)),
+    ...argEntries,
+    Buffer.from(encodeField(3, LEN, toolCallId)),
+    Buffer.from(encodeField(5, LEN, name)),
+  ]);
+  const execServerMessage = Buffer.from(encodeField(11, LEN, mcpArgs));
+  return Buffer.from(wrapConnectRPCFrame(encodeField(2, LEN, execServerMessage)));
 }
 
 function stubAgentSession(executor, frames) {
@@ -60,7 +77,7 @@ function parseSSE(text) {
     .map((data) => JSON.parse(data));
 }
 
-async function runAgent({ frames, stream, model = "gpt-5.2", tools }) {
+async function runAgent({ frames, stream, model = "gpt-5.2", tools, signal }) {
   const executor = new CursorExecutor();
   const written = stubAgentSession(executor, frames);
   const result = await executor.executeAgent({
@@ -68,6 +85,7 @@ async function runAgent({ frames, stream, model = "gpt-5.2", tools }) {
     body: { messages: [{ role: "user", content: "hi" }], ...(tools ? { tools } : {}) },
     stream,
     credentials,
+    signal,
   });
   return { result, written };
 }
@@ -200,6 +218,239 @@ describe("CursorExecutor AgentService exec_request handling", () => {
     const content = events.map((e) => e.choices?.[0]?.delta?.content || "").join("");
     expect(content).toBe("OK");
     expect(JSON.stringify(events)).not.toContain("private reasoning");
+  });
+
+  it.each([
+    [
+      ["<|final|>Use <|final|> and <|/final|> literally.<|/final|>"],
+      "Use <|final|> and <|/final|> literally.",
+    ],
+    [
+      ["<｜final｜>Quote <｜final｜> and <｜/final｜> here.<｜/final｜>"],
+      "Quote <｜final｜> and <｜/final｜> here.",
+    ],
+    [
+      ["<|fi", "nal|>part1 ", "<|/fi", "nal|>", " part2<|/fi", "nal|>"],
+      "part1 <|/final|> part2",
+    ],
+    [
+      ["<｜fi", "nal｜>part1 ", "<｜/fi", "nal｜>", " part2<｜/fi", "nal｜>"],
+      "part1 <｜/final｜> part2",
+    ],
+    [
+      ["<|final|><|final|>edge<|/final|><|/final|>"],
+      "<|final|>edge<|/final|>",
+    ],
+    [
+      ["<|fi", "nal|>", "<|final|>edge<|/final|>", "<|/fi", "nal|>"],
+      "<|final|>edge<|/final|>",
+    ],
+    [["<|fi", "nal|> answer ", "<|/fi", "nal|>"], " answer "],
+    [["<｜final｜>A", "<｜/final", "｜>"], "A"],
+    [["<｜fina", "l｜>OK_S", "TREAM"], "OK_STREAM"],
+    [["<b>keep</b> <|fin", "ish>"], "<b>keep</b> <|finish>"],
+    [["<", "div>ok</div>"], "<div>ok</div>"],
+    [["<", " 5"], "< 5"],
+    [["text <|/fin"], "text <|/fin"],
+    [["<|final|>text <|/fin"], "text <|/fin"],
+    [["The closing tag is <|/final|>"], "The closing tag is <|/final|>"],
+    [["<|final|>Plain body <｜/final｜>"], "Plain body <｜/final｜>"],
+    [["  \n", "<|fi", "nal|>OK<|/fi", "nal|>"], "OK"],
+  ])("handles Composer framing and interior markers in AgentService %#", async (fragments, expected) => {
+    for (const stream of [true, false]) {
+      const { result } = await runAgent({
+        model: "composer-2.5",
+        stream,
+        frames: [
+          ...fragments.map((part, index) => thinkingFrame((index ? "" : "private reasoning</think>") + part)),
+          turnEndedFrame(),
+        ],
+      });
+      const payload = stream ? parseSSE(await result.response.text()) : await result.response.json();
+      const content = stream
+        ? payload.map((event) => event.choices?.[0]?.delta?.content || "").join("")
+        : payload.choices[0].message.content;
+      expect(content).toBe(expected);
+      expect(JSON.stringify(payload)).not.toContain("private reasoning");
+    }
+  });
+
+  it("streams Composer AgentService content incrementally across chunks without replay", async () => {
+    const fragments = [
+      "private</think><|final|>",
+      ...Array.from({ length: 25 }, (_, i) => `tok-${i} `),
+      "<|/final|>",
+    ];
+    const expected = Array.from({ length: 25 }, (_, i) => `tok-${i} `).join("");
+    const { result } = await runAgent({
+      model: "composer-2.5",
+      stream: true,
+      frames: [...fragments.map((part) => thinkingFrame(part)), turnEndedFrame()],
+    });
+
+    const events = parseSSE(await result.response.text());
+    const contentChunks = events
+      .map((event) => event.choices?.[0]?.delta?.content || "")
+      .filter(Boolean);
+
+    expect(contentChunks.length).toBeGreaterThanOrEqual(20);
+    expect(contentChunks.join("")).toBe(expected);
+  });
+
+  it("leaves native text deltas untouched for Composer in streaming and buffered AgentService", async () => {
+    for (const stream of [true, false]) {
+      const { result } = await runAgent({
+        model: "composer-2.5",
+        stream,
+        frames: [
+          thinkingFrame("private reasoning"),
+          textFrame("<|final|>native</think><|/final|>"),
+          turnEndedFrame(),
+        ],
+      });
+      const payload = stream ? parseSSE(await result.response.text()) : await result.response.json();
+      const content = stream
+        ? payload.map((event) => event.choices?.[0]?.delta?.content || "").join("")
+        : payload.choices[0].message.content;
+      expect(content).toBe("<|final|>native</think><|/final|>");
+      expect(JSON.stringify(payload)).not.toContain("private reasoning");
+    }
+  });
+
+  it("keeps hidden reasoning private when Composer AgentService has no </think>", async () => {
+    const streamRun = await runAgent({
+      model: "composer-2.5",
+      stream: true,
+      frames: [thinkingFrame("private reasoning <|final|>never visible"), turnEndedFrame()],
+    });
+    const sseText = await streamRun.result.response.text();
+    const events = parseSSE(sseText);
+    expect(events.filter((event) => event.error)).toHaveLength(1);
+    expect(events.some((event) => event.choices?.[0]?.finish_reason === "stop")).toBe(false);
+    expect(sseText).not.toContain("private reasoning");
+
+    const bufferedRun = await runAgent({
+      model: "composer-2.5",
+      stream: false,
+      frames: [thinkingFrame("private reasoning <|final|>never visible"), turnEndedFrame()],
+    });
+    expect(bufferedRun.result.response.status).toBe(400);
+    expect(await bufferedRun.result.response.text()).not.toContain("private reasoning");
+  });
+
+  it("preserves MCP tool calls with both framed and unclosed Composer thinking", async () => {
+    for (const stream of [true, false]) {
+      const framed = await runAgent({
+        model: "composer-2.5",
+        stream,
+        frames: [
+          thinkingFrame("private</think><|final|>Checking <|/final|>"),
+          mcpExecRequestFrame({ name: "get_weather", toolCallId: "call_1", args: { city: "Oslo" } }),
+        ],
+      });
+      const framedPayload = stream ? parseSSE(await framed.result.response.text()) : await framed.result.response.json();
+      if (stream) {
+        expect(framedPayload.map((e) => e.choices?.[0]?.delta?.content || "").join("")).toBe("Checking ");
+        expect(framedPayload.some((e) => e.choices?.[0]?.delta?.tool_calls?.[0]?.function?.name === "get_weather")).toBe(true);
+        expect(framedPayload.some((e) => e.choices?.[0]?.finish_reason === "tool_calls")).toBe(true);
+      } else {
+        expect(framedPayload.choices[0].message.content).toBe("Checking ");
+        expect(framedPayload.choices[0].finish_reason).toBe("tool_calls");
+        expect(framedPayload.choices[0].message.tool_calls[0].function.name).toBe("get_weather");
+      }
+      expect(JSON.stringify(framedPayload)).not.toContain("private");
+
+      const hidden = await runAgent({
+        model: "composer-2.5",
+        stream,
+        frames: [
+          thinkingFrame("private reasoning before tool"),
+          mcpExecRequestFrame({ name: "get_weather", toolCallId: "call_2", args: { city: "Bergen" } }),
+        ],
+      });
+      const hiddenPayload = stream ? parseSSE(await hidden.result.response.text()) : await hidden.result.response.json();
+      if (stream) {
+        expect(hiddenPayload.map((e) => e.choices?.[0]?.delta?.content || "").join("")).toBe("");
+        expect(hiddenPayload.some((e) => e.choices?.[0]?.delta?.tool_calls?.[0]?.function?.name === "get_weather")).toBe(true);
+        expect(hiddenPayload.some((e) => e.choices?.[0]?.finish_reason === "tool_calls")).toBe(true);
+      } else {
+        expect(hiddenPayload.choices[0].message.content).toBeNull();
+        expect(hiddenPayload.choices[0].finish_reason).toBe("tool_calls");
+        expect(hiddenPayload.choices[0].message.tool_calls[0].function.name).toBe("get_weather");
+      }
+      expect(JSON.stringify(hiddenPayload)).not.toContain("private reasoning");
+    }
+  });
+
+  it("does not flush held partial markers or emit stop when aborted mid-stream", async () => {
+    const decoder = new TextDecoder();
+
+    const makeAbortableSession = (executor, firstFrame) => {
+      let closed = 0;
+      let reads = 0;
+      executor.openAgentHttp2Stream = (_url, _headers, signal) => ({
+        responseHeaders: Promise.resolve({ ":status": 200 }),
+        write() {},
+        end() {},
+        close() { closed++; },
+        read() {
+          if (reads === 0) {
+            reads++;
+            return Promise.resolve({ value: firstFrame, done: false });
+          }
+          if (signal?.aborted) {
+            return Promise.reject(new DOMException("Cursor request aborted", "AbortError"));
+          }
+          return new Promise((_, reject) => {
+            signal?.addEventListener("abort", () => {
+              reject(new DOMException("Cursor request aborted", "AbortError"));
+            }, { once: true });
+          });
+        },
+      });
+      return { getClosed: () => closed };
+    };
+
+    const streamExecutor = new CursorExecutor();
+    const streamTracker = makeAbortableSession(
+      streamExecutor,
+      thinkingFrame("private</think><|final|>hello <|/fi")
+    );
+    const streamAbort = new AbortController();
+    const streamResult = await streamExecutor.executeAgent({
+      model: "composer-2.5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials,
+      signal: streamAbort.signal,
+    });
+    const reader = streamResult.response.body.getReader();
+    const firstRead = await reader.read();
+    expect(firstRead.done).toBe(false);
+    const firstText = decoder.decode(firstRead.value);
+    expect(firstText).toContain("hello ");
+    expect(firstText).not.toContain("<|/fi");
+
+    streamAbort.abort();
+    await expect(reader.read()).rejects.toThrow();
+    expect(streamTracker.getClosed()).toBeGreaterThan(0);
+
+    const bufferedExecutor = new CursorExecutor();
+    const bufferedTracker = makeAbortableSession(
+      bufferedExecutor,
+      thinkingFrame("private</think><|final|>hello <|/fi")
+    );
+    const bufferedAbort = new AbortController();
+    const bufferedPromise = bufferedExecutor.executeAgent({
+      model: "composer-2.5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials,
+      signal: bufferedAbort.signal,
+    });
+    setTimeout(() => bufferedAbort.abort(), 10);
+    await expect(bufferedPromise).rejects.toThrow();
+    expect(bufferedTracker.getClosed()).toBeGreaterThan(0);
   });
 
   it("flushes Grok thinking as visible content when the turn has no text_delta", async () => {

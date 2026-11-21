@@ -11,6 +11,7 @@ const groups = [
       ["Quick start", "#quick-start"],
       ["Providers", "#providers"],
       ["Features", "#features"],
+      ["FAQ", "#faq"],
     ],
   },
   {

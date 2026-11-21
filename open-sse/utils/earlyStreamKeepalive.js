@@ -189,6 +189,9 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   let stopKeepalive = () => {};
   let upstreamReader = null;
   let aborted = false;
+  // Keep only the suffix needed to recognize two independently terminated SSE lines.
+  let sseSuffix = "";
+  let sseAtBoundary = true;
   const admissionSelection = createClientAdmissionSelection();
 
   const stream = new ReadableStream({
@@ -246,7 +249,14 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
             while (true) {
               const { done, value } = await upstreamReader.read();
               if (done) break;
-              if (value) controller.enqueue(value);
+              if (value) {
+                controller.enqueue(value);
+                if (value.length) {
+                  const tail = value.subarray(Math.max(0, value.length - 4));
+                  sseSuffix = (sseSuffix + String.fromCharCode(...tail)).slice(-4);
+                  sseAtBoundary = /\r?\n\r?\n$/.test(sseSuffix);
+                }
+              }
             }
           } else {
             let bodyReadFailed = false;
@@ -264,7 +274,11 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
       } catch {
         if (!aborted) {
           try {
-            controller.enqueue(fallbackErrorFrame);
+            if (upstreamReader && !sseAtBoundary) {
+              controller.error(new Error(FALLBACK_ERROR_MESSAGE));
+            } else {
+              controller.enqueue(fallbackErrorFrame);
+            }
           } catch {
 
             /* consumer gone */}

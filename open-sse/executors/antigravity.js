@@ -11,8 +11,24 @@ import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFuncti
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
+import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
+
+// Native provider declarations bypass the shared OpenAI tool-schema normalization.
+// Visit only surviving schema nodes, never the property-name maps themselves.
+function normalizeAntigravityBounds(node) {
+  if (!node || !isObject(node) || Array.isArray(node)) return;
+  for (const key of ["minimum", "maximum", "minProperties", "maxProperties"]) {
+    if (!isString(node[key])) continue;
+    const value = normalizeToolSchema({ [key]: node[key] })[key];
+    if (Number.isFinite(value) && (!key.endsWith("Properties") || Number.isInteger(value) && value >= 0)) node[key] = value;
+  }
+  if (node.properties && isObject(node.properties) && !Array.isArray(node.properties)) {
+    for (const child of Object.values(node.properties)) normalizeAntigravityBounds(child);
+  }
+  normalizeAntigravityBounds(node.items);
+}
 
 /**
  * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
@@ -402,6 +418,7 @@ export class AntigravityExecutor extends BaseExecutor {
               required: (fn.parameters?.required || []).filter((required) => safeProperties[required])
             };
           }
+          normalizeAntigravityBounds(cleanedParams);
           cleanedParams = compressToolSchema(cleanedParams, 0);
           allDeclarations.push({
             ...fn,

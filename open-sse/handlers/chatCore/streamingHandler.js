@@ -10,6 +10,7 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
+import { trackStreamTokenLimit } from "../../utils/streamContentPeek.js";
 import { createEmptyTerminalGuard } from "../../utils/emptyStreamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
@@ -42,7 +43,7 @@ function hasOutputTokens(usage) {
 // Match the existing cooldown classification; a previously reported error is
 // already visible to the client and must not be replaced by an empty error.
 function isEmptyCompletion(content, usage, summary) {
-  return !content?.upstreamError && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
+  return !content?.upstreamError && !summary?.hasTokenLimitTerminal && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
     !content?.content?.trim?.() && !content?.hadToolCalls && !content?.hasSnapshotOutput &&
     !content?.thinking?.trim?.() && !hasOutputTokens(usage);
 }
@@ -240,6 +241,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard,
   );
 
+  trackStreamTokenLimit(transformedBody, transformStream.hasTokenLimitTerminal);
+
   saveRequestDetail(buildRequestDetail({
     provider, model, connectionId,
     latency: { ttft: 0, total: Date.now() - requestStartTime },
@@ -360,6 +363,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     if (
     isFunction(onEmptyStream) &&
     !isStreamedClaudeRefusal &&
+    !summary?.hasTokenLimitTerminal &&
     !isRequestScopedRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&

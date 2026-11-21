@@ -395,7 +395,7 @@ function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nati
 /** Same test as the streaming path's onEmptyStream gate. The Chat hop's synthetic " " does not count. */
 function isEmptyClaudeCompletion(completion, stopReason) {
   const message = completion.choices?.[0]?.message;
-  return stopReason !== CLAUDE_STOP.REFUSAL &&
+  return stopReason !== CLAUDE_STOP.REFUSAL && stopReason !== CLAUDE_STOP.MAX_TOKENS &&
     !message?.content?.trim?.() &&
     !message?.tool_calls?.length &&
     !message?.reasoning_content?.trim?.() &&

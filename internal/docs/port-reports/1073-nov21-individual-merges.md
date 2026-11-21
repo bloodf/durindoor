@@ -31,4 +31,10 @@ Each source is pinned to its merged commit SHA from GitHub PR metadata. Salvaged
 | [#20705](https://github.com/cheaper-inference/OmniRoute/pull/20705) — isolate PR metadata revalidation concurrency | `3f75512ee04d04787e923520070fbaafcb9956e3` | **not applicable** | Upstream PR validation and workflow concurrency configuration. |
 | [#20652](https://github.com/cheaper-inference/OmniRoute/pull/20652) — OpenAPI route contracts and skill sync | `2b90085225893a872fe71a64689521b9dd7252b3` | **not applicable** | Upstream generated OpenAPI and Omni-inference skill synchronization. |
 
+## Ported in this unit (#1073 image catalog metadata)
+
+Proof file: `tests/unit/omni-nov21-catalog-and-validation.test.js`.
+
+- **#20899 image model catalog metadata** — Ported. An image id that starts with its chat sibling's id (`gpt-6.1-sol-image`) matched the chat family pattern, so image rows listed chat tools and token limits. `getCapabilitiesForModel` now takes the row kind and returns only image-surface capabilities for an unregistered image row; `materializeSyncedModel` (`src/lib/modelAutoSync/catalog.js`) ignores family-pattern declarations and pattern-derived limits for image rows; the `/v1/models` builder passes the row kind. Declared, shared and registry facts of the image row are kept, and chat rows are unchanged. Tests: "#20899 image catalog rows next to a chat sibling".
+
 Refs #1073

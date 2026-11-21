@@ -1339,7 +1339,15 @@ const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, 
  * @param {string} model
  * @returns {object} full capabilities object
  */
-export function getCapabilitiesForModel(provider, model) {
+/**
+ * @param {string} provider
+ * @param {string} model
+ * @param {string} [kind] Declared service kind of the row. An `image` row that
+ *   is not a registered image model keeps none of the chat-family tools,
+ *   reasoning, vision or token limits its id would match: an image id such as
+ *   `gpt-6.1-sol-image` starts with its chat sibling's id.
+ */
+export function getCapabilitiesForModel(provider, model, kind = undefined) {
   const finalize = (caps) => {
     let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
     if (provider === "gemini-interactions" && model === "gemini-4-hydrogen") {
@@ -1372,6 +1380,9 @@ export function getCapabilitiesForModel(provider, model) {
   const capabilityBaseModel = registryModel?.id || (/^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
     /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel);
   const kindCaps = capabilitiesFromServiceKind(registryModel?.kind || registryModel?.type);
+  if (!kindCaps && kind === "image") {
+    return finalize({ ...DEFAULT_CAPABILITIES, ...capabilitiesFromServiceKind("image") });
+  }
   if (kindCaps && registryModel?.kind !== "imageToText" && registryModel?.type !== "imageToText") {
     const declaredCaps = PROVIDER_CAPABILITIES[registry.id]?.[capabilityBaseModel] || MODEL_CAPABILITIES[capabilityBaseModel] || {};
     return finalize({ ...DEFAULT_CAPABILITIES, ...kindCaps, ...declaredCaps });

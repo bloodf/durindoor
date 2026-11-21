@@ -7,6 +7,27 @@ import { SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js"
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
 
+class ModelTestTransportError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function fetchModelTest(...args) {
+  try {
+    return await fetch(...args);
+  } catch (error) {
+    if (error?.name === "TimeoutError") {
+      throw new ModelTestTransportError(408, "Request timed out");
+    }
+    if (error instanceof TypeError) {
+      throw new ModelTestTransportError(502, "Connection failed");
+    }
+    throw error;
+  }
+}
+
 function createSilentWavFile() {
   const sampleRate = 16000;
   const channels = 1;
@@ -56,7 +77,7 @@ function isConversationChatModel(model) {
   return Boolean(web && (!web.serviceKinds || web.serviceKinds.includes("llm")));
 }
 
-export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`, connectionId = null) {
+async function pingModelByKindImpl(model, kind, baseUrl, connectionId) {
   const headers = await getInternalHeaders();
   if (isString(connectionId) && connectionId.trim()) {
     headers["x-connection-id"] = connectionId.trim();
@@ -64,7 +85,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   const start = Date.now();
 
   if (kind === "embedding") {
-    const res = await fetch(`${baseUrl}/api/v1/embeddings`, {
+    const res = await fetchModelTest(`${baseUrl}/api/v1/embeddings`, {
       method: "POST",
       headers,
       body: JSON.stringify({ model, input: "test" }),
@@ -87,7 +108,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   if (kind === "image") {
-    const res = await fetch(`${baseUrl}/api/v1/images/generations`, {
+    const res = await fetchModelTest(`${baseUrl}/api/v1/images/generations`, {
       method: "POST",
       headers,
       body: JSON.stringify({ model, prompt: "test" }),
@@ -111,7 +132,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   if (kind === "tts") {
-    const res = await fetch(`${baseUrl}/api/v1/audio/speech`, {
+    const res = await fetchModelTest(`${baseUrl}/api/v1/audio/speech`, {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ model, input: "Test.", response_format: "mp3" }),
@@ -137,7 +158,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     form.append("file", sampleAudio, "test.wav");
     form.append("model", model);
 
-    const res = await fetch(`${baseUrl}/api/v1/audio/transcriptions`, {
+    const res = await fetchModelTest(`${baseUrl}/api/v1/audio/transcriptions`, {
       method: "POST",
       headers: Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== "content-type")),
       body: form,
@@ -161,7 +182,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   if (kind === "rerank") {
-    const res = await fetch(`${baseUrl}/api/v1/rerank`, {
+    const res = await fetchModelTest(`${baseUrl}/api/v1/rerank`, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -192,7 +213,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   if (kind === "systemone") {
-    const res = await fetch(`${baseUrl}/api/v1/systemone`, {
+    const res = await fetchModelTest(`${baseUrl}/api/v1/systemone`, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -232,7 +253,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     };
   }
 
-  const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
+  const res = await fetchModelTest(`${baseUrl}/api/v1/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -322,4 +343,14 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   return { ok: true, latencyMs, error: null, status: res.status };
+}
+
+export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`, connectionId = null) {
+  const start = Date.now();
+  try {
+    return await pingModelByKindImpl(model, kind, baseUrl, connectionId);
+  } catch (error) {
+    if (!(error instanceof ModelTestTransportError)) throw error;
+    return { ok: false, status: error.status, error: error.message, latencyMs: Date.now() - start };
+  }
 }

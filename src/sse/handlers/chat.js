@@ -1,3 +1,4 @@
+import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
 import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
@@ -452,6 +453,10 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     log.warn("AUTH", "Invalid API key");
     return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
   }
+  // Use only the admitted stored key and the original request headers.
+  clientRawRequest.usageAttribution = apiKeyAuth.stored && apiKeyAuth.apiKeyId ?
+    usageAttributionFromHeaders(request.headers) : null;
+
   // Keep admission identity across retries, nested combos, and fusion callbacks.
   // An import during upstream work must not turn old usage into new-generation usage.
   const billingEpoch = apiKeyAuth.billingEpoch;

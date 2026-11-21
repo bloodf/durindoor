@@ -33,6 +33,12 @@ const SSE_CONTENT_TYPE = "text/event-stream";
 // Bound for a plain-text (non-JSON) provider error message kept for the
 // fallback classifier. The message is diagnostic context, never a payload.
 const PLAIN_ERROR_TEXT_LIMIT = 500;
+const CONNECTION_RECOVERY_MESSAGE = "Connection recovery in progress";
+
+/** True only for the local recovery admission response emitted by chat routing. */
+export function isConnectionRecoveryDiagnostic(status, message) {
+  return status === HTTP_STATUS.SERVICE_UNAVAILABLE && message === CONNECTION_RECOVERY_MESSAGE;
+}
 
 // HTTP-date allows IMF-fixdate and the two obsolete HTTP date formats.
 const HTTP_DATE = /^(?:[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]+, \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d{2}:\d{2}:\d{2} \d{4})$/;
@@ -1614,6 +1620,7 @@ export async function handleComboChat({
     }}
   let lastError = null;
   let earliestRetryAfter = null;
+  let recoveryBlockedTargets = 0;
   let earliestRetryStatus = null;
   let earliestRetryError = null;
   let lastStatus = null;
@@ -1814,6 +1821,8 @@ export async function handleComboChat({
         try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
       }
 
+      if (isConnectionRecoveryDiagnostic(result.status, errorText)) recoveryBlockedTargets++;
+
       // A client-side abort that surfaced without a 499 (bare
       // request_signal_aborted / "Client disconnected" / "operation was aborted"
       // defaulting to 502) is a local stream lifecycle event, not a provider
@@ -1928,6 +1937,15 @@ export async function handleComboChat({
   }
 
   // Keep the trusted marker through nested fallback. Every candidate must reject locally.
+  if (rotatedModels.length > 0 && recoveryBlockedTargets === rotatedModels.length) {
+    return unavailableResponse(
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      "All combo targets are waiting for connection recovery",
+      null,
+      ""
+    );
+  }
+
   if (localPolicyRejections > 0 && localPolicyRejections === rotatedModels.length) {
     return comboPolicyRejection(toolOutputMedia.has("vision"));
   }

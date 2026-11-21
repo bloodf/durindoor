@@ -1172,7 +1172,7 @@ export function createSSEStream(options = {}) {
               parsed.response?.candidates?.[0]?.finishReason;
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               const lateUsage = pendingUsageEstimate && hasValidUsage(parsed.usage);
-              if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
+              if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && (providerBody?.stream_options?.include_usage === true || body?.stream_options?.include_usage === true)) {
                 pendingUsageEstimate = true;
               } else if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));

@@ -505,7 +505,9 @@ export class DefaultExecutor extends BaseExecutor {
     // reasoning_content is an OpenAI-compatibility field. Anthropic Messages
     // transports carry thinking blocks natively and may reject this extra key,
     // so skip the injection when the resolved transport speaks Claude (#2705).
-    if (credentials?.runtimeTransport?.format === "claude") {
+    // Compare the normalized wire format: runtime transports may carry an
+    // auth suffix such as "claude-apikey", which still means Messages.
+    if (credentials?.runtimeTransport?.format?.replace(/-(?:apikey|oauth)$/, "") === FORMATS.CLAUDE) {
       return this.ensureThinkingBudget(transformed, model, requestContext?.modelCapabilities);
     }
     const injected = injectReasoningContent({ provider: this.provider, model, body: transformed });

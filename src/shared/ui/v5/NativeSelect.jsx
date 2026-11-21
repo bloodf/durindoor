@@ -22,7 +22,8 @@ export const V5NativeSelect = forwardRef(function V5NativeSelect({ children, val
   const [localValue, setLocalValue] = useState(defaultValue);
   const [invalid, setInvalid] = useState(false);
   const parent = useRef(null);
-  if (!v5) {
+  const review = globalThis.document?.documentElement.dataset.v5Review === "true";
+  if (!v5 && !review) {
     return <select {...props} ref={forwardedRef} value={value} defaultValue={defaultValue} onChange={onChange}>{children}</select>;
   }
   const options = nativeOptions(children);

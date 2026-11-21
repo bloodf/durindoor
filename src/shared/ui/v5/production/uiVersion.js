@@ -24,9 +24,7 @@ const OFF_VALUES = new Set(["0", "false", "off"]);
 
 /** Resolve the switch. Unset or unrecognised values use the default. */
 export function isUiV5Enabled(env = globalThis.process?.env ?? {}) {
-  const raw = env?.[UI_V5_ENV];
-  if (typeof raw !== "string") return UI_V5_DEFAULT;
-  const value = raw.trim().toLowerCase();
+  const value = String(env?.[UI_V5_ENV] ?? "").trim().toLowerCase();
   if (ON_VALUES.has(value)) return true;
   if (OFF_VALUES.has(value)) return false;
   return UI_V5_DEFAULT;

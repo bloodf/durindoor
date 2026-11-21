@@ -12,8 +12,9 @@ function readAttribute() {
 
 function subscribe(notify) {
   const root = globalThis.document?.documentElement;
-  if (!root || typeof MutationObserver === "undefined") return () => {};
-  const observer = new MutationObserver(notify);
+  const Observer = globalThis.MutationObserver;
+  if (!root || !Observer) return () => {};
+  const observer = new Observer(notify);
   observer.observe(root, { attributes: true, attributeFilter: [ATTRIBUTE] });
   return () => observer.disconnect();
 }

@@ -30,7 +30,6 @@ export async function hasValidCliToken(request) {
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
 const PUBLIC_API_PATHS = [
-  "/api/health",
   "/api/init",
   "/api/locale",
   "/api/auth/login",
@@ -44,8 +43,10 @@ const PUBLIC_API_PATHS = [
 // A prefix match here would let an attacker reach an unrelated route by
 // nesting it under a trusted public prefix.
 const PUBLIC_API_EXACT_PATHS = [
-  // Orchestrator probes (Kubernetes liveness/readiness). Both answer only
-  // {"ok":true}; exact match so nothing can be nested under them.
+  // Orchestrator probes (Kubernetes liveness/readiness). All answer only
+  // {"ok":true}; exact match so nothing can be nested under them (for example,
+  // /api/health/providers stays behind the management gate).
+  "/api/health",
   "/api/livez",
   "/api/readyz",
   "/api/auth/oidc/start",
@@ -115,9 +116,15 @@ const MANAGEMENT_API_PATHS = [
 
 /**
  * Exact management leaves expose operational state or exercise stored secrets.
- * OIDC start/callback remain public; testing issuer credentials does not.
+ * OIDC start/callback and /api/health remain public; testing issuer credentials
+ * and inspecting provider health do not.
  */
-const MANAGEMENT_API_EXACT_PATHS = ["/api/headroom/status", "/api/headroom/stats", "/api/auth/oidc/test"];
+const MANAGEMENT_API_EXACT_PATHS = [
+  "/api/headroom/status",
+  "/api/headroom/stats",
+  "/api/auth/oidc/test",
+  "/api/health/providers",
+];
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
 const LOCAL_ONLY_PATHS = [

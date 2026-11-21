@@ -187,7 +187,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     await database.saveRequestUsage(usage);
     // Simulate history written before durable receipts existed.
     adapter.run("DELETE FROM kv WHERE scope = 'usageEventReceipts'");
-    vi.setSystemTime(new Date("2026-10-10T12:00:00.000Z"));
+    vi.setSystemTime(new Date("2026-10-09T12:30:00.000Z"));
     if (mode === "prune") {
       const { pruneUsageOlderThan } = await import("@/lib/db/repos/usageRepo.js");
       await pruneUsageOlderThan(Date.now());

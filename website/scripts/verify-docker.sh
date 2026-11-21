@@ -18,12 +18,11 @@ trap 'exit 143' TERM
 printf 'Building verification image %s\n' "$image"
 docker build -f website/Dockerfile.verify -t "$image" .
 printf 'Running website and Playwright in container %s\n' "$container"
+# Playwright starts and stops its own transient server inside the container,
+# bound to the container's loopback interface. No host port is published and
+# no server outlives the run.
 docker run --name "$container" --init --shm-size=1g \
   -v "$artifacts:/artifacts" "$image" sh -eu -c '
-    pnpm run start > /artifacts/server.log 2>&1 &
-    server=$!
-    trap "kill $server 2>/dev/null || true" EXIT
-    node -e '\''(async () => { for (let i = 0; i < 120; i++) { try { if ((await fetch("http://127.0.0.1:3000/")).ok) return; } catch {} await new Promise(r => setTimeout(r, 1000)); } process.exit(1); })()'\''
-    DOCS_BASE_URL=http://127.0.0.1:3000 WEBSITE_VERIFY_SCREENSHOTS=/artifacts/screenshots WEBSITE_REVIEW_SCREENSHOTS=/artifacts/marketing pnpm exec playwright test
+    WEBSITE_VERIFY_SCREENSHOTS=/artifacts/screenshots WEBSITE_REVIEW_SCREENSHOTS=/artifacts/marketing pnpm exec playwright test
   '
 printf 'Website verification passed. Artifacts: %s\n' "$artifacts"

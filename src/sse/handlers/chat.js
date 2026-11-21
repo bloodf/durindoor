@@ -61,6 +61,7 @@ import { resolveClientSessionId } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials } from "../services/tokenRefresh.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
+import { providerRefreshContext } from "@/shared/utils/providerCredentialContext";
 import { allocateProviderAttemptTimestamp } from "@/shared/services/providerRateLimitEvidence";
 import {
   getModelQuotaFamily,
@@ -1280,6 +1281,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         routeKey: `${provider}/${model}`,
         config: chatSettings.quotaSelection || {}
       });
+      const cookieRefreshContext = activeConnection?.authType === "cookie"
+        ? providerRefreshContext({
+          id: refreshedCredentials.connectionId,
+          provider: activeConnection.provider,
+          authType: activeConnection.authType,
+          apiKey: refreshedCredentials.apiKey,
+          providerSpecificData: refreshedCredentials.providerSpecificData
+        })
+        : null;
       const result = await runWithConnectionRecovery(handleChatCore, {
         body: { ...structuredClone(body), model: `${provider}/${model}` },
         modelInfo: { provider, model },
@@ -1376,9 +1386,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               return;
             }
             const rotated = next?.apiKey;
-            if (activeConnection?.authType !== "cookie" || !isString(rotated) || !rotated) return;
-            if (rotated === refreshedCredentials?.apiKey) return;
-            await updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated });
+            if (!cookieRefreshContext || !isString(rotated) || !rotated) return;
+            if (rotated === cookieRefreshContext.apiKey) return;
+            return updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated }, {
+              expectedRefreshContext: cookieRefreshContext
+            });
           }
         } : null),
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {

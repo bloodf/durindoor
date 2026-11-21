@@ -414,9 +414,13 @@ export async function PUT(request, { params }) {
     // Re-importing a web session is how an expired cookie is recovered (#2034): the
     // Edit dialog sends the fresh cookie in `apiKey`, and the connection keeps its
     // identity. Failure state recorded against the old cookie (model cooldowns, 401
-    // backoff) is not evidence about the new one, so it is cleared with the swap.
+    // backoff) is not evidence about the new one, so it is cleared with the swap. The
+    // status and error text reset to unknown unless the caller set those fields itself.
     if (isString(apiKey) && apiKey.trim() && existing.authType === "cookie" && apiKey !== existing.apiKey) {
       updateData.apiKey = apiKey;
+      if (testStatus === undefined) updateData.testStatus = "unknown";
+      if (lastError === undefined) updateData.lastError = null;
+      if (lastErrorAt === undefined) updateData.lastErrorAt = null;
       updateData.rateLimitedUntil = null;
       updateData.backoffLevel = 0;
       updateData.errorCode = null;

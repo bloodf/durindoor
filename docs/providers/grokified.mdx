@@ -1,0 +1,70 @@
+---
+title: Grokified
+description: Connect a prepaid Grokified access key, discover the Grok models that key can reach, and send OpenAI-compatible chat completions.
+---
+
+Grokified is an independent prepaid Grok API gateway. It is not the official xAI console and not Groq. Your key, your balance and the model catalog that key reaches are Grokified's own, so a Grokified connection never borrows an xAI or Groq credential.
+
+## Connect
+
+1. Create an access key on the [Grokified keys page](https://grokified.com/keys). Production keys start with `gk_live_`, test keys with `gk_test_`. The plaintext is shown once, so store it somewhere safe.
+2. In DurinDoor, open **Dashboard**, then **Providers**, then **Grokified**, and add an API-key connection with that key.
+3. Fetch the connection's models and pick a current id, or send one of the seeded ids below.
+
+Keep several Grokified connections when you have several keys. Each key keeps its own balance, and a client key can be scoped to a chosen set of connections so one account cannot reach another's.
+
+## What DurinDoor sends
+
+| Item | Value |
+| --- | --- |
+| Base URL | `https://api.grokified.com/v1` |
+| Chat completions | `POST https://api.grokified.com/v1/chat/completions` |
+| Model discovery | `GET https://api.grokified.com/v1/models` |
+| Authentication | `Authorization: Bearer <your Grokified key>` |
+
+Send a model as `grokified/<model-id>`, for example `grokified/grok-4.7`.
+
+## Models
+
+DurinDoor seeds the text models Grokified documents as active: `grok-4.7`, `grok-4.6`, `grok-4.5`, `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning` and `grok-build-0.1`. Grokified's older names still resolve, and DurinDoor maps them onto the current id before the request leaves the gateway:
+
+| Name you may still have | Resolves to |
+| --- | --- |
+| `gx-1-max`, `grokified-4.6` | `grok-4.7` |
+| `gx-1-pro` | `grok-4.5` |
+| `gx-1`, `grok-3`, `grok-4-0709`, `grok-4-fast-reasoning`, `grok-4-fast-non-reasoning` | `grok-4.3` |
+| `gx-1-fast-reasoning` | `grok-4.20-0309-reasoning` |
+| `gx-1-fast-non-reasoning` | `grok-4.20-0309-non-reasoning` |
+| `gx-build`, `grok-code-fast-1` | `grok-build-0.1` |
+
+Fetching the connection's models uses its key and filters known media, Claude add-on and Responses-only entries from the chat picker. A newly released chat model can also be requested by id.
+
+## Errors and retries
+
+Grokified returns one error shape, so every failure reads the same way.
+
+| Status | Code | What it means |
+| --- | --- | --- |
+| 400 | `invalid_request_error` | The body or a parameter was rejected. |
+| 401 | `invalid_api_key` | The key is missing, mistyped or revoked. |
+| 402 | `insufficient_quota` | The balance is at or below zero. Top up. |
+| 402 | `payment_required` | A team key whose owner has not paid yet. |
+| 403 | `account_suspended` | The account was suspended for abuse. |
+| 403 | `plan_capability_required` | The plan does not include the model you asked for. |
+| 413 | `request_too_large` | The request body is over 24 MB. |
+| 429 | `rate_limit_exceeded` | The shared upstream pool is busy. Slow down and retry. |
+| 5xx | `api_error`, `service_overloaded` | Transient. Retry. |
+
+DurinDoor passes the upstream status through to the client. A 401, 402 or 403 marks that connection unavailable for a cooldown instead of retrying the same key, and a 413 is returned as it arrived. Only 429 and 5xx are treated as transient, which matches the vendor's own retry guidance.
+
+## Scope
+
+Only text inference over Chat Completions is enabled. Grokified's image, video and voice routes, its separately billed Claude add-on and `grok-4.20-multi-agent-0309` (Responses API only on the vendor side) are outside this integration.
+
+Usage accounting records the token counts Grokified reports on each call, on JSON and streamed replies alike. The `cost_usd` field in a response is DurinDoor's own list-price estimate; the amount Grokified actually charged is on your Grokified dashboard and usage page.
+
+## Notes
+
+- Grokified's free signup credit does not cover `grok-4.7`, image, video or voice. Those unlock after the first top-up or plan.
+- Grokified keeps a copy of each request and response for 30 days so you can review it from your usage history. It is not used to train a model.
+- Review Grokified's current pricing and terms before connecting a production key. Model availability, quotas and billing are the vendor's account state, not something DurinDoor can verify for you.

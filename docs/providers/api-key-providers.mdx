@@ -33,6 +33,22 @@ Save, then send a request using one of the connection's models. A duplicate prov
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
+## DemonRoute
+
+Add a DemonRoute API key in Providers, then discover models for that connection. Its `/v1/models` catalog is account-specific; the bundled model list is only an offline starting point. Use the exact, case-sensitive model ID returned by DemonRoute, including its vendor prefix. Model availability and pricing may change. See the [DemonRoute documentation](https://demonroute.com/docs).
+
+## Gisoo
+
+Gisoo ([gisoo.pro](https://gisoo.pro)) is a prepaid, OpenAI-compatible relay. DurinDoor sends chat requests to `https://gisoo.pro/api/v1/chat/completions` with `Authorization: Bearer <key>`; one key covers the whole catalog.
+
+Three details differ from most API-key providers:
+
+- **Model discovery is keyless.** `GET https://gisoo.pro/api/v1/models` is public and answers 200 without a key, so the dashboard fetches the catalog without sending the stored key. The request always targets the built-in Gisoo host, never a per-connection base URL.
+- **The connection test uses the account endpoint.** The catalog answers 200 even for a rejected key, so it cannot prove a credential. DurinDoor validates the key against `GET https://gisoo.pro/api/v1/me` instead, which answers 401 for a missing, revoked or expired key.
+- **Credit and identity verification are separate failures.** A `402` means the account's credit or its spend cap is exhausted; a `403` that names identity verification means the account spent past the $2 pre-verification allowance and must be verified in the Gisoo app. Both bench the connection for a day and are reported as terminal, so no `Retry-After` is advertised. A rejected key (`401`) instead benches the connection briefly so another key can serve the request.
+
+Gisoo publishes 60 requests per minute per key by default; DurinDoor paces connections to that rate unless you override it in the settings.
+
 ## Anthropic API-key requests
 
 For official Anthropic API-key requests, DurinDoor removes the leading Claude Code
@@ -101,6 +117,14 @@ Scope DurinDoor client keys to the intended saved connection. CLIProxyAPI client
 For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.
 
 Buffered responses are decoded the same way before they are projected into the format the client asked for, so a JSON reply to Chat Completions, Claude Messages, Gemini or Responses requests carries the tool call instead of the raw frame. The same reply still arrives as a single JSON body.
+
+## DeepSeek thinking history
+
+DeepSeek's thinking mode requires the `reasoning_content` of earlier assistant turns to be sent back with later requests that carry `tools`; omitting it makes the API answer HTTP 400. OpenAI Chat clients usually drop that field, so on the OpenAI Chat wire DurinDoor adds a single-space `reasoning_content` placeholder to every prior assistant message that has none, or has an empty one.
+
+- A non-empty `reasoning_content` that the client already sent is never replaced, and tool calls, tool call IDs, tool results and message order are left as received. The client's own history object is not modified.
+- The Anthropic-compatible DeepSeek endpoint carries thinking as `thinking` content blocks with signatures. DurinDoor forwards those blocks unchanged and sends no `reasoning_content` on that transport, including when the transport is selected as `claude-apikey`.
+- Another provider that serves a model with the same ID keeps its own endpoint and credentials. On an Anthropic-format transport it never receives `reasoning_content`. On an OpenAI Chat transport, other providers with a `deepseek` model ID receive the same placeholder, as before, because gateways that front DeepSeek enforce the same rule; models with other IDs are untouched.
 
 ## Env fallbacks
 

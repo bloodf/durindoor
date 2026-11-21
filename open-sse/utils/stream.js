@@ -791,7 +791,7 @@ export function createSSEStream(options = {}) {
       const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
       if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
 
-      for (const line of lines) {
+      for (const [lineIndex, line] of lines.entries()) {
         const trimmed = line.trim();
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
@@ -1383,6 +1383,20 @@ export function createSSEStream(options = {}) {
         // openai-to-<target> translators (which only read reasoning_content)
         // don't drop reasoning-only chunks for Gemini/Antigravity/Vertex clients.
         PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
+
+        // A complete, immediately adjacent usage-only frame in this same read
+        // can be projected into the terminal without waiting for another read.
+        // Match response IDs so a neighbouring response cannot donate its usage.
+        if (targetFormat === FORMATS.OPENAI &&
+            (sourceFormat === FORMATS.CLAUDE || sourceFormat === FORMATS.OPENAI_RESPONSES) &&
+            parsed.id && parsed.choices?.some?.((choice) => choice?.finish_reason)) {
+          const nextLine = lines.slice(lineIndex + 1).find((candidate) => candidate.trim());
+          const next = nextLine && parseSSELine(nextLine.trim(), targetFormat);
+          if (next?.id === parsed.id && Array.isArray(next.choices) && next.choices.length === 0 && hasValidUsage(next.usage)) {
+            state.usage = mergeUsage(state.usage, next.usage);
+            parsed.usage = state.usage;
+          }
+        }
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);

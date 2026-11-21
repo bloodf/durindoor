@@ -19,6 +19,8 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "zenmux-free": "ZenMux Free",
   suno: "Suno",
   udio: "Udio",
+  "adapta-web": "Adapta Web",
+  "t3-web": "T3 Chat Web",
 };
 
 // Detect auth-expired messages returned by usage providers instead of throwing

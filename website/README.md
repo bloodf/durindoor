@@ -198,3 +198,16 @@ checks and screenshots against the transient loopback server it starts itself.
 The homepage FAQ links to the network-server and web-cookie guides, including
 extension pairing limitations. Its native disclosure controls work with keyboard
 and touch; FAQ and audience copy are maintained in every homepage locale.
+
+The published-page audits read the built sitemap when collecting tests, divide
+its routes into batches, and compare it with the served sitemap in every batch.
+Each route still receives all viewport, console, accessibility and screenshot
+checks. Progress identifies the route and operation, and navigation has a
+bounded timeout so a stalled request identifies the affected page.
+The homepage resolver keeps its first render stable during hydration, then
+applies the visitor's reduced-motion preference and shows completed examples.
+Documentation section cards use second-level headings, the table of contents
+is a named navigation landmark, and scrollable code examples have distinct
+accessible names.
+The mobile documentation controls are a named navigation landmark, and the
+homepage main landmark has its own name alongside the embedded dashboard.

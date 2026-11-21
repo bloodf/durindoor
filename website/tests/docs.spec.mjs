@@ -341,6 +341,7 @@ test("embedded navigation scrolls its links while brand and settings stay visibl
   await expect(
     menu.getByRole("link", { name: "Settings", exact: true }),
   ).toBeVisible();
+  await page.locator('iframe[title="Live demo"]').scrollIntoViewIfNeeded();
   await translator.click();
   await expect(
     preview
@@ -581,4 +582,38 @@ test("network server guide covers setup, discovery, and safeguards", async ({ pa
   }
   await expect(page.getByText("Use Import on the node page", { exact: false })).toBeVisible();
   await expect(page.getByText("ordinary private addresses remain allowed", { exact: false })).toBeVisible();
+});
+
+test("operations overview links resolve to published guides", async ({ page }) => {
+  await page.goto("/docs/operations", { waitUntil: "networkidle", timeout: 30_000 });
+  for (const [name, path] of [
+    ["Deployment", "/docs/deployment"],
+    ["Startup", "/docs/operations/startup"],
+    ["Upgrading", "/docs/operations/upgrading"],
+    ["Data management", "/docs/operations/data-management"],
+    ["Postgres", "/docs/operations/postgres"],
+    ["Security", "/docs/operations/security"],
+    ["API key scoping", "/docs/operations/api-key-scoping"],
+  ]) {
+    const link = page.getByRole("link", { name: new RegExp(`^${name}`) }).first();
+    await expect(link).toHaveAttribute("href", path);
+  }
+});
+
+
+test("upgrade guide resolves release notes without stalling navigation", async ({ page }) => {
+  await page.goto("/docs/operations/upgrading", { waitUntil: "networkidle", timeout: 30_000 });
+  await expect(page.getByRole("link", { name: "release notes" })).toHaveAttribute("href", "https://github.com/bloodf/durindoor/blob/main/CHANGELOG.md");
+});
+
+test("documentation landmarks, section headings, and code examples pass axe", async ({ page }) => {
+  for (const route of ["/docs/deployment/cloud", "/docs/features", "/docs/guides/bulk-connection-selection", "/docs/providers/arcee-platform"]) {
+    await page.goto(route, { waitUntil: "networkidle" });
+    const result = await new AxeBuilder({ page }).analyze();
+    expect(result.violations, route).toEqual([]);
+    await page.setViewportSize({ width: 360, height: 800 });
+    const mobile = await new AxeBuilder({ page }).analyze();
+    expect(mobile.violations, `${route} mobile`).toEqual([]);
+    await page.setViewportSize({ width: 1280, height: 800 });
+  }
 });

@@ -5,6 +5,7 @@ import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import { source } from "@site/lib/source";
 import { baseOptions } from "@site/lib/layout.shared";
+import { DocsMobileHeader } from "@site/components/docs/MobileHeader.jsx";
 import { DocsReadingPreferences } from "@site/components/docs/ThemeToggle.jsx";
 import { DocsSidebarFooter } from "@site/components/docs/SidebarFooter.jsx";
 import "@site/styles/site/tokens.css";
@@ -44,6 +45,7 @@ export default function Layout({ children }) {
         tree={treeWithoutRootIndex(source.getPageTree())}
         {...baseOptions()}
         tabs={false}
+        slots={{ header: DocsMobileHeader }}
         sidebar={{
           collapsible: true,
           footer: <DocsSidebarFooter key="docs-footer" version={VERSION} />,

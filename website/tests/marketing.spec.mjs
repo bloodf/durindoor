@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { batches, verifySitemap } from "./sitemap-inventory.mjs";
 
 const screenshots = process.env.WEBSITE_REVIEW_SCREENSHOTS || "/tmp/durindoor-marketing-visant-screens";
 async function readyHome(page) {
@@ -67,6 +68,23 @@ test("clipboard denial is visible, retry succeeds, and the command stays readabl
   expect(startup).toContain('export JWT_SECRET="$(openssl rand -hex 32)"');
   expect(startup).toContain('export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"');
   expect(startup).toContain("npx durindoor --host 127.0.0.1");
+});
+
+test("mobile homepage has distinguishable landmarks", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const result = await new AxeBuilder({ page }).analyze();
+  expect(result.violations).toEqual([]);
+});
+
+test("reduced motion hydrates the resolver without page errors", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await expect(page.locator(".terminal-playback")).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
 test("model examples can be paused and selected by keyboard without waiting for typing", async ({ page }) => {
@@ -214,30 +232,36 @@ test("home theme control persists the reading preference", async ({ page }) => {
   expect(await page.locator("html").evaluate((node) => node.classList.contains("dark"))).toBe(!wasDark);
 });
 
-// Run against a Docker-hosted production build. The sitemap is the inventory of
-// public pages, so newly published guides receive the same review coverage.
-test("published pages have responsive, accessible layouts without console errors", async ({ page, request }) => {
-  test.setTimeout(900_000);
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  mkdirSync(screenshots, { recursive: true });
-  const xml = await (await request.get("/sitemap.xml")).text();
-  const routes = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => new URL(match[1]).pathname);
-  expect(routes.length).toBeGreaterThan(1);
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+// Audit every published route at every viewport in independent batches. Each
+// batch checks the served sitemap against the inventory used at collection.
+test.describe("published pages have responsive, accessible layouts without console errors", () => {
+  test.describe.configure({ mode: "parallel" });
   for (const width of [1440, 390, 360]) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const route of routes) {
-      await page.goto(route, { waitUntil: "networkidle" });
-      await expect(page.locator("h1").first(), route).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${route} ${width}`).toBe(0);
-      const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-      expect(result.violations, `${route} ${width}`).toEqual([]);
-      await page.screenshot({ path: join(screenshots, `public-${route.replaceAll("/", "-") || "home"}-${width}.png`), animations: "disabled", fullPage: true });
+    for (const [index, routes] of batches.entries()) {
+      test(`${width}px batch ${index + 1}`, async ({ page, request }) => {
+        test.setTimeout(300_000);
+        await verifySitemap(request);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        mkdirSync(screenshots, { recursive: true });
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+        await page.setViewportSize({ width, height: 900 });
+        for (const route of routes) {
+          console.log(`Audit ${width} ${route}: navigation`);
+          await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
+          await expect(page.locator("h1").first(), route).toBeVisible();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${route} ${width}`).toBe(0);
+          console.log(`Audit ${width} ${route}: axe`);
+          const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+          expect(result.violations, `${route} ${width}`).toEqual([]);
+          console.log(`Audit ${width} ${route}: screenshot`);
+          await page.screenshot({ path: join(screenshots, `public-${route.replaceAll("/", "-") || "home"}-${width}.png`), animations: "disabled", fullPage: true });
+        }
+        expect(errors).toEqual([]);
+      });
     }
   }
-  expect(errors).toEqual([]);
 });
 
 test("FAQ answers link to the documented connection paths and work by keyboard", async ({ page }) => {

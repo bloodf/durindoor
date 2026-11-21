@@ -431,11 +431,12 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
           // Apply prefix to tool name
           const name = tc.function?.name;
           const toolName = isString(name) ? CLAUDE_OAUTH_TOOL_PREFIX + name : name;
+          const parsedInput = safeParseJSON(tc.function?.arguments, tc.function?.arguments);
           blocks.push({
             type: CLAUDE_BLOCK.TOOL_USE,
             id: tc.id,
             name: toolName,
-            input: safeParseJSON(tc.function?.arguments, tc.function?.arguments)
+            input: parsedInput !== null && isObject(parsedInput) && !Array.isArray(parsedInput) ? parsedInput : {}
           });
         }
       }

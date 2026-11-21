@@ -8,7 +8,7 @@ import {
   LOCALE_COOKIE,
   resolveHomeLocale,
 } from "../../website/src/i18n/home.js";
-import { FEATURES, RESOLUTIONS } from "../../website/src/components/home/data.js";
+import { FEATURES, FOOTER_GROUPS, RESOLUTIONS } from "../../website/src/components/home/data.js";
 
 const placeholders = (message) => [...message.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
@@ -45,6 +45,19 @@ describe("homepage locale contract", () => {
         expect(catalog[key], `${locale}: ${key}`).toEqual(expect.any(String));
         expect(catalog[key].trim(), `${locale}: ${key}`).not.toBe("");
         expect(placeholders(catalog[key]), `${locale}: ${key}`).toEqual(placeholders(key));
+      }
+    }
+  });
+
+  it("translates every footer group and link in each supported locale", () => {
+    for (const locale of HOME_LOCALES) {
+      const t = createHomeTranslator(locale);
+      for (const group of FOOTER_GROUPS) {
+        if (group.label !== "DurinDoor") expect(t(group.label)).toBeTruthy();
+        for (const [label] of group.links) expect(t(label), `${locale}: ${label}`).toBeTruthy();
+      }
+      if (locale !== "en") {
+        expect(t("Cookie capture extension")).not.toBe("Cookie capture extension");
       }
     }
   });

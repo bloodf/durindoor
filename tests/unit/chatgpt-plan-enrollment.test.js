@@ -82,14 +82,29 @@ describe("enrollment HTTP guard", () => {
   it("denies unauthenticated, remote and disabled requests before opening the service", async () => {
     vi.resetModules();
     const guard = { hasValidCliToken: vi.fn(async () => false), hasValidToken: vi.fn(async () => false), isLocalRequest: vi.fn(() => true) };
+    const registry = [];
+    vi.doMock("open-sse/providers/registry/index.js", () => ({ default: registry }));
     vi.doMock("@/dashboardGuard", () => guard);
     vi.doMock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: () => true }));
     const api = { create: vi.fn(async () => ({ id: "new" })), start: vi.fn(async () => ({ attemptId: "attempt", authorizationUrl: "https://example.test/private" })) };
-    vi.doMock("@/lib/oauth/chatgptPlanAccounts", () => ({ createChatGptPlanAccounts: () => ({}) }));
-    vi.doMock("@/lib/oauth/chatgptPlanEnrollment", () => ({ createChatGptPlanEnrollment: () => api }));
+    const createAccounts = vi.fn(() => ({}));
+    const createEnrollment = vi.fn(() => api);
+    vi.doMock("@/lib/oauth/chatgptPlanAccounts", () => ({ createChatGptPlanAccounts: createAccounts }));
+    vi.doMock("@/lib/oauth/chatgptPlanEnrollment", () => ({ createChatGptPlanEnrollment: createEnrollment }));
     const { POST } = await import("../../src/app/api/oauth/chatgpt-plan/enrollment/route.js");
     const request = { headers: new Headers(), cookies: { get: () => undefined }, json: async () => ({ action: "create", name: "x" }) };
     vi.stubEnv("DURINDOOR_CHATGPT_PLAN_ENROLLMENT", "1");
+    guard.hasValidToken.mockResolvedValue(true);
+    request.cookies.get = () => ({ value: "synthetic-session" });
+    const denied = await POST(request);
+    expect(denied.status).toBe(404);
+    expect(await denied.json()).toEqual({ error: "Not found" });
+    expect(createAccounts).not.toHaveBeenCalled();
+    expect(createEnrollment).not.toHaveBeenCalled();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.start).not.toHaveBeenCalled();
+    registry.push({ id: "chatgpt-plan" });
+    guard.hasValidToken.mockResolvedValue(false);
     expect((await POST(request)).status).toBe(401);
     guard.hasValidToken.mockResolvedValue(true);
     request.cookies.get = () => ({ value: "synthetic-session" });
@@ -107,7 +122,7 @@ describe("enrollment HTTP guard", () => {
     guard.isLocalRequest.mockReturnValue(true);
     vi.stubEnv("DURINDOOR_CHATGPT_PLAN_ENROLLMENT", "0");
     expect((await POST(request)).status).toBe(404);
-    vi.unstubAllEnvs(); vi.doUnmock("@/dashboardGuard"); vi.doUnmock("@/lib/auth/requestOrigin"); vi.doUnmock("@/lib/oauth/chatgptPlanAccounts"); vi.doUnmock("@/lib/oauth/chatgptPlanEnrollment");
+    vi.unstubAllEnvs(); vi.doUnmock("open-sse/providers/registry/index.js"); vi.doUnmock("@/dashboardGuard"); vi.doUnmock("@/lib/auth/requestOrigin"); vi.doUnmock("@/lib/oauth/chatgptPlanAccounts"); vi.doUnmock("@/lib/oauth/chatgptPlanEnrollment");
   });
 });
 

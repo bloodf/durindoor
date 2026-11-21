@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import registry from "open-sse/providers/registry/index.js";
 import { isBoolean, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { NextResponse } from "next/server";
 import { hasValidCliToken, hasValidToken, isLocalRequest } from "@/dashboardGuard";
@@ -20,7 +21,8 @@ function service() {
 
 export async function POST(request) {
   // Require an actual session or machine token, even on an open dashboard.
-  if (process.env.DURINDOOR_CHATGPT_PLAN_ENROLLMENT !== "1" || !isLocalRequest(request) ||
+  if (!registry.some((provider) => provider.id === "chatgpt-plan") ||
+      process.env.DURINDOOR_CHATGPT_PLAN_ENROLLMENT !== "1" || !isLocalRequest(request) ||
       !hasExactRequestOrigin(request)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const cli = await hasValidCliToken(request);
   if (!cli && !await hasValidToken(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

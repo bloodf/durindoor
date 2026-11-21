@@ -23,8 +23,8 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { createSSEStream } from "../../open-sse/utils/stream.js";
 import { hasValuableContent } from "../../open-sse/utils/streamHelpers.js";
 
-function runStream(targetFormat, sourceFormat, events) {
-  const state = initState(sourceFormat);
+function runStream(targetFormat, sourceFormat, events, route = {}) {
+  const state = { ...initState(sourceFormat), ...route };
   const all = [];
   for (const ev of events) {
     const out = translateResponse(targetFormat, sourceFormat, ev, state);
@@ -130,7 +130,7 @@ describe("OpenAI → Responses: reasoning closes on reasoning→content transiti
       openaiChunk({ content: "<think>raw reasoning" }),
       openaiChunk({ content: "</think>Answer" }),
       openaiChunk({}, "stop"),
-    ]);
+    ], { provider: "minimax", requestedModel: "MiniMax-M3" });
     const reasoning = events
       .filter(e => e?.data?.type === "response.reasoning_summary_text.delta")
       .map(e => e.data.delta).join("");

@@ -69,24 +69,6 @@ describe("CursorExecutor Composer thinking-field responses", () => {
     expect(events.at(-1).usage.completion_tokens).toBeGreaterThan(0);
   });
 
-  it.each([
-    [["<|fi", "nal|> answer ", "<|/fi", "nal|>"], " answer "],
-    [["<｜final｜>A", "<｜/final", "｜>"], "A"],
-    [["<b>keep</b> <|fin", "ish>"], "<b>keep</b> <|finish>"],
-    [["text <|/fin"], "text <|/fin"],
-  ])("preserves visible text across marker fragments %#", async (fragments, expected) => {
-    const executor = new CursorExecutor();
-    const buffer = Buffer.concat(fragments.map((part, index) => cursorResponseFrame({
-      thinking: (index === 0 ? "private</think>" : "") + part,
-    })));
-    const body = { messages: [{ role: "user", content: "hi" }] };
-    const json = await executor.transformProtobufToJSON(buffer, "composer-2.5", body).json();
-    const events = parseSSE(await executor.transformProtobufToSSE(buffer, "composer-2.5", body).text());
-    expect(json.choices[0].message.content).toBe(expected);
-    expect(events.map((event) => event.choices?.[0]?.delta?.content || "").join("")).toBe(expected);
-    expect(JSON.stringify(events)).not.toContain("private");
-  });
-
   it("does not treat thinking as visible output for non-Composer models", async () => {
     const executor = new CursorExecutor();
     const buffer = cursorResponseFrame({

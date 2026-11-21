@@ -77,6 +77,26 @@ export async function captureSessionTurn({ credential, session, consent, turn, r
   });
 }
 
+/**
+ * Physically remove the expired rows that belong to one authenticated key.
+ *
+ * Reads filter expired rows out of the result set, so expired content stayed
+ * on disk until a later write or operator maintenance. Pruning on read removes
+ * it even when no further turn is written, and keeps the per-key byte quota
+ * honest. The delete is scoped to the authenticated key: one key's read never
+ * mutates another key's rows. Other keys' expired rows are removed by their
+ * own reads, by a write, or by operator maintenance.
+ */
+function pruneExpiredTurns(db, keyId, cutoff) {
+  try {
+    db.run('DELETE FROM "sessionCaptureTurns" WHERE "apiKeyId" = ? AND "expiresAt" <= ?', [keyId, cutoff]);
+  } catch (error) {
+    // Reads keep serving while a database cutover blocks writes. The expired
+    // rows are removed by the next read, write or maintenance pass.
+    if (error?.code !== "CUTOVER_IN_FLIGHT") throw error;
+  }
+}
+
 /** Read at most 100 unexpired turns for one authenticated key and session. */
 export async function readSessionTurns({ credential, session, limit = 100 }) {
   const sid = sessionId(session);
@@ -84,11 +104,13 @@ export async function readSessionTurns({ credential, session, limit = 100 }) {
   const db = await getAdapter();
   const now = Date.now();
   const keyId = authenticate(db, credential, now);
+  const cutoff = new Date(now).toISOString();
+  pruneExpiredTurns(db, keyId, cutoff);
   return db.all(
     `SELECT "id", "content", "createdAt", "expiresAt" FROM "sessionCaptureTurns"
      WHERE "apiKeyId" = ? AND "sessionId" = ? AND "expiresAt" > ?
      ORDER BY "createdAt", "id" LIMIT ?`,
-    [keyId, sid, new Date(now).toISOString(), limit]
+    [keyId, sid, cutoff, limit]
   ).map((row) => ({ ...row, content: JSON.parse(row.content) }));
 }
 
@@ -100,7 +122,10 @@ export async function deleteSessionTurns({ credential, session }) {
   db.run('DELETE FROM "sessionCaptureTurns" WHERE "apiKeyId" = ? AND "sessionId" = ?', [keyId, sid]);
 }
 
-/** Remove expired capture rows; intended for operator maintenance. */
+/**
+ * Remove expired capture rows across every key; intended for operator
+ * maintenance. Reads prune only the authenticated key's own expired rows.
+ */
 export async function pruneSessionTurns() {
   const db = await getAdapter();
   db.run('DELETE FROM "sessionCaptureTurns" WHERE "expiresAt" <= ?', [new Date().toISOString()]);

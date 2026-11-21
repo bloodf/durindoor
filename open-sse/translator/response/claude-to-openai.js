@@ -139,6 +139,20 @@ export function claudeToOpenAIResponse(chunk, state) {
           // (see openai-responses.js).
           state.inThinkingBlock = false;
         }
+        // A tool that takes no parameters may stream no input_json_delta, which would
+        // leave its arguments as "" (not valid JSON). Close it with "{}", matching the
+        // non-streaming path. Arguments that were streamed are never touched.
+        const stoppedToolCall = state.toolCalls?.get(chunk.index);
+        if (stoppedToolCall && !stoppedToolCall.function.arguments) {
+          stoppedToolCall.function.arguments = "{}";
+          results.push(createChunk(state, {
+            tool_calls: [{
+              index: stoppedToolCall.index,
+              id: stoppedToolCall.id,
+              function: { arguments: "{}" }
+            }]
+          }));
+        }
         state.textBlockStarted = false;
         state.thinkingBlockStarted = false;
         break;

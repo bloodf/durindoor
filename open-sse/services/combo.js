@@ -1772,22 +1772,21 @@ export async function handleComboChat({
       // upstream content and never a locally generated lifecycle event.
       let plainProviderBody = false;
       try {
-        errorBody = await result.clone().json();
-        errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
-        retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
-      } catch {
-        // The provider body is not JSON. Keep a bounded, useful message for the
-        // fallback classifier, read from a second clone so the original
-        // response body stays readable for the direct-return paths below.
+        // Read one clone so direct-return paths retain the original body.
+        const rawText = await result.clone().text();
         try {
-          const rawText = await result.clone().text();
+          errorBody = JSON.parse(rawText);
+          errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
+          retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
+        } catch {
+          // Preserve a bounded provider message for the fallback classifier.
           if (rawText && rawText.trim()) {
             plainProviderBody = true;
             errorText = rawText.substring(0, PLAIN_ERROR_TEXT_LIMIT);
           }
-        } catch {
-          // Body unreadable — keep the status text
         }
+      } catch {
+        // Body unreadable — keep the status text
       }
       // Normalize error text to string (Worker-safe)
       if (!isString(errorText)) {

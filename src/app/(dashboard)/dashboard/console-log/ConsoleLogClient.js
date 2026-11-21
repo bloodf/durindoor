@@ -113,7 +113,10 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
     return () => observer?.disconnect();
   }, [entry.id, wrap, onMeasure]);
   const [firstLine, ...moreLines] = entry.message.split("\n");
-  const structured = entry.request || entry.completion;
+  const cache = [
+    entry.completion?.cacheRead ? `↻${entry.completion.cacheRead}` : "",
+    entry.completion?.cacheCreate ? `+${entry.completion.cacheCreate}` : "",
+  ].filter(Boolean).join(" ");
   const summary = entry.request
     ? [
         `POST ${entry.request.model} → ${entry.request.routedModel}`,
@@ -121,16 +124,18 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
         entry.request.mode,
         entry.request.messages !== null && `${entry.request.messages} MSG`,
         entry.request.tools !== null && `${entry.request.tools} TOOL`,
+        entry.request.thinking && `THINK:${entry.request.thinking}`,
         entry.request.account && `ACC:${entry.request.account}`,
       ].filter(Boolean).join(" · ")
     : entry.completion
       ? [
           `DONE ${entry.completion.totalMs}ms`,
           entry.completion.ttftMs !== null && `TTFT ${entry.completion.ttftMs}ms`,
-          `IN ${entry.completion.inputTokens ?? 0}`,
-          entry.completion.cacheRead > 0 && `CACHE ↻${entry.completion.cacheRead}${entry.completion.cacheCreate ? ` +${entry.completion.cacheCreate}` : ""}`,
-          `OUT ${entry.completion.outputTokens ?? 0}`,
+          `IN ${entry.completion.inputTokens}${cache ? ` (CACHE ${cache})` : ""}`,
+          `OUT ${entry.completion.outputTokens}`,
           entry.completion.routedModel,
+          entry.completion.credits !== undefined && `${entry.completion.credits}cr`,
+          entry.completion.sessionId !== undefined && `sid:${entry.completion.sessionId}`,
         ].filter(Boolean).join(" · ")
       : null;
   return (
@@ -149,12 +154,12 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
       <span className={`w-11 shrink-0 font-semibold uppercase ${LEVEL_TEXT[entry.level]}`}>{entry.level}</span>
       {wrap ? (
         <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-dd-text">
-          {structured ? <HighlightedText text={summary} needle={needle} /> : <HighlightedText text={entry.message} needle={needle} />}
+          <HighlightedText text={entry.message} needle={needle} />
         </span>
       ) : (
         <>
           <span className="min-w-0 flex-1 truncate whitespace-pre text-dd-text">
-            <HighlightedText text={structured ? summary : firstLine} needle={needle} />
+            <HighlightedText text={summary ?? firstLine} needle={needle} />
           </span>
           {moreLines.length > 0 ? <span className="shrink-0 text-dd-subtle">+{moreLines.length} lines</span> : null}
         </>

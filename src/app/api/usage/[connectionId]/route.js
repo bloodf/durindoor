@@ -23,6 +23,7 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "perplexity-web": "Perplexity Web",
   "adapta-web": "Adapta Web",
   "t3-web": "T3 Chat Web",
+  "yuanbao-web": "Yuanbao Web",
 };
 
 // Detect auth-expired messages returned by usage providers instead of throwing

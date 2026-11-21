@@ -44,3 +44,11 @@ The gateway preserves the explicit local-admission marker as internal response
 metadata for the outer transient retry loop. That loop returns the same response
 without retrying. This metadata is not an upstream header or a client input;
 unmarked upstream 502/503/504 responses retain transient retries.
+
+Anthropic Messages (`/v1/messages`) and token counting (`/v1/messages/count_tokens`)
+accept `gzip` and `x-gzip` request bodies. Both compressed and decompressed bytes
+are bounded by the smaller of `MAX_SINGLE_PAYLOAD_BYTES` and
+`MAX_PAYLOAD_ADMISSION_BYTES`; oversize bodies return 413. Malformed gzip returns
+400, and unsupported or combined content encodings return 415. Identity requests
+retain their existing behavior. The normal payload admission checks still apply
+after parsing.

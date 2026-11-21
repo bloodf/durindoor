@@ -24103,7 +24103,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js#CookieImportModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js",
       "symbol": "CookieImportModal",
-      "sourceSha256": "44ff98c33388bf23e9852a6e5fd9040c7ff2f035fd252d587f8d611af7404345",
+      "sourceSha256": "01f6db5108a1614de1726645bfb1f1cedbce7e7c691ab1dce716bbd27a3b724b",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -26107,7 +26107,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#ProviderDetail",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "ProviderDetail",
-      "sourceSha256": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+      "sourceSha256": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -26130,7 +26130,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -26143,7 +26143,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -26156,7 +26156,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -26169,7 +26169,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -26185,7 +26185,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#ProviderDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "ProviderDetailPage",
-      "sourceSha256": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+      "sourceSha256": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -26207,7 +26207,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -26230,7 +26230,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -26252,7 +26252,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -26274,7 +26274,7 @@
             "retained-open"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -26426,7 +26426,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#bulkActionModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "bulkActionModal",
-      "sourceSha256": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+      "sourceSha256": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -26446,7 +26446,7 @@
             "retained-open"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -26478,7 +26478,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
           },
           "expectedAbsentRole": {
@@ -26574,7 +26574,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#connectionsList",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "connectionsList",
-      "sourceSha256": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+      "sourceSha256": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -26593,7 +26593,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -26663,7 +26663,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#renderModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "renderModelsSection",
-      "sourceSha256": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+      "sourceSha256": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -26681,7 +26681,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "97170f039a85cf5a895104f4774094ea04517cd24bb91a5ccae0c78cb4702b57",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
@@ -45401,7 +45401,7 @@
       "id": "src/shared/components/EditConnectionModal.js#EditConnectionModal",
       "sourcePath": "src/shared/components/EditConnectionModal.js",
       "symbol": "EditConnectionModal",
-      "sourceSha256": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+      "sourceSha256": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45431,7 +45431,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "ApiKeyOpenAI opens the actual API-key form and invokes Check; no OAuth-email expectation.",
@@ -45445,7 +45445,7 @@
             "oauth-account"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "OAuthAccount shows its configured generic account identity and no API-key input.",
@@ -45459,7 +45459,7 @@
             "azure-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "AzurePanel displays its actual provider-specific configuration.",
@@ -45473,7 +45473,7 @@
             "search-engine-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "GooglePsePanel displays its own configuration and edits the engine ID.",
@@ -45487,7 +45487,7 @@
             "fingerprint-control"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "CodexFingerprintPanel opens and closes the actual OAuth fingerprint selector.",
@@ -45501,7 +45501,7 @@
             "cloudflare-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "CloudflareAccountIdPanel renders its own provider panel.",
@@ -45515,7 +45515,7 @@
             "snowflake-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "SnowflakeAccountIdPanel renders its own provider panel.",
@@ -45530,7 +45530,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "OpenAIResponsesStore toggles the actual store switch and leaves it checked.",
@@ -45545,7 +45545,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "RegionPickerXiaomi renders the actual Region combobox, not account email.",
@@ -45559,7 +45559,7 @@
             "test-error"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "TestFailureBadge invokes a failed production connection test and shows the Failed outcome.",
@@ -45574,7 +45574,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false and play asserts no Edit Connection dialog.",
@@ -92556,7 +92556,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "69a0588e8a7656e8d9d35c280d84e67589a69a09231203c3e4f82a2e1ad92927",
-    "sourceCensusSha256": "720fd7a0ee3dd7879e07fd91b237a50ba32b2102020ca5c90246905cf2178973",
+    "sourceCensusSha256": "1e7fd63035e4b2a1493b191591606128d28e801a5306b0dd78fed94f630c0d0d",
     "pendingRows": 346,
     "retainedApprovedRows": 270,
     "pendingReferences": 1275,

@@ -17,8 +17,9 @@ export const MAX_IMPORT_COOKIES = 16;
 export const MAX_COOKIE_VALUE_LENGTH = 8192;
 
 const TOKEN_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$/;
-// Control characters, `;` (cookie-pair separator) and edge whitespace could splice extra cookies into the stored Cookie header.
-const UNSAFE_VALUE_RE = /[\u0000-\u001f\u007f;]|^\s|\s$/;
+// Only printable ASCII can be sent reliably as a Fetch header; semicolons
+// separate cookie pairs, and edge whitespace is normalized by Headers.
+const UNSAFE_VALUE_RE = /[^\x20-\x7e]|;|^\s|\s$/;
 
 /** Select an explicit import profile or reuse the provider's web sign-in rules. */
 export function cookieImportConfig(provider) {
@@ -80,7 +81,7 @@ export function isValidCookieName(name) {
   return isString(name) && TOKEN_NAME_RE.test(name);
 }
 
-/** Cookie values may not carry control characters, `;` or edge whitespace. */
+/** Cookie values must be printable ASCII without `;` or edge whitespace. */
 export function isValidCookieValue(value) {
   return isString(value) && value.length > 0 &&
     value.length <= MAX_COOKIE_VALUE_LENGTH && !UNSAFE_VALUE_RE.test(value);

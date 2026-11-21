@@ -91,14 +91,14 @@ The store is per process (a `globalThis` map, like web-login sessions). A deploy
 
 - **Transport:** HTTPS, or plain HTTP to `localhost`, `127.0.0.1` or `[::1]` for local development. The scheme is the transport's, unless the `Host` is the operator-configured `BASE_URL` / `NEXT_PUBLIC_BASE_URL` (a TLS terminator). Forwarded headers are not trusted.
 - **Origin:** `origin` must equal the contract origin byte for byte. `http://`, a trailing slash, a port, a suffix or a sibling host are rejected.
-- **Cookies:** names must be approved (above); chunked cookies must be contiguous from `.0`; the required cookies must be present (the same `hasRequiredCookies` rule the dashboard capture applies); no duplicates; at most 16 cookies and 8192 characters per value; values may not contain control characters, `;` or edge whitespace; `domain`, when sent, must be the provider host or a parent of it (never a bare public suffix); `secure: false` and past `expirationDate` (seconds, as browsers report it) are rejected. Cookies outside the allowlist, such as `cf_clearance`, are rejected rather than dropped.
+- **Cookies:** names must be approved (above); chunked cookies must be contiguous from `.0`; the required cookies must be present (the same `hasRequiredCookies` rule the dashboard capture applies); no duplicates; at most 16 cookies and 8192 characters per value; values must be printable ASCII without `;` or edge whitespace; `domain`, when sent, must be the provider host or a parent of it (never a bare public suffix); `secure: false` and past `expirationDate` (seconds, as browsers report it) are rejected. Cookies outside the allowlist, such as `cf_clearance`, are rejected rather than dropped.
 - **Header composition:** `composeCookieHeader` from web-login builds the stored value, required cookies first, chunks in index order.
 - **Size:** the import body is at most 32 KiB and the pairing body 4 KiB, enforced on the declared length and again while streaming. Content type must be `application/json`.
 - Validation is structural. No request is made to the provider.
 
 ## Persistence
 
-Create goes through `createProvider` (create-only, so a name collision is `409`), which encrypts the cookie at rest. Update calls `updateProviderConnection` with `provider` pinned, so the repository refuses the write inside its transaction if the row's provider changed, and sets `testStatus: "active"`, which is the repository's marker for an explicit credential replacement and clears a pending reauthentication state. All other connection fields are kept.
+Create goes through `createProvider`, which encrypts the cookie at rest. A same-name cookie connection for the same provider causes a `409`, checked atomically with insertion; names may be reused across providers or credential types. Update calls `updateProviderConnection` with `provider` pinned, so the repository refuses the write inside its transaction if the row's provider changed, and sets `testStatus: "active"`, which is the repository's marker for an explicit credential replacement and clears a pending reauthentication state. All other connection fields are kept.
 
 ## Secret handling
 

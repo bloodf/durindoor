@@ -321,7 +321,22 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
   let result;
 
   db.transaction(() => {
+    if ((createOnly || requireNewName) && data.authType === "cookie" && data.name) {
+      // Serialize the read and insert across database connections as well as
+      // within this process, using the shared provider-connection write lock.
+      const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+      if ((lock.changes || 0) !== 1) throw new Error("Cookie connection creation requires an initialized schema");
+    }
     const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
+
+    // Cookie imports create a new named target; check within the same transaction
+    // as the insert so concurrent pairings cannot create duplicate targets.
+    if ((createOnly || requireNewName) && data.authType === "cookie" && data.name &&
+        all.some((c) => c.authType === "cookie" && c.name === data.name)) {
+      const error = new Error("A cookie connection with this name already exists for this provider");
+      error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
+      throw error;
+    }
 
     let existing = null;
     if (data.authType === "oauth" && data.email) {

@@ -103,6 +103,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     ["oidcLoginLabel", "value-for-oidcLoginLabel"],
     ["tunnelDashboardAccess", "value-for-tunnelDashboardAccess"],
     ["enableObservability", "value-for-enableObservability"],
+    ["enableSessionCapture", true],
     ["outboundProxyEnabled", "value-for-outboundProxyEnabled"],
     ["outboundProxyUrl", "value-for-outboundProxyUrl"],
     ["outboundNoProxy", "value-for-outboundNoProxy"],
@@ -126,6 +127,14 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     });
 
     expect(mocks.updateSettings).toHaveBeenCalledWith({ theme: "dark" });
+  });
+
+  it("validates the operator capture flag as a boolean", async () => {
+    mocks.canModifySecurityCriticalSettings.mockResolvedValue(true);
+    expect((await PATCH({ json: async () => ({ enableSessionCapture: "true" }) })).status).toBe(400);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    await PATCH({ json: async () => ({ enableSessionCapture: true }) });
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ enableSessionCapture: true });
   });
 
   it("allows an identity-proved caller to persist auth-critical settings", async () => {

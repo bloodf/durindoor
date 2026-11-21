@@ -115,6 +115,10 @@ export async function PATCH(request) {
       stripSettingKeys(body, AUTH_CRITICAL_SETTING_KEYS);
     }
 
+    if (Object.hasOwn(body, "enableSessionCapture") && !isBoolean(body.enableSessionCapture)) {
+      return NextResponse.json({ error: "Invalid enableSessionCapture" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+
     let passwordSessionEpoch;
     let expectedPasswordSessionEpoch = "initial";
     if (Object.prototype.hasOwnProperty.call(body, "newPassword")) {

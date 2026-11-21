@@ -86,6 +86,25 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     return { provider: connection.provider, connectionId: connection.id, models: yuanbaoWebRegistry.models };
   }
 
+  // Reka publishes no list-models endpoint of its own: its catalog is the
+  // curated registry list, so that list is the discovery answer. The
+  // connection's key is never used here and no request leaves the gateway.
+  // Port of OmniRoute #1956.
+  if (connection.provider === "reka") {
+    const models = getProviderModels("reka");
+    if (models.length > 0) {
+      return {
+        provider: connection.provider, connectionId: connection.id,
+        models: models.map((model) => ({
+          id: model.id,
+          name: model.name || model.id,
+          owned_by: connection.provider,
+        })),
+        source: "local_catalog",
+      };
+    }
+  }
+
   if (connection.provider === "antigravity" && connection.id) {
     const backedOff = antigravityForbiddenBackoff(connection);
     if (backedOff) return backedOff;

@@ -206,3 +206,12 @@ function repairSchemaConstructs(node) {
 export function sanitizeToolSchemaParameters(schema, toolName) {
   return repairSchemaConstructs(normalizeToolSchema(schema, toolName));
 }
+
+/**
+ * Ensure object schema always has properties field (required by Codex Responses API)
+ */
+export function normalizeToolParameters(params) {
+  if (!params) return { type: "object", properties: {} };
+  if (params.type === "object" && !params.properties) return { ...params, properties: {} };
+  return params;
+}

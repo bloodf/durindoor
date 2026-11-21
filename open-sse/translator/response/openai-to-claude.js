@@ -1,7 +1,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/index.js";
-import { fromOpenAIFinish } from "../concerns/finishReason.js";
+import { ROLE, CLAUDE_BLOCK, CLAUDE_STOP, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/index.js";
+import { claudeStopReasonWithToolCalls } from "../concerns/finishReason.js";
 import { extractTextContent } from "../concerns/textContent.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
@@ -380,9 +380,23 @@ export function openaiToClaudeResponse(chunk, state) {
     } else {
       // Use tracked usage (will be estimated in stream.js if not valid)
       const finalUsage = state.usage || { input_tokens: 0, output_tokens: 0 };
+      // Some OpenAI-compatible upstreams report finish_reason "stop" together
+      // with tool_calls. The Claude client stops its agent loop unless the turn
+      // ends with stop_reason "tool_use" (#18270), so an ordinary stop that
+      // carried tool calls is promoted. Truncation, safety and refusal results
+      // keep their own reason (see claudeStopReasonWithToolCalls).
+      const stopReason = claudeStopReasonWithToolCalls(
+        choice.finish_reason,
+        state.toolCalls instanceof Map && state.toolCalls.size > 0
+      );
+      if (stopReason === CLAUDE_STOP.TOOL_USE) {
+        // The turn really ended with tool calls: keep the shared marker honest
+        // for the usage injection in stream.js.
+        state.finishReason = OPENAI_FINISH.TOOL_CALLS;
+      }
       results.push({
         type: "message_delta",
-        delta: { stop_reason: convertFinishReason(choice.finish_reason) },
+        delta: { stop_reason: stopReason },
         usage: finalUsage
       });
       results.push({ type: "message_stop" });
@@ -391,8 +405,6 @@ export function openaiToClaudeResponse(chunk, state) {
 
   return results.length > 0 ? results : null;
 }
-
-const convertFinishReason = (reason) => fromOpenAIFinish(reason, "claude");
 
 // Register
 register(FORMATS.OPENAI, FORMATS.CLAUDE, null, openaiToClaudeResponse);

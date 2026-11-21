@@ -2,7 +2,7 @@ import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
-import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
+import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, repairDisplacedToolResults, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest, removeNamelessOpenAIToolHistory } from "./formats/claude.js";
 import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
@@ -69,6 +69,7 @@ function detectClientLastRole(body) {
 // Translate request: source -> openai -> target. `translationContext` carries
 // request-scoped routing intent (never serialized into the provider body).
 const isGeminiRequestSource = (format) => format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI;
+const isGeminiFamilyTarget = (format) => isGeminiRequestSource(format) || format === FORMATS.ANTIGRAVITY || format === FORMATS.VERTEX;
 
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
@@ -120,7 +121,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // keep rejecting malformed JSON instead of having it silently coerced first.
   ensureToolCallIds(result, targetFormat);
 
-  // Fix missing tool responses (insert empty tool_result if needed)
+  // Fix missing tool responses (insert empty tool_result if needed). A real result
+  // displaced past a non-tool message is hoisted first so no placeholder duplicates it.
+  repairDisplacedToolResults(result);
   fixMissingToolResponses(result);
 
   // Salvage orphaned tool results (tool_result with no matching tool_call).
@@ -226,6 +229,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
           if ((sourceFormat === FORMATS.OPENAI_RESPONSES || isGeminiRequestSource(sourceFormat)) && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);
           }
+          // Responses developer items survive the pivot with role "developer", which the
+          // Gemini converters skip. Promote them to system so they land in systemInstruction.
+          if (sourceFormat === FORMATS.OPENAI_RESPONSES && isGeminiFamilyTarget(targetFormat) && Array.isArray(result?.messages)) {
+            result.messages = result.messages.map((message) => message?.role === ROLE.DEVELOPER ? { ...message, role: ROLE.SYSTEM } : message);
+          }
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -269,6 +277,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
   if (targetFormat === FORMATS.OPENAI) {
+    // Responses/Gemini sources only expose messages[] after translation.
+    if (isObject(result)) repairDisplacedToolResults(result);
     result = filterToOpenAIFormat(result, {
       preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||

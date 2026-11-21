@@ -6,7 +6,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { getThinkingLevels, getThinkingLevelsFromCapabilities, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
-import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
+import { GLM_ANTHROPIC_PROVIDERS, LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -472,6 +472,14 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         // upstreams require budget_tokens on a thinking block, so the redundant
         // marker is rejected there — omit it and keep the reasoning effort.
         if (canDisable || targetFormat !== FORMATS.CLAUDE) body.thinking = { type: "enabled" };
+        // The Anthropic wire requires budget_tokens on an enabled block, so a
+        // client's explicit budget must survive (even for always-on models,
+        // where it still caps reasoning). A missing budget is filled later by
+        // reconcileClaudeThinkingBudget, once max_tokens is final.
+        if (targetFormat === FORMATS.CLAUDE && GLM_ANTHROPIC_PROVIDERS.has(provider) && cfg.mode === "budget") {
+          const budget = toBudget(cfg, caps.thinkingRange);
+          if (Number.isFinite(budget) && budget > 0) body.thinking = { type: "enabled", budget_tokens: budget };
+        }
         // Z.ai reads scalar high|max; Ark-compatible wires read reasoning.effort.
         const level = toLevel(eff);
         const objectEffort = ["minimal", "low", "medium", "high"].includes(level) ?

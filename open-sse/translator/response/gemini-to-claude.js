@@ -40,6 +40,7 @@ export function geminiToClaudeResponse(chunk, state) {
     const inlineSignature = readInlineSignature(part);
     if (!part.functionCall && inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
     if (part.thought === true && part.text) {
+      if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
       results.push({ type: "content_block_start", index, content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" } }, { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: part.text } }, { type: "content_block_stop", index });
       continue;

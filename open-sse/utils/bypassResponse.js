@@ -15,6 +15,8 @@ const SSE_HEADERS = {
   "Cache-Control": "no-cache",
   Connection: "keep-alive",
   "Access-Control-Allow-Origin": "*",
+  // Synthetic SSE is built here, outside the shared SSE header constants.
+  "X-Accel-Buffering": "no",
 };
 
 /** Build the canonical completion used by local bypasses and Ponytail commands. */

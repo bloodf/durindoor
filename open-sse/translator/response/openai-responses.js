@@ -807,12 +807,14 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const itemKey = item.id || data.item_id || "";
     const byItem = itemKey ? state.respToolChatIndex.get(itemKey) : undefined;
     const byCall = state.respToolChatIndex.get(state.currentToolCallId);
+    const byOutput = Number.isInteger(data.output_index) ? state.respToolOutputIndex?.get(data.output_index) : undefined;
     let idx;
-    if (byItem !== undefined || byCall !== undefined) {
-      idx = byItem ?? byCall; // duplicate added (retry) — reuse
+    if (byItem !== undefined || byCall !== undefined || byOutput !== undefined) {
+      idx = byItem ?? byCall ?? byOutput; // duplicate added (retry) — reuse
     } else {
       idx = state.toolCallIndex++;
     }
+    if (Number.isInteger(data.output_index)) (state.respToolOutputIndex ??= new Map()).set(data.output_index, idx);
     if (itemKey) state.respToolChatIndex.set(itemKey, idx);
     state.respToolChatIndex.set(state.currentToolCallId, idx);
 
@@ -879,17 +881,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const doneItem = data.item;
     const doneKey = doneItem?.id || data.item_id || "";
     // A done-only item still needs the same header and identity as an added item.
+    const outputKnown = Number.isInteger(data.output_index) && state.respToolOutputIndex?.has(data.output_index);
     const anonymousKnown = !doneKey && !doneItem.call_id && state.currentToolCallId &&
       state.respToolChatIndex?.has(state.currentToolCallId);
-    if (!anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
+    if (!outputKnown && !anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
         !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
       const item = { ...doneItem, call_id: doneItem.call_id || fallbackToolCallId() };
-      const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", item }, state);
-      const args = openaiResponsesToOpenAIResponse({ type: eventType, item }, state);
+      const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", output_index: data.output_index, item }, state);
+      const args = openaiResponsesToOpenAIResponse({ type: eventType, output_index: data.output_index, item }, state);
       return [header, ...(Array.isArray(args) ? args : [args])].filter(Boolean);
     }
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
     (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
+    (Number.isInteger(data.output_index) ? state.respToolOutputIndex?.get(data.output_index) : undefined) ??
     Math.max(0, (state.toolCallIndex || 1) - 1);
     const kind = state.respCustomToolKinds?.get(idx);
     if (kind === "wrapped") {
@@ -924,9 +928,26 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
+  // Respect the status of generic terminal events before recovering a snapshot.
+  if ((eventType === "response.done" || eventType === "response.completed") && data.response?.status === "failed") {
+    return openaiResponsesToOpenAIResponse({ type: "response.failed", response: { ...data.response, error: data.response.error || { message: "Response failed" } } }, state);
+  }
+  if ((eventType === "response.done" || eventType === "response.completed") && data.response?.status === "incomplete") {
+    return openaiResponsesToOpenAIResponse({ type: "response.incomplete", response: data.response }, state);
+  }
+
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
     const textSnapshots = finalizeResponsesTextSnapshots(state, data.response?.output);
+    const toolSnapshots = [];
+    if (!state.finishReasonSent && eventType !== "response.incomplete" &&
+        (data.response?.status == null || data.response.status === "completed") && Array.isArray(data.response?.output)) {
+      for (const [output_index, item] of data.response.output.entries()) {
+        if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL) continue;
+        const result = openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state);
+        if (result) toolSnapshots.push(...(Array.isArray(result) ? result : [result]));
+      }
+    }
     closeResponsesTextSnapshots(state);
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
@@ -971,7 +992,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       }
 
       const pending = flushWrappedCustomToolInputs(state);
-      return textSnapshots.length || pending.length ? [...textSnapshots, ...pending, finalChunk] : finalChunk;
+      return textSnapshots.length || toolSnapshots.length || pending.length ? [...textSnapshots, ...toolSnapshots, ...pending, finalChunk] : finalChunk;
     }
     const pending = flushWrappedCustomToolInputs(state);
     return pending.length ? pending : null;

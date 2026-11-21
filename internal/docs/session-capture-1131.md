@@ -1,9 +1,19 @@
-# Session capture storage foundation
+# Session capture storage
 
-Session capture is not connected to request handling. The repository API is
-available in `src/lib/db/repos/sessionCaptureRepo.js`. Capture defaults to off.
-Operators enable writes with `enableSessionCapture: true` in settings. Each
-write also requires explicit `consent: true`.
+The client contract is documented in [Configuration](../../docs/configuration.mdx#opt-in-message-capture).
+The chat handler starts observation after caller authentication and observes only
+the response selected by routing. It snapshots bounded user text before routing
+and assembles assistant text from the client-facing JSON or complete event stream.
+The observer forwards the original bytes with backpressure and passes only
+redacted content, the admitted key ID, the validated UUID and the server's
+admission generation to storage. Storage rechecks operator enablement and key
+activity and expiry under the write lock. Full logical restores clear previous
+captures and fence delayed completions from the pre-restore generation. Engine
+cutover mirrors capture rows alongside their owning keys and replaces any rows
+left on the target by an earlier cutover.
+
+The repository API is available in `src/lib/db/repos/sessionCaptureRepo.js`.
+The standalone write API also requires explicit `consent: true`.
 
 - `captureSessionTurn({ credential, session, consent, turn, retentionMs })`
   stores one redacted JSON turn and returns `true`. It returns `false` when
@@ -45,9 +55,9 @@ read, write, or maintenance pass.
 The repository authenticates an active, unexpired API key and uses its stable
 ID for storage and access. Session IDs are UUIDs and are normalized to lowercase.
 Capture redacts the caller's credential, recognized sensitive fields, bearer
-tokens, and common API key patterns. Keep credentials in structured sensitive
-fields or omit them from the capture payload, as free-form content may contain
-secrets in unrecognized formats.
+tokens, common API key patterns, JWTs and PEM private-key blocks. Capture stores
+message text as sent apart from pattern redaction, so callers who opt in must
+not put secrets in message content.
 
 The quota counts redacted UTF-8 JSON bytes. Each turn is limited to 16 KiB, and
 each key can retain up to 1 MiB across sessions. At quota, new turns are rejected

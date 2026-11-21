@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import {
   Card,
   CardSkeleton,
@@ -105,6 +106,8 @@ function getConnectionErrorTag(connection) {
 const APIKEY_INITIAL_VISIBLE = 20;
 
 export default function ProvidersPage() {
+  // V5 uses the root presentation tokens while retaining the provider workflows.
+  const v5 = useUiV5();
   const [loadError, setLoadError] = useState("");
   const [toggleError, setToggleError] = useState(null);
   const pendingProviders = useRef(new Set());
@@ -423,7 +426,7 @@ export default function ProvidersPage() {
   webCookieEntries.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className={`flex min-w-0 flex-col gap-6 px-1 sm:px-0${v5 ? " text-dd-text" : ""}`}>
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchData}>Retry</Button></div>}
       {toggleError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
       <PageHeader icon="dns" title="Providers" subtitle="Manage provider connections and routing availability." />
@@ -839,7 +842,7 @@ function ProviderCard({
           size="sm"
           checked={noAuthEnabled}
           onChange={() => onToggleNoAuth(!noAuthEnabled)}
-          ariaLabel={noAuthEnabled ? `Disable ${provider.name}` : `Enable ${provider.name}`}
+          aria-label={noAuthEnabled ? `Disable ${provider.name}` : `Enable ${provider.name}`}
           disabled={savingNoAuth} />
         
         </div> :
@@ -856,7 +859,7 @@ function ProviderCard({
             checked={!allDisabled}
             disabled={saving}
             onChange={() => onToggle(!allDisabled ? false : true)}
-            ariaLabel={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`} />
+            aria-label={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`} />
           
           </div>
         </div>

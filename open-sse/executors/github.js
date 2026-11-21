@@ -93,6 +93,34 @@ export class GithubExecutor extends BaseExecutor {
     };
   }
 
+  /**
+   * Drop the reasoning fields GitHub Copilot rejects on assistant history.
+   *
+   * Copilot turns `reasoning_text` / `reasoning_content` on an assistant turn
+   * into Anthropic thinking blocks it cannot sign, and the upstream then
+   * answers 400 ("Invalid signature in thinking block"). Both fields are
+   * response-only artifacts, so a replayed history must not carry them.
+   *
+   * Assistant turns only: that is where clients replay the previous turn's
+   * reasoning. Every other role keeps its fields, and the message content,
+   * the tool calls and the tool results are left exactly as they were.
+   *
+   * The copy preserves the original property descriptors, so the
+   * non-enumerable Claude native blocks a message may carry survive the
+   * rewrite (see translator/schema/blocks.js).
+   */
+  stripAssistantReasoningFields(message) {
+    if (!message || message.role !== "assistant") return message;
+    if (message.reasoning_text === undefined && message.reasoning_content === undefined) return message;
+    const stripped = Object.create(
+      Object.getPrototypeOf(message),
+      Object.getOwnPropertyDescriptors(message)
+    );
+    delete stripped.reasoning_text;
+    delete stripped.reasoning_content;
+    return stripped;
+  }
+
   // Sanitize messages for GitHub Copilot /chat/completions endpoint (gpt/gemini/grok models —
   // claude models never reach this, see execute() below).
   // The endpoint only accepts 'text' and 'image_url' content part types.
@@ -126,6 +154,11 @@ export class GithubExecutor extends BaseExecutor {
 
       return msg;
     });
+
+    // Reasoning fields are response-only artifacts the chat endpoint rejects on
+    // assistant history (OmniRoute #923). Strip them here, on the one route that
+    // forwards assistant reasoning to Copilot's OpenAI-shaped endpoint.
+    sanitized.messages = sanitized.messages.map((msg) => this.stripAssistantReasoningFields(msg));
 
     // GitHub Copilot's /chat/completions rejects a conversation that ends with an
     // assistant message ("does not support assistant message prefill. The conversation

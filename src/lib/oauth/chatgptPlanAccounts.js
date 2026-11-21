@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { linkSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isString } from "../../shared/utils/typeChecks.js";
 import { getDataDir } from "../dataDir.js";
 import {
   compareAndSwapPrivateChatGptPlanAccount,
@@ -49,7 +50,7 @@ function accountId(clientId) {
 
 function identityMatches(record, selection) {
   return record?.issuer === issuer && selection?.issuer === issuer &&
-    typeof record.subject === "string" && Boolean(record.subject.trim()) &&
+    isString(record.subject) && Boolean(record.subject.trim()) &&
     record.subject === selection.subject && /^oaiapp_[A-Za-z0-9_-]{1,256}$/.test(record.clientId) &&
     record.clientId === selection.clientId;
 }
@@ -92,7 +93,7 @@ export function createChatGptPlanAccounts({ fetchAdapter, clock = Date.now }) {
   const pending = new WeakMap();
 
   async function selectedRow(selection) {
-    if (typeof selection?.id !== "string" || !/^[a-f0-9]{64}$/.test(selection.id)) fail("account_mismatch");
+    if (!isString(selection?.id) || !/^[a-f0-9]{64}$/.test(selection.id)) fail("account_mismatch");
     const row = await readPrivateChatGptPlanAccount(selection.id);
     if (!identityMatches(row?.providerSpecificData, selection) ||
         selection.id !== accountId(selection.clientId) || row.providerSpecificData.hostId !== hostId) {
@@ -189,10 +190,10 @@ export function createChatGptPlanAccounts({ fetchAdapter, clock = Date.now }) {
           record.expiresAt <= record.savedAt ||
           (record.earliestRefreshAt !== null &&
             (!Number.isSafeInteger(record.earliestRefreshAt) || record.earliestRefreshAt < 0)) ||
-          (record.email !== undefined && typeof record.email !== "string") ||
+          (record.email !== undefined && !isString(record.email)) ||
           !Array.isArray(record.scopes) || !record.scopes.every((scope) =>
-            typeof scope === "string" && /^[\x21\x23-\x5b\x5d-\x7e]+$/.test(scope)) ||
-          !tokenFields.every((field) => typeof record[field] === "string" && record[field])) {
+            isString(scope) && /^[\x21\x23-\x5b\x5d-\x7e]+$/.test(scope)) ||
+          !tokenFields.every((field) => isString(record[field]) && record[field])) {
         fail("account_mismatch");
       }
       await commit(null, toRow(record.id, { ...record, hostId }));

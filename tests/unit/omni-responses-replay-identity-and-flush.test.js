@@ -70,3 +70,56 @@ it("keeps the active watermark across unrelated usage and terminal frames", asyn
   expect(independent.isReplay(event("response.output_text.delta", 1))).toBe(false);
   expect(independent.isReplay(event("response.output_text.delta", 1))).toBe(true);
 });
+
+const replayHistory = [
+  { type: "response.created", sequence_number: 0, response: { id: "a", status: "in_progress" } },
+  { type: "response.output_text.delta", sequence_number: 1, delta: "old" },
+  { type: "response.completed", sequence_number: 2, response: { id: "a", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 1 } } },
+  { type: "response.created", sequence_number: 0, response: { id: "b", status: "in_progress" } },
+  { type: "response.output_text.delta", sequence_number: 1, delta: "one" },
+  // Offline reconnect: the already-seen creation of "a" and b's earlier delta are replayed.
+  { type: "response.created", sequence_number: 0, response: { id: "a", status: "in_progress" } },
+  { type: "response.output_text.delta", sequence_number: 1, delta: "one" },
+  { type: "response.output_text.delta", sequence_number: 2, delta: "two" }
+];
+
+async function passthroughDeltas(payloads, tail = "") {
+  const { createPassthroughStreamWithLogger } = await import("../../open-sse/utils/stream.js");
+  const input = payloads.map(p => "data: " + JSON.stringify(p)).join("\n\n") + tail;
+  const stream = createPassthroughStreamWithLogger("codex", null, null, "gpt-test", null, {}, null, null, FORMATS.OPENAI_RESPONSES);
+  const output = await new Response(new Response(input).body.pipeThrough(stream)).text();
+  return [...output.matchAll(/"delta":"([^"]+)"/g)].map(m => m[1]);
+}
+
+it("keeps the active watermark when a historical creation is replayed", async () => {
+  const { createResponsesSequenceReplayTracker } = await import("../../open-sse/utils/responsesSequenceReplay.js");
+  const tracker = createResponsesSequenceReplayTracker();
+  for (const p of replayHistory.slice(0, 5)) expect(tracker.isReplay(p)).toBe(false);
+  // The historical creation is a replay and leaves b's watermark in place.
+  expect(tracker.isReplay(replayHistory[5])).toBe(true);
+  expect(tracker.isReplay(replayHistory[6])).toBe(true);
+  expect(tracker.isReplay(replayHistory[7])).toBe(false);
+});
+
+it("delivers a current delta once across a historical creation replay", async () => {
+  const deltas = await passthroughDeltas(replayHistory, "\n\n");
+  expect(deltas).toEqual(["old", "one", "two"]);
+});
+
+it("drops a duplicate EOF and delivers a fresh EOF after a historical creation replay", async () => {
+  const eof = (sequence_number, delta) => "\n\ndata: " + JSON.stringify({ type: "response.output_text.delta", sequence_number, delta });
+  const duplicate = await passthroughDeltas(replayHistory, eof(2, "two"));
+  expect(duplicate).toEqual(["old", "one", "two"]);
+  const fresh = await passthroughDeltas(replayHistory, eof(3, "three"));
+  expect(fresh).toEqual(["old", "one", "two", "three"]);
+});
+
+it("still starts a genuinely new response after a replayed creation", async () => {
+  const { createResponsesSequenceReplayTracker } = await import("../../open-sse/utils/responsesSequenceReplay.js");
+  const tracker = createResponsesSequenceReplayTracker();
+  for (const p of replayHistory.slice(0, 5)) tracker.isReplay(p);
+  expect(tracker.isReplay(replayHistory[5])).toBe(true);
+  expect(tracker.isReplay({ type: "response.created", sequence_number: 0, response: { id: "c" } })).toBe(false);
+  expect(tracker.isReplay({ type: "response.output_text.delta", sequence_number: 1 })).toBe(false);
+  expect(tracker.isReplay({ type: "response.output_text.delta", sequence_number: 1 })).toBe(true);
+});

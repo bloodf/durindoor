@@ -1,0 +1,7 @@
+# Copilot account contract precedence
+
+Downstream [#2092](https://github.com/bloodf/durindoor/pull/2092) adapted [OmniRoute #15337](https://github.com/cheaper-inference/OmniRoute/pull/15337) (discovered endpoint metadata) and [#15499](https://github.com/cheaper-inference/OmniRoute/pull/15499) (GHE GPT-6 routing). Both source PRs remain merged. Those adaptations remain applicable; this change repairs their interaction with the existing executor-wide escalation cache, rather than porting another upstream change.
+
+A discovered route now takes precedence over learned escalation. Escalation is remembered for the stable connection ID and API host within the executor lifetime; calls without a connection identity still retry immediately but do not share a cached route. Different providers have separate executors. No token material is used as a cache key. The existing GHE family heuristic applies when discovery is absent, and Claude and Gemini retain their existing endpoint restrictions. Request conversion and endpoint discovery cache lifetimes are unchanged.
+
+The offline test covers GitHub and GHE account isolation and actual request body shapes, same-account reuse, refreshed metadata, enterprise host separation and anonymous calls. Existing endpoint-contract tests cover the remaining discovery and Claude/Gemini behavior. The supplied local review fixture exposed the cross-account precedence defect; no live provider requests were used.

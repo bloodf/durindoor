@@ -13,6 +13,7 @@ import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, LIVE_CATALOG_PROVIDERS } from "@/shared/constants/providers";
 import { mergeLiveCatalogs, liveCatalogModelEntries } from "@/shared/utils/liveCatalogModels";
+import { resolveProviderPrefix } from "@/shared/utils/providerPrefix";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 import { isString } from "../utils/typeChecks.js";
@@ -496,7 +497,14 @@ export default function ModelSelectModal({
         const connection = activeProviders.find((p) => p.provider === providerId);
         const matchedNode = providerNodes.find((node) => node.id === providerId);
         const displayName = matchedNode?.name || connection?.name || providerInfo.name;
-        const nodePrefix = connection?.providerSpecificData?.prefix || matchedNode?.prefix || providerId;
+        // The published prefix is the operator's configured prefix. Only
+        // provider nodes are remapped, so a stray `prefix` on a built-in
+        // connection never renames that provider's models.
+        const nodePrefix = resolveProviderPrefix({
+          providerId,
+          providerSpecificData: connection?.providerSpecificData,
+          node: matchedNode
+        });
 
         // Aliases are stored using the raw providerId as key (e.g. "openai-compatible-chat-<uuid>/glm-4.7"),
         // so we must filter by providerId, not by the display prefix.

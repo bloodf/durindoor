@@ -155,7 +155,7 @@ test("marketing and docs layouts retain readable themes without serious accessib
   test.setTimeout(180_000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   mkdirSync(screenshots, { recursive: true });
-  for (const width of [1440, 360]) {
+  for (const width of [1440, 390, 360]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of ["/", "/docs", "/docs/getting-started/installation"]) {
       await page.goto(route, { waitUntil: "networkidle" });
@@ -166,7 +166,7 @@ test("marketing and docs layouts retain readable themes without serious accessib
         await expect(total).not.toHaveText("0");
         await expect(page.locator(".kinds-total-n [aria-hidden=true]")).toHaveText(await total.innerText());
       }
-      if (route === "/" && width === 360) {
+      if (route === "/" && (width === 390 || width === 360)) {
         const table = page.frameLocator('iframe[title="Live demo"]').getByRole("region", { name: "Provider health", exact: true });
         await table.focus();
         await expect(table).toBeFocused();
@@ -216,7 +216,7 @@ test("published pages have responsive, accessible layouts without console errors
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-  for (const width of [1440, 360]) {
+  for (const width of [1440, 390, 360]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of routes) {
       await page.goto(route, { waitUntil: "networkidle" });

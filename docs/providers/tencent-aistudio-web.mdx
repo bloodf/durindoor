@@ -1,0 +1,9 @@
+# Tencent AI Studio Web
+
+Tencent AI Studio uses a browser session cookie. Sign in at [aistudio.tencent.ai](https://aistudio.tencent.ai), then capture the cookies for that domain with the cookie capture extension or paste the Cookie header from a request in DevTools. HAR export is also supported; remove unrelated headers before importing.
+
+Available models are HY3-G, Hunyuan Default, and Hunyuan 3D. Availability, quotas, and rate limits are controlled by Tencent and may change. An expired session is rejected by the upstream service; sign in again and replace the cookie.
+
+Source: [OmniRoute Tencent AI Studio provider](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/tencent-aistudio-web/index.ts) and [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/tencent-aistudio-web.ts).
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

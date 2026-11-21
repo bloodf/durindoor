@@ -1,0 +1,9 @@
+# TinyCMS Web
+
+TinyCMS identifies a device by its UUID rather than a browser cookie. Open [site.tinycms.xyz](https://site.tinycms.xyz), then copy `app-config-uuid` from local storage. The value starts with `R`; paste it as the provider credential. The cookie capture extension, a Cookie header, or a HAR is not applicable to this UUID based session.
+
+The pinned upstream catalog includes Claude, GPT, Gemini, Grok, DeepSeek, Kimi, GLM, Qwen, and Mimo model IDs. Free tier and subscription availability, quotas, and rate limits are determined by TinyCMS. Re-copy the UUID if the site rotates the device identity.
+
+Source: [OmniRoute TinyCMS provider](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/tinycms/index.ts) and [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/tinycms.ts).
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

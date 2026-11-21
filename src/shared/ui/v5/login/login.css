@@ -21,3 +21,10 @@
 @media(max-width:760px) { .v5-login-review { align-content:start; } }
 @media(max-width:760px) { .v5-login-review { grid-template-columns:1fr; } .v5-login-scene { min-height:240px; height:30dvh; } .v5-login-scene-caption { left:24px; bottom:22px; } .v5-login-scene-caption p { font-size:18px; } .v5-login-scene-caption span { display:none; } .v5-login-form { padding:32px 24px 48px; } .v5-login-brand { margin-bottom:28px; } .v5-gate-arch { height:150px; width:100px; border-width:10px; } }
 @media(prefers-reduced-motion:reduce) { .v5-gate-pause { display:none; } }
+
+/* Production login fills the viewport without the Storybook toolbar. */
+.v5-login-production, .v5-login-production .v5-login-scene { min-height:100dvh; }
+.v5-login-production .v5-gate-scene { pointer-events:none; }
+.v5-login-production .v5-gate-pause { pointer-events:auto; }
+.v5-login-production .v5-login-fields button { min-height:44px; }
+@media(max-width:760px) { .v5-login-production .v5-login-scene { min-height:240px; } }

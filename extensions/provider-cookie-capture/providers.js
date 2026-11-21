@@ -1,8 +1,7 @@
 /**
  * Providers this extension may read cookies for. The table is compiled in on
  * purpose: a pairing can only narrow it, never add a site or a cookie name.
- * It mirrors the dashboard contract (`getCookieImportContract`, derived from the
- * registry `webLogin` block); a unit test fails when the two drift apart.
+ * It mirrors the capture-enabled subset of the dashboard contract.
  */
 
 import { isObjectLike } from "./types.js";
@@ -29,6 +28,12 @@ export const PROVIDERS = deepFreeze({
     label: "Muse Spark Web",
     origin: "https://www.meta.ai",
     cookieNames: ["ecto_1_sess"],
+    cookiePrefixes: [],
+  },
+  "yuanbao-web": {
+    label: "Tencent Yuanbao Web",
+    origin: "https://yuanbao.tencent.com",
+    cookieNames: ["hy_user", "hy_token"],
     cookiePrefixes: [],
   },
   "perplexity-web": {

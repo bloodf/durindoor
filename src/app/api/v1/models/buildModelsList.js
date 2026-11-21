@@ -43,6 +43,8 @@ import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { projectModelPresentation } from "open-sse/providers/models/presentation.js";
+import { resolveChatgptPlanAccess } from "@/sse/services/chatgptPlanAccess.js";
+import { listChatgptPlanModels } from "open-sse/providers/chatgpt-plan/index.js";
 
 // In-flight request coalescing for `buildModelsList` (OmniRoute #6440):
 // concurrent `/v1/models` calls that hit before the first one resolves would
@@ -704,7 +706,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   const storedAllowlist = (providerId, alias) =>
     [getProviderAlias(providerId), alias, providerId].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
 
-  // Providers whose catalogs belong to one endpoint (mlx, opencode-server) are
+  // Providers whose catalogs belong to one endpoint (including MLX, OpenCode Server and Grokified) are
   // listed from the connection the caller may use: for a key scoped to provider
   // accounts, the first active connection in that scope, and none when the
   // scope holds no connection of the provider. Other providers are unaffected.
@@ -735,6 +737,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   }
 
   const models = [];
+  const privatePlanModels = new WeakSet();
   // Model ids below are prefixed with outputAlias (static alias or the active
   // connection's custom prefix), so map each exposed alias back to the
   // provider id — needed for combo capability aggregation on ids like
@@ -968,6 +971,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (!modelId) continue;
 
     const providerId = aliasToProviderId[providerAlias] ?? providerAlias;
+    if (providerId === "chatgpt-plan") continue;
     const inherited = inheritedCustomModelsByProvider.get(providerId)?.get(`${kind}\0${modelId}`) ||
       materializeSyncedModel(providerId, { id: modelId, kind }, sharedMetadata);
     const inheritedCaps = inherited.capabilities;
@@ -1010,6 +1014,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   } else {
     const providerResults = await Promise.all(
       activeConnectionEntries.map(async ([providerId, conn]) => {
+        // Private catalogs are fetched separately after checking the caller's scope.
+        if (providerId === "chatgpt-plan") return [];
         if (!providerMatchesKinds(providerId, kindFilter)) return [];
         if (isFreeNoAuthDisabled(providerId)) return [];
 
@@ -1343,11 +1349,47 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
   }
 
+  // OmniRoute b748429cf5b3aeb142a708fd3e8751b6918b9dc8,
+  // open-sse/config/providers/registry/chatgpt/index.ts: account catalog discovery.
+  // Never cache this roster or load private storage before authorization gates.
+  if (kindFilter.includes(LLM_KIND) && process.env.DURINDOOR_CHATGPT_PLAN_ENROLLMENT === "1" &&
+      PROVIDERS["chatgpt-plan"] && options.verifiedKey?.isActive === true &&
+      Array.isArray(options.allowedConnectionIds) && options.allowedConnectionIds.length) {
+    const conn = connections.find((c) => c.provider === "chatgpt-plan" && options.allowedConnectionIds.includes(c.id));
+    if (conn) {
+      try {
+        const { createChatGptPlanAccounts } = await import("@/lib/oauth/chatgptPlanAccounts.js");
+        const access = await resolveChatgptPlanAccess({
+          verifiedKey: options.verifiedKey, allowedConnectionIds: options.allowedConnectionIds,
+          selectedConnection: conn, accountSelection: conn.providerSpecificData?.chatgptPlanAccount,
+          ownerOperatedEnabled: true, providerRegistered: true,
+          accounts: { readAccount: (selection) => createChatGptPlanAccounts({ fetchAdapter: (url, init) => fetch(url, init) }).readAccount(selection) },
+        });
+        if (access) {
+          const rows = await listChatgptPlanModels(access);
+          const alias = getProviderAlias("chatgpt-plan") || "chatgpt-plan";
+          for (const row of rows) {
+            if (isDisabled(alias, row.slug)) continue;
+            const enabled = resolveEnabledModels("chatgpt-plan", conn);
+            if (enabled.length && !enabled.includes(row.slug)) continue;
+            const model = { id: `${alias}/${row.slug}`, object: "model", owned_by: alias, kind: LLM_KIND, name: row.display_name || row.slug, capabilities: {} };
+            privatePlanModels.add(model);
+            models.push(model);
+          }
+        }
+      } catch {
+        // Private account or upstream failures must not reveal credentials.
+      }
+    }
+  }
+
 
   const dedupedModels = [];
   const seenModelIds = new Set();
   for (const model of models) {
     if (!model?.id || seenModelIds.has(model.id)) continue;
+    const prefix = model.id.split("/")[0];
+    if ((aliasToProviderId[prefix] ?? prefix) === "chatgpt-plan" && !privatePlanModels.has(model)) continue;
     seenModelIds.add(model.id);
     // #6495 / F-4: backstop filter — catches any path that didn't pre-filter
     // (custom models, alias-backed rows, keyless static fallback). Combos are
@@ -1400,10 +1442,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
  *   `exposeComboOnly` is an internal override for callers that require the full
  *   direct-model catalog. `allowedConnectionIds` is the caller's API-key scope
  *   (empty or absent means unrestricted); it selects the connection whose
- *   models connection-scoped providers (mlx, opencode-server) list.
+ *   models connection-scoped providers (including MLX, OpenCode Server and Grokified) list.
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
 export function buildModelsList(kindFilter, guard = getProviderValidationGuard(), options = {}) {
+  // A verified request must never share an account-bound result with another key.
+  if (options.verifiedKey) return buildModelsListImpl(kindFilter, guard, options);
   // #6440: store the impl promise itself so concurrent same-kind callers get
   // the SAME reference. Map insertion happens synchronously before any caller
   // can observe the async aggregation result. #6495/F-4 hide-paid filtering is

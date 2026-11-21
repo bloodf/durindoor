@@ -652,6 +652,33 @@ describe("popup", () => {
     expect(ui.fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("recovers when cookie permission is revoked after Review", async () => {
+    const ui = mount({ chromeOpts: { held: ["cookies", "https://grok.com/*", "https://dashboard.example/*"] } });
+    await review(ui);
+    ui.harness.state.held.delete("cookies");
+    delete ui.harness.chrome.cookies;
+    ui.check(true);
+    ui.$("send").click();
+    await vi.waitFor(() => expect(ui.$("status").textContent).toBe(MESSAGES.permission_denied));
+    expect(ui.$("step-review").hidden).toBe(false);
+    expect(ui.$("send").disabled).toBe(false);
+    expect(callNames(ui.harness.calls).some((name) => name.startsWith("cookies."))).toBe(false);
+    expect(ui.fetchImpl).not.toHaveBeenCalled();
+    ui.$("cancel").click();
+    expect(ui.$("step-input").hidden).toBe(false);
+  });
+
+  it.each(["getAllCookieStores", "get"])("handles a rejected %s read without sending", async (method) => {
+    const ui = mount();
+    await review(ui);
+    ui.harness.chrome.cookies[method] = vi.fn(async () => { throw new Error("permission revoked"); });
+    ui.check(true);
+    ui.$("send").click();
+    await vi.waitFor(() => expect(ui.$("status").textContent).toBe(MESSAGES.permission_denied));
+    expect(ui.$("step-review").hidden).toBe(false);
+    expect(ui.fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("returns to the pairing step after the dashboard rejects the pairing", async () => {
     const ui = mount({ fetchImpl: makeFetch(401, { error: "x" }) });
     await review(ui);

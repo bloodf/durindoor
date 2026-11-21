@@ -444,3 +444,29 @@ outbound mock; none calls a provider service, and none is written or run here.
   DurinDoor contract counterpart and needs no work).
 - Upstream `main` is a moving target. The pin must be re-resolved before any
   port decision, and the candidate work above is scoped to the current pin.
+
+C2 implementation (#2034): Messages and count tokens decode bounded gzip and
+x-gzip before their existing parsers. The compressed and expanded limits use the
+existing admission defaults and environment overrides. At CLIProxyAPI
+[f5c5681](https://github.com/router-for-me/CLIProxyAPI/blob/f5c5681a8361c9da53e93c60b6507816eee7468b/sdk/api/handlers/request_body.go),
+its shared reader also supports zstd, encoding chains and a valid-JSON fallback;
+these are deliberately outside this contract. Its
+[Claude handlers](https://github.com/router-for-me/CLIProxyAPI/blob/f5c5681a8361c9da53e93c60b6507816eee7468b/sdk/api/handlers/claude/code_handlers.go)
+use that reader for both Messages and count tokens. Closed fixtures exercise the
+route boundary; they do not establish live-provider or deployment behavior.
+
+### Antigravity probe and refresh follow-up (#2034)
+
+The on-demand catalog probe classifies 401 as `auth_error` and 403 as
+`forbidden`. A forbidden result backs off in process per connection and project,
+including across access-token rotation; changing projects or accounts does not
+share that backoff. Failed probes leave the last synced catalog intact. The
+backoff follows CLIProxyAPI `f5c5681a` `sdk/cliproxy/antigravity_models.go`'s
+five-minute minimum and exponential equal-jitter window. Process restart clears
+the in-memory history.
+
+A rejected Antigravity OAuth refresh currently returns no replacement credential.
+The request retains its original upstream error, and the refresh coordinator does
+not itself quarantine the connection. OAuth failures may be transient, and this
+path discards their cause, so applying durable credential-wide quarantine would
+not be justified by the available failure signal.

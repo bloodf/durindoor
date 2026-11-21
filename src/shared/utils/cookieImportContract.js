@@ -5,8 +5,7 @@
  * The dashboard parses a pasted header, a pasted cURL command or a local HAR
  * file in the browser and must know, before it sends anything, which origins and
  * cookie names the provider approves. The server decides the same thing again
- * when it stores the credentials. Both sides read the same registry `webLogin`
- * block, so the rules live here instead of being written twice.
+ * when it stores the credentials. Both sides resolve the same provider metadata.
  *
  * This module is client safe: no node built-ins, no server-only imports.
  */
@@ -18,18 +17,25 @@ export const MAX_IMPORT_COOKIES = 16;
 export const MAX_COOKIE_VALUE_LENGTH = 8192;
 
 const TOKEN_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$/;
-// Control characters, `;` (cookie-pair separator) and edge whitespace could splice extra cookies into the stored Cookie header.
-const UNSAFE_VALUE_RE = /[\u0000-\u001f\u007f;]|^\s|\s$/;
+// Only printable ASCII can be sent reliably as a Fetch header; semicolons
+// separate cookie pairs, and edge whitespace is normalized by Headers.
+const UNSAFE_VALUE_RE = /[^\x20-\x7e]|;|^\s|\s$/;
+
+/** Select an explicit import profile or reuse the provider's web sign-in rules. */
+export function cookieImportConfig(provider) {
+  if (provider?.category !== "webCookie" || provider.authType !== "cookie") return null;
+  return provider.cookieImport ?? provider.webLogin;
+}
 
 /**
- * Importable contract for a registry `webLogin` block, or null when the block
+ * Importable contract for a registry profile, or null when the block
  * names no approved cookie or has no exact HTTPS origin.
  *
- * @param {object|null|undefined} config registry `webLogin` block
- * @returns {{ origin: string, host: string, cookieNames: readonly string[], cookiePrefixes: readonly string[] } | null}
+ * @param {object|null|undefined} config registry `cookieImport` or `webLogin` block
+ * @returns {{ origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[] } | null}
  */
 export function resolveCookieImportContract(config) {
-  if (!config || !Array.isArray(config.cookieNames) || config.cookieNames.length === 0) return null;
+  if (!config || !Array.isArray(config.cookieNames) || config.cookieNames.length === 0 || !config.cookieNames.every(isValidCookieName)) return null;
   let origin;
   try {
     origin = new URL(config.origin);
@@ -40,6 +46,7 @@ export function resolveCookieImportContract(config) {
   return Object.freeze({
     origin: origin.origin,
     host: origin.hostname.toLowerCase(),
+    extensionCapture: config.extensionCapture !== false,
     cookieNames: Object.freeze([...config.cookieNames]),
     cookiePrefixes: Object.freeze(Array.isArray(config.cookiePrefixes) ? [...config.cookiePrefixes] : []),
   });
@@ -74,7 +81,7 @@ export function isValidCookieName(name) {
   return isString(name) && TOKEN_NAME_RE.test(name);
 }
 
-/** Cookie values may not carry control characters, `;` or edge whitespace. */
+/** Cookie values must be printable ASCII without `;` or edge whitespace. */
 export function isValidCookieValue(value) {
   return isString(value) && value.length > 0 &&
     value.length <= MAX_COOKIE_VALUE_LENGTH && !UNSAFE_VALUE_RE.test(value);

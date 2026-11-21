@@ -90,3 +90,12 @@ export async function getRequestConnectionScope(request) {
   const ids = await getApiKeyProviderConnectionIds(key.id);
   return ids.length > 0 ? ids : null;
 }
+
+/** Authenticated key and explicit scope for private account-bound discovery. */
+export async function getRequestModelDiscoveryOptions(request) {
+  const apiKey = extractApiKey(request);
+  const key = apiKey ? await getApiKeyByKey(apiKey) : null;
+  if (!key?.isActive) return { allowedConnectionIds: null, verifiedKey: null };
+  const ids = await getApiKeyProviderConnectionIds(key.id);
+  return { allowedConnectionIds: ids.length ? ids : null, verifiedKey: { id: key.id, isActive: true, providerConnectionIds: ids } };
+}

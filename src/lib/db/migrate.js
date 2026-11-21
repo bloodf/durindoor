@@ -6,7 +6,7 @@ import { MIGRATIONS, latestVersion } from "./migrations/index.js";
 import { backfillUsageHistoryApiKeyIds } from "./migrations/030-usage-history-api-key-id.js";
 import { PG_MIGRATIONS, bootstrapPgMetaTable } from "./migrations/postgres/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
-import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./backup.js";
+import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups, acquireSnapshotLease } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
@@ -188,6 +188,43 @@ function syncSchemaFromTables(adapter) {
   }
 }
 
+// Drops a plain index that repeats, column for column (same collation and sort
+// order), a full UNIQUE index of the same table. The unique index already serves
+// every lookup, so the copy only adds write cost. Older schema versions declared
+// these copies, so this runs after the additive sync on every boot and is a no-op
+// once they are gone. A partial, expression, collation- or order-mismatched
+// index is never touched, and neither is any automatic (constraint) index.
+export function dropExactDuplicateUniqueIndexes(adapter) {
+  if (isPostgres(adapter)) return [];
+  const q = (name) => `"${String(name).replace(/"/g, '""')}"`;
+  const signature = (indexName) => {
+    const cols = adapter.all(`PRAGMA index_xinfo(${q(indexName)})`).filter((c) => c.key === 1);
+    if (!cols.length || cols.some((c) => c.name == null)) return null; // expression index: not comparable
+    return JSON.stringify(cols.map((c) => [c.name, String(c.coll).toUpperCase(), c.desc]));
+  };
+  const dropped = [];
+  const tables = adapter.all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
+  for (const { name: table } of tables) {
+    let indexes;
+    try {
+      indexes = adapter.all(`PRAGMA index_list(${q(table)})`).filter((i) => !i.partial);
+    } catch {
+      continue; // virtual or otherwise unreadable table: leave it alone
+    }
+    const uniqueSignatures = new Set(indexes.filter((i) => i.unique).map((i) => signature(i.name)).filter(Boolean));
+    if (!uniqueSignatures.size) continue;
+    for (const idx of indexes) {
+      if (idx.unique || idx.origin !== "c") continue;
+      const sig = signature(idx.name);
+      if (!sig || !uniqueSignatures.has(sig)) continue;
+      adapter.exec(`DROP INDEX IF EXISTS ${q(idx.name)}`);
+      dropped.push(idx.name);
+      console.log(`[DB][sync] -index ${idx.name} (duplicate of a unique index on ${table})`);
+    }
+  }
+  return dropped;
+}
+
 // ─── Legacy JSON import (one-time) ───────────────────────────────────────
 function importLegacyMain(adapter, data) {
   if (!data || !isObject(data)) return;
@@ -295,6 +332,17 @@ function importLegacyDetails(adapter, data) {
 // ─── Main entry ──────────────────────────────────────────────────────────
 export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
+  // Pin every restore point this run takes until it ends (success or throw), so
+  // pruning in any process cannot delete the snapshot a running upgrade may need.
+  const leases = [];
+  try {
+    return await runMigrationOnceLeased(adapter, (dir) => { leases.push(acquireSnapshotLease(dir)); return dir; });
+  } finally {
+    for (const release of leases) release();
+  }
+}
+
+async function runMigrationOnceLeased(adapter, lease) {
   const created = adapter.takeFreshDatabase?.() === true;
   if (isPostgres(adapter)) {
     // PG has no sqlite_master / PRAGMA. The parallel migration set is the
@@ -376,7 +424,7 @@ export async function runMigrationOnce(adapter) {
     needsQuotaRepair ?
     `schema-${oldSchemaVersion}-quota-repair` :
     `upgrade-${oldAppVersion}-to-${newAppVersion}`;
-    preUpgradeBackupDir = makeBackupDir(label);
+    preUpgradeBackupDir = lease(makeBackupDir(label));
     const source = currentDataFile();
     // Schema upgrades use a lightweight ATTACH backup that skips the huge
     // requestDetails observability log; app-version/totals-repair keep a full
@@ -403,6 +451,7 @@ export async function runMigrationOnce(adapter) {
       !adapter.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1");
     const result = runVersionedMigrations(adapter);
     syncSchemaFromTables(adapter);
+    dropExactDuplicateUniqueIndexes(adapter);
     verifyPublishedSchemaLayouts(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
     if (pristine) {
       adapter.run("INSERT INTO kv(scope, key, value) VALUES('billing', 'receiptsVersion', '1') ON CONFLICT(scope, key) DO NOTHING");
@@ -415,7 +464,7 @@ export async function runMigrationOnce(adapter) {
   // 3. One-time legacy JSON import (only if DB was fresh on entry)
   if (fresh && hasLegacy && !alreadyImported) {
     const t0 = Date.now();
-    const backupDir = makeBackupDir("migrate-from-json");
+    const backupDir = lease(makeBackupDir("migrate-from-json"));
     for (const f of Object.values(legacyFiles)) backupFile(f, backupDir);
 
     try {

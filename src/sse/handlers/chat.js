@@ -28,6 +28,7 @@ import { resolveDecisionBackend } from "../services/decisionBackend.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
+import { resolveChatgptPlanDispatch } from "../services/chatgptPlanDispatch.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
@@ -460,6 +461,12 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // key's own lifetime totals. Combo ACL runs after Claude model decoding.
   let authenticatedKeyRecord = null;
   if (apiKey) authenticatedKeyRecord = await getApiKeyByKey(apiKey);
+  const planRequest = {
+    verifiedKey: apiKeyAuth.stored === true && authenticatedKeyRecord?.id === apiKeyAuth.apiKeyId
+      ? { id: authenticatedKeyRecord.id, isActive: authenticatedKeyRecord.isActive } : null,
+    binding: null,
+    refreshAttempted: false,
+  };
 
   if (apiKey) {
     let limitStatus;
@@ -614,7 +621,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: true }
+            { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: true }
           );
         },
         log,
@@ -651,7 +658,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts }
+          { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts }
         );
       },
       log,
@@ -694,6 +701,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     () =>
       handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
         settings,
+        planRequest,
         allowVisionBridge: true,
         apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
         apiKeyId: apiKeyAuth.apiKeyId,
@@ -781,7 +789,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * fallback combos retain their existing model/account error responses.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], reportComboPolicyRejections = false } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], planRequest, reportComboPolicyRejections = false } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -832,7 +840,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: true }
+              { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: true }
             );
           },
           log,
@@ -868,7 +876,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections }
+            { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections }
           );
         },
         log,
@@ -903,6 +911,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+  const privatePlan = provider === "chatgpt-plan";
 
   // Reject image-only models routed to /v1/chat/completions (#6457 / #6525).
   // getModelInfo already resolved the registry {provider, model}; a kind:"image"
@@ -939,7 +948,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // requests never reach this DB lookup. Combo members resolve their own caps
   // upstream; this branch is only for single-model requests.
   let modelCapabilities = preResolvedCapabilities;
-  if (allowVisionBridge && settings?.visionBridgeEnabled === true && modelCapabilities === undefined) {
+  if (!privatePlan && allowVisionBridge && settings?.visionBridgeEnabled === true && modelCapabilities === undefined) {
     const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
     const visionTargetCaps = settings?.visionBridgeModel ?
     await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel)) :
@@ -964,7 +973,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             attemptSignal,
             tokenSaverCollector,
-            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId, billingEpoch }
+            { settings, planRequest, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId, billingEpoch }
           );
         }
         // Invalid reroute target: fall through to original model.
@@ -989,7 +998,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   body.connection_id ||
   null;
   let preferredConnectionId = null;
-  if (rawConnectionPin) {
+  if (rawConnectionPin && !privatePlan) {
     const requestedId = String(rawConnectionPin);
     const canonicalProvider = resolveProviderId(provider);
     const scopedConnectionIds = apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyId) : [];
@@ -1059,6 +1068,49 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       JSON.stringify({ error: { message: `Fusion requires [${fusionRequiredInput.join(",")}] input support`, type: "invalid_request_error", code: "capability_unavailable" } }),
       { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
     );
+  }
+
+  if (privatePlan) {
+    const pathname = request?.url ? new URL(request.url).pathname : "";
+    if (!/\/v1\/(chat\/completions|messages)\/?$/.test(pathname)) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "ChatGPT plan is only available on Chat Completions and Messages");
+    }
+    const dispatch = await resolveChatgptPlanDispatch({
+      planRequest,
+      providerRegistered: REGISTRY.some((entry) => entry.id === provider),
+      preferredConnectionId: rawConnectionPin ? String(rawConnectionPin) : null,
+      comboRouting,
+      signal: requestSignal,
+    });
+    if (!dispatch) {
+      return reportComboPolicyRejections ? comboPolicyRejection() :
+        errorResponse(HTTP_STATUS.FORBIDDEN, "ChatGPT plan connection is not available for this API key");
+    }
+
+    // The normal account recovery loop may rotate credentials. This dispatch
+    // uses the common translation/usage pipeline with its own bound executor.
+    const result = await handleChatCore({
+      ...dispatch,
+      body: { ...structuredClone(body), model: `${provider}/${model}` },
+      modelInfo,
+      modelCapabilities: resolvedModelCapabilities,
+      clientRawRequest,
+      userAgent,
+      apiKey,
+      apiKeyId,
+      apiKeyName,
+      billingEpoch,
+      comboId: comboRouting?.id,
+      comboName: comboRouting?.name,
+      comboPrompts,
+      log,
+      providerConcurrencyLimit: settings?.providerConcurrencyLimits,
+      globalConcurrentRequests: settings?.globalConcurrentRequests,
+      sourceFormatOverride: detectFormatByEndpoint(pathname, body),
+      abortSignal: requestSignal,
+    });
+    if (result.localAdmissionRejected === true) result.response.localAdmissionRejected = true;
+    return result.success ? withRouteResponseHeaders(result.response, { provider, model }) : result.response;
   }
 
   // Try with available accounts (fallback on errors)

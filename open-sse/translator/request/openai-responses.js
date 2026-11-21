@@ -17,7 +17,7 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
@@ -999,9 +999,34 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }).filter(Boolean);
   }
 
+  /**
+   * Preserve a caller-provided Responses `include` array on the Responses wire
+   * (OmniRoute #2154, merged upstream as fca89049c90127b48380c624879fb01bd3d5b5c8).
+   * A chat client that asks for `reasoning.encrypted_content` otherwise loses the
+   * request on the way upstream, the provider answers with an empty reasoning
+   * summary, and the client sees no thinking stream at all.
+   *
+   * Only entries the Responses contract defines are carried
+   * (RESPONSES_INCLUDE_ENTRIES): an unknown value is dropped instead of being
+   * forwarded to an upstream that would answer 400 for it, and nothing is
+   * invented here — the target still owns its own policy (the Codex executor
+   * include default, the per-model `dropInclude` filter in
+   * translator/concerns/paramSupport.js).
+   */
+  if (Array.isArray(body.include) && body.include.length > 0) {
+    const requested = body.include.filter((entry) => isString(entry) && RESPONSES_INCLUDE_ENTRIES.includes(entry));
+    if (requested.length > 0) result.include = requested;
+  }
+
   // Only the Claude native-search pivot may force a hosted search choice.
   const claudeSearch = body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH);
-  if (claudeSearch) result.include = ["web_search_call.action.sources"];
+  if (claudeSearch) {
+    // Merge with the caller's own entries instead of replacing them: the
+    // native-search include is added, the caller's array is kept.
+    const include = Array.isArray(result.include) ? result.include : [];
+    if (!include.includes(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES)) include.push(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES);
+    result.include = include;
+  }
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;

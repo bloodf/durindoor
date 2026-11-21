@@ -80,7 +80,7 @@ describe("OpenAI → Responses tool-call shape (#6937)", () => {
 
   it("offsets tool-call output_index past a preceding reasoning item", () => {
     const events = run([
-      chunk({ content: "<think>let me think</think>" }),
+      chunk({ reasoning_content: "let me think" }),
       chunk({ tool_calls: [{ index: 0, id: "call_9", type: "function", function: { name: "search", arguments: "{}" } }] }),
       chunk({}, { finish_reason: "tool_calls" }),
     ]);
@@ -190,7 +190,7 @@ describe("OpenAI → Responses tool-call shape (#6937)", () => {
 
   it("allocates monotonic indexes for reasoning, text, and tool calls", () => {
     const events = run([
-      chunk({ content: "<think>think</think>" }),
+      chunk({ reasoning_content: "think" }),
       chunk({ content: "text" }),
       chunk({ tool_calls: [{ index: 0, id: "call_t", type: "function", function: { name: "noop", arguments: "{}" } }] }),
       chunk({}, { finish_reason: "tool_calls" }),

@@ -456,6 +456,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
 | `xkiro` |  | apikey | `https://api.xkiro.com/v1/chat/completions` |
+| `y-api` |  | apikey | `https://api.y-api.bestvirtualgoods.com/v1/chat/completions` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |
 | `yolo-auto` |  | apikey | `https://yolo-auto.com/v1/chat/completions` |
 | `youcom` |  | apikey | `` |

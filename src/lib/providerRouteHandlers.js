@@ -79,6 +79,7 @@ export function canDiscoverModels(connection) {
   const provider = connection.provider;
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (provider === "t3-web" || provider === "adapta-web") return true; // Curated local catalog.
+  if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
     // Compatible servers may expose their catalog without credentials.

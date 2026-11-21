@@ -234,7 +234,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE ?
-  { ...initState(sourceFormat, body || providerBody), searchEnabled: provider === "codex" && sourceFormat === FORMATS.CLAUDE && body?.tools?.some(tool => tool?.type === "web_search_20250305"), provider, toolNameMap, clientTools: Array.isArray(body?.tools) ? body.tools : null, providerBody, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
+  { ...initState(sourceFormat, body || providerBody), requestedModel: model, searchEnabled: provider === "codex" && sourceFormat === FORMATS.CLAUDE && body?.tools?.some(tool => tool?.type === "web_search_20250305"), provider, toolNameMap, clientTools: Array.isArray(body?.tools) ? body.tools : null, providerBody, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
   null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
@@ -1283,7 +1283,10 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
 
-          if (keepsOpenAIResponsesFormat && !streamDoneSent) {
+          // A same-format OpenAI stream only enters this path for DeepSeek-family model ids
+          // (DSML tool-call recovery). Forward the wire terminator it would otherwise swallow.
+          const keepsOpenAIChatFormat = targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI;
+          if ((keepsOpenAIResponsesFormat || keepsOpenAIChatFormat) && !streamDoneSent) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));

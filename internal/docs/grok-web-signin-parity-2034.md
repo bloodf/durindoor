@@ -19,10 +19,13 @@ Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-chatgpt-grok
 
 Verified: create (bare, `sso=`, padded, base64-padding and full-header pastes), Validate and Test Connection skipped without any outbound request, `/v1/models` discovery, JSON and SSE through Chat Completions, Messages and Responses, per-account cookie isolation, 401 fallback to a sibling, 401 with an actionable message when no sibling exists, and recovery after re-paste.
 
+The empty-session rule is covered offline by `tests/unit/grok-web-empty-sso.test.js`: missing, blank and empty `sso` entries are rejected with 401 and no outbound fetch, while a bare value, a padded raw token, a padded `sso` value and a full signed header are still accepted. Synthetic credentials and a closed fetch mock only; no grok.com request, real session or browser was used.
+
 Gaps found and fixed (DurinDoor-original; the OmniRoute `grok-web.ts` pin remains the only parity reference and no code was copied from it):
 
 - Registry `transport.format` was `grok-web`, which routed chat streams through the translate path and dropped the upstream `[DONE]` sentinel. It is now `openai` with `executor: "grok-web"`; dispatch still goes to the grok-web executor by id. `AGENT-INDEX.md` was regenerated.
 - A full DevTools Cookie header that did not start with `sso` was sent as `sso=<whole header>`. `buildGrokCookieHeader` now forwards a pasted header as is when it contains `sso=`, trims whitespace and a `Cookie:` prefix, and rejects a header without `sso` locally with 401 before any request.
+- An explicitly empty `sso=` was read as a raw token and sent as the header `sso=sso=`. `buildGrokCookieHeader` now rejects an `sso` entry whose value is empty or blank, the same way as a missing `sso`: locally, with 401, and no request to grok.com. A raw token that only ends in `=` padding, such as `tok==`, is still accepted and forwarded unchanged, and a full signed header is still sent as pasted.
 - The Edit dialog's re-pasted cookie was dropped by the PUT route (see the ChatGPT Web note); fixed in the shared route.
 - The usage route returned "not available" for cookie connections, so `getGrokWebUsage` was unreachable. Saved Grok Web connections now report local 30-day history.
 

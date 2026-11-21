@@ -4,6 +4,7 @@
 - Source: https://github.com/cheaper-inference/OmniRoute/pull/2149, head `29d1d733bd8610d27455d81790a9524a0f81867e`, merge `1814d2bde04842945a1d59b15ccef953bf11cf52` (merged 2026-05-11T13:06:06Z).
 - Upstream changed paths: `open-sse/translator/request/openai-to-kiro.ts`, `tests/unit/translator-openai-to-kiro.test.ts`.
 - Prior comparison: `internal/docs/port-reports/1073-may-protocol-shapes.md`, gap **K-2**.
+- Merged with the integration tip `cd63757f5cc7666b1f235b8f5a056846571c76ef`, which carries the gap **K-1** unit (`9cb5f5df88`, `internal/docs/port-reports/1073-kiro-final-turn-history.md`). See "Interaction with the K-1 unit" below.
 
 ## Disposition
 
@@ -23,7 +24,7 @@ Kiro's CodeWhisperer validator rejects a request whose history references a tool
 recorded in the translator itself at `open-sse/translator/request/openai-to-kiro.js:42-49`.
 
 The local translator attaches the schema to the first **emitted user turn**
-(`open-sse/translator/request/openai-to-kiro.js:295-301`, guarded by `toolsInjectedToFirstUserMsg`),
+(`open-sse/translator/request/openai-to-kiro.js:308-315`, guarded by `toolsInjectedToFirstUserMsg`),
 which is not the same turn that becomes `currentMessage`. Before this change the schema was read back
 from `history[0]` alone (`open-sse/translator/request/openai-to-kiro.js:446` before the change, the
 `firstHistoryTools` read) and re-injected into `currentMessage` after the history cleanup stripped it
@@ -47,6 +48,30 @@ translator (`AssertionError: Target cannot be null or undefined`, from the absen
 `userInputMessageContext`) and pass after it. The two guard fixtures that assert no schema is
 invented for a tool-less client pass in both states.
 
+## Interaction with the K-1 unit
+
+The K-1 unit (`9cb5f5df88`) changed the same file: the current turn is now selected by the
+transcript's own last turn (`open-sse/translator/request/openai-to-kiro.js:472-488`) instead of by
+promoting the last `userInputMessage` found anywhere, and a transcript that ends with an assistant or
+tool turn gets a neutral `"Continue"` continuation instead of an older user turn. The two units are
+complementary, and the merge keeps both:
+
+- K-1 fixed the trailing-assistant shape by keeping every turn in history, in order. The schema that
+  the first emitted user turn received is still found by the carrier scan in that shape, because the
+  scan no longer assumes the carrier is `history[0]`.
+- K-2 fixes the two shapes K-1 left open, which the K-1 report names as out of its scope
+  (`internal/docs/port-reports/1073-kiro-final-turn-history.md`, "Not in scope"): a transcript that
+  opens with an assistant turn, and a transcript with no user turn at all. In the second shape the
+  current turn is the K-1 `"Continue"` continuation, and it now carries the caller's declared schema
+  through the fallback.
+- The K-1 rule "a real final user turn still becomes `currentMessage`" is unchanged: when the popped
+  turn is the one that received the schema, it keeps it, and the injection is skipped.
+
+The residual was re-confirmed on the integration side of the merge: with the K-1 translator in place
+and this port's change removed, the two OpenAI-route fixtures ("a transcript that opens with an
+assistant turn" and "a declared tool call with no prior user turn") still fail, and they pass with the
+merged result.
+
 ## The change
 
 `open-sse/translator/request/openai-to-kiro.js`
@@ -55,11 +80,11 @@ invented for a tool-less client pass in both states.
   `toolSpecification`. The existing per-tool mapping was lifted out of the first-user-turn injection
   unchanged: sanitized name with the original name remembered for the response translator, string
   description, and the schema run through the shared `normalizeKiroToolSchema`. The lifted helper is
-  reused by the first-user-turn injection (`:295-301`) and by the `currentMessage` fallback, so both
+  reused by the first-user-turn injection (`:308-315`) and by the `currentMessage` fallback, so both
   paths produce the same specification for the same declaration.
 - The schema is now read from **whichever** history turn received it, captured before the cleanup
-  strips it (`:473-476`), instead of from `history[0]` alone.
-- The injection into `currentMessage` (`:563-574`) takes the carried schema when there is one, and
+  strips it (`:496-499`), instead of from `history[0]` alone.
+- The injection into `currentMessage` (`:579-591`) takes the carried schema when there is one, and
   otherwise builds it from the request's own `tools` array through the same helper.
 
 `open-sse/translator/request/claude-to-kiro.js`
@@ -94,6 +119,11 @@ invented for a tool-less client pass in both states.
   `tests/translator/bugs-kiro.test.js`, `tests/translator/claude-kiro-direct.test.js`,
   `tests/translator/kiro-tool-index.test.js`,
   `tests/translator/kiro-no-top-level-systemprompt.test.js`.
+- On the merged tree: the K-1 fixture `tests/unit/omni-kiro-final-turn-history.test.js` (8 cases) and
+  the new K-2 fixture file (6 cases) pass together with `tests/unit/openai-to-kiro.test.js`
+  (3 files, 39 tests), and the offline translator surface plus the Kiro unit files pass
+  (111 files, 1902 passed, 34 skipped, 0 failed).
+- Lint on the two changed translator files: `oxlint` reports no diagnostics.
 
 ## Verification limits
 

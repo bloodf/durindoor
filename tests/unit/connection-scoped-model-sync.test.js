@@ -82,12 +82,16 @@ async function setup() {
   ctx = { db, runner, conns: { mlxA, mlxB, ocsA, ocsB }, keys, listIds, scoped };
 }
 
-describe("connection-scoped MLX and OpenCode Server catalogs", () => {
+// Each case builds a fresh DB and re-imports the route graph; the cold import
+// alone can exceed the default 10s hook limit on a loaded machine.
+const SETUP_TIMEOUT_MS = 90_000;
+
+describe("connection-scoped MLX and OpenCode Server catalogs", { timeout: SETUP_TIMEOUT_MS }, () => {
   beforeEach(async () => {
     upstream.calls.length = 0;
     serve();
     await setup();
-  });
+  }, SETUP_TIMEOUT_MS);
   afterEach(() => {
     vi.resetModules();
     delete global._dbAdapter;

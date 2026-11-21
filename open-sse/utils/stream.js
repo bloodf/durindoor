@@ -20,6 +20,7 @@ import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
 import { advancePendingSseLineBytes } from "./pendingSseLine.js";
+import { createProviderKeepaliveFilter, isProviderKeepaliveEvent } from "./providerKeepalive.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -186,6 +187,15 @@ export function createSSEStream(options = {}) {
   // Responses passthrough: the upstream speaks the Responses protocol and the
   // client wants it unchanged, so the frames are forwarded as they arrive.
   const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
+  // Provider keepalive event blocks ("event: keepalive") carry no payload.
+  // Strict OpenAI-compatible SDKs try to JSON.parse the empty body and crash,
+  // so the whole block is dropped before it reaches the client (OmniRoute
+  // #1146). Chat and Responses passthrough only: Claude passthrough keeps its
+  // genuine `event: ping` frames, and the gateway-generated keepalives never
+  // travel through this transform.
+  const filterProviderKeepalive = mode === STREAM_MODE.PASSTHROUGH &&
+    (targetFormat === FORMATS.OPENAI || targetFormat === FORMATS.OPENAI_RESPONSES);
+  const providerKeepalive = createProviderKeepaliveFilter();
   // Replayed Responses events (a reconnect re-sending an already forwarded
   // sequence_number) are dropped before they reach the client.
   const responsesReplay = createResponsesSequenceReplayTracker();
@@ -793,6 +803,16 @@ export function createSSEStream(options = {}) {
 
       for (const [lineIndex, line] of lines.entries()) {
         const trimmed = line.trim();
+
+        // A provider keepalive event block carries no payload: drop the label
+        // and the block body so the client never sees an empty data line it
+        // would JSON.parse (OmniRoute #1146). The filter runs before the
+        // framing decisions below, so the label never reaches the pending
+        // field buffers and the payload after the block keeps its order.
+        if (filterProviderKeepalive && providerKeepalive.drop(trimmed)) {
+          continue;
+        }
+
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
           if (trimmed.startsWith("event:")) {
@@ -1500,6 +1520,13 @@ export function createSSEStream(options = {}) {
           if (pendingInlineThinkingOutput) {
             reqLogger?.appendConvertedChunk?.(pendingInlineThinkingOutput);
             controller.enqueue(sharedEncoder.encode(pendingInlineThinkingOutput));
+          }
+
+          // A stream that ended inside a dropped keepalive block, or on the
+          // keepalive label itself, has no tail to forward (OmniRoute #1146).
+          if (filterProviderKeepalive && (providerKeepalive.dropping || isProviderKeepaliveEvent(buffer.trim()))) {
+            providerKeepalive.reset();
+            buffer = "";
           }
 
           if (buffer) {

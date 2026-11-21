@@ -306,7 +306,13 @@ function classifyCodexSseFrame(frame) {
   firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
   if (contextMatch) return { userOutput: false, kind: "context", matched: contextMatch, message };
 
-  const accountMatch = firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
+  // OmniRoute #19487: only an explicit failed response with a structured error
+  // message routes the overload phrase to the existing account fallback.
+  const failedResponse = [eventName, payloadType, payloadEvent].includes("response.failed");
+  const failedOverload = failedResponse && firstPattern(
+    errorObjects.map((error) => error.message), ["currently overloaded"]
+  );
+  const accountMatch = failedOverload || firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
   if (accountMatch) return { userOutput: false, kind: "account", matched: accountMatch, message };
 
   const retryMatch = firstPattern(values, CODEX_SSE_RETRY_PATTERNS);

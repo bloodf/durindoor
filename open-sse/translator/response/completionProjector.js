@@ -1,6 +1,6 @@
 import { FORMATS } from "../formats.js";
 import {
-  fromOpenAIFinish,
+  claudeStopReasonWithToolCalls,
   isUpstreamErrorObject,
   readUpstreamErrorMessage,
   responsesIncompleteDetailsOrOmit,
@@ -59,7 +59,8 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
   if (isString(message.content) && message.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: message.content });
   }
-  for (const toolCall of getToolCalls(completion)) {
+  const toolCalls = getToolCalls(completion);
+  for (const toolCall of toolCalls) {
     const fn = toolCall.function || {};
     content.push({
       type: CLAUDE_BLOCK.TOOL_USE,
@@ -78,7 +79,14 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
     role: ROLE.ASSISTANT,
     model: model || completion.model || MODEL_FALLBACK,
     content,
-    stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE) || CLAUDE_STOP.END_TURN,
+    // Same rule as the OpenAI → Claude projections: an ordinary stop that
+    // carried tool calls ends the turn with "tool_use" (#18270), so an agentic
+    // Claude client keeps the loop running.
+    stop_reason:
+      claudeStopReasonWithToolCalls(
+        choice.finish_reason || OPENAI_FINISH.STOP,
+        toolCalls.length > 0
+      ) || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,

@@ -1,16 +1,11 @@
 import { describe, it, expect } from "vitest";
 import "./registerAll.js";
-import { translateRequest } from "../../open-sse/translator/index.js";
-import { FORMATS } from "../../open-sse/translator/formats.js";
+import { openaiToClaudeRequest } from "../../open-sse/translator/request/openai-to-claude.js";
 
-const translate = (messages, extra = {}) => translateRequest(
-  FORMATS.OPENAI,
-  FORMATS.CLAUDE,
+const translate = (messages, extra = {}) => openaiToClaudeRequest(
   "claude-model",
   { messages, ...extra },
-  true,
-  null,
-  "anthropic-compatible-x"
+  true
 );
 
 describe("OmniRoute #14814 Claude function history tool input shape", () => {

@@ -436,7 +436,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
             type: CLAUDE_BLOCK.TOOL_USE,
             id: tc.id,
             name: toolName,
-            input: isObject(parsedInput) ? parsedInput : {}
+            input: parsedInput !== null && isObject(parsedInput) && !Array.isArray(parsedInput) ? parsedInput : {}
           });
         }
       }

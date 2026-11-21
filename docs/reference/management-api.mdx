@@ -90,6 +90,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, POST | `/api/combos/presets` | GET query `source=cursor` or `claude` previews missing presets; POST JSON `{ source }` creates only missing names and returns created/skipped counts | session, CLI, key, loop |
 | GET, POST | `/api/combos` | List combos (GET) or create one (POST, 201) | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/combos/{id}` | Read, update, or delete a combo | session, CLI, key, loop |
+| GET | `/api/combos/{id}/stale-steps` | Steps missing from the provider's live catalog (`staleSteps`) and auto-pruned steps (`prunedSteps`) | session, CLI, key, loop |
+| POST | `/api/combos/{id}/restore` | Restore auto-pruned steps; optional JSON `{ models: [...] }` limits the restore | session, CLI, key, loop |
 
 ### Connection groups
 

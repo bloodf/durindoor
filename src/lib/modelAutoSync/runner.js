@@ -8,14 +8,15 @@ import {
   getSyncedModelCatalogs,
   saveSyncedModelCatalog
 } from "@/lib/localDb";
-import { AI_PROVIDERS, getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
-import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
+import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import { getModelsByProviderId } from "@/shared/constants/models";
 import { checkAndRefreshToken } from "@/sse/services/tokenRefresh";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
 import { fetchConnectionModels } from "@/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { refreshSharedModelMetadata } from "./sharedMetadata.js";
+import { autoPruneStaleComboSteps, providerModelPrefixes } from "./staleComboSteps.js";
 import {
   effectiveSyncedModels,
   findPrunedReferences,
@@ -46,10 +47,7 @@ export function isModelAutoSyncEligible(providerId) {
   return Boolean(PROVIDER_MODELS_CONFIG[providerId]) || isString(AI_PROVIDERS[providerId]?.modelsFetcher?.url);
 }
 
-/** Every prefix a request or combo can use to name this provider's models. */
-export function providerModelPrefixes(providerId) {
-  return [...new Set([providerId, PROVIDER_ID_TO_ALIAS[providerId], getProviderAlias(providerId)].filter(isString))];
-}
+export { providerModelPrefixes };
 
 function withTimeout(promise, ms) {
   let timer;
@@ -308,6 +306,16 @@ async function runModelAutoSyncImpl({ providerIds = null, force = false, now = D
     } catch (error) {
       console.log(`[model-auto-sync] reference check skipped: ${error?.message || error}`);
     }
+  }
+  // Opt-in only (settings.autoPruneStaleComboSteps); never throws into the sync run.
+  try {
+    await autoPruneStaleComboSteps({
+      settings,
+      now,
+      syncedProviderIds: results.filter((r) => r.status === "synced").map((r) => r.providerId)
+    });
+  } catch (error) {
+    console.log(`[model-auto-sync] auto-prune skipped: ${error?.message || error}`);
   }
   return results;
 }

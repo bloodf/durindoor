@@ -13,7 +13,34 @@ import "@/shared/ui/v5/combos/combos.css";
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 const CAPABILITY_KEYS = ["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "videoOutput", "search", "tools", "reasoning"];
 
-function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove, v5, onDropModel }) {
+export const STALE_STEP_LABEL = "Not in live catalog";
+
+// Badge for a step whose model is absent from its provider's latest successful sync.
+export function StaleStepBadge() {
+  return <span className="shrink-0 rounded-dd border border-dd-warning px-1.5 py-0.5 text-[11px] font-medium text-dd-warning" title="This model was not in the provider's latest successful model sync. It still routes; the provider decides.">{STALE_STEP_LABEL}</span>;
+}
+
+// Steps the opt-in auto-prune removed, with a Restore action each.
+export function PrunedStepsList({ steps, onRestore, busy }) {
+  if (!steps.length) return null;
+  return (
+    <section aria-labelledby="combo-pruned-heading" className="flex flex-col gap-2">
+      <h3 id="combo-pruned-heading" className="text-sm font-semibold text-dd-text">Pruned steps</h3>
+      <p className="text-xs text-dd-muted">Removed automatically after a model sync because they left the provider&apos;s live catalog.</p>
+      <ul className="flex min-w-0 flex-col gap-1">
+        {steps.map((step) => (
+          <li key={`${step.model}-${step.step}`} className="flex min-w-0 items-center gap-2 rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 text-[13px]">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-dd-text" title={step.reason || undefined}>{step.model}</span>
+            {step.prunedAt ? <span className="shrink-0 text-xs text-dd-subtle">{String(step.prunedAt).slice(0, 10)}</span> : null}
+            <Button variant="secondary" size="sm" disabled={busy} onClick={() => onRestore(step.model)} aria-label={`Restore ${step.model}`}>Restore</Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove, v5, onDropModel, stale = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(model);
 
@@ -43,6 +70,7 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
           {model}
         </button>
       )}
+      {stale ? <StaleStepBadge /> : null}
       <div className="flex shrink-0 items-center">
         <IconButton icon="arrow_upward" label={`Move ${model} up`} size="sm" onClick={onMoveUp} disabled={isFirst} />
         <IconButton icon="arrow_downward" label={`Move ${model} down`} size="sm" onClick={onMoveDown} disabled={isLast} />
@@ -66,6 +94,9 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
+  const [staleModels, setStaleModels] = useState([]);
+  const [prunedSteps, setPrunedSteps] = useState([]);
+  const [restoring, setRestoring] = useState(false);
   const comboNameId = useId();
 
   useEffect(() => {
@@ -75,6 +106,15 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     setModels(combo?.models || []);
     setCapabilities(combo?.capabilities || {});
     setNameError("");
+    setStaleModels([]);
+    setPrunedSteps(combo?.prunedSteps || []);
+    if (combo?.id) {
+      fetch(`/api/combos/${encodeURIComponent(combo.id)}/stale-steps`, { cache: "no-store" }).then((response) => response.ok ? response.json() : null).then((data) => {
+        if (!data) return;
+        setStaleModels((data.staleSteps || []).map((step) => step.model));
+        setPrunedSteps(data.prunedSteps || []);
+      }).catch(() => {});
+    }
     fetch("/api/models/alias").then((response) => response.ok ? response.json() : null).then((data) => data && setModelAliases(data.aliases || {})).catch(() => {});
   }, [isOpen, combo, forcePrefix]);
 
@@ -110,6 +150,25 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     next.splice(to, 0, item);
     setModels(next);
   };
+  const handleRestore = async (model) => {
+    if (!combo?.id) return;
+    setRestoring(true);
+    try {
+      const response = await fetch(`/api/combos/${encodeURIComponent(combo.id)}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(model ? { models: [model] } : {})
+      });
+      const data = response.ok ? await response.json() : null;
+      if (data?.combo) {
+        setModels(data.combo.models || []);
+        setPrunedSteps(data.combo.prunedSteps || []);
+      }
+    } catch {
+      // The pruned list stays; the operator can retry.
+    }
+    setRestoring(false);
+  };
   const handleSave = async () => {
     if (!validateName(name)) return;
     setSaving(true);
@@ -140,9 +199,11 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
 
           <section aria-labelledby="combo-models-heading" className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-3"><h3 id="combo-models-heading" className="text-sm font-semibold text-dd-text">Models</h3><span className="text-xs text-dd-muted dd-tnum">{models.length} selected</span></div>
-            {models.length === 0 ? <div className="rounded-dd-lg border border-dashed border-dd-border bg-dd-surface-2 px-4 py-6 text-center"><span aria-hidden="true" className="material-symbols-outlined text-[24px] leading-none text-dd-muted">layers</span><p className="mt-2 text-xs text-dd-muted">No models added yet</p></div> : <ol className="flex max-h-[350px] min-w-0 flex-col gap-1 overflow-y-auto">{models.map((model, index) => <ModelItem key={`${model}-${index}`} v5={v5} onDropModel={moveModel} index={index} model={model} isFirst={index === 0} isLast={index === models.length - 1} onEdit={(value) => setModels(models.map((item, itemIndex) => itemIndex === index ? value : item))} onMoveUp={() => handleMoveUp(index)} onMoveDown={() => handleMoveDown(index)} onRemove={() => handleRemoveModel(index)} />)}</ol>}
+            {models.length === 0 ? <div className="rounded-dd-lg border border-dashed border-dd-border bg-dd-surface-2 px-4 py-6 text-center"><span aria-hidden="true" className="material-symbols-outlined text-[24px] leading-none text-dd-muted">layers</span><p className="mt-2 text-xs text-dd-muted">No models added yet</p></div> : <ol className="flex max-h-[350px] min-w-0 flex-col gap-1 overflow-y-auto">{models.map((model, index) => <ModelItem key={`${model}-${index}`} v5={v5} stale={staleModels.includes(model)} onDropModel={moveModel} index={index} model={model} isFirst={index === 0} isLast={index === models.length - 1} onEdit={(value) => setModels(models.map((item, itemIndex) => itemIndex === index ? value : item))} onMoveUp={() => handleMoveUp(index)} onMoveDown={() => handleMoveDown(index)} onRemove={() => handleRemoveModel(index)} />)}</ol>}
             <Button variant="secondary" icon="add" onClick={() => setShowModelSelect(true)} className="w-full">Add model</Button>
           </section>
+
+          {isEdit ? <PrunedStepsList steps={prunedSteps} onRestore={handleRestore} busy={restoring} /> : null}
 
           <fieldset className={v5 ? "v5-combo-ceiling" : "rounded-dd-lg border border-dd-border p-4"}><legend className="px-1 text-sm font-semibold text-dd-text">Capability ceiling</legend><p className="mb-3 text-xs text-dd-muted">Optional. Disable derived features or lower derived limits; blank fields preserve member-derived capabilities.</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{CAPABILITY_KEYS.map((key) => <Checkbox key={key} checked={capabilities[key] === false} onChange={(checked) => setCapabilities((current) => { const next = { ...current }; if (checked) next[key] = false; else delete next[key]; return next; })} label={`Disable ${key}`} />)}</div><div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><Input label="Context window" type="number" min="1" value={capabilities.contextWindow ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, contextWindow: event.target.value === "" ? undefined : Number(event.target.value) }))} /><Input label="Max output" type="number" min="1" value={capabilities.maxOutput ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, maxOutput: event.target.value === "" ? undefined : Number(event.target.value) }))} /></div></fieldset>
         </div>

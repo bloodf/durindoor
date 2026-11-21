@@ -29,7 +29,7 @@ Save, then send a request using one of the connection's models. A duplicate prov
 </Step>
 </Steps>
 
-`ollama-local` and other `noAuth` providers may omit the key. Compatible nodes still require a value even when the upstream ignores it; use a placeholder such as `local-dev-key`. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
+`ollama-local` and other `noAuth` providers may omit the key. OpenAI-compatible nodes also allow a keyless connection when the upstream does not require authentication. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 

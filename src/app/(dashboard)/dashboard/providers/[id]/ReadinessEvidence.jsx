@@ -30,7 +30,7 @@ export default function ReadinessEvidence({ providerId }) {
 export function ReadinessEvidenceDetails({ data }) {
   const catalog = data?.catalog === "LISTED" ? "Listed" : data?.catalog === "NOT_LISTED" ? "Not listed" : "Unknown";
   const dispatch = data?.chatDispatch === "CONFIGURED" ? "Configured, not verified" : data?.chatDispatch === "UNSUPPORTED" ? "Unsupported" : "Unknown";
-  const kinds = Array.isArray(data?.nativeKinds) ? data.nativeKinds.filter((kind) => typeof kind === "string") : [];
+  const kinds = Array.isArray(data?.nativeKinds) ? data.nativeKinds : [];
   return (
     <div aria-label="Local API readiness evidence" className="mt-3 border-t border-dd-border pt-3">
       <dl className="grid gap-2 sm:grid-cols-2">

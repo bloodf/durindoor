@@ -11,7 +11,7 @@ Status: provider module and offline fixture only; production registration is pen
 
 ## DurinDoor-side implementation
 
-- `open-sse/providers/registry/mnn-ai.js` — the only new runtime file. It declares the API-key category, the bearer chat transport, `validateUrl` and `modelsFetcher` pointing at `https://api.mnnai.ru/v1/models`, an empty static catalog, `passthroughModels: true`, and `serviceKinds: ["llm"]`.
+- `open-sse/providers/private/mnn-ai.js` — the only new runtime file. It declares the API-key category, the bearer chat transport, `validateUrl` and `modelsFetcher` pointing at `https://api.mnnai.ru/v1/models`, an empty static catalog, `passthroughModels: true`, and `serviceKinds: ["llm"]`.
 - No executor was added. The fixture exercises the existing default OpenAI-compatible executor, so request shaping, bearer auth, streaming passthrough, error surfacing, and usage accounting use shared plumbing rather than a provider fork.
 - Credential validation reuses the shared registry probe: `buildRegistryProviderProbe` reads `transport.validateUrl` and issues `GET https://api.mnnai.ru/v1/models` with the bearer header, behind the normal SSRF guard and redirect policy. The shared probe accepts HTTP 200 as a valid key and HTTP 401 as an invalid one; whether the upstream answers 401 for a bad key is unverified, so the check inherits the shared policy unchanged rather than asserting a stronger one.
 - Model discovery reuses the generic registry `modelsFetcher` path in `src/app/api/providers/[id]/models/fetchConnectionModels.js`. That path is single-request with an 8 s deadline, so discovery is bounded; a non-OK upstream surfaces `Failed to fetch models: <status>` instead of an empty successful catalog.

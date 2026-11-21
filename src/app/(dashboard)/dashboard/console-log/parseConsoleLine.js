@@ -21,6 +21,45 @@ function detectTag(message) {
   return firstWord && VERB_TAGS.has(firstWord) ? firstWord : null;
 }
 
+function parseRequest(message) {
+  const match = message.match(/\bPOST\s+(.+?)\s+→\s+([^\s·]+)/);
+  if (!match) return null;
+  const fmt = message.match(/\bFMT:\s*([^·\n]+)/);
+  const count = (name) => {
+    const found = message.match(new RegExp(`\\b(\\d+) ${name}\\b`));
+    return found ? Number(found[1]) : null;
+  };
+  const account = message.match(/\bACC:([^·\n]+)/);
+  return {
+    model: match[1], routedModel: match[2],
+    format: fmt ? fmt[1].trim() : null,
+    mode: /\bSTREAM\b/.test(message) ? "STREAM" : /\bJSON\b/.test(message) ? "JSON" : null,
+    messages: count("MSG"), tools: count("TOOL"), account: account ? account[1].trim() : null,
+  };
+}
+
+function parseCompletion(message) {
+  const match = message.match(/\bDONE\s+(\d+)\s*ms/);
+  if (!match) return null;
+  const number = (pattern) => {
+    const found = message.match(pattern);
+    return found ? Number(found[1]) : null;
+  };
+  const cache = message.match(/CACHE\s+([^)]*)/);
+  const cacheNumbers = cache ? (cache[1].match(/\d+/g) || []).map(Number) : [];
+  const parts = message.split(" · ");
+  const suffix = parts.at(-1)?.trim();
+  return {
+    totalMs: Number(match[1]),
+    ttftMs: number(/\bTTFT\s+(\d+)\s*ms/),
+    inputTokens: number(/\bIN\s+(\d+)/),
+    outputTokens: number(/\bOUT\s+(\d+)/),
+    cacheRead: cacheNumbers[0] ?? 0,
+    cacheCreate: cacheNumbers[1] ?? 0,
+    routedModel: suffix && /^[\w.-]+\/[\w.:/-]+$/.test(suffix) ? suffix : null,
+  };
+}
+
 /**
  * Parses one captured console line into the fields the Console Log viewer
  * filters and renders. Lines come from `src/lib/consoleLogBuffer.js` with ANSI
@@ -42,11 +81,15 @@ export function parseConsoleLine(raw) {
   const text = String(raw ?? "");
   const stamp = text.match(TIMESTAMP_RE);
   const message = stamp ? text.slice(stamp[0].length) : text;
+  const request = parseRequest(message);
+  const completion = parseCompletion(message);
   return {
     ts: stamp ? stamp[1] : null,
     level: detectLevel(text),
     tag: detectTag(message),
     message,
     raw: text,
+    ...(request ? { request } : {}),
+    ...(completion ? { completion } : {}),
   };
 }

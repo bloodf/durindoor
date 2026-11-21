@@ -4,6 +4,7 @@ import { CLAUDE_BLOCK } from "../schema/blocks.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";
 import { buildGeminiThoughtSignatureKey, storeGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
+import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -40,6 +41,7 @@ export function geminiToClaudeResponse(chunk, state) {
     const inlineSignature = readInlineSignature(part);
     if (!part.functionCall && inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
     if (part.thought === true && part.text) {
+      if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
       results.push({ type: "content_block_start", index, content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" } }, { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: part.text } }, { type: "content_block_stop", index });
       continue;
@@ -51,7 +53,7 @@ export function geminiToClaudeResponse(chunk, state) {
       const id = call.id || `toolu_${Date.now()}_${index}`;
       const callSignature = inlineSignature || (state.standaloneSignatureQueue.length ? state.standaloneSignatureQueue.shift() : null);
       if (callSignature) storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, id), callSignature);
-      results.push({ type: "content_block_start", index, content_block: { type: "tool_use", id, name: restoreToolName(call.name, state.toolNameMap), input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(call.args || {}) } }, { type: "content_block_stop", index });
+      results.push({ type: "content_block_start", index, content_block: { type: "tool_use", id, name: restoreToolName(call.name, state.toolNameMap), input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(geminiPlaceholderStripperFor(state)(call.name, call.args || {})) } }, { type: "content_block_stop", index });
       state.hasToolUse = true;
       continue;
     }

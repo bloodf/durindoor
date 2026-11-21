@@ -20,6 +20,7 @@ import { translate } from "@/i18n/runtime";
 import { applyQoderModelNames, getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
+import { resolveCookieImportContract } from "@/shared/utils/cookieImportContract";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow, { getDeclaredModelCapabilities } from "./ModelRow";
 import NativeProviderReadiness from "./NativeProviderReadiness.jsx";
@@ -30,6 +31,7 @@ import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
 import { loadLiveAntigravityModels } from "./liveAntigravityModels";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
+import CookieImportModal from "./CookieImportModal";
 import NetworkNodeStatus from "./NetworkNodeStatus";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
@@ -118,6 +120,7 @@ function ProviderDetail({ providerId }) {
   const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
   const [clearingCooldownId, setClearingCooldownId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
+  const [showCookieImportModal, setShowCookieImportModal] = useState(false);
   const [showImportTokenModal, setShowImportTokenModal] = useState(false);
   const [importTokenValue, setImportTokenValue] = useState("");
   const [importTokenError, setImportTokenError] = useState("");
@@ -298,6 +301,9 @@ function ProviderDetail({ providerId }) {
   const isDevinAgentic = providerId === "devin-cli-agentic";
   const isStoredNoAuth = isFreeNoAuth && (providerId === "mimocode" || isDevinAgentic);
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
+  // Only a provider with an exact HTTPS origin and an explicit cookie allowlist
+  // can be imported into; the import modal stays hidden for the others.
+  const cookieImportContract = resolveCookieImportContract(providerInfo?.webLogin);
   const models = liveAntigravityModels || syncedModels || getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
 
@@ -2152,6 +2158,11 @@ function ProviderDetail({ providerId }) {
                         {translate("Bulk Add")}
                       </Button>
               }
+                    {cookieImportContract &&
+              <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowCookieImportModal(true)}>
+                      Import cookies
+                    </Button>
+              }
                     <Button
                 size="sm"
                 icon="add"
@@ -2243,6 +2254,17 @@ function ProviderDetail({ providerId }) {
               title={translate("Bulk import Grok CLI accounts from JSON")}
               className="w-full sm:w-auto">
                       {translate("Bulk Add")}
+                    </Button>
+            }
+                  {cookieImportContract &&
+            <Button
+              size="sm"
+              icon="cookie"
+              variant="secondary"
+              onClick={() => setShowCookieImportModal(true)}
+              title="Import cookies from a header, a cURL command, a HAR file or a browser extension"
+              className="w-full sm:w-auto">
+                      Import cookies
                     </Button>
             }
                   {hasDualAuthModes ?
@@ -2508,6 +2530,16 @@ function ProviderDetail({ providerId }) {
           setAddConnectionError("");
           setShowAddApiKeyModal(false);
         }} />
+
+      <CookieImportModal
+        key={showCookieImportModal ? "cookie-import-open" : "cookie-import-closed"}
+        isOpen={showCookieImportModal}
+        provider={providerId}
+        providerName={providerInfo?.name}
+        webLogin={providerInfo?.webLogin}
+        connections={connections}
+        onSuccess={fetchConnections}
+        onClose={() => setShowCookieImportModal(false)} />
       
       <EditConnectionModal
         isOpen={showEditModal}

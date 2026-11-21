@@ -11,6 +11,7 @@ import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeo
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { parseSSEToOpenAIResponse, createSSEErrorResult } from "./sseToJsonHandler.js";
+import { parseJsonDocumentBehindEventStream } from "./nonStreamingJsonDocument.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -27,6 +28,7 @@ import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
+import { createGeminiPlaceholderStripper } from "../../translator/concerns/geminiPlaceholderArgs.js";
 import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -376,6 +378,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const usage = response.usageMetadata || responseBody.usageMetadata;
     let textContent = "",reasoningContent = "";
     const toolCalls = [];
+    // Drop the compatibility-only `reason` the Gemini cleaner added to empty object schemas.
+    const stripPlaceholderArgs = createGeminiPlaceholderStripper({ clientTools: options.requestBody?.tools, providerBody: options.providerBody, toolNameMap: options.toolNameMap });
 
     if (content?.parts) {
       for (const part of content.parts) {
@@ -390,7 +394,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           toolCalls.push({
             id: encodeToolCallIdWithSignature(rawId, partSignature),
             type: "function",
-            function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) }
+            function: { name: part.functionCall.name, arguments: JSON.stringify(stripPlaceholderArgs(part.functionCall.name, part.functionCall.args || {})) }
           });
         }
         // Handle inline image data (from image generation models)
@@ -552,19 +556,29 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         providerBody: finalBody || translatedBody,
         provider
       });
-      if (!parsed) {
+      // A forced-streaming upstream can answer with one complete JSON response
+      // document under the event-stream media type (OmniRoute #18377). Read it
+      // as the non-stream response it is instead of failing the request.
+      const jsonDocument = parsed ? null : parseJsonDocumentBehindEventStream(sseText, targetFormat);
+      if (!parsed && !jsonDocument) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
       }
-      const sseError = createSSEErrorResult(parsed, credentials);
+      const sseError = createSSEErrorResult(parsed || jsonDocument.body, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;
       }
-      responseBody = parsed;
-      // The SSE accumulator produces OpenAI completions even when the provider
-      // transport and client use the same native format (#5380).
-      responseFormat = FORMATS.OPENAI;
+      if (jsonDocument) {
+        // The document keeps its own dialect. The event-stream accumulator
+        // always produces OpenAI completions, even when the provider transport
+        // and the client use the same native format (#5380).
+        responseBody = jsonDocument.body;
+        responseFormat = jsonDocument.format;
+      } else {
+        responseBody = parsed;
+        responseFormat = FORMATS.OPENAI;
+      }
     } else {
       try {
         responseBody = JSON.parse(responseText);
@@ -630,7 +644,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       responseBody,
       responseFormat,
       sourceFormat,
-      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
+      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body, providerBody: finalBody || translatedBody }
     );
 
     /**
@@ -792,10 +806,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
       // Always synthesize from an OpenAI-normalized intermediate. Reading finish
       // and usage from the raw provider body mislabels Claude/Gemini fields and
-      // drops tool terminal semantics.
-      const openAIIntermediate = targetFormat === FORMATS.OPENAI ?
+      // drops tool terminal semantics. The response dialect is the parsed one:
+      // a complete JSON document keeps its own dialect even when the transport
+      // label says otherwise (OmniRoute #18377).
+      const openAIIntermediate = responseFormat === FORMATS.OPENAI ?
       structuredClone(responseBody) :
-      translateNonStreamingResponse(structuredClone(responseBody), targetFormat, FORMATS.OPENAI);
+      translateNonStreamingResponse(structuredClone(responseBody), responseFormat, FORMATS.OPENAI);
       if (!Array.isArray(openAIIntermediate?.choices)) {
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to normalize non-streaming response for SSE");
       }

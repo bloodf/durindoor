@@ -188,6 +188,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
+| `demonroute` | openai | apikey | `https://api.demonroute.com/v1/chat/completions` |
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
 | `devin-cli-agentic` | claude | free | `devin://acp/stdio` |
@@ -229,6 +230,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
+| `gisoo` |  | apikey | `https://gisoo.pro/api/v1/chat/completions` |
 | `github` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `github-models` |  | apikey | `https://models.github.ai/inference/chat/completions` |
 | `gitlab` |  | oauth | `https://gitlab.com/api/v4/chat/completions` |
@@ -244,6 +246,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `greenpt` |  | apikey | `https://api.greenpt.ai/v1/chat/completions` |
 | `grok-cli` | openai-responses | oauth | `https://cli-chat-proxy.grok.com/v1/responses` |
 | `grok-web` | openai | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
+| `grokified` |  | apikey | `https://api.grokified.com/v1/chat/completions` |
 | `groq` |  | apikey | `https://api.groq.com/openai/v1/chat/completions` |
 | `hackclub` |  | apikey | `https://ai.hackclub.com/proxy/v1/chat/completions` |
 | `haiper` |  | apikey | `https://api.haiper.ai/v1` |
@@ -300,6 +303,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `lyceum` |  | apikey | `https://api.lyceum.technology/openai/v1/chat/completions` |
 | `magnific` |  | apikey | `` |
 | `maritalk` |  | apikey | `https://chat.maritaca.ai/api/chat/completions` |
+| `megabrain` |  | apikey | `https://getmegabrain.com/api/gateway/v1/chat/completions` |
 | `meganova-ai` |  | apikey | `https://api.meganova.ai/v1/chat/completions` |
 | `meta-llama` |  | apikey | `https://api.llama.com/compat/v1/chat/completions` |
 | `mimo-free` |  | free | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |

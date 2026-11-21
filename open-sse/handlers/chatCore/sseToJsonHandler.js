@@ -23,6 +23,7 @@ import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { claudeToOpenAIResponse } from "../../translator/response/claude-to-openai.js";
+import { claudeMessageDocumentToEventStream, parseJsonDocumentBehindEventStream } from "./nonStreamingJsonDocument.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP } from "../../translator/schema/index.js";
 
@@ -267,8 +268,8 @@ export function createSSEErrorResult(parsed, credentials = null) {
   return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
 }
 
-function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap) {
-  const state = { toolNameMap };
+export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null) {
+  const state = { toolNameMap, clientTools, providerBody };
   const chunks = [];
 
   for (const { data, done } of parseSseEvents(rawSSE)) {
@@ -446,7 +447,23 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     const isCodexResponsesApi = isResponsesProvider(provider) || targetFormat === FORMATS.OPENAI_RESPONSES;
     if (isCodexResponsesApi) {
       try {
-        const jsonResponse = await convertResponsesStreamToJson(providerResponse.body, {
+        // Read the body once through the bounded reader. A forced-streaming
+        // upstream can answer with one complete JSON response document under
+        // the event-stream media type (OmniRoute #18377).
+        const rawBody = await readBodyWithTimeout(providerResponse, {
+          signal,
+          maxBytes: MAX_PROVIDER_BODY_BYTES,
+          timeoutMs: PROVIDER_BODY_TIMEOUT_MS
+        });
+        const jsonDocument = parseJsonDocumentBehindEventStream(rawBody, targetFormat);
+        const documentError = jsonDocument ? createSSEErrorResult(jsonDocument.body, credentials) : null;
+        if (documentError) {
+          appendLog({ status: `FAILED ${documentError.status}` });
+          return documentError;
+        }
+        const jsonResponse = jsonDocument?.format === FORMATS.OPENAI_RESPONSES ?
+        jsonDocument.body :
+        await convertResponsesStreamToJson(new Response(rawBody).body, {
           signal,
           maxBytes: MAX_PROVIDER_BODY_BYTES,
           timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
@@ -538,12 +555,41 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }) :
       null;
       let parsed = claudeSSE ? claudeSSE.completion : isGeminiFamily ?
-      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap) :
+      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap, Array.isArray(body?.tools) ? body.tools : null) :
       parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
         providerBody: finalBody || translatedBody,
         provider
       });
+      // A forced-streaming upstream can answer with one complete JSON response
+      // document under the event-stream media type (OmniRoute #18377). The
+      // document is the response it describes, so read it as one instead of
+      // failing the request as an invalid event stream.
+      const jsonDocument = parsed ? null : parseJsonDocumentBehindEventStream(sseText, targetFormat);
+      if (jsonDocument) {
+        const documentError = createSSEErrorResult(jsonDocument.body, credentials);
+        if (documentError) {
+          appendLog({ status: `FAILED ${documentError.status}` });
+          return documentError;
+        }
+        if (jsonDocument.format === FORMATS.CLAUDE) {
+          // A complete Claude message is the same turn as the events that would
+          // have produced it, so the Claude parser serves both shapes.
+          const documentSSE = parseClaudeSSE(claudeMessageDocumentToEventStream(jsonDocument.body), model, {
+            providerBody: finalBody || translatedBody,
+            toolNameMap,
+            nativeMessage: sourceFormat === FORMATS.CLAUDE
+          });
+          parsed = documentSSE?.completion || null;
+        } else if (jsonDocument.format === FORMATS.OPENAI_RESPONSES) {
+          parsed = responsesApiToOpenAICompletion(jsonDocument.body, model, {
+            chatCustomToolNames: sourceFormat === FORMATS.OPENAI ? initState(FORMATS.OPENAI, body).chatCustomToolNames : new Set(),
+            toolNameMap
+          });
+        } else {
+          parsed = jsonDocument.body;
+        }
+      }
       if (!parsed) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");

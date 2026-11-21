@@ -72,8 +72,9 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
-  // T3 Chat publishes a curated catalog; model discovery sends no session cookie.
-  if (connection.provider === "t3-web") {
+  // T3 Chat and Adapta publish a curated catalog; model discovery sends no
+  // session cookie.
+  if (connection.provider === "t3-web" || connection.provider === "adapta-web") {
     return {
       provider: connection.provider, connectionId: connection.id,
       models: getProviderModels(connection.provider), source: "local_catalog",

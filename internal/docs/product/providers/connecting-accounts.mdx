@@ -28,6 +28,8 @@ Amazon Q (`amazon-q`, alias `aq`) is the Kiro backend under its own provider id.
 
 Muse Code (`muse-code`, alias `mc`) signs in with Meta's device flow at `auth.meta.com`, the same login as `muse login`. The grant returns a durable `dca:` token; DurinDoor mints the subscription inference key from it at `https://api.meta.ai/muse-code/key` and sends requests to `https://api.meta.ai/v1/responses` with that key. If the mint fails at sign-in, the connection is still saved and the key is minted before its first request. The same card also takes a pasted `META_API_KEY` as an API-key connection.
 
+The two credentials are not interchangeable. The key minted from the device token is the Muse Code subscription key, and Meta scopes it to the Muse Code client, so that path keeps the Muse Code client identity. A Meta Model API key is the credential Meta documents for external clients on `https://api.meta.ai/v1` with a bearer token and no client fingerprint, so that path travels bare and is never reminted. The Muse Code CLI offers the same two choices on first run — sign in with your browser, or paste an API key — and `/login` reopens them; an API key takes priority over a browser sign-in there, and Meta Managed Account (MMA) accounts can only use an API key. The audit behind this split is in [muse-signin-2034.md](../../muse-signin-2034.md).
+
 Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an array / `accounts` object. Imports stay serial so connection priorities keep the input order.
 
 ## Import token and cookie OAuth
@@ -73,7 +75,7 @@ DurinDoor stores `refreshToken` and related metadata on the connection. On reque
 
 Refresh can fail. Qoder's upstream refresh endpoint returns 403 for this flow; the dashboard tells you to log in again. Cursor, Windsurf, Trae, and imported Devin tokens have no public refresh. An unrecoverable grant (`invalid_grant`, reused refresh token) needs a reconnect.
 
-Muse Code has no refresh grant either. When its key is missing or the API returns 401, `tokenRefresh.js` mints a new key from the stored `dca:` token. Once that token expires or is revoked, sign in again. Pasted `META_API_KEY` connections are never reminted.
+Muse Code has no refresh grant either. When its key is missing or the API returns 401, `tokenRefresh.js` mints a new key from the stored `dca:` token. Once that token expires or is revoked, sign in again. Pasted `META_API_KEY` connections are never reminted. A `client_attestation_denied` refusal is not answered with a remint or a retry: a key reminted from the same device token carries the same scope, so the refusal is reported as it arrived and the remedy is a different credential.
 
 OrcaRouter is never refreshed. Its PKCE login issues a durable API key rather than an access/refresh pair, and OrcaRouter publishes no refresh grant, so `tokenRefresh.js` refuses the provider outright instead of falling through to the generic grant. When the relay rejects the key with a 401, or a 403 whose body reads as an auth failure, the exact connection that made that request is taken out of rotation as `reauth_required` (the same quarantine a revoked Codex login gets) until you sign in again or save a new key. Quota and permission 403s stay on the normal cooldown. A late failure that presented a key you have already replaced is ignored. A sign-in whose exchange returns no account id is rejected, so repeat logins always land on the same connection.
 

@@ -531,7 +531,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 
   // Ollama
   if (targetFormat === FORMATS.OLLAMA) {
-    return ollamaBodyToOpenAI(responseBody);
+    const result = ollamaBodyToOpenAI(responseBody);
+    return responsesClient ? projectCompletionToClientFormat(result, sourceFormat, projectionOptions()) : result;
   }
 
   /**

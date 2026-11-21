@@ -1,0 +1,29 @@
+{
+  "vendor": "elevenlabs",
+  "kind": "tts",
+  "model": "eleven_flash_v2_5/fixture-voice",
+  "verifiedLive": false,
+  "source": "https://elevenlabs.io/docs/",
+  "liveGap": "No live upstream call was made for this fixture. The text-to-speech request, its output format parameter and the audio response are asserted offline against the adapter; the voice list, the model availability and the upstream error bodies were not re-read from the vendor documentation.",
+  "request": {
+    "method": "POST",
+    "url": "https://api.elevenlabs.io/v1/text-to-speech/fixture-voice?output_format=mp3_44100_128",
+    "headers": {
+      "Content-Type": "application/json",
+      "xi-api-key": "fixture-key"
+    },
+    "body": {
+      "text": "a cat",
+      "model_id": "eleven_flash_v2_5"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "audio/mpeg",
+    "bytes": 1024,
+    "normalized": {
+      "format": "mp3",
+      "decodedBytes": 1024
+    }
+  }
+}

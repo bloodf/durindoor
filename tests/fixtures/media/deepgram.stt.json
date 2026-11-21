@@ -1,0 +1,43 @@
+{
+  "vendor": "deepgram",
+  "kind": "stt",
+  "model": "nova-3",
+  "verifiedLive": false,
+  "source": "https://developers.deepgram.com/docs/",
+  "liveGap": "No live upstream call was made for this fixture. The listen URL, its query parameters, the token header and the transcript body are asserted offline against the handler; the diarization, utterances and profanity filters were not re-read from the vendor documentation.",
+  "request": {
+    "method": "POST",
+    "url": "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&punctuate=true&detect_language=true",
+    "headers": {
+      "Authorization": "Token fixture-key",
+      "Content-Type": "audio/wav"
+    },
+    "body": {
+      "encoding": "binary-audio",
+      "bytes": 2048
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "results": {
+        "channels": [
+          {
+            "alternatives": [
+              {
+                "transcript": "a cat",
+                "confidence": 0.99
+              }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "duration": 1.5
+      }
+    },
+    "normalized": {
+      "text": "a cat"
+    }
+  }
+}

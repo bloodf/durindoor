@@ -70,37 +70,41 @@ describe("OAuth callback listener cleanup", () => {
   it("releases the generic listener after an error callback", async () => {
     const flow = await new OAuthService({}).startAuthFlow(null, "test provider");
     const waiting = flow.waitForCallback();
+    const rejected = expect(waiting).rejects.toThrow("access_denied");
 
     await callbackRequest(flow.port, "/callback?error=access_denied");
 
-    await expect(waiting).rejects.toThrow("access_denied");
+    await rejected;
     await expectPortReusable(flow.port);
   });
 
   it.sequential("releases the fixed listener after an error callback", async () => {
     const { attempt } = await startXaiAttempt();
+    const rejected = expect(attempt).rejects.toThrow("access_denied");
 
     await callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?error=access_denied`);
 
-    await expect(attempt).rejects.toThrow("access_denied");
+    await rejected;
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
   it.sequential("releases the fixed listener when callback code is missing", async () => {
     const { attempt } = await startXaiAttempt();
+    const rejected = expect(attempt).rejects.toThrow("No authorization code received");
 
     await callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?state=state-only`);
 
-    await expect(attempt).rejects.toThrow("No authorization code received");
+    await rejected;
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
   it.sequential("releases the fixed listener when callback state is missing", async () => {
     const { attempt } = await startXaiAttempt();
+    const rejected = expect(attempt).rejects.toThrow("Invalid state parameter");
 
     await callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?code=oauth-code`);
 
-    await expect(attempt).rejects.toThrow("Invalid state parameter");
+    await rejected;
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
@@ -108,13 +112,14 @@ describe("OAuth callback listener cleanup", () => {
     const { attempt } = await startXaiAttempt();
     fetch.mockResolvedValueOnce({ ok: false, text: async () => "exchange rejected" });
     const state = new URL(mocks.open.mock.calls[0][0]).searchParams.get("state");
+    const rejected = expect(attempt).rejects.toThrow("xAI token exchange failed: exchange rejected");
 
     await callbackRequest(
       XAI_CONFIG.loopbackPort,
       `${XAI_CONFIG.callbackPath}?code=oauth-code&state=${encodeURIComponent(state)}`,
     );
 
-    await expect(attempt).rejects.toThrow("xAI token exchange failed: exchange rejected");
+    await rejected;
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
@@ -127,13 +132,14 @@ describe("OAuth callback listener cleanup", () => {
     const attempt = service.connect();
     await vi.waitFor(() => expect(mocks.open).toHaveBeenCalledOnce());
     const state = new URL(mocks.open.mock.calls[0][0]).searchParams.get("state");
+    const rejected = expect(attempt).rejects.toThrow("save rejected");
 
     await callbackRequest(
       XAI_CONFIG.loopbackPort,
       `${XAI_CONFIG.callbackPath}?code=oauth-code&state=${encodeURIComponent(state)}`,
     );
 
-    await expect(attempt).rejects.toThrow("save rejected");
+    await rejected;
     expect(saveTokens).toHaveBeenCalledOnce();
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });

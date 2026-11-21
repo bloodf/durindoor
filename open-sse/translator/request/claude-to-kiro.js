@@ -295,12 +295,12 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
 
   if (currentRole !== null) flushPending();
 
-  // Pop the last user turn as currentMessage (skip trailing assistant turns).
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].userInputMessage) {
-      currentMessage = history.splice(i, 1)[0];
-      break;
-    }
+  // Only a final user turn owns currentMessage; keep assistant-ended history
+  // intact and supply the same neutral continuation used by the Chat route.
+  if (history.at(-1)?.userInputMessage) {
+    currentMessage = history.pop();
+  } else if (history.length > 0) {
+    currentMessage = { userInputMessage: { content: "Continue", modelId: model } };
   }
 
   // Grab the tools schema from whichever history turn received it before

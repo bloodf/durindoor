@@ -210,8 +210,8 @@ export async function GET(request) {
   }
 }
 
-// Shared HTTP creation path. Commit guards are supplied only by internal callers.
-export async function createProvider(request, { shouldCommit } = {}) {
+// Shared HTTP creation path. Commit guards and import-only policy are internal options.
+export async function createProvider(request, { shouldCommit, requireNewCookieName = false } = {}) {
   try {
     const body = await request.json();
     if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return NextResponse.json({ error: "Private account references cannot be supplied" }, { status: 400 });
@@ -396,6 +396,7 @@ export async function createProvider(request, { shouldCommit } = {}) {
     // atomically inside its transaction; the explicit update path is
     // updateProviderConnection (PUT /api/providers/[id]).
     const connectionOptions = createOnly === true ? { requireNewName: true } : { createOnly: true };
+    if (requireNewCookieName) connectionOptions.requireNewCookieName = true;
     if (isFunction(shouldCommit)) {
       connectionOptions.shouldCommit = shouldCommit;
     }

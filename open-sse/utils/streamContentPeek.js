@@ -16,6 +16,13 @@ import { isSafetyStopPayload } from "./safetyStopFrame.js";
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
 
+// Preserve raw terminal evidence across response wrappers and prefix replay.
+const tokenLimitEvidence = new WeakMap();
+
+export function trackStreamTokenLimit(body, hasTokenLimitTerminal) {
+  tokenLimitEvidence.set(body, hasTokenLimitTerminal);
+}
+
 function nonEmptyString(value) {
   return isString(value) && value.length > 0;
 }
@@ -156,6 +163,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
     return { hasContent: true, outcome: "content", body: null, streamError: null };
   }
 
+  const hasTokenLimitTerminal = tokenLimitEvidence.get(response.body);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const chunks = [];
@@ -166,12 +174,16 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
   const timeout = new Promise((resolve) => {
     timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
   });
-  const result = (outcome, replay = {}) => ({
-    hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop",
-    outcome,
-    body: replayStream(reader, chunks, replay),
-    streamError
-  });
+  const result = (outcome, replay = {}) => {
+    const body = replayStream(reader, chunks, replay);
+    if (hasTokenLimitTerminal) trackStreamTokenLimit(body, hasTokenLimitTerminal);
+    return {
+      hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop",
+      outcome,
+      body,
+      streamError
+    };
+  };
   let safetyStop = false;
   // True when the line carries output or an explicit safety stop; records the
   // first error envelope otherwise.
@@ -195,7 +207,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
         pending += decoder.decode();
         const tail = pending.trim();
         if (tail && inspect(tail)) return result(safetyStop ? "safety_stop" : "content", { done: true });
-        return result("empty", { done: true });
+        return result(!streamError && hasTokenLimitTerminal?.() ? "content" : "empty", { done: true });
       }
 
       chunks.push(next.value);
@@ -207,6 +219,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
         pending = pending.slice(newline + 1);
         if (inspect(line)) return result(safetyStop ? "safety_stop" : "content");
       }
+      if (!streamError && hasTokenLimitTerminal?.()) return result("content");
     }
     return result("limit");
   } catch (error) {

@@ -427,6 +427,7 @@ export default function ProvidersPage() {
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchData}>Retry</Button></div>}
       {toggleError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
       <PageHeader icon="dns" title="Providers" subtitle="Manage provider connections and routing availability." />
+      <p className="text-sm text-dd-muted">Connection status and catalog listings do not establish live inference. Open a provider for local readiness evidence and modality limits.</p>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Select
           label="Provider status"
@@ -818,7 +819,7 @@ function ProviderCard({
                     </span>
                   </Badge> :
                 isNoAuth ?
-                <Badge variant="success" size="sm" dot>Ready</Badge> :
+                <Badge variant="default" size="sm" dot>Enabled</Badge> :
 
                 <>
                     {getStatusDisplay(connected, error, errorCode)}

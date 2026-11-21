@@ -1,3 +1,5 @@
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { allowsIconTooltip } from "@/shared/ui/v5/motion/ReviewNativeButton.jsx";
 import {
   Children,
   cloneElement,
@@ -33,6 +35,7 @@ const TOUCH_DELAY = 2500;
  * @param {React.ReactElement} props.children Existing focusable trigger; its props/handlers are preserved.
  */
 export default function Tooltip({ content, side = "top", children }) {
+  const v5 = useUiV5();
   const id = useId();
   const triggerRef = useRef(null);
   const popupRef = useRef(null);
@@ -157,12 +160,18 @@ export default function Tooltip({ content, side = "top", children }) {
   }, [hasDom, open, side]);
 
   if (!content || !child) return children;
+  if (v5 && !allowsIconTooltip(children)) return cloneElement(child, { title: undefined });
+  const iconSelector = ".material-symbols-outlined, .v5-motion-icon, svg, img";
 
   const describedBy = [child.props["aria-describedby"], id].filter(Boolean).join(" ");
   const trigger = cloneElement(child, {
     "aria-describedby": describedBy,
+    onMouseOver: (event) => {
+      if (v5) setTriggerHovered(!!event.target.closest?.(iconSelector));
+      child.props.onMouseOver?.(event);
+    },
     onMouseEnter: (event) => {
-      setTriggerHovered(true);
+      if (!v5) setTriggerHovered(true);
       child.props.onMouseEnter?.(event);
     },
     onMouseLeave: (event) => {
@@ -170,7 +179,7 @@ export default function Tooltip({ content, side = "top", children }) {
       child.props.onMouseLeave?.(event);
     },
     onFocus: (event) => {
-      setTriggerFocused(true);
+      if (!v5 || event.currentTarget.matches(iconSelector) || event.currentTarget.querySelector(iconSelector)) setTriggerFocused(true);
       child.props.onFocus?.(event);
     },
     onBlur: (event) => {
@@ -185,7 +194,7 @@ export default function Tooltip({ content, side = "top", children }) {
         ref={triggerRef}
         className="inline-flex"
         onPointerDown={(event) => {
-          if (event.pointerType !== "touch") return;
+          if (event.pointerType !== "touch" || (v5 && !event.target.closest?.(iconSelector))) return;
           setDismissed(false);
           setTouchActive(true);
           clearTimeout(touchTimer.current);

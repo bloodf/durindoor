@@ -175,7 +175,7 @@ import {
   getSyncedModelCatalogs,
   getSettings } from
 "@/lib/localDb";
-import { parseModel as parseModelCore, normalizeModelReference, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
+import { parseModel as parseModelCore, normalizeModelReference, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix, resolveProviderModelAlias } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { filterExposedModels } from "@/shared/utils/modelExposureList.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
@@ -333,7 +333,7 @@ export async function getModelInfo(modelStr) {
     }
     return {
       provider: parsed.provider,
-      model: parsed.model
+      model: resolveProviderModelAlias(parsed.provider, parsed.model)
     };
   }
 

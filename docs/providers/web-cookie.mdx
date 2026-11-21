@@ -84,7 +84,7 @@ Some of these ids exist in the registry before their executor does. A request to
 
 ## Import cookies in the dashboard
 
-For the importable providers (ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web), the provider page has an **Import cookies** button next to **Add Connection**. The manual paste in the add dialog stays exactly as it was; the import is an extra way in.
+ChatGPT Web, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web and Adapta Web offer **Import cookies** next to **Add Connection**. You can also paste credentials in the add dialog.
 
 The import dialog offers three sources and one handover:
 
@@ -104,7 +104,7 @@ The import goes through the same API the browser extension uses, so the provider
 
 ## Import cookies in the dashboard
 
-For the importable providers (ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web), the provider page has an **Import cookies** button next to **Add Connection**. The manual paste in the add dialog stays exactly as it was; the import is an extra way in.
+ChatGPT Web, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web and Adapta Web offer **Import cookies** next to **Add Connection**. You can also paste credentials in the add dialog.
 
 The import dialog offers three sources and one handover:
 
@@ -124,7 +124,7 @@ The import goes through the same API the browser extension uses, so the provider
 
 ## Import from a browser extension
 
-A browser extension can send a signed-in session to DurinDoor instead of you pasting it. It works for ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web; the full-header providers such as HuggingChat are not supported.
+A browser extension can send a signed-in session to DurinDoor instead of you pasting it. It works for ChatGPT Web, Perplexity Web, Grok Web, Muse Spark Web and Tencent Yuanbao Web. Adapta Web supports dashboard import from the Clerk origin. HuggingChat uses its existing full-header sign-in or manual paste.
 
 1. In the dashboard, an operator asks for a pairing for one provider, either for a new named connection or for one existing cookie connection. The pairing secret is shown once and expires after two minutes. The provider page's **Import cookies** dialog creates the pairing in its **Browser extension** tab and shows the secret, the import URL and the approved cookie names.
 2. The extension sends the provider's approved cookies, the exact provider origin and that secret to `/api/providers/cookie-import`, in the `x-durindoor-pairing-token` header.

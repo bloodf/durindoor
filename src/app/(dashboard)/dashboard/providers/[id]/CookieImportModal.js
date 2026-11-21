@@ -48,7 +48,7 @@ async function readFileText(file) {
  * The pasted text, the parsed cookies and the pairing secret are dropped from
  * the page as soon as the operator submits or dismisses the dialog.
  */
-export default function CookieImportModal({ isOpen, provider, providerName, webLogin, connections = [], onSuccess, onClose }) {
+export default function CookieImportModal({ isOpen, provider, providerName, importContract, webLogin, connections = [], onSuccess, onClose }) {
   const [mode, setMode] = useState("paste");
   const [rawText, setRawText] = useState("");
   const [fileLabel, setFileLabel] = useState("");
@@ -62,7 +62,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, webL
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const contract = useMemo(() => resolveCookieImportContract(webLogin), [webLogin]);
+  const contract = useMemo(() => importContract ?? resolveCookieImportContract(webLogin), [importContract, webLogin]);
   const ambiguous = candidatesAreAmbiguous(candidates);
   const selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
   const cookieConnections = connections.filter((connection) => connection?.authType === "cookie");

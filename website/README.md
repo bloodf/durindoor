@@ -155,3 +155,7 @@ The homepage and docs use the same persisted theme preference. The marketing
 Playwright suite covers keyboard interactions, 360px and desktop layouts,
 axe checks and screenshots when run against a Docker-hosted production build
 via `DOCS_BASE_URL`.
+
+The homepage FAQ links to the network-server and web-cookie guides, including
+extension pairing limitations. Its native disclosure controls work with keyboard
+and touch; FAQ and audience copy are maintained in every homepage locale.

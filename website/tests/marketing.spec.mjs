@@ -229,3 +229,15 @@ test("published pages have responsive, accessible layouts without console errors
   }
   expect(errors).toEqual([]);
 });
+
+test("FAQ answers link to the documented connection paths and work by keyboard", async ({ page }) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  const faq = page.locator("#faq");
+  const network = faq.getByText("Can I connect a model server on my network?", { exact: true });
+  await network.focus();
+  await page.keyboard.press("Enter");
+  await expect(faq.getByRole("link", { name: "Network LLM servers" })).toHaveAttribute("href", "/docs/providers/network-llm-servers");
+  await faq.getByText("How do web provider sign-ins work?", { exact: true }).click();
+  await expect(faq.getByText(/one-use pairing/)).toBeVisible();
+  await expect(faq.getByRole("link", { name: "Web cookie providers" })).toHaveAttribute("href", "/docs/providers/web-cookie");
+});

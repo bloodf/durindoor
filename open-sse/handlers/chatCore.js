@@ -1051,7 +1051,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   fixMissingToolResponses(translatedBody);
 
   // Pin cache breakpoints to the final Claude body after all request savers.
-  if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
+  if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody, provider);
 
   if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));
 
@@ -1658,7 +1658,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
       if (recoveryBody !== translatedBody) {
         translatedBody = recoveryBody;
-        if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
+        if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody, provider);
         try {
           const retry = await executeProvider();
           providerResponse = retry.response;

@@ -152,10 +152,27 @@ export async function prepareCapture({ chrome, text, now = Date.now() }) {
     return fail("wrong_tab", { expectedOrigin: parsed.plan.providerOrigin });
   }
   parsed.plan.tabId = tab.id;
+  try {
+    await preflightPermissions(chrome, parsed.plan);
+  } catch {
+    return fail("permission_denied");
+  }
   return parsed;
 }
 
 const spentPlans = new WeakSet();
+const permissionPlans = new WeakMap();
+
+/** Snapshot existing grants during Review, before the confirmed Send gesture. */
+export async function preflightPermissions(chrome, plan) {
+  const missing = { permissions: [], origins: [] };
+  const origins = [matchPattern(plan.providerOrigin), matchPattern(plan.dashboardOrigin)];
+  if (!(await chrome.permissions.contains({ permissions: ["cookies"] }))) missing.permissions.push("cookies");
+  for (const origin of new Set(origins)) {
+    if (!(await chrome.permissions.contains({ origins: [origin] }))) missing.origins.push(origin);
+  }
+  permissionPlans.set(plan, missing);
+}
 
 function cookieHostAllowed(host, domain) {
   if (!isString(domain)) return false;
@@ -219,13 +236,11 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
   const cancelled = () => signal?.aborted === true;
   if (cancelled()) return fail("cancelled");
 
-  const origins = [`${matchPattern(plan.providerOrigin)}`, `${matchPattern(plan.dashboardOrigin)}`];
+  const missing = permissionPlans.get(plan);
+  if (!missing) return fail("permission_denied");
   const granted = { permissions: [], origins: [] };
   try {
-    // Only ask for what is not already held, so cleanup never removes a grant the user made earlier.
-    const missing = { permissions: [], origins: [] };
-    if (!(await chrome.permissions.contains({ permissions: ["cookies"] }))) missing.permissions.push("cookies");
-    for (const origin of origins) if (!(await chrome.permissions.contains({ origins: [origin] }))) missing.origins.push(origin);
+    // Request synchronously within Send; Review already identified the missing grants.
     if (missing.permissions.length || missing.origins.length) {
       let ok = false;
       try { ok = (await chrome.permissions.request(missing)) === true; } catch { ok = false; }

@@ -71,6 +71,68 @@ describe("pinned image quota reset port", () => {
     expect(m.credentials.mock.calls[1][1]).toEqual(new Set(["a"]));
     expect(m.usage).toHaveBeenCalledTimes(1);
   });
+
+  // The selector summary describes the accounts that were already unavailable
+  // before this request; the attempted account proves its own bounded reset.
+  // Both describe the same requested image route, so the earliest valid
+  // deadline is the honest retry time.
+  it("keeps the earliest valid retry hint across the selector summary and an attempted account", async () => {
+    m.credentials.mockResolvedValueOnce({ connectionId: "a", accessToken: "fixture-a" })
+      .mockResolvedValueOnce({
+        allRateLimited: true,
+        lastError: "Rate limited",
+        lastErrorCode: 429,
+        // The account that was already unavailable before this request.
+        retryAfter: new Date(now + 1200000).toISOString(),
+        retryAfterHuman: "reset after 20m"
+      });
+    m.mark.mockResolvedValue({ shouldFallback: true, retryAt: new Date(now + 600000).toISOString(), retryAtKnown: true });
+    fetch.mockResolvedValueOnce(failure({ type: "usage_limit_reached", resets_in_seconds: 600 }));
+    const response = await handleImageGeneration(request());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("600");
+    const body = await response.json();
+    expect(body.error.retry_after).toBe(new Date(now + 600000).toISOString());
+    expect(body.error.message).toContain("reset after 10m");
+    expect(m.usage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the selector summary unchanged when no account was attempted", async () => {
+    m.credentials.mockResolvedValue({
+      allRateLimited: true,
+      lastError: "Rate limited",
+      lastErrorCode: 429,
+      retryAfter: new Date(now + 1200000).toISOString(),
+      retryAfterHuman: "reset after 20m"
+    });
+    const response = await handleImageGeneration(request());
+    expect(fetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("1200");
+    const body = await response.json();
+    expect(body.error.retry_after).toBe(new Date(now + 1200000).toISOString());
+    expect(body.error.message).toContain("reset after 20m");
+    expect(m.usage).not.toHaveBeenCalled();
+  });
+
+  it("invents no retry hint when the selector summary is not a route rate limit", async () => {
+    m.credentials.mockResolvedValueOnce({ connectionId: "a", accessToken: "fixture-a" })
+      .mockResolvedValueOnce({
+        allRateLimited: true,
+        modelDisabled: true,
+        lastError: "Model 'codex/gpt-6-sol-image' is disabled.",
+        lastErrorCode: 403
+      });
+    m.mark.mockResolvedValue({ shouldFallback: true, retryAt: new Date(now + 600000).toISOString(), retryAtKnown: true });
+    fetch.mockResolvedValueOnce(failure({ type: "usage_limit_reached", resets_in_seconds: 600 }));
+    const response = await handleImageGeneration(request());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBeNull();
+    expect((await response.json()).error.retry_after).toBeUndefined();
+    expect(m.usage).not.toHaveBeenCalled();
+  });
 });
 
 // Private fixture: the real local health policy and SQLite store in a throwaway

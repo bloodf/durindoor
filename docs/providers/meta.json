@@ -5,11 +5,14 @@
   "pages": [
     "index",
     "connecting-accounts",
+    "sign-in-methods",
+    "catalog",
     "api-key-providers",
     "arcee-platform",
     "mnn-ai",
     "cerebrium",
     "web-cookie",
+    "cookie-capture-extension",
     "openai-compatible-nodes",
     "network-llm-servers",
     "free-and-local",
@@ -33,7 +36,6 @@
     "notrack",
     "retired",
     "hetzner",
-    "megabrain",
-    "catalog"
+    "megabrain"
   ]
 }

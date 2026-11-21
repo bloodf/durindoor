@@ -373,13 +373,33 @@ function normalizeCodexAssistantHistory(body) {
 
 
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
-function normalizeCodexTools(body) {
+function normalizeCodexTools(body, { dropFreePlanImageGeneration = false } = {}) {
   if (!Array.isArray(body.tools)) return;
+  const explicitImageChoice = isObject(body.tool_choice) && !Array.isArray(body.tool_choice) &&
+    body.tool_choice.type === "image_generation";
+  const requiredImageOnlyChoice = body.tool_choice === "required" &&
+    body.tools.some((tool) => isObject(tool) && !Array.isArray(tool) && tool.type === "image_generation") &&
+    !body.tools.some((tool) => {
+      if (!tool || !isObject(tool) || Array.isArray(tool) || tool.type === "image_generation") return false;
+      const type = isString(tool.type) ? tool.type : "";
+      if (type === "function") {
+        const fn = tool.function && isObject(tool.function) && !Array.isArray(tool.function) ? tool.function : null;
+        return isString(tool.name) && tool.name.trim() !== "" || isString(fn?.name) && fn.name.trim() !== "";
+      }
+      if (type === "namespace") return Array.isArray(tool.tools) && tool.tools.some((subtool) => isString(subtool?.name) && subtool.name.trim() !== "");
+      return CODEX_PASSTHROUGH_TOOL_TYPES.has(type) ||
+        CODEX_HOSTED_TOOL_TYPES.has(type) && !tool.function && !isString(tool.name);
+    });
+  const preserveImageGeneration = explicitImageChoice || requiredImageOnlyChoice;
   const validNames = new Set();
   const tools = [];
   for (let tool of body.tools) {
     if (!tool || !isObject(tool) || Array.isArray(tool)) continue;
     const type = isString(tool.type) ? tool.type : "";
+    // Codex CLI injects this optional hosted declaration into routine text chat.
+    // Keep it when the caller explicitly selects it, or requires tools and it is
+    // the sole executable option, so the choice never loses its declaration.
+    if (dropFreePlanImageGeneration && type === "image_generation" && !preserveImageGeneration) continue;
     if (type === "namespace") {
       if (Array.isArray(tool.tools)) {
         let subtools = tool.tools;
@@ -999,8 +1019,12 @@ export class CodexExecutor extends BaseExecutor {
     // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).
     const bodyIdentity = credentials?.providerSpecificData?.codexClientIdentity;
     if (bodyIdentity) applyCodexClientMetadata(body, bodyIdentity);
-    // Flatten function tools + drop unsupported types
-    normalizeCodexTools(body);
+    // Flatten function tools + drop unsupported types. Match the dedicated
+    // image adapter: chatgptPlanType takes precedence over workspacePlanType.
+    const providerSpecificData = credentials?.providerSpecificData;
+    const rawCodexPlanType = providerSpecificData?.chatgptPlanType || providerSpecificData?.workspacePlanType;
+    const codexPlanType = isString(rawCodexPlanType) ? rawCodexPlanType.trim().toLowerCase() : "";
+    normalizeCodexTools(body, { dropFreePlanImageGeneration: codexPlanType === "free" });
 
     // Ensure streaming is enabled (Codex API requires it); /responses/compact is unary JSON.
     if (isCompact) delete body.stream;else

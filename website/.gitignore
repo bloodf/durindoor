@@ -25,3 +25,6 @@ src/styles/shared/
 
 # Canonical identity assets are copied from ../assets/brand
 public/brand/
+
+# Docker website verification output
+verification-artifacts/

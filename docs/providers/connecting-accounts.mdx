@@ -5,6 +5,8 @@ description: Connect OAuth, device-code, imported-token, and cookie accounts, th
 
 A connection is one credential row for one provider. Claude Code, Codex, Gemini CLI, and GitHub use OAuth. ChatGPT Web and other `webCookie` registry entries use a browser session cookie; see [Web cookie providers](./web-cookie.mdx). The same provider can hold several connections so you can rotate quota or keep personal and team accounts apart.
 
+For a method-by-method overview, see [Provider sign-in methods](./sign-in-methods.mdx).
+
 Open Dashboard, then Providers, then the provider card. Connect starts the flow that provider supports.
 
 The connection check shows a short diagnostic category for authentication, quota or rate limits, unsupported checks, and runtime/provider failures. It uses the existing test result and displays general next steps; raw upstream response text is not shown in the connection list. A successful connection check does not establish that every model or feature is available.

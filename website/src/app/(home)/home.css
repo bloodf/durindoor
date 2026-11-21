@@ -66,8 +66,8 @@ html:has(.dd-home) body {
 }
 
 .dd-home :focus-visible {
-  outline: 2px solid var(--home-emerald);
-  outline-offset: 3px;
+  outline: var(--site-focus-width) solid var(--home-emerald);
+  outline-offset: var(--site-focus-offset);
   border-radius: 8px;
 }
 
@@ -78,9 +78,9 @@ html:has(.dd-home) body {
 
 .container {
   width: 100%;
-  max-width: 1200px;
+  max-width: var(--site-content-width);
   margin: 0 auto;
-  padding-inline: clamp(16px, 4vw, 40px);
+  padding-inline: var(--site-gutter);
 }
 
 .skip-link {
@@ -188,10 +188,10 @@ html:has(.dd-home) body {
   display: flex;
   align-items: center;
   gap: 16px;
-  max-width: 1200px;
+  max-width: var(--site-content-width);
   height: 64px;
   margin: 0 auto;
-  padding-inline: clamp(16px, 4vw, 40px);
+  padding-inline: var(--site-gutter);
 }
 
 .nav-brand {
@@ -518,7 +518,7 @@ html:has(.dd-home) body {
 .section {
   position: relative;
   z-index: 2;
-  padding-block: clamp(80px, 12vw, 150px);
+  padding-block: var(--site-space-section);
 }
 
 .section-header {
@@ -624,3 +624,19 @@ html:has(.dd-home) body {
     display: none;
   }
 }
+
+/* Shared theme control sits in the dark navigation in both themes. */
+.dd-home .dd-docs-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 1px solid var(--home-line-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--home-text);
+  cursor: pointer;
+}
+.dd-home .dd-docs-theme-toggle:hover { background: rgba(237, 230, 216, 0.1); }

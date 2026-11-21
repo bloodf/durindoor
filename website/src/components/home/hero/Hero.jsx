@@ -40,6 +40,7 @@ export default function Hero() {
           <h1 id="hero-title">
             {t("Speak, friend, and")} <em>{t("enter.")}</em>
           </h1>
+          <p className="gateway-audience">{t("The AI gateway for developers and operators")}</p>
           <p className="gateway-pitch">
             {t(
               "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.",

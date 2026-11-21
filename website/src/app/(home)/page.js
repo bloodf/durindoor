@@ -12,6 +12,7 @@ import Features from "@site/components/home/sections/Features.jsx";
 import QuickStart from "@site/components/home/sections/QuickStart.jsx";
 import DemoTeaser from "@site/components/home/sections/DemoTeaser.jsx";
 import FinalCta from "@site/components/home/sections/FinalCta.jsx";
+import FAQ from "@site/components/home/sections/FAQ.jsx";
 import Footer from "@site/components/home/sections/Footer.jsx";
 import { CursorGlow, Nav, ScrollProgress, SmoothScroll } from "@site/components/home/ui/chrome.jsx";
 
@@ -25,7 +26,7 @@ export default function HomePage() {
       <ScrollProgress />
       <CursorGlow />
       <Nav />
-      <main id="main" tabIndex={-1}>
+      <main id="main" tabIndex={-1} aria-label="DurinDoor homepage">
         <Hero />
         <DemoTeaser />
         <ServiceKinds coverage={providerCoverage(REGISTRY, SERVICE_KINDS)} />
@@ -36,6 +37,7 @@ export default function HomePage() {
         <QuotaUsage />
         <Features />
         <QuickStart />
+        <FAQ />
         <FinalCta />
       </main>
       <Footer />

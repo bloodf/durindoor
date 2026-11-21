@@ -332,15 +332,12 @@ function applyGlmtModelAlias(provider, model, body) {
 // output budget and return finish_reason:"length" with empty content (#2332).
 export const THINKING_BUDGET_FLOOR = 4096;
 
-// Pure budget decision mirroring upstream #2332: returns the token count to
-// write, or null to leave as-is. Never lowers a positive budget; bumps an
-// undersized one only when the cap allows reaching the full floor.
+// Fill a missing/non-positive budget, but preserve positive client values.
+// The output cap limits default insertion only.
 export function computeThinkingBudget(current, cap) {
   const maxOutput = isNumber(cap) && cap > 0 ? cap : THINKING_BUDGET_FLOOR;
   const target = Math.min(THINKING_BUDGET_FLOOR, maxOutput);
   if (!isNumber(current) || current <= 0) return target;
-  // Never lower a positive budget; only bump when the cap can reach the floor.
-  if (current < THINKING_BUDGET_FLOOR && maxOutput >= THINKING_BUDGET_FLOOR) return THINKING_BUDGET_FLOOR;
   return null;
 }
 

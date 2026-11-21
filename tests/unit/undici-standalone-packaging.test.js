@@ -101,7 +101,7 @@ describe("standalone dependency closure", () => {
     ["file", process.platform === "darwin" ? ["EISDIR", "ENOTSUP"] : ["EISDIR"]],
     ["directory", ["ENOTDIR"]],
   ])("fails closed when a %s Dirent becomes stale", (kind, codes) => {
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-stale-dirent-"));
+    const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cli-stale-dirent-")));
     try {
       const source = path.join(temp, "source");
       const pkg = path.join(source, "node_modules", "payload");

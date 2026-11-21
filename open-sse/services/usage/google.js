@@ -428,6 +428,8 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
 
     const data = await response.json();
     const quotas = {};
+    // Reconciliation needs the original percentage, before the display clamp.
+    const rawPercentages = new Map();
 
     // `currentTier` is the display label only; upstream's `paidTier.id` is the
     // entitlement signal. Missing paidTier must remain free/unknown rather than
@@ -456,6 +458,7 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
         }
 
         const remainingFraction = info.quotaInfo.remainingFraction || 0;
+        rawPercentages.set(modelKey, remainingFraction * 100);
         // Keep provider-derived counts intact; only bound the percentage consumed
         // by the legacy display surface. The grouped parser has its own clamp.
         const displayFraction = Number.isFinite(remainingFraction) ?
@@ -500,7 +503,7 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       ];
       for (const [session, models] of families) {
         if (!session || !models.length || !(session.remainingPercentage > 0)) continue;
-        if (!models.every(([, quota]) => (quota.remainingPercentage ?? 0) === 0)) continue;
+        if (!models.every(([id]) => (rawPercentages.get(id) ?? 0) === 0)) continue;
         const reset = models.reduce((latest, [, quota]) =>
           !latest || (quota.resetAt && Date.parse(quota.resetAt) > Date.parse(latest)) ? quota.resetAt : latest, null);
         session.used = session.total;

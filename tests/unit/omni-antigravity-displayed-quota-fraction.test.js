@@ -66,4 +66,16 @@ describe("OmniRoute #2700 legacy Antigravity displayed quota fraction", () => {
     expect(grouped.gemini_weekly).toMatchObject({ remainingPercentage: 100, unlimited: true, used: 0, total: 0 });
     expect(grouped.gemini_session).toMatchObject({ remainingPercentage: 100, unlimited: true, used: 0, total: 0 });
   });
+
+  it.each([
+    [-0.5, 600, 40, "2026-12-02T00:00:00.000Z"],
+    [0, 1000, 0, "2026-12-01T00:00:00.000Z"],
+  ])("reconciles a positive session using the original fraction %s", async (fraction, used, percentage, resetAt) => {
+    mockNetwork({ remainingFraction: fraction, weeklyGroups: [{ displayName: "Gemini Models", buckets: [
+      { bucketId: "5h", window: "5h", remainingFraction: 0.4, resetTime: "2026-12-02T00:00:00Z" },
+    ] }] });
+    const result = await getAntigravityUsage(`offline-token-session-${fraction}`, { projectId: "offline-project" });
+    expect(result.quotas[MODEL].remainingPercentage).toBe(0);
+    expect(result.quotas.gemini_session).toMatchObject({ used, total: 1000, remainingPercentage: percentage, resetAt });
+  });
 });

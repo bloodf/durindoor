@@ -13,3 +13,7 @@ Static review of the two OmniRoute PRs merged after 17:55 UTC. Each source is pi
 - #20961 restores a shortened preferred-account response-start timeout and one sibling retry in upstream `src/sse/handlers/chat.ts`. DurinDoor's `handleSingleModelChat` in [`src/sse/handlers/chat.js`](../../../src/sse/handlers/chat.js) already selects preferred connections and handles other retry cases, but its loop lacks that timeout policy. The earlier 9router #2068 port established distinct single-account relay recovery behavior; it does not implement preferred-account response-start failover.
 - #20370's changed runtime and test paths are under `@omniroute/opencode-plugin-v2/`; no matching plugin package or model-row implementation exists in this repository.
 
+
+## Ported in this unit: #20961 preferred-account failover wiring
+
+Not applicable: needs a setting DurinDoor does not have. A search of `src/`, `open-sse/` and the settings defaults in `src/lib/db/repos/settingsRepo.js` found no preferred-account or response-start deadline setting, and there is no Resilience settings page. In `handleSingleModelChat`, `preferredConnectionId` only means an explicit connection pin, which stays terminal on failure. Building the setting, its dashboard control and the timeout policy would be a new feature, so no product code changed. `tests/unit/omni-nov21-preferred-account-failover.test.js` pins that the setting and Resilience surface are absent and that the retry loop has no response-start branch.

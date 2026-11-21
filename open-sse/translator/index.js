@@ -16,6 +16,7 @@ import { mergeHistoricalToolIdentities } from "./response/openai-responses/histo
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
+import { ownMessages } from "./concerns/callerMessages.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
@@ -133,7 +134,8 @@ function shouldPreserveOpenAICacheControl(targetFormat, provider, model, credent
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
   ensureInitialized();
-  let result = body;
+  // Own the message list so the rewrites below never mutate the caller's messages.
+  let result = ownMessages(body);
   // Role the client actually ended on, before any translator drops an emptied turn.
   const clientLastRole = detectClientLastRole(body);
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)

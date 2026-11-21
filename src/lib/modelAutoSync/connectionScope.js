@@ -6,7 +6,7 @@
  * (see catalog.js `catalogEntryForConnection`). Dependency-free so the DB
  * repository can import it.
  */
-export const CONNECTION_SCOPED_SYNC_PROVIDERS = Object.freeze(["mlx", "opencode-server", "grokified"]);
+export const CONNECTION_SCOPED_SYNC_PROVIDERS = Object.freeze(["mlx", "opencode-server", "grokified", "codex"]);
 
 export function isConnectionScopedSyncProvider(providerId) {
   return CONNECTION_SCOPED_SYNC_PROVIDERS.includes(providerId);

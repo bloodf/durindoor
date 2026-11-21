@@ -638,7 +638,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     const comboResult = await handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m, attemptSignal) => {
+      handleSingleModel: (b, m, attemptSignal, attemptOptions) => {
         // Reset per attempt so an eventless attempt does not carry forward the
         // previous attempt's event; the collector then holds only the latest
         // emitted event from the attempts that actually fired telemetry.
@@ -651,7 +651,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }
         );
       },
       log,
@@ -777,8 +777,8 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
 
 /**
  * Handle single model chat request
- * Fusion opts into local policy markers through nested attempts; ordinary
- * fallback combos retain their existing model/account error responses.
+ * Fusion and fallback with tool-output images use local policy markers
+ * through nested attempts to classify all-candidate ACL denials.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
   const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], reportComboPolicyRejections = false } = options;
@@ -856,7 +856,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const nestedResult = await handleComboChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m, attemptSignal) => {
+        handleSingleModel: (b, m, attemptSignal, attemptOptions) => {
           // Reset per nested attempt so a silent attempt does not replay the
           // previous nested attempt's event.
           nestedCollector.latest = null;
@@ -868,7 +868,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: reportComboPolicyRejections || attemptOptions?.reportComboPolicyRejections }
           );
         },
         log,

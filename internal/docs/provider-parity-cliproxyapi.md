@@ -444,3 +444,20 @@ outbound mock; none calls a provider service, and none is written or run here.
   DurinDoor contract counterpart and needs no work).
 - Upstream `main` is a moving target. The pin must be re-resolved before any
   port decision, and the candidate work above is scoped to the current pin.
+
+
+### Antigravity probe and refresh follow-up (#2034)
+
+The on-demand catalog probe classifies 401 as `auth_error` and 403 as
+`forbidden`. A forbidden result backs off in process per connection and project,
+including across access-token rotation; changing projects or accounts does not
+share that backoff. Failed probes leave the last synced catalog intact. The
+backoff follows CLIProxyAPI `f5c5681a` `sdk/cliproxy/antigravity_models.go`'s
+five-minute minimum and exponential equal-jitter window. Process restart clears
+the in-memory history.
+
+A rejected Antigravity OAuth refresh currently returns no replacement credential.
+The request retains its original upstream error, and the refresh coordinator does
+not itself quarantine the connection. OAuth failures may be transient, and this
+path discards their cause, so applying durable credential-wide quarantine would
+not be justified by the available failure signal.

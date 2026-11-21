@@ -116,6 +116,17 @@ describe("CursorExecutor Composer thinking-field responses", () => {
     [["The closing tag is <|/final|>"], "The closing tag is <|/final|>"],
     [["<|final|>Plain body <｜/final｜>"], "Plain body <｜/final｜>"],
     [["  \n", "<|fi", "nal|>OK<|/fi", "nal|>"], "OK"],
+    // #1073: real closing marker followed only by trailing whitespace at end of stream
+    [["<|final|>Answer<|/final|>"], "Answer"],
+    [["<|final|>Answer\n"], "Answer\n"],
+    [["<|final|>Answer<|/final|>\n"], "Answer\n"],
+    [["<|final|>Answer<|/final|> \n\n"], "Answer \n\n"],
+    [["<|final|>Answer<|/final|>", "\n"], "Answer\n"],
+    [["<|final|>Answer<|/final|>", " \n", "\n"], "Answer \n\n"],
+    [["<|final|>Answer<|/fi", "nal|>\n"], "Answer\n"],
+    [["<｜final｜>Answer<｜/final｜>", "\n"], "Answer\n"],
+    [["<|final|>A<|/final|>\n", "B<|/final|>"], "A<|/final|>\nB"],
+    [["<|final|>A<|/final|>", "\n", "B"], "A<|/final|>\nB"],
   ])("preserves visible answers and boundary framing across buffered and fragmented frames %#", async (fragments, expected) => {
     const executor = new CursorExecutor();
     const buffer = Buffer.concat(fragments.map((part, index) => cursorResponseFrame({

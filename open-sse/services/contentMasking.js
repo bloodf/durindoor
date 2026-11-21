@@ -54,7 +54,8 @@ const SECRET_VALUE_CHAR = String.raw`[A-Za-z0-9._~+/=!@#$%^*:-]`;
 CREDENTIAL_PATTERNS.splice(CREDENTIAL_PATTERNS.length - 1, 0, {
   name: "labelled_secret",
   regex: new RegExp(`(${SECRET_LABEL})(?![$%])${SECRET_VALUE_CHAR}{12,}`, "gi"),
-  label: "secret"
+  label: "secret",
+  replace: (_match, labelledPrefix) => `${labelledPrefix}[REDACTED:secret]`
 });
 
 
@@ -93,9 +94,10 @@ function applyPatterns(text, patterns, counts, replacement) {
   let out = text;
   for (const p of patterns) {
     p.regex.lastIndex = 0;
-    out = out.replace(p.regex, (match) => {
+    out = out.replace(p.regex, (match, ...captures) => {
       if (p.accept && !p.accept(match)) return match;
       counts[p.name] = (counts[p.name] ?? 0) + 1;
+      if (p.replace) return p.replace(match, ...captures);
       return replacement(p);
     });
   }

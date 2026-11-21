@@ -62,6 +62,23 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   return buildChunk(chunkMeta(state), { tool_calls: [toolCall] }, null);
 }
 
+// Emit an inline image part (data URI) as an OpenAI image delta. No-op for any other part.
+function pushInlineImage(part, state, results) {
+  const inlineData = part.inlineData || part.inline_data;
+  if (!inlineData?.data) return;
+  const mimeType = inlineData.mimeType || inlineData.mime_type || DEFAULT_IMAGE_MIME;
+  results.push(buildChunk(
+    chunkMeta(state),
+    {
+      images: [{
+        type: OPENAI_BLOCK.IMAGE_URL,
+        image_url: { url: encodeDataUri(mimeType, inlineData.data) }
+      }]
+    },
+    null
+  ));
+}
+
 // Convert Gemini response chunk to OpenAI format
 export function geminiToOpenAIResponse(chunk, state) {
   if (!chunk) return null;
@@ -130,8 +147,10 @@ export function geminiToOpenAIResponse(chunk, state) {
         const hasTextContent = part.text !== undefined && part.text !== "";
         const hasFunctionCall = !!part.functionCall;
 
-        // Standalone thoughtSignature part (no text, no functionCall): keep pending for next functionCall
-        if (!hasTextContent && !hasFunctionCall) {
+        const hasInlineImage = !!(part.inlineData || part.inline_data);
+
+        // Standalone thoughtSignature part (no text, no functionCall, no image): keep pending for next functionCall
+        if (!hasTextContent && !hasFunctionCall && !hasInlineImage) {
           continue;
         }
 
@@ -148,6 +167,9 @@ export function geminiToOpenAIResponse(chunk, state) {
           if (call) results.push(call);
           state.pendingThoughtSignature = null;
         }
+
+        // A signed image part is still an image: the signature must not swallow it.
+        pushInlineImage(part, state, results);
         continue;
       }
 
@@ -178,20 +200,7 @@ export function geminiToOpenAIResponse(chunk, state) {
       }
 
       // Inline data (images)
-      const inlineData = part.inlineData || part.inline_data;
-      if (inlineData?.data) {
-        const mimeType = inlineData.mimeType || inlineData.mime_type || DEFAULT_IMAGE_MIME;
-        results.push(buildChunk(
-          chunkMeta(state),
-          {
-            images: [{
-              type: OPENAI_BLOCK.IMAGE_URL,
-              image_url: { url: encodeDataUri(mimeType, inlineData.data) }
-            }]
-          },
-          null
-        ));
-      }
+      pushInlineImage(part, state, results);
     }
   }
 

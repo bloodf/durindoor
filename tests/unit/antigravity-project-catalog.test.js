@@ -168,7 +168,7 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(auth.response.status).toBe(401);
     expect(auth.body.classification).toBe("auth_error");
     expect(catalog.classifyAntigravityCatalogStatus(401)).toBe("auth_error");
-    expect(catalog.classifyAntigravityCatalogStatus(403)).toBe("auth_error");
+    expect(catalog.classifyAntigravityCatalogStatus(403)).toBe("forbidden");
 
     providerFetch.mockImplementation(async () => new Response("upstream busy", { status: 503 }));
     const transient = await getModels(connection.id);
@@ -176,6 +176,20 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(transient.body.classification).toBe("transient");
     expect(catalog.classifyAntigravityCatalogStatus(503)).toBe("transient");
     expect(catalog.classifyAntigravityCatalogStatus(200)).toBe("success");
+  });
+
+  it("backs off a forbidden project across token rotation while isolating other projects", async () => {
+    const { fetchConnectionModels } = await import("@/app/api/providers/[id]/models/fetchConnectionModels.js");
+    const connection = await addConnection({ email: "forbidden@example.test" });
+    providerFetch.mockResolvedValueOnce(new Response("project forbidden", { status: 403 }));
+    const first = await getModels(connection.id);
+    expect(first.response.status).toBe(403);
+    expect(first.body.classification).toBe("forbidden");
+    const rotated = await fetchConnectionModels({ ...connection, accessToken: "rotated" });
+    expect(rotated).toMatchObject({ status: 403, classification: "forbidden" });
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+    providerFetch.mockResolvedValueOnce(catalogResponse({ other: {} }));
+    expect((await fetchConnectionModels({ ...connection, projectId: "another-project" })).models[0].id).toBe("other");
   });
 
   it("reads a malformed catalog as a transient failure instead of an empty catalog", async () => {
@@ -241,5 +255,10 @@ describe("Antigravity account-scoped catalog discovery", () => {
     const stored = await getSyncedModelCatalog("antigravity");
     expect(stored.models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
     expect(stored.error).toContain("503");
+    await syncProviderModels("antigravity", {
+      now: Date.now(),
+      fetchModels: async () => ({ error: "project forbidden", status: 403, classification: "forbidden" })
+    });
+    expect((await getSyncedModelCatalog("antigravity")).models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
   });
 });

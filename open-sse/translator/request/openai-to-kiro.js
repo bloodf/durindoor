@@ -20,7 +20,7 @@ import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 
 /** Render a single tool call as a readable text line. */
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 function toolCallToText(name, input) {
   let argStr;
   try {
@@ -31,11 +31,30 @@ function toolCallToText(name, input) {
   return `[Tool call: ${name || "unknown"}(${argStr})]`;
 }
 
+/** Serialize result blocks into Kiro's text-only tool-result content. */
+function serializeToolResultContent(content) {
+  if (isString(content)) return content;
+  if (Array.isArray(content)) {
+    return content.map(serializeToolResultContent).filter(Boolean).join("\n");
+  }
+  if (!isRecord(content)) return "";
+  if (content.type === CLAUDE_BLOCK.IMAGE || content.type === OPENAI_BLOCK.IMAGE_URL) {
+    const mediaType = content.source?.media_type ?? content.media_type;
+    return `[image: ${isString(mediaType) && /^image\/[a-zA-Z0-9.+-]+$/.test(mediaType) ? mediaType : "image"}]`;
+  }
+  if (isString(content.text)) return content.text;
+  if (content.type && content.type !== "json") return "";
+  try {
+    const json = JSON.stringify(content);
+    return json === "{}" ? "" : json || "";
+  } catch {
+    return "";
+  }
+}
+
 /** Preserve error meaning when tool results must be salvaged as plain text. */
 function toolResultToText(content, isError = false) {
-  const text = Array.isArray(content) ?
-  content.map((c) => isString(c) ? c : c.text || "").join("\n") :
-  isString(content) ? content : "";
+  const text = serializeToolResultContent(content);
   return `[Tool ${isError ? "error" : "result"}: ${text}]`;
 }
 
@@ -352,7 +371,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
       let content = "";
       if (isString(msg.content)) {
         content = msg.content;
-      } else if (Array.isArray(msg.content)) {
+      } else if (Array.isArray(msg.content) && msg.role !== ROLE.TOOL) {
         const textParts = [];
         for (const c of msg.content) {
           if (c.type === OPENAI_BLOCK.TEXT || c.text) {
@@ -385,9 +404,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         const toolResultBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_RESULT);
         if (toolResultBlocks.length > 0) {
           toolResultBlocks.forEach((block) => {
-            const text = Array.isArray(block.content) ?
-            block.content.map((c) => c.text || "").join("\n") :
-            isString(block.content) ? block.content : "";
+            const text = serializeToolResultContent(block.content);
 
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
@@ -400,7 +417,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
 
       // Handle tool role (from normalized)
       if (msg.role === ROLE.TOOL) {
-        const toolContent = isString(msg.content) ? msg.content : "";
+        const toolContent = serializeToolResultContent(msg.content);
         pendingToolResults.push({
           toolUseId: msg.tool_call_id,
           status: msg.is_error === true ? "error" : "success",

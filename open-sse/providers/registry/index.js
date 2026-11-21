@@ -344,16 +344,17 @@ import p341 from "./xiaomi-mimo.js";
 import p342 from "./xiaomi-tokenplan.js";
 import p343 from "./xinference.js";
 import p344 from "./xkiro.js";
-import p345 from "./yi.js";
-import p346 from "./yolo-auto.js";
-import p347 from "./youcom.js";
-import p348 from "./yuanbao-web.js";
-import p349 from "./zai.js";
-import p350 from "./zed.js";
-import p351 from "./zenmux-free.js";
-import p352 from "./zenmux.js";
-import p353 from "./zerolimitai.js";
-import p354 from "./zylo-api.js";
+import p345 from "./y-api.js";
+import p346 from "./yi.js";
+import p347 from "./yolo-auto.js";
+import p348 from "./youcom.js";
+import p349 from "./yuanbao-web.js";
+import p350 from "./zai.js";
+import p351 from "./zed.js";
+import p352 from "./zenmux-free.js";
+import p353 from "./zenmux.js";
+import p354 from "./zerolimitai.js";
+import p355 from "./zylo-api.js";
 
 export default [
   p0,
@@ -711,4 +712,5 @@ export default [
   p352,
   p353,
   p354,
+  p355,
 ];

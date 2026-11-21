@@ -101,7 +101,17 @@ export function getModelSupportedFormats(aliasOrId, modelId) {
   if (!models) return null;
   const model = findModel(models, modelId, aliasOrId);
   const declared = modelSupportedFormats(model);
-  if (declared || !model) return declared;
+  if (declared) return declared;
+  if (!model) {
+    // Y-API seeds no static catalog: its model ids are `vendor/model` and come from
+    // authenticated discovery (GET /v1/models), so the model is never found here.
+    // The provider documents one catalog served over both protocols —
+    // "the Anthropic-compatible endpoint, serving the same catalog as
+    // /chat/completions" (https://y-api.bestvirtualgoods.com/openapi.json) — so a
+    // discovered id is routable over both transports.
+    if (aliasOrId === "y-api") return ["openai", "claude"];
+    return null;
+  }
   if ((aliasOrId === "minimax" || aliasOrId === "minimax-cn") && /^MiniMax-M[23]/.test(model.id)) {
     return ["openai", "claude", "openai-responses"];
   }

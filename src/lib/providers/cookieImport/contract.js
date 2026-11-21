@@ -3,21 +3,21 @@
  * browser extension may import a session into, from which origin, and under
  * which cookie names. Supported contract is documented in ./README.md.
  *
- * The metadata is derived from the registry `webLogin` block, the same source
- * the dashboard sign-in capture uses, so the two paths cannot drift. A provider
- * without an explicit cookie-name allowlist (`cookieNames: "*"`) or without an
- * HTTPS origin is not importable.
+ * Registry import profiles can override web sign-in metadata for import only.
+ * Both paths require an exact HTTPS origin and an explicit cookie allowlist.
  *
  * The rules themselves live in @/shared/utils/cookieImportContract.js, which the
  * dashboard import UI reads too, so the client and the server agree on which
  * origins and cookie names a provider approves.
  */
 
-import { getWebLoginConfig, hasRequiredCookies, composeCookieHeader } from "@/lib/webLoginSession";
+import REGISTRY from "open-sse/providers/registry/index.js";
+import { hasRequiredCookies, composeCookieHeader } from "@/lib/webLoginSession";
 import { isString, isNumber, isRecord } from "@/shared/utils/typeChecks";
 import {
   MAX_IMPORT_COOKIES,
   MAX_COOKIE_VALUE_LENGTH,
+  cookieImportConfig,
   resolveCookieImportContract,
   isApprovedCookieName,
   isValidCookieName,
@@ -32,25 +32,28 @@ export { MAX_COOKIE_VALUE_LENGTH };
  * Importable contract for a provider id, or null when the provider does not
  * support cookie import.
  * @param {string} providerId
- * @returns {{ provider: string, origin: string, host: string, cookieNames: readonly string[], cookiePrefixes: readonly string[], config: object } | null}
+ * @returns {{ provider: string, origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[], config: object } | null}
  */
 export function getCookieImportContract(providerId) {
-  const config = getWebLoginConfig(providerId);
+  const config = cookieImportConfig(REGISTRY.find((entry) => entry.id === providerId));
   const resolved = resolveCookieImportContract(config);
   if (!resolved) return null;
   return Object.freeze({
     provider: String(providerId),
-    origin: resolved.origin,
-    host: resolved.host,
-    cookieNames: resolved.cookieNames,
-    cookiePrefixes: resolved.cookiePrefixes,
+    ...resolved,
     config,
   });
 }
 
 /** What a client needs to know to collect cookies, with no internal config. */
 export function describeCookieImportContract(contract) {
-  return { origin: contract.origin, cookieNames: [...contract.cookieNames], cookiePrefixes: [...contract.cookiePrefixes] };
+  const description = {
+    origin: contract.origin,
+    cookieNames: [...contract.cookieNames],
+    cookiePrefixes: [...contract.cookiePrefixes],
+  };
+  if (!contract.extensionCapture) description.extensionCapture = false;
+  return description;
 }
 
 /**

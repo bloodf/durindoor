@@ -99,8 +99,17 @@ export async function getPrunedModelReferences(settings = null) {
  * failure so callers can record it and keep the previous catalog.
  */
 async function fetchCatalogEntry(providerId, connection, previous, { now, fetchModels, timeoutMs, endpoint = null }) {
-  const prepared = await prepareConnection(providerId, connection);
-  const result = await withTimeout(fetchModels(prepared), timeoutMs);
+  const controller = new AbortController();
+  let result;
+  try {
+    result = await withTimeout((async () => {
+      const prepared = await prepareConnection(providerId, connection);
+      if (controller.signal.aborted) throw new Error("Catalog refresh timed out");
+      return fetchModels(prepared, { signal: controller.signal });
+    })(), timeoutMs);
+  } finally {
+    controller.abort();
+  }
   if (result?.error) throw new Error(`${result.status || ""} ${result.error}`.trim());
 
   const staticModels = getModelsByProviderId(providerId);
@@ -121,7 +130,7 @@ async function fetchCatalogEntry(providerId, connection, previous, { now, fetchM
 }
 
 /**
- * Sync a connection-scoped provider (mlx, opencode-server): every active
+ * Sync a connection-scoped provider: every active
  * connection is fetched and stored under its own key, so no connection's
  * model IDs end up in another's catalog. The provider-keyed row is only a
  * status summary (timestamps only); it never carries model IDs, which
@@ -263,14 +272,19 @@ async function runModelAutoSyncImpl({ providerIds = null, force = false, now = D
   const intervalHours = getModelAutoSyncIntervalHours(settings);
   const explicit = Array.isArray(providerIds) && providerIds.length > 0;
   let candidates = providerIds;
+  let connections = [];
   if (!explicit) {
-    const connections = await getProviderConnections({ isActive: true });
+    connections = await getProviderConnections({ isActive: true });
     candidates = [...new Set(connections.map((c) => c.provider))].
     filter((id) => isModelAutoSyncEnabled(id, settings));
   }
   const catalogs = force || explicit ? {} : await getSyncedModelCatalogs();
   const dueProviders = candidates.filter((providerId) => isModelAutoSyncEligible(providerId) &&
-    (force || explicit || isSyncDue(catalogs[providerId], intervalHours, now)));
+    (force || explicit || (intervalHours > 0 && (
+      isSyncDue(catalogs[providerId], intervalHours, now) ||
+      (isConnectionScopedSyncProvider(providerId) && connections.some((connection) =>
+        connection.provider === providerId && !catalogEntryForConnection(catalogs, providerId, connection)))
+    ))));
   // Enrich only when a roster is due, or an operator requests a refresh.
   // The HTTP dependency is independent of the roster fetch dependency.
   if (dueProviders.length || force || explicit) {

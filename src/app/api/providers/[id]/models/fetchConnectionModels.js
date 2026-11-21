@@ -1,3 +1,4 @@
+import { antigravityForbiddenBackoff, recordAntigravityForbidden } from "open-sse/services/antigravityCatalog.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
@@ -102,6 +103,11 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
         source: "local_catalog",
       };
     }
+  }
+
+  if (connection.provider === "antigravity" && connection.id) {
+    const backedOff = antigravityForbiddenBackoff(connection);
+    if (backedOff) return backedOff;
   }
 
   // Model discovery is connection traffic too. Resolve the durable OAuth
@@ -220,11 +226,15 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     const response = await proxyAwareFetch(pageUrl, fetchOptions, proxyOptions);
     if (!response.ok) {
       const text = await response.text();
-      return {
+      const result = {
         error: sanitizeErrorMessage(text || response.statusText),
         status: response.status,
         ...classificationOf(response.status)
       };
+      if (connection.provider === "antigravity" && connection.id && response.status === 403) {
+        recordAntigravityForbidden(connection, result);
+      }
+      return result;
     }
     let data;
     try {

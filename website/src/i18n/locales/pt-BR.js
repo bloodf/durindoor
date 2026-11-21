@@ -1,5 +1,6 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Cookie capture extension": "Extensão de captura de cookies",
   "The AI gateway for developers and operators": "O gateway de IA para desenvolvedores e operadores",
   "FAQ": "Perguntas frequentes",
   "Questions before you begin": "Perguntas antes de começar",

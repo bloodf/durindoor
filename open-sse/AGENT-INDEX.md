@@ -329,6 +329,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nimble` |  | apikey | `` |
 | `nlpcloud` | openai | apikey | `https://api.nlpcloud.io/v1/gpu` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
+| `notrack` | openai | apikey | `https://api.notrack.ai/v1/chat/completions` |
 | `nous-research` | openai | apikey | `https://inference-api.nousresearch.com/v1/chat/completions` |
 | `novita` |  | apikey | `https://api.novita.ai/openai/v1/chat/completions` |
 | `nscale` | openai | apikey | `https://inference.api.nscale.com/v1/chat/completions` |

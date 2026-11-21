@@ -10,6 +10,7 @@ import Icon, { GitHubMark } from "./Icon.jsx";
 import BrandMark from "@site/components/brand/BrandMark.jsx";
 export { default as BrandMark } from "@site/components/brand/BrandMark.jsx";
 import { GITHUB_URL } from "../data.js";
+import { DocsThemeToggle } from "@site/components/docs/ThemeToggle.jsx";
 
 
 export function SmoothScroll({ children }) {
@@ -144,6 +145,7 @@ export function Nav() {
         </div>
         <div className="nav-actions">
           <HomeLocaleSelect />
+          <DocsThemeToggle />
           <Link className="btn btn-small btn-ghost nav-action-docs" href="/docs">{t("Docs")}</Link>
           <a className="nav-icon" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label={t("DurinDoor on GitHub")}>
             <GitHubMark size={18} />

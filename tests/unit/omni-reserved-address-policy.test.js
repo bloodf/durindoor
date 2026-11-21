@@ -53,8 +53,33 @@ const PUBLIC = [
   "2001:4860:4860::8888",
 ];
 
+// IANA IPv4 Special-Purpose Address Registry, last updated 2025-10-09:
+// 192.0.0.9/32 (Port Control Protocol Anycast, RFC 7723) and 192.0.0.10/32
+// (Traversal Using Relays around NAT Anycast, RFC 8155) are the two more
+// specific reservations inside 192.0.0.0/24 whose "Globally Reachable" value
+// is True. They are routable anycast destinations, so they stay public.
+//
+// [IPv4, expanded IPv4-mapped IPv6, NAT64 well-known prefix]
+const PUBLIC_ANYCAST = [
+  ["192.0.0.9", "0:0:0:0:0:ffff:c000:9", "64:ff9b::c000:9"],
+  ["192.0.0.10", "0:0:0:0:0:ffff:c000:a", "64:ff9b::c000:a"],
+];
+
+// The rest of 192.0.0.0/24 stays non-public: the IPv4 Service Continuity
+// Prefix 192.0.0.0/29 (RFC 7335), the 192.0.0.8 dummy address (RFC 7600),
+// the NAT64/DNS64 discovery addresses 192.0.0.170/171 (RFC 8880, RFC 7050)
+// and the unassigned remainder of the block.
+const RESERVED_ANYCAST_NEIGHBOURS = [
+  ["192.0.0.0", "0:0:0:0:0:ffff:c000:0", "64:ff9b::c000:0"],
+  ["192.0.0.7", "0:0:0:0:0:ffff:c000:7", "64:ff9b::c000:7"],
+  ["192.0.0.8", "0:0:0:0:0:ffff:c000:8", "64:ff9b::c000:8"],
+  ["192.0.0.11", "0:0:0:0:0:ffff:c000:b", "64:ff9b::c000:b"],
+  ["192.0.0.170", "0:0:0:0:0:ffff:c000:aa", "64:ff9b::c000:aa"],
+  ["192.0.0.171", "0:0:0:0:0:ffff:c000:ab", "64:ff9b::c000:ab"],
+];
+
 describe("reserved address classification", () => {
-  for (const [v4, mapped, nat64] of [...RESERVED, ...PRIVATE_BEFORE]) {
+  for (const [v4, mapped, nat64] of [...RESERVED, ...PRIVATE_BEFORE, ...RESERVED_ANYCAST_NEIGHBOURS]) {
     it(`treats ${v4}, ${mapped} and ${nat64} as private`, () => {
       expect(isPrivateHost(v4)).toBe(true);
       expect(isPrivateHost(mapped)).toBe(true);
@@ -73,6 +98,53 @@ describe("reserved address classification", () => {
       expect(isPrivateHost(host)).toBe(false);
     });
   }
+});
+
+describe("globally reachable anycast assignments", () => {
+  for (const [v4, mapped, nat64] of PUBLIC_ANYCAST) {
+    it(`keeps ${v4}, ${mapped} and ${nat64} public`, () => {
+      expect(isPrivateHost(v4)).toBe(false);
+      expect(isPrivateHost(mapped)).toBe(false);
+      expect(isPrivateHost(`[${mapped}]`)).toBe(false);
+      expect(isPrivateHost(nat64)).toBe(false);
+    });
+
+    it(`accepts ${v4} in every spelling under public-only`, () => {
+      for (const url of [
+        `http://${v4}/`,
+        `http://[::ffff:${v4}]/`,
+        `http://[${mapped}]/`,
+        `http://[${nat64}]/`,
+      ]) {
+        expect(() => assertOutboundUrlAllowed(url, "public-only"), url).not.toThrow();
+      }
+    });
+
+    it(`accepts ${v4} as a resolved address under public-only`, () => {
+      expect(() => assertResolvedAddressAllowed(v4, "public-only")).not.toThrow();
+      expect(() => assertResolvedAddressAllowed(mapped, "public-only")).not.toThrow();
+      expect(() => assertResolvedAddressAllowed(nat64, "public-only")).not.toThrow();
+    });
+  }
+
+  it("keeps the anycast neighbours of the same block blocked", () => {
+    for (const [v4, mapped, nat64] of RESERVED_ANYCAST_NEIGHBOURS) {
+      expect(isPrivateHost(v4), v4).toBe(true);
+      expect(() => assertResolvedAddressAllowed(v4, "public-only"), v4).toThrow(OutboundUrlGuardError);
+      expect(() => assertOutboundUrlAllowed(`http://${v4}/`, "public-only"), v4).toThrow(
+        OutboundUrlGuardError
+      );
+      expect(isPrivateHost(mapped), mapped).toBe(true);
+      expect(isPrivateHost(nat64), nat64).toBe(true);
+    }
+  });
+
+  it("leaves the other guard modes unchanged for the anycast addresses", () => {
+    expect(() => assertOutboundUrlAllowed("http://192.0.0.9/", "block-metadata")).not.toThrow();
+    expect(() => assertOutboundUrlAllowed("http://192.0.0.10/", "block-metadata")).not.toThrow();
+    expect(() => assertOutboundUrlAllowed("http://192.0.0.9/", "none")).not.toThrow();
+    expect(() => assertOutboundUrlAllowed("http://192.0.0.10/", "none")).not.toThrow();
+  });
 });
 
 describe("public-only URL handling", () => {
@@ -139,5 +211,18 @@ describe("resolved address handling", () => {
     expect(await answer("240.0.0.1", 4)).toBeInstanceOf(OutboundUrlGuardError);
     expect(await answer("64:ff9b::f000:1", 6)).toBeInstanceOf(OutboundUrlGuardError);
     expect(await answer("93.184.216.34", 4)).toBeNull();
+  });
+
+  it("passes a lookup answer in the globally reachable anycast allocations", async () => {
+    expect(await answer("192.0.0.9", 4)).toBeNull();
+    expect(await answer("192.0.0.10", 4)).toBeNull();
+    expect(await answer("0:0:0:0:0:ffff:c000:9", 6)).toBeNull();
+    expect(await answer("64:ff9b::c000:a", 6)).toBeNull();
+  });
+
+  it("still refuses a lookup answer from the rest of the protocol-assignment block", async () => {
+    expect(await answer("192.0.0.8", 4)).toBeInstanceOf(OutboundUrlGuardError);
+    expect(await answer("192.0.0.11", 4)).toBeInstanceOf(OutboundUrlGuardError);
+    expect(await answer("192.0.0.170", 4)).toBeInstanceOf(OutboundUrlGuardError);
   });
 });

@@ -11,7 +11,7 @@ import {
   isLocalOllamaProvider } from
 "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSyncedModelCatalogs } from "@/lib/localDb";
-import { effectiveSyncedModels, isModelAutoSyncEnabled, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
+import { catalogEntryForConnection, effectiveSyncedModels, isConnectionScopedSyncProvider, isModelAutoSyncEnabled, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
 import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getEnabledModels } from "@/lib/enabledModelsDb";
@@ -704,8 +704,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   const storedAllowlist = (providerId, alias) =>
     [getProviderAlias(providerId), alias, providerId].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
 
+  // Providers whose catalogs belong to one endpoint (mlx, opencode-server) are
+  // listed from the connection the caller may use: for a key scoped to provider
+  // accounts, the first active connection in that scope, and none when the
+  // scope holds no connection of the provider. Other providers are unaffected.
+  const scopedConnectionIds = Array.isArray(options.allowedConnectionIds) && options.allowedConnectionIds.length > 0 ?
+  new Set(options.allowedConnectionIds) : null;
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
+    if (scopedConnectionIds && isConnectionScopedSyncProvider(conn.provider) && !scopedConnectionIds.has(conn.id)) continue;
     if (!activeConnectionByProvider.has(conn.provider)) {
       activeConnectionByProvider.set(conn.provider, conn);
     }
@@ -935,12 +942,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   // Shared metadata only enriches these existing IDs; it never adds models.
   const syncedModelsByProvider = new Map();
   const inheritedCustomModelsByProvider = new Map();
-  for (const [providerId] of activeConnectionEntries) {
+  for (const [providerId, conn] of activeConnectionEntries) {
     if (isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId) ||
       !isModelAutoSyncEnabled(providerId, settings)) continue;
     const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
     const syncedModels = effectiveSyncedModels(
-      syncedCatalogs[providerId], PROVIDER_MODELS[staticAlias] ?? [], providerId, sharedMetadata
+      catalogEntryForConnection(syncedCatalogs, providerId, conn), PROVIDER_MODELS[staticAlias] ?? [], providerId, sharedMetadata
     );
     syncedModelsByProvider.set(providerId, syncedModels);
     if (syncedModels) {
@@ -1389,8 +1396,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
  *   mode for discovery fetches. Defaults to `getProviderValidationGuard()` so
  *   direct callers (policy catalog, tests) always run guarded; the models
  *   routes pass the same resolution explicitly.
- * @param {{ exposeComboOnly?: boolean }} [options] - internal override for
- *   callers that require the full direct-model catalog.
+ * @param {{ exposeComboOnly?: boolean, allowedConnectionIds?: string[]|null }} [options] -
+ *   `exposeComboOnly` is an internal override for callers that require the full
+ *   direct-model catalog. `allowedConnectionIds` is the caller's API-key scope
+ *   (empty or absent means unrestricted); it selects the connection whose
+ *   models connection-scoped providers (mlx, opencode-server) list.
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
 export function buildModelsList(kindFilter, guard = getProviderValidationGuard(), options = {}) {
@@ -1403,7 +1413,10 @@ export function buildModelsList(kindFilter, guard = getProviderValidationGuard()
   // both join the coalescing key. Public callers omit the override and retain
   // settings-driven /v1/models behavior.
   const exposureKey = options.exposeComboOnly === undefined ? "settings" : String(options.exposeComboOnly);
-  const pendingKey = `${kindFilterKey(kindFilter)}\0${guard}\0${exposureKey}`;
+  // A scoped caller must never share a build with another scope's caller.
+  const scopeKey = Array.isArray(options.allowedConnectionIds) && options.allowedConnectionIds.length > 0 ?
+  JSON.stringify([...new Set(options.allowedConnectionIds)].sort()) : "";
+  const pendingKey = `${kindFilterKey(kindFilter)}\0${guard}\0${exposureKey}\0${scopeKey}`;
   const existing = modelsInFlight.get(pendingKey);
   if (existing) return existing;
 

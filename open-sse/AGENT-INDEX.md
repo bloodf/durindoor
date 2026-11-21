@@ -246,6 +246,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `greenpt` |  | apikey | `https://api.greenpt.ai/v1/chat/completions` |
 | `grok-cli` | openai-responses | oauth | `https://cli-chat-proxy.grok.com/v1/responses` |
 | `grok-web` | openai | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
+| `grokified` |  | apikey | `https://api.grokified.com/v1/chat/completions` |
 | `groq` |  | apikey | `https://api.groq.com/openai/v1/chat/completions` |
 | `hackclub` |  | apikey | `https://ai.hackclub.com/proxy/v1/chat/completions` |
 | `haiper` |  | apikey | `https://api.haiper.ai/v1` |

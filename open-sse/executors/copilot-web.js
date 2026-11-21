@@ -11,6 +11,7 @@ import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isExpiredSessionToken, webSocketAuthStatus } from "../utils/webSessionExpiry.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
   try {
@@ -226,7 +227,24 @@ function timeoutSignal(parentSignal, timeoutMs) {
 
 function sseErrorResponse(error, status = 502) {
   const message = error?.message || error || "Copilot stream error";
-  return jsonError(sanitizeErrorMessage(message), status);
+  const upstreamStatus = error?.status === 401 || error?.status === 403 ? error.status : status;
+  return jsonError(sanitizeErrorMessage(message), upstreamStatus);
+}
+
+export const COPILOT_EXPIRED_MESSAGE =
+"Copilot access_token has expired. Import a fresh token or HAR from a signed-in copilot.microsoft.com session.";
+
+/**
+ * Local credential check shared by dispatch, Validate and Test Connection. It
+ * makes no request: an unusable paste is rejected (400) and a JWT access token
+ * past its `exp` is reported as expired (401). An empty credential is allowed.
+ */
+export function checkCopilotWebCredential(rawCredential) {
+  if (!isString(rawCredential) || !rawCredential.trim()) return { accessToken: null };
+  const accessToken = extractAccessToken(rawCredential);
+  if (!accessToken) return { error: "Invalid Copilot access_token", status: 400 };
+  if (isExpiredSessionToken(accessToken)) return { error: COPILOT_EXPIRED_MESSAGE, status: 401, expired: true };
+  return { accessToken };
 }
 
 export class CopilotWebExecutor extends BaseExecutor {
@@ -316,13 +334,13 @@ export class CopilotWebExecutor extends BaseExecutor {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         };
-        const abort = (reason) => {
+        const abort = (reason, status) => {
           if (settled) return;
           settled = true;
           cleanup();
-          controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({ error: { message: sanitizeErrorMessage(reason) } })}\n\n`
-          ));
+          const envelope = { message: sanitizeErrorMessage(reason) };
+          if (status) envelope.status = status;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: envelope })}\n\n`));
           controller.close();
         };
         const sendChat = () => {
@@ -416,7 +434,7 @@ export class CopilotWebExecutor extends BaseExecutor {
 
               // Ignore unparsable provider frames.
             }};
-          const onError = (err) => abort(err?.message || "Copilot WebSocket error");
+          const onError = (err) => abort(err?.message || "Copilot WebSocket error", webSocketAuthStatus(err));
           const onClose = () => {
             if (!doneReceived) {
               abort("Copilot WebSocket closed before completion");
@@ -450,11 +468,12 @@ export class CopilotWebExecutor extends BaseExecutor {
     const stream = input.stream !== false;
     const rawCredential =
     input.credentials?.apiKey || input.credentials?.providerSpecificData?.cookie || "";
-    const accessToken = extractAccessToken(rawCredential);
+    const credentialCheck = checkCopilotWebCredential(rawCredential);
+    const accessToken = credentialCheck.accessToken;
     const prompt = flattenPrompt(body).trim();
 
-    if (rawCredential && !accessToken) {
-      return { response: jsonError("Invalid Copilot access_token", 400), url: COPILOT_START_URL, headers: {}, transformedBody: null };
+    if (credentialCheck.error) {
+      return { response: jsonError(credentialCheck.error, credentialCheck.status), url: COPILOT_START_URL, headers: {}, transformedBody: null };
     }
 
     if (!prompt) {

@@ -9,6 +9,8 @@ For a method-by-method overview, see [Provider sign-in methods](./sign-in-method
 
 Open Dashboard, then Providers, then the provider card. Connect starts the flow that provider supports.
 
+The connection check shows a short diagnostic category for authentication, quota or rate limits, unsupported checks, and runtime/provider failures. It uses the existing test result and displays general next steps; raw upstream response text is not shown in the connection list. A successful connection check does not establish that every model or feature is available.
+
 ## Browser OAuth
 
 Claude Code and Codex use an authorization-code flow with PKCE (details: [Claude Code](./claude-code.mdx), [OpenAI Codex](./codex.mdx)). Open the provider's authorization URL and complete its consent flow. Claude Code shows a code on an Anthropic-hosted callback page for you to paste into DurinDoor. Codex uses its fixed loopback callback or a pasted callback URL. DurinDoor then exchanges the code for tokens. Gemini CLI and [Antigravity](./antigravity.mdx) use Google authorization-code flows without PKCE. GitLab Duo uses PKCE against `GITLAB_DUO_BASE_URL` or `GITLAB_BASE_URL`, defaulting to `https://gitlab.com`.

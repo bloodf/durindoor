@@ -7,7 +7,7 @@ import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
-import { readBoundedResponseText } from "../utils/error.js";
+import { parseRateLimitEvidence, readBoundedResponseText } from "../utils/error.js";
 import {
   prepareProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
@@ -403,6 +403,21 @@ export class BaseExecutor {
           return false; // hook vetoes retry (e.g. Retry-After too long)
         }
         if (dynamic != null && dynamic !== false) waitMs = dynamic;
+      }
+      // Hooks own their hint decisions; an explicit operator retry also wins.
+      // Only inspect an eligible generic 429, and keep the original response intact.
+      if (response && Number(statusKey) === HTTP_STATUS.RATE_LIMITED &&
+          !this.computeRetryDelay && matchedRule?.action !== "retry") {
+        const now = Date.now();
+        let evidence = parseRateLimitEvidence({ status: 429, headers: response.headers, now });
+        if (evidence?.source !== "retry_after") {
+          const bodyText = await readOptionalProbeText(response, { signal });
+          evidence = parseRateLimitEvidence({ status: 429, bodyText, now });
+        }
+        const remaining = Math.min(attempts - retryAttemptsByUrl[urlIndex],
+          maxTransportAttempts == null ? Infinity : maxTransportAttempts - dispatchesByUrl[urlIndex]);
+        if (["retry_after", "structured_body"].includes(evidence?.source) &&
+            evidence.resetAtMs - now > remaining * delayMs) return false;
       }
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);

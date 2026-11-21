@@ -16,7 +16,7 @@ function remoteImageMimeType(url) {
 }
 
 // Unsupported JSON Schema constraints that should be removed for Antigravity
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
 // Basic constraints (not supported by Gemini API)
 "minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
@@ -362,8 +362,8 @@ function enumNodeType(obj) {
 function inferEnumValueType(values) {
   const present = values.filter((v) => v !== null);
   if (present.length === 0) return undefined;
-  if (present.every((v) => typeof v === "boolean")) return "boolean";
-  if (present.every((v) => typeof v === "number" && Number.isFinite(v))) {
+  if (present.every((v) => isBoolean(v))) return "boolean";
+  if (present.every((v) => isNumber(v) && Number.isFinite(v))) {
     return present.every(Number.isInteger) ? "integer" : "number";
   }
   return undefined;

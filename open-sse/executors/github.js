@@ -58,6 +58,17 @@ export class GithubExecutor extends BaseExecutor {
     return /claude/i.test(model || "");
   }
 
+  /**
+   * Whether an upstream response is an event stream. The Claude Messages and
+   * Responses routes convert the upstream stream through an SSE transformer;
+   * that transform is only valid for an event-stream response (OmniRoute
+   * #937). A successful response with another media type keeps its body.
+   */
+  isEventStreamResponse(response) {
+    const contentType = (response?.headers?.get?.("content-type") || "").toLowerCase();
+    return contentType.includes("text/event-stream");
+  }
+
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     return this.endpointUrl("baseUrl", credentials);
   }
@@ -548,6 +559,24 @@ export class GithubExecutor extends BaseExecutor {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
     }
 
+    /**
+     * OmniRoute #937: the SSE transform runs only on a successful event-stream
+     * response. A successful response that is NOT an event stream (a JSON or
+     * plain-text body) keeps its status, headers and readable body, so the
+     * gateway classifies the upstream answer instead of the executor rewriting
+     * it into a `stream_error` frame with the upstream body lost.
+     */
+    if (!this.isEventStreamResponse(response)) {
+      return {
+        response,
+        url,
+        headers,
+        transformedBody,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "upstream"
+      };
+    }
+
     const state = initState(FORMATS.CLAUDE);
     state.model = model;
     if (toolNameMap) state.toolNameMap = toolNameMap;
@@ -729,6 +758,22 @@ export class GithubExecutor extends BaseExecutor {
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
+    }
+
+    /**
+     * OmniRoute #937: same event-stream precondition as the /v1/messages
+     * route above — a successful non-SSE response keeps its status, headers and
+     * readable body instead of being parsed as an event stream.
+     */
+    if (!this.isEventStreamResponse(response)) {
+      return {
+        response,
+        url,
+        headers,
+        transformedBody,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "upstream"
+      };
     }
 
     const state = initState("openai-responses");

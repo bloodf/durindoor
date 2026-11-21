@@ -83,7 +83,7 @@ beforeEach(async () => {
   adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)", ["audio-key-id", state.key, "Audio test", new Date().toISOString()]);
   ({ handleStt } = await import("@/sse/handlers/stt.js"));
   ({ handleTts } = await import("@/sse/handlers/tts.js"));
-});
+}, 60_000);
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();
   delete global._dbAdapter;

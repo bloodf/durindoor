@@ -111,14 +111,18 @@ export class GithubExecutor extends BaseExecutor {
    */
   stripAssistantReasoningFields(message) {
     if (!message || message.role !== "assistant") return message;
-    if (message.reasoning_text === undefined && message.reasoning_content === undefined) return message;
-    const stripped = Object.create(
-      Object.getPrototypeOf(message),
-      Object.getOwnPropertyDescriptors(message)
-    );
-    delete stripped.reasoning_text;
-    delete stripped.reasoning_content;
-    return stripped;
+    const descriptors = Object.getOwnPropertyDescriptors(message);
+    if (!Object.hasOwn(descriptors, "reasoning_text") && !Object.hasOwn(descriptors, "reasoning_content")) {
+      return message;
+    }
+    // Keep only the OTHER descriptors on the new object. An own descriptor that
+    // is not configurable — a frozen or otherwise read-only message — cannot be
+    // deleted after construction, so dropping the field from the copy would
+    // throw instead of stripping it. Building the object from the remaining
+    // descriptors gives the same result for every message, mutable or not.
+    delete descriptors.reasoning_text;
+    delete descriptors.reasoning_content;
+    return Object.create(Object.getPrototypeOf(message), descriptors);
   }
 
   // Sanitize messages for GitHub Copilot /chat/completions endpoint (gpt/gemini/grok models —

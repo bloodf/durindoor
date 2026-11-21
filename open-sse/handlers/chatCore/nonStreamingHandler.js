@@ -30,7 +30,7 @@ import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
 import { createGeminiPlaceholderStripper } from "../../translator/concerns/geminiPlaceholderArgs.js";
 import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
-import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
+import { classifyMaskedGatewayError, hasTokenLimitCompletion, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
@@ -691,6 +691,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     responseBody = inlineThinking.responseBody;
 
 
+    const isTokenLimited = !TRUSTED_EMPTY_STOP_PROVIDERS.has(provider) && hasTokenLimitCompletion(responseBody);
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
       responseBody,
@@ -729,7 +730,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // "content_filter" (see fromOpenAIFinish) — check the raw provider body here
     // so neither path is mistaken for a retryable empty-content gateway fault.
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
-    if (!isNativeClaudeRefusal && !hasUsefulContent(translatedResponse) && !isTrustedEmptyStop(translatedResponse, provider)) {
+    if (!isNativeClaudeRefusal && !isTokenLimited &&
+        !hasUsefulContent(translatedResponse) && !isTrustedEmptyStop(translatedResponse, provider)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(

@@ -71,6 +71,46 @@ describe("Responses completion waits for real usage", () => {
     });
   });
 
+  it("normalizes invalid known detail counters without mutating provider details", () => {
+    const usage = {
+      prompt_tokens: 12, completion_tokens: 7, total_tokens: 999,
+      prompt_tokens_details: { cached_tokens: null, cache_write_tokens: null, cache_creation_tokens: -1, audio_tokens: 3 },
+      completion_tokens_details: { reasoning_tokens: null, accepted_prediction_tokens: 4 }
+    };
+    const original = structuredClone(usage);
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    const response = completed(translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, finish(usage), state))[0].data.response;
+    expect(response.usage).toEqual({
+      input_tokens: 12, output_tokens: 7, total_tokens: 19,
+      input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0, cache_creation_tokens: 0, audio_tokens: 3 },
+      output_tokens_details: { reasoning_tokens: 0, accepted_prediction_tokens: 4 }
+    });
+    expect(usage).toEqual(original);
+  });
+
+  it.each([
+    [{ cached_tokens: 2, cache_write_tokens: 3, cache_creation_tokens: 4 }, { reasoning_tokens: 5 }],
+    [{ cached_tokens: 0, cache_write_tokens: 1.5 }, { reasoning_tokens: "invalid" }],
+    [{ cached_tokens: -1 }, { reasoning_tokens: -1 }]
+  ])("keeps valid counts and only fills optional counts when present", (input, output) => {
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    const response = completed(translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, finish({
+      prompt_tokens: 12, completion_tokens: 7, prompt_tokens_details: input, completion_tokens_details: output
+    }), state))[0].data.response;
+    const valid = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
+    expect(response.usage.input_tokens_details).toEqual(Object.fromEntries(Object.entries(input).map(([key, value]) => [key, valid(value)])));
+    expect(response.usage.output_tokens_details).toEqual({ reasoning_tokens: valid(output.reasoning_tokens) });
+    expect(response.usage.total_tokens).toBe(19);
+  });
+
+  it.each([undefined, null])("does not create detail objects for absent or null details", (details) => {
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    const response = completed(translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, finish({
+      prompt_tokens: 12, completion_tokens: 7, prompt_tokens_details: details, completion_tokens_details: details
+    }), state))[0].data.response;
+    expect(response.usage).toEqual({ input_tokens: 12, output_tokens: 7, total_tokens: 19 });
+  });
+
   it("includes cache-inclusive Claude usage across the OpenAI pivot", () => {
     const state = initState(FORMATS.OPENAI_RESPONSES);
     const chunks = [

@@ -312,6 +312,15 @@ function createComposerThinkingExtractor() {
     if (!expectedClose) return chunk;
 
     const combined = closePending + chunk;
+    // A complete closing marker followed only by whitespace may be the real
+    // end-of-stream marker; hold it (with the whitespace) until more content
+    // or finish() decides.
+    const trimmed = combined.trimEnd();
+    if (trimmed.length < combined.length && trimmed.endsWith(expectedClose)) {
+      const start = trimmed.length - expectedClose.length;
+      closePending = combined.slice(start);
+      return combined.slice(0, start);
+    }
     const maxHold = Math.min(combined.length, expectedClose.length);
     let holdLen = 0;
     for (let len = maxHold; len >= 1; len--) {
@@ -383,7 +392,13 @@ function createComposerThinkingExtractor() {
       expectedClose = null;
 
       if (currentPhase === "opening") return pendingOpen;
-      if (currentPhase === "body" && pendingClose && pendingClose !== closeMarker) {
+      if (currentPhase === "body" && pendingClose) {
+        // Real closing marker at end of stream: drop it, keep any trailing
+        // whitespace verbatim (same as the unframed/no-marker path does).
+        if (closeMarker && pendingClose.startsWith(closeMarker)
+          && pendingClose.slice(closeMarker.length).trim() === "") {
+          return pendingClose.slice(closeMarker.length);
+        }
         return pendingClose;
       }
       return "";

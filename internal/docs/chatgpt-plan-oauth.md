@@ -66,8 +66,9 @@ This is an explicitly enabled private local operation. Set
 restart it. The endpoint accepts only loopback peers proven by the local server,
 a valid dashboard session or machine-bound CLI token, and a same-origin request.
 An open dashboard or inference API key alone is insufficient. Disable the flag
-again after enrollment. The production provider registry is intentionally not
-registered by this change; this prepares connections for the registration batch.
+again after enrollment. The endpoint returns 404 until the provider is registered in the production
+registry, even when the owner has enabled enrollment. The registry is intentionally
+not registered by this change.
 
 From an authenticated local dashboard session, POST JSON to
 `/api/oauth/chatgpt-plan/enrollment`. Use `{"action":"create","name":"Owner plan"}`

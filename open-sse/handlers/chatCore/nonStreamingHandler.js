@@ -45,6 +45,43 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
+/**
+ * Upstream marker for a provider body that is an HTML/XML error page instead
+ * of a JSON payload: a doctype or comment (`<!`), a tag (`<` plus a letter) or
+ * an XML declaration (`<?xml`).
+ *
+ * Ported from OmniRoute #1104 (head `d0efab8222df9e63050f6f90dae91ccd520eba66`,
+ * merge `f8045744b3ec0974eeb0ac3feb0ab039302592af`). The merged upstream
+ * expression was `/^\s*(?:\s|<!|<[a-zA-Z]|<\?xml)/` applied to the untrimmed
+ * body; its leading `\s` alternative lets the pattern match after backtracking
+ * over the whitespace, so ANY body that merely starts with whitespace was
+ * classified as an HTML error page and the "generic non-JSON" case was
+ * unreachable for an indented plain-text body. The upstream pull-request head
+ * used `/^(\s|<!|<[a-zA-Z][a-zA-Z0-9]*|<\?xml)/` on the trimmed body, which
+ * keeps the same marker set but requires one of them to be present. This port
+ * keeps that behavior: an HTML error page stays distinguishable from other
+ * unusable non-JSON content.
+ */
+const HTML_ERROR_PAGE_PATTERN = /^(?:<!|<[a-zA-Z]|<\?xml)/;
+
+/**
+ * Detect an upstream HTML/XML error page in a provider body that failed to
+ * parse. The body itself is never echoed, stored or logged.
+ * @param {string} text - Raw provider body.
+ * @returns {boolean} True when the body is an HTML/XML error page.
+ */
+export function isHtmlErrorPageBody(text) {
+  return isString(text) && HTML_ERROR_PAGE_PATTERN.test(text.trimStart());
+}
+
+/**
+ * Client-facing diagnostic for a provider that answered with an HTML error
+ * page instead of a JSON body. It names the fact and the two things an
+ * operator can check; it carries no upstream text and no request detail.
+ */
+const HTML_PROVIDER_ERROR_MESSAGE =
+  "Provider returned HTML error page instead of JSON - check credentials and endpoint";
+
 /** Recover a complete JSON object only when its sole trailing content is an SSE done marker (#5384). */
 export function parseJsonWithTrailingDone(text) {
   const input = text.trimStart();
@@ -585,9 +622,23 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       } catch (err) {
         responseBody = parseJsonWithTrailingDone(responseText);
         if (!responseBody) {
-          appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+          // OmniRoute #1104: a provider that answers with an HTML error page
+          // (captive portal, proxy interception, wrong endpoint) is a different
+          // failure from a malformed JSON body, and the operator needs to tell
+          // them apart. Only the diagnostic differs here: the status code, the
+          // error envelope, the retry/fallback decision and every usage or
+          // admission effect stay exactly as they were, and no upstream body
+          // text is echoed, stored or logged.
+          const htmlErrorPage = isHtmlErrorPageBody(responseText);
+          appendLog({
+            status: htmlErrorPage ?
+              `FAILED ${HTTP_STATUS.BAD_GATEWAY} (html error page)` :
+              `FAILED ${HTTP_STATUS.BAD_GATEWAY}`
+          });
           console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, htmlErrorPage ?
+            HTML_PROVIDER_ERROR_MESSAGE :
+            `Invalid JSON response from ${provider}`);
         }
       }
       if (!isJsonRecord(responseBody)) {

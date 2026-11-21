@@ -6,9 +6,9 @@ This increment carries the provider detail RPM label from the review into the pr
 
 ## Storybook inventory
 
-The rebuilt Storybook catalog contains 2,264 stories, including 1,078 scenarios across 187 generated V5 review compositions. The regenerated compositions add Playground Compare, Network Node Status and LAN Discovery, plus the synced image model, custom speech-to-text model and unavailable batch provider states.
+The rebuilt Storybook catalog contains 2,310 stories, including 1,101 scenarios across 192 generated V5 review compositions. The regenerated compositions add Playground Compare, Network Node Status and LAN Discovery, plus the synced image model, custom speech-to-text model and unavailable batch provider states.
 
-The [surface manifest](../../tests/e2e/storybook-surfaces.json) matches the current source and built catalog. It records 612 source rows, with 332 pending review and 280 retaining prior source approvals. Another 1,273 reference stories are pending review. The manifest preserves prior review records where source changes require another review. Pending entries need independent verification of classification and scenario ownership before they can receive coverage credit.
+The [surface manifest](../../tests/e2e/storybook-surfaces.json) matches the current source and built catalog. It records 623 source rows, with 360 pending review and 263 retaining prior source approvals. Another 1,298 reference stories are pending review. The manifest preserves prior review records where source changes require another review. Pending entries need independent verification of classification and scenario ownership before they can receive coverage credit.
 
 ## Remaining V5 scope
 

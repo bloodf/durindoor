@@ -6,6 +6,8 @@ import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import GateScene from "@/shared/ui/v5/login/GateScene.jsx";
 import { startDurinDoorBackdrop } from "@/shared/ui/login/durinDoorBackdrop.js";
 
 export function LoginView({
@@ -36,6 +38,7 @@ export function LoginView({
   onBackToPassword,
 }) {
   const backdropRef = useRef(null);
+  const v5 = useUiV5();
 
   // Doors of Durin backdrop: WebGL shader with Canvas 2D fallback, static
   // frame under prefers-reduced-motion; colors come from the dd-* tokens.
@@ -44,25 +47,25 @@ export function LoginView({
     if (!canvas) return undefined;
     const controller = startDurinDoorBackdrop(canvas);
     return () => controller.destroy();
-  }, []);
+  }, [v5]);
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-dd-bg p-4">
-      <canvas ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
-      <div className="relative z-10 w-full max-w-md">
-        <div className="isolate mb-4 rounded-dd-lg bg-dd-surface px-6 py-5 text-center shadow-dd-elevated">
+    <main className={v5 ? "v5-login v5-login-review v5-login-production" : "relative flex min-h-screen items-center justify-center overflow-hidden bg-dd-bg p-4"}>
+      {v5 ? <section className="v5-login-scene" aria-label="DurinDoor gateway"><GateScene /><div className="v5-login-scene-caption"><p>Speak, friend, and enter.</p><span>Your gateway to connected models.</span></div></section> : <canvas ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />}
+      <div className={v5 ? "v5-login-form" : "relative z-10 w-full max-w-md"}>
+        <div className={v5 ? "v5-login-heading" : "isolate mb-4 rounded-dd-lg bg-dd-surface px-6 py-5 text-center shadow-dd-elevated"}>
           {/*
             Token-colored serif wordmark (the legacy /durindoor-wordmark.png is
             white-on-transparent and invisible on the light "Parchment"
             surface). Colors come from dd-* tokens so both themes render.
           */}
-          <h1 className="font-serif text-4xl font-semibold tracking-tight text-dd-text">Durin Door</h1>
-          <div aria-hidden="true" className="mx-auto mt-2 flex w-40 items-center gap-2">
+          {v5 ? <><div className="v5-login-brand">DurinDoor</div><h1>{mfaRequired ? "Verify your identity" : mustChange ? "Update your password" : "Welcome back"}</h1></> : <h1 className="font-serif text-4xl font-semibold tracking-tight text-dd-text">Durin Door</h1>}
+          {!v5 && <div aria-hidden="true" className="mx-auto mt-2 flex w-40 items-center gap-2">
             <span className="h-px flex-1 bg-dd-accent" />
             <span className="size-2 rotate-45 bg-dd-accent" />
             <span className="h-px flex-1 bg-dd-accent" />
-          </div>
-          <p className="mt-2 font-serif text-sm italic text-dd-muted">Speak, friend, and enter</p>
+          </div>}
+          {!v5 && <p className="mt-2 font-serif text-sm italic text-dd-muted">Speak, friend, and enter</p>}
           <p className="mt-3 text-[13px] text-dd-muted">
             {mfaRequired
               ? "Enter the code from your authenticator app"
@@ -71,9 +74,9 @@ export function LoginView({
               : "Enter your password to access the dashboard"}
           </p>
         </div>
-        <Card className="shadow-dd-elevated">
+        <Card className={v5 ? "v5-login-fields" : "shadow-dd-elevated"}>
           {mfaRequired ? (
-            <form onSubmit={handleMfaSubmit} className="flex flex-col gap-4">
+            <form aria-label={v5 ? "Sign in" : undefined} onSubmit={handleMfaSubmit} className="flex flex-col gap-4">
               <Input
                 id="mfa-code"
                 type="text"
@@ -102,7 +105,7 @@ export function LoginView({
               </button>
             </form>
           ) : mustChange && passwordChangeProof ? (
-            <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
+            <form aria-label={v5 ? "Sign in" : undefined} onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
               <Badge tone="warning" size="sm" icon="warning">Password update required</Badge>
               <p className="text-center text-[13px] text-dd-warning">Set a new password before accessing the dashboard remotely.</p>
               <Input
@@ -128,7 +131,7 @@ export function LoginView({
               {oidcAvailable ? <Button type="button" variant="primary" className="w-full" onClick={handleOidcLogin}>{oidcLoginLabel}</Button> : null}
               {oidcAvailable && passwordAvailable ? <div className="h-px w-full bg-dd-border-subtle" role="separator" /> : null}
               {passwordAvailable ? (
-                <form onSubmit={handleLogin} className="flex flex-col gap-4">
+                <form aria-label={v5 ? "Sign in" : undefined} onSubmit={handleLogin} className="flex flex-col gap-4">
                   {(authMode === "oidc" || authMode === "both") && !oidcConfigured ? (
                     <p className="text-center text-xs text-dd-warning">OIDC login is enabled, but the issuer/client fields are not configured yet. Password login is still available for recovery.</p>
                   ) : null}
@@ -166,7 +169,7 @@ export function LoginView({
                   ) : null}
                 </form>
               ) : error ? (
-                <p className="text-xs text-dd-danger">{error}</p>
+                <p className="text-xs text-dd-danger" role={v5 ? "alert" : undefined}>{error}</p>
               ) : null}
             </div>
           )}

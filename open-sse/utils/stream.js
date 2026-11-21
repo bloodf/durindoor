@@ -20,7 +20,7 @@ import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
 import { advancePendingSseLineBytes } from "./pendingSseLine.js";
-import { createProviderKeepaliveFilter, isProviderKeepaliveEvent } from "./providerKeepalive.js";
+import { isProviderKeepaliveEvent } from "./providerKeepalive.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -187,15 +187,16 @@ export function createSSEStream(options = {}) {
   // Responses passthrough: the upstream speaks the Responses protocol and the
   // client wants it unchanged, so the frames are forwarded as they arrive.
   const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
-  // Provider keepalive event blocks ("event: keepalive") carry no payload.
-  // Strict OpenAI-compatible SDKs try to JSON.parse the empty body and crash,
-  // so the whole block is dropped before it reaches the client (OmniRoute
-  // #1146). Chat and Responses passthrough only: Claude passthrough keeps its
+  // Empty provider keepalive blocks can crash strict SDK JSON parsing.
+  // Filter only those blocks in Chat and Responses passthrough (OmniRoute
+  // #1146). Claude passthrough keeps its
   // genuine `event: ping` frames, and the gateway-generated keepalives never
   // travel through this transform.
   const filterProviderKeepalive = mode === STREAM_MODE.PASSTHROUGH &&
     (targetFormat === FORMATS.OPENAI || targetFormat === FORMATS.OPENAI_RESPONSES);
-  const providerKeepalive = createProviderKeepaliveFilter();
+  let keepaliveCandidate = [];
+  let keepaliveCandidateSize = 0;
+  let keepaliveFrameStart = true;
   // Replayed Responses events (a reconnect re-sending an already forwarded
   // sequence_number) are dropped before they reach the client.
   const responsesReplay = createResponsesSequenceReplayTracker();
@@ -779,39 +780,44 @@ export function createSSEStream(options = {}) {
     finalizeTranslatedStream();
   };
 
-  const transformStream = new TransformStream({
-    transform(chunk, controller) {
-      if (!ttftAt) ttftAt = Date.now();
-      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
-      if (nextPendingLineBytes === null) {
-        buffer = "";
-        clearCompletionFlushTimer();
-        upstreamTerminal.fail();
-        const error = new Error("Upstream SSE line exceeded the size limit");
-        error.code = "invalid_sse_payload";
-        throw error;
+  // Candidates are held only until payload, another field, or the size limit
+  // proves they must follow the ordinary stream path. Empty candidates are
+  // discarded at their frame boundary (or at EOF).
+  const selectKeepaliveLines = (lines, eof = false) => {
+    if (!filterProviderKeepalive) return lines;
+    const selected = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const frameStart = keepaliveFrameStart;
+      keepaliveFrameStart = !trimmed;
+      if (!keepaliveCandidate.length && frameStart && isProviderKeepaliveEvent(line.replace(/\r$/, ""))) {
+        keepaliveCandidate.push(line);
+        keepaliveCandidateSize = line.length + 1;
+      } else if (keepaliveCandidate.length) {
+        keepaliveCandidate.push(line);
+        keepaliveCandidateSize += line.length + 1;
+        if (!trimmed) {
+          keepaliveCandidate = [];
+          keepaliveCandidateSize = 0;
+        } else if (!/^data: ?$/.test(line.replace(/\r$/, "")) || keepaliveCandidateSize >= 65536) {
+          selected.push(...keepaliveCandidate);
+          keepaliveCandidate = [];
+          keepaliveCandidateSize = 0;
+        }
+      } else {
+        selected.push(line);
       }
-      pendingLineBytes = nextPendingLineBytes;
-      const text = decoder.decode(chunk, { stream: true });
-      buffer += text;
-      reqLogger?.appendProviderChunk?.(text);
+    }
+    if (eof) {
+      keepaliveCandidate = [];
+      keepaliveCandidateSize = 0;
+    }
+    return selected;
+  };
 
-      const lastNewline = text.lastIndexOf("\n");
-      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
-      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
-      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
-
+  const processLines = (lines, controller) => {
       for (const [lineIndex, line] of lines.entries()) {
         const trimmed = line.trim();
-
-        // A provider keepalive event block carries no payload: drop the label
-        // and the block body so the client never sees an empty data line it
-        // would JSON.parse (OmniRoute #1146). The filter runs before the
-        // framing decisions below, so the label never reaches the pending
-        // field buffers and the payload after the block keeps its order.
-        if (filterProviderKeepalive && providerKeepalive.drop(trimmed)) {
-          continue;
-        }
 
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
@@ -1476,6 +1482,31 @@ export function createSSEStream(options = {}) {
           }
         }
       }
+  };
+
+  const transformStream = new TransformStream({
+    transform(chunk, controller) {
+      if (!ttftAt) ttftAt = Date.now();
+      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
+      if (nextPendingLineBytes === null) {
+        buffer = "";
+        clearCompletionFlushTimer();
+        upstreamTerminal.fail();
+        const error = new Error("Upstream SSE line exceeded the size limit");
+        error.code = "invalid_sse_payload";
+        throw error;
+      }
+      pendingLineBytes = nextPendingLineBytes;
+      const text = decoder.decode(chunk, { stream: true });
+      buffer += text;
+      reqLogger?.appendProviderChunk?.(text);
+
+      const lastNewline = text.lastIndexOf("\n");
+      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
+      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
+      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
+
+      processLines(selectKeepaliveLines(lines), controller);
     },
 
     flush(controller) {
@@ -1522,11 +1553,16 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(pendingInlineThinkingOutput));
           }
 
-          // A stream that ended inside a dropped keepalive block, or on the
-          // keepalive label itself, has no tail to forward (OmniRoute #1146).
-          if (filterProviderKeepalive && (providerKeepalive.dropping || isProviderKeepaliveEvent(buffer.trim()))) {
-            providerKeepalive.reset();
+          // Decide the unterminated candidate using its final partial line too.
+          if (filterProviderKeepalive && (keepaliveCandidate.length || (keepaliveFrameStart && isProviderKeepaliveEvent(buffer.replace(/\r$/, ""))))) {
+            const tail = buffer;
             buffer = "";
+            const selected = selectKeepaliveLines(tail ? [tail] : [], true);
+            if (selected.length) {
+              // The final partial line retains the existing tail handling.
+              if (tail && selected[selected.length - 1] === tail) buffer = selected.pop();
+              processLines(selected, controller);
+            }
           }
 
           if (buffer) {

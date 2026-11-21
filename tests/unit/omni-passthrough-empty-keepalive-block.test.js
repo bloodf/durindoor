@@ -31,7 +31,7 @@ vi.mock("@/lib/usageDb.js", () => ({
 const encoder = new TextEncoder();
 
 /** Run a passthrough stream over the given chunks and return the client bytes. */
-async function runPassthrough(chunks, targetFormat, provider = "openai") {
+async function runPassthrough(chunks, targetFormat, provider = "openai", onComplete = null) {
   const stream = createPassthroughStreamWithLogger(
     provider,
     null,                    // reqLogger
@@ -39,7 +39,7 @@ async function runPassthrough(chunks, targetFormat, provider = "openai") {
     "gpt-4.1-mini",          // model
     "connection-1",          // connectionId
     {},                      // body
-    null,                    // onStreamComplete
+    onComplete,              // onStreamComplete
     null,                    // apiKey
     targetFormat,
   );
@@ -179,6 +179,37 @@ describe("provider empty keepalive blocks (OmniRoute #1146)", () => {
     expect(output).not.toContain("data: \n");
   });
 
+  it("retains identical usage frames through normal Chat processing for both labels", async () => {
+    const payload = JSON.stringify({ id: "chatcmpl_usage", object: "chat.completion.chunk", created: 1, choices: [], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } });
+    const calls = [];
+    for (const label of ["provider-status", "keepalive"]) {
+      const complete = vi.fn();
+      const output = await runPassthrough(chunked(`event: ${label}\ndata: ${payload}\n\ndata: [DONE]\n\n`, 3), FORMATS.OPENAI, "openai", complete);
+      expect(output).toContain(`event: ${label}`);
+      expect(output).toContain(payload);
+      expect(complete).toHaveBeenCalledTimes(1);
+      calls.push(complete.mock.calls[0][1]);
+    }
+    expect(calls[0]).toMatchObject({ prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 });
+    expect(calls[1]).toEqual(calls[0]);
+  });
+
+  it("retains data-bearing and prefix event labels in Responses", async () => {
+    for (const label of ["keepalive", "keepalive-status"]) {
+      const payload = JSON.stringify({ type: "response.output_text.delta", sequence_number: 1, delta: "retained" });
+      const terminal = JSON.stringify({ type: "response.completed", sequence_number: 2, response: { id: "resp_1", status: "completed" } });
+      const output = await runPassthrough([`event: ${label}\ndata: ${payload}\n\nevent: response.completed\ndata: ${terminal}\n\n`], FORMATS.OPENAI_RESPONSES, "codex");
+      expect(output).toContain(`event: ${label}\n`);
+      expect(output).toContain(payload);
+    }
+  });
+
+  it("retains a data-bearing unterminated keepalive tail", async () => {
+    const output = await runPassthrough([`event: keepalive\ndata: ${JSON.stringify(chatChunk)}`], FORMATS.OPENAI);
+    expect(output).toContain("event: keepalive");
+    expect(output).toContain("Hello keepalive-safe");
+  });
+
   it("keeps a genuine Anthropic ping frame", async () => {
     const output = await runPassthrough(
       [
@@ -202,6 +233,8 @@ describe("provider empty keepalive blocks (OmniRoute #1146)", () => {
     expect(isProviderKeepaliveEvent(": keepalive")).toBe(false);
     expect(isProviderKeepaliveEvent("event: ping")).toBe(false);
     expect(isProviderKeepaliveEvent("event: keepalive")).toBe(true);
+    expect(isProviderKeepaliveEvent("event: keepalive-status")).toBe(false);
+    expect(isProviderKeepaliveEvent("event: keepalive ")).toBe(false);
   });
 
   it("keeps SSE comments in Chat passthrough", async () => {

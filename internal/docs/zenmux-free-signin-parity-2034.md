@@ -9,3 +9,17 @@ Compared without provider credentials or account traffic. Pinned sources:
 DurinDoor accepts the supplied cookie through its normal provider connection route and keeps `zenmux-free` distinct from `zenmux`; it has the same static model IDs and upstream endpoint. Its executor preserves earlier conversation turns, unlike OmniRoute's last-user-message flattening; this difference is retained because the upstream code does not demonstrate that discarding history is required. A missing ctoken is rejected locally; expiry is reported on an upstream 401/403 and quota exhaustion on 402. The executor does not add retries or change quota limits. The focused mock tests cover connection storage, credential separation, catalog, outbound session headers, expiry and quota responses, and single-attempt behavior. Existing tests cover message and stream translation.
 
 These source and mock comparisons do not establish current server acceptance, actual expiry duration, current model availability, or account quota. No live sign-in, provider request, browser, or credential extraction was performed.
+
+## Saved-cookie lifecycle (#2034)
+
+Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-suno-udio-zenmux.test.js` (real database, provider routes, `/v1/models`, `handleChat`, Messages and Responses routes, account fallback, the zenmux-free executor and the usage route; synthetic credentials; fetch closed unless a test opens it with a canned answer). The pins above are the 2026-11-20 snapshot and were reused, not re-fetched. No first-party ZenMux page, account, browser or provider request was used, so no first-party contract is claimed.
+
+Verified: create with a full header, `Cookie:` prefix and line-break paste; Validate and Test Connection reject a header without `ctoken` and otherwise skip without any outbound request; discovery of the `zmf/` catalog; JSON and SSE through Chat Completions, Messages and Responses; per-account cookie and `ctoken` isolation; 401/403 as an actionable expiry with cooldown and fallback to a sibling; 402 kept as exhausted quota; recovery after re-paste (cooldown cleared, sibling untouched).
+
+Gaps found and fixed (DurinDoor-original; no upstream file was copied):
+
+- `countInputTokens` derived `/messages/count_tokens` from the `/messages` base URL and built headers with the generic builder, so every chat request with a known context window sent an extra request to zenmux.ai carrying the prompt and the saved cookie as `Authorization: Bearer <cookie>`. `deriveCountTokensUrl` now returns null for providers whose transport `authType` is `cookie`, so they use the local estimate. This applies to every cookie provider with a `/messages` base URL.
+- DeepSeek-family model ids (`deepseek/*`) take the DSML translate path. For a same-format OpenAI stream that path swallowed the upstream `data: [DONE]`, so zenmux-free `deepseek/*` streams ended without it. `open-sse/utils/stream.js` now forwards the terminator for OpenAI to OpenAI streams on that path, as it already did for Responses.
+- The usage route answered "Usage not available" for saved zenmux-free cookies. It now reports DurinDoor's own 30-day history, like Grok Web and ChatGPT Web.
+
+Known limits, unchanged: no refresh flow or expiry time, estimated tokens only, no remote quota API, no attestation emulated.

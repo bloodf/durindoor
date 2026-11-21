@@ -21,7 +21,7 @@ import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_C
 import { collapseTextParts } from "../concerns/message.js";
 import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
-import { normalizeToolSchema, sanitizeToolSchemaParameters } from "../concerns/toolSchema.js";
+import { normalizeToolSchema, normalizeToolParameters, sanitizeToolSchemaParameters } from "../concerns/toolSchema.js";
 
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -806,14 +806,6 @@ function chatCustomToolInput(tc) {
   return args;
 }
 
-/**
- * Ensure object schema always has properties field (required by Codex Responses API)
- */
-function normalizeToolParameters(params) {
-  if (!params) return { type: "object", properties: {} };
-  if (params.type === "object" && !params.properties) return { ...params, properties: {} };
-  return params;
-}
 
 /**
  * Normalize Chat Completions output limits at the shared Responses wire seam.

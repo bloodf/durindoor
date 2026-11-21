@@ -336,29 +336,6 @@ export function createResponsesApiTransformStream(logger = null) {
         if (delta.content) {
           let content = delta.content;
 
-          if (content.includes("<think>")) {
-            state.inThinking = true;
-            content = content.replace("<think>", "");
-            startReasoning(controller, idx);
-          }
-
-          if (content.includes("</think>")) {
-            const parts = content.split("</think>");
-            const thinkPart = parts[0];
-            const textPart = parts.slice(1).join("</think>");
-
-            if (thinkPart) emitReasoningDelta(controller, thinkPart);
-            closeReasoning(controller);
-            state.inThinking = false;
-            content = textPart;
-          }
-
-          if (state.inThinking && content) {
-            emitReasoningDelta(controller, content);
-            // A reasoning chunk can also carry a tool call or finish reason.
-            content = "";
-          }
-
           // Regular text content
           if (content) {
             if (!state.msgItemAdded[idx]) {

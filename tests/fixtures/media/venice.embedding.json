@@ -1,0 +1,59 @@
+{
+  "vendor": "venice",
+  "kind": "embedding",
+  "model": "text-embedding-3-small",
+  "verifiedLive": false,
+  "source": "https://docs.venice.ai/",
+  "liveGap": "No live upstream call was made for this fixture. The OpenAI-compatible embeddings request and the response envelope are asserted offline against the adapter; the dimension limits, the rate limits and the upstream error bodies were not re-read from the vendor documentation.",
+  "request": {
+    "method": "POST",
+    "url": "https://api.venice.ai/api/v1/embeddings",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer fixture-key"
+    },
+    "body": {
+      "model": "text-embedding-3-small",
+      "input": "a cat"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "embedding",
+          "index": 0,
+          "embedding": [
+            0.0125,
+            -0.0312
+          ]
+        }
+      ],
+      "model": "text-embedding-3-small",
+      "usage": {
+        "prompt_tokens": 3,
+        "total_tokens": 3
+      }
+    },
+    "normalized": {
+      "object": "list",
+      "data": [
+        {
+          "object": "embedding",
+          "index": 0,
+          "embedding": [
+            0.0125,
+            -0.0312
+          ]
+        }
+      ],
+      "model": "text-embedding-3-small",
+      "usage": {
+        "prompt_tokens": 3,
+        "total_tokens": 3
+      }
+    }
+  }
+}

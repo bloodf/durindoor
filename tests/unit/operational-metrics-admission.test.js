@@ -29,8 +29,8 @@ const globalNames = [
 const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
 let originalEnv, originalGlobals, listeners, directory, adapter, db;
 let metrics, correlation, storage;
-// Import each actual public handler at its test call. Eagerly loading every
-// route in beforeAll made the fixture itself exceed the unchanged hook budget.
+// Load the actual public handlers on demand; the first chat route and its
+// translator dependencies are warmed in a separate setup hook below.
 const postRoute = (load) => ({ POST: async (...args) => (await load()).POST(...args) });
 const chat = postRoute(() => import("../../src/app/api/v1/chat/completions/route.js"));
 const embeddings = postRoute(() => import("../../src/app/api/v1/embeddings/route.js"));
@@ -193,12 +193,12 @@ beforeAll(async () => {
   phase("private environment");
   // Fixture setup needs only these repositories. Importing the whole DB barrel
   // eagerly pulled provider/routing modules into the 10s setup hook.
-  const settings = await import("@/lib/db/repos/settingsRepo.js");
-  phase("settings repository");
-  const keys = await import("@/lib/db/repos/apiKeysRepo.js");
-  phase("keys repository");
-  const connections = await import("@/lib/db/repos/connectionsRepo.js");
-  phase("connections repository");
+  const [settings, keys, connections] = await Promise.all([
+    import("@/lib/db/repos/settingsRepo.js"),
+    import("@/lib/db/repos/apiKeysRepo.js"),
+    import("@/lib/db/repos/connectionsRepo.js"),
+  ]);
+  phase("repositories");
   db = {
     updateSettings: settings.updateSettings, createApiKey: keys.createApiKey, getApiKeyByKey: keys.getApiKeyByKey,
     createProviderConnection: connections.createProviderConnection,
@@ -214,6 +214,16 @@ beforeAll(async () => {
   metrics = await import("../../open-sse/services/operationalMetrics.js");
   correlation = await import("../../src/sse/utils/requestCorrelation.js");
   phase("correlation ready");
+});
+
+// Keep cold route and translator loading out of the first measured request.
+// Both imports run after the private environment and mocked transport are set.
+beforeAll(async () => {
+  const [, translators] = await Promise.all([
+    import("../../src/app/api/v1/chat/completions/route.js"),
+    import("../../open-sse/translator/index.js"),
+  ]);
+  await translators.initTranslators();
 });
 
 beforeEach(async () => {

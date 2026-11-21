@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import {
   TRANSIENT_STATE_ENV,
@@ -17,6 +19,12 @@ import {
 const plan = transientServerPlan();
 const stateFile = transientStatePath();
 process.env[TRANSIENT_STATE_ENV] = stateFile;
+
+// Minimal Linux hosts can lack Fontconfig entirely. Chromium then gives text
+// zero dimensions, even for web fonts. Use the bundled fonts in that case.
+if (process.platform === "linux" && !process.env.FONTCONFIG_FILE && !existsSync("/etc/fonts/fonts.conf")) {
+  process.env.FONTCONFIG_FILE = fileURLToPath(new URL("./tests/fontconfig-fallback.conf", import.meta.url));
+}
 
 const useOptions = { baseURL: plan.baseURL, trace: "retain-on-failure", viewport: { width: 1280, height: 800 } };
 if (process.env.WEBSITE_CHROMIUM_EXECUTABLE) useOptions.launchOptions = { executablePath: process.env.WEBSITE_CHROMIUM_EXECUTABLE };

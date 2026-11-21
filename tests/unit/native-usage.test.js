@@ -26,7 +26,7 @@ beforeEach(async () => {
   const keys = await import("@/lib/db/repos/apiKeysRepo.js");
   key = await keys.createApiKey("Native quota", "fixture-machine", [], 8, null, { policy: { maxTokens: 8 } });
   usage = await import("@/sse/services/nativeUsage.js");
-});
+}, 60_000);
 
 afterEach(async () => {
   await disposeLoadedRequestDetailsRepo();

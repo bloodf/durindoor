@@ -20,7 +20,7 @@ import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 
 /** Render a single tool call as a readable text line. */
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 function toolCallToText(name, input) {
   let argStr;
   try {
@@ -37,7 +37,7 @@ function serializeToolResultContent(content) {
   if (Array.isArray(content)) {
     return content.map(serializeToolResultContent).filter(Boolean).join("\n");
   }
-  if (!content || typeof content !== "object") return "";
+  if (!isRecord(content)) return "";
   if (content.type === CLAUDE_BLOCK.IMAGE || content.type === OPENAI_BLOCK.IMAGE_URL) {
     const mediaType = content.source?.media_type ?? content.media_type;
     return `[image: ${isString(mediaType) && /^image\/[a-zA-Z0-9.+-]+$/.test(mediaType) ? mediaType : "image"}]`;

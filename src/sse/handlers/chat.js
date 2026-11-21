@@ -1,3 +1,4 @@
+import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
 import { normalizeModelReference } from "open-sse/services/model.js";
 import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
@@ -455,6 +456,10 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     log.warn("AUTH", "Invalid API key");
     return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
   }
+  // Use only the admitted stored key and the original request headers.
+  clientRawRequest.usageAttribution = apiKeyAuth.stored && apiKeyAuth.apiKeyId ?
+    usageAttributionFromHeaders(request.headers) : null;
+
   // Keep admission identity across retries, nested combos, and fusion callbacks.
   // An import during upstream work must not turn old usage into new-generation usage.
   const billingEpoch = apiKeyAuth.billingEpoch;
@@ -647,7 +652,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     const comboResult = await handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m, attemptSignal) => {
+      handleSingleModel: (b, m, attemptSignal, attemptOptions) => {
         // Reset per attempt so an eventless attempt does not carry forward the
         // previous attempt's event; the collector then holds only the latest
         // emitted event from the attempts that actually fired telemetry.
@@ -660,7 +665,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts }
+          { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }
         );
       },
       log,
@@ -787,8 +792,8 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
 
 /**
  * Handle single model chat request
- * Fusion opts into local policy markers through nested attempts; ordinary
- * fallback combos retain their existing model/account error responses.
+ * Fusion and fallback with tool-output images use local policy markers
+ * through nested attempts to classify all-candidate ACL denials.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
   const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], planRequest, reportComboPolicyRejections = false } = options;
@@ -866,7 +871,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const nestedResult = await handleComboChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m, attemptSignal) => {
+        handleSingleModel: (b, m, attemptSignal, attemptOptions) => {
           // Reset per nested attempt so a silent attempt does not replay the
           // previous nested attempt's event.
           nestedCollector.latest = null;
@@ -878,7 +883,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections }
+            { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: reportComboPolicyRejections || attemptOptions?.reportComboPolicyRejections }
           );
         },
         log,

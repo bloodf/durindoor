@@ -5,7 +5,10 @@ import { expect, test } from "@playwright/test";
 
 // The sitemap is the website's authoritative inventory of indexable public pages.
 test("all public pages have screenshots and no console or axe violations", async ({ page, request }) => {
-  test.setTimeout(10 * 60 * 1000);
+  // This single test audits every sitemap route at both widths, including a
+  // full-page screenshot and axe scan for each. Allow the inventory to grow
+  // without cutting the sweep short on slower machines.
+  test.setTimeout(30 * 60 * 1000);
   const response = await request.get("/sitemap.xml");
   expect(response.status()).toBe(200);
   const xml = await response.text();

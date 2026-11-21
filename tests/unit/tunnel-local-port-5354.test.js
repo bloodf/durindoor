@@ -14,6 +14,12 @@ const DEV_PORT = 20127;
 
 const ORIGINAL_PORT = process.env.PORT;
 
+// Executable magic bytes the real isValidBinary() accepts on this host:
+// PE on Windows, Mach-O 64 on macOS, ELF elsewhere.
+const HOST_BINARY_MAGIC = process.platform === "win32"
+  ? "4d5a0000"
+  : process.platform === "darwin" ? "cffaedfe" : "7f454c46";
+
 function setPort(value) {
   if (value === undefined) delete process.env.PORT;
   else process.env.PORT = value;
@@ -254,8 +260,10 @@ async function loadRealCloudflared() {
     existsSync: vi.fn(() => true),
     statSync: vi.fn(() => ({ size: 50 * 1024 * 1024 })),
     openSync: vi.fn(() => 7),
+    // Report a valid executable header for the host platform so the real
+    // binary check passes and no download is ever attempted.
     readSync: vi.fn((_fd, buf) => {
-      buf.write("\x7fELF", 0, 4, "binary");
+      Buffer.from(HOST_BINARY_MAGIC, "hex").copy(buf, 0);
       return 4;
     }),
     closeSync: vi.fn(),
@@ -265,10 +273,19 @@ async function loadRealCloudflared() {
     mkdtempSync: vi.fn(() => "/tmp/durindoor-5354-cloudflared-quick"),
     writeFileSync: vi.fn(),
     rmSync: vi.fn(),
+    createWriteStream: vi.fn(() => {
+      throw new Error("cloudflared download attempted in test");
+    }),
   };
 
   vi.doMock("fs", () => ({ default: fsStub, ...fsStub }));
   vi.doMock("child_process", () => ({ execSync: vi.fn(() => ""), spawn }));
+  const httpsStub = {
+    get: vi.fn(() => {
+      throw new Error("network access attempted in test");
+    }),
+  };
+  vi.doMock("https", () => ({ default: httpsStub, ...httpsStub }));
   vi.doMock("@/lib/dataDir.js", () => ({ DATA_DIR: "/tmp/durindoor-5354-data" }));
   vi.doMock("@/lib/tunnel/cloudflare/pid.js", () => ({
     savePid: vi.fn(),

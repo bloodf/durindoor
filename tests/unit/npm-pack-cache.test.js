@@ -12,7 +12,7 @@ let root, seed, tarball, temporary;
 const payload = Buffer.from([0, 255, 13, 10]);
 beforeEach(() => {
   vi.clearAllMocks();
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "pack-cache-test-"));
+  root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "pack-cache-test-"));
   seed = path.join(root, "seed");
   fs.mkdirSync(path.join(seed, "_cacache/content"), { recursive: true });
   fs.writeFileSync(path.join(seed, "_cacache/content/value"), payload);
@@ -55,7 +55,7 @@ describe("packed CLI private npm cache", () => {
     if (status) await expect(smokeNpmPack(tarball)).rejects.toThrow("npm install of tarball failed: 23");
     else {
       await smokeNpmPack(tarball);
-      expect(mocks.smoke).toHaveBeenCalledExactlyOnceWith(path.join(temporary[0], "prefix/node_modules/durindoor/app/custom-server.js"));
+      expect(mocks.smoke).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(path.dirname(temporary[0])), path.basename(temporary[0]), "prefix/node_modules/durindoor/app/custom-server.js"));
     }
     expect(fs.readFileSync(path.join(seed, "_cacache/content/value"))).toEqual(payload);
     expect(temporary).toHaveLength(1);

@@ -433,9 +433,9 @@ export function extractUsage(chunk) {
     });
   }
 
-  // OpenAI Responses API format (response.completed or response.done).
+  // OpenAI Responses API terminal usage, including reported incomplete responses.
   // Cache fields already follow the inclusive Responses contract here.
-  if ((chunk.type === "response.completed" || chunk.type === "response.done") && chunk.response?.usage && isObject(chunk.response.usage)) {
+  if ((chunk.type === "response.completed" || chunk.type === "response.done" || chunk.type === "response.incomplete") && chunk.response?.usage && isObject(chunk.response.usage)) {
     const usage = chunk.response.usage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;

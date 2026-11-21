@@ -20,7 +20,7 @@
  * thought signatures are never read or rewritten here.
  */
 import { GEMINI_PLACEHOLDER_KEY, buildGeminiToolParameters } from "../formats/gemini.js";
-import { normalizeToolParameters, normalizeToolSchema, sanitizeChatSchema } from "./toolSchema.js";
+import { normalizeToolParameters, normalizeToolSchema, sanitizeToolSchemaParameters } from "./toolSchema.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
@@ -65,7 +65,7 @@ function* clientDeclarations(clientTools) {
 /** The parameter schema before the shared Gemini builder, following each client's request pivot. */
 function preGeminiSchema({ dialect, raw, name }) {
   if (dialect === "claude") return raw === undefined ? EMPTY_OBJECT_SCHEMA() : normalizeToolSchema(raw, name);
-  if (dialect === "responses") return sanitizeChatSchema(normalizeToolParameters(normalizeToolSchema(raw, name)));
+  if (dialect === "responses") return normalizeToolParameters(sanitizeToolSchemaParameters(raw, name));
   return raw;
 }
 

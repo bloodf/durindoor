@@ -41,7 +41,7 @@ The resolver rebuilds the pre-Gemini schema the way each request path does, then
 | --- | --- |
 | OpenAI Chat `{type:"function", function:{name, parameters}}` | `parameters` as sent |
 | Claude `{name, input_schema}` (typeless or `custom`) | `normalizeToolSchema` (claude-to-openai); empty or missing becomes an empty object schema |
-| OpenAI Responses flat `{type:"function", name, parameters}` | `normalizeToolSchema`, `normalizeToolParameters`, `sanitizeChatSchema` (helpers moved to `concerns/toolSchema.js` so both paths share them) |
+| OpenAI Responses flat `{type:"function", name, parameters}` | `sanitizeToolSchemaParameters` then `normalizeToolParameters` (the latter moved to `concerns/toolSchema.js` so both paths share it) |
 | Native Gemini `functionDeclarations` | `parameters` or `parametersJsonSchema` as sent |
 
 Unresolved and therefore untouched: Responses `namespace` and `custom` tools, typed Claude server tools, tools missing a name, duplicate names, and any call whose provider declaration is missing from the body that was sent.

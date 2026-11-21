@@ -117,13 +117,15 @@ import { FORMATS } from "../translator/formats.js";
   assert.equal(reasoningBlock.text, "cc reasoning", "reasoning_content → reasoning block for commandcode");
 }
 
-// 9. OpenAI → OpenAI Responses: reasoning_content → reasoning item
+// 9. OpenAI → OpenAI Responses: reasoning_content is NOT replayed as a reasoning item
 {
   const body = { messages: [{ role: "user", content: "u" }, { role: "assistant", content: "a", reasoning_content: "responses reasoning" }] };
   const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "m", body, true);
-  const reasoningItem = out.input.find(i => i.type === "reasoning");
-  assert.ok(reasoningItem, "reasoning item present in responses input");
-  assert.equal(reasoningItem.summary[0].text, "responses reasoning", "reasoning_content → reasoning summary for responses");
+  // A Responses reasoning item is only valid when the server issued it (required
+  // `id`, continuity through `encrypted_content`), so the Chat pivot keeps the
+  // assistant answer and drops the synthesized item (OmniRoute #231).
+  assert.equal(out.input.some(i => i.type === "reasoning"), false, "no synthesized reasoning item in responses input");
+  assert.equal(out.input.find(i => i.role === "assistant").content[0].text, "a", "assistant content preserved for responses");
 }
 
 // 10. Gemini → OpenAI: thought:true → reasoning_content

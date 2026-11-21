@@ -188,7 +188,12 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
+        // The selector summary and the accounts this request already attempted
+        // describe the same requested image route, so the earliest valid
+        // deadline of the two is the honest retry time. A bounded hint proven by
+        // an attempted account is never dropped by the selector's own summary.
+        const hint = combineRetryHint(credentials, aggregateRateLimitHint(attemptedRateLimits, lastStatus));
+        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, hint.retryAt, hint.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
@@ -288,6 +293,54 @@ function aggregateRateLimitHint(attempted, lastStatus) {
     ? entries.map((entry) => entry.retryAt).sort((left, right) => Date.parse(left) - Date.parse(right))[0]
     : null;
   return { retryAt };
+}
+
+/**
+ * The selector summary describes the accounts that remain for the requested
+ * route. Only a rate-limit summary describes a retry condition for that route:
+ * a disabled model, a local quota floor or an authentication failure describes
+ * a different condition, so their summary never contributes a retry deadline.
+ */
+function routeRateLimited(summary) {
+  return Number(summary?.lastErrorCode) === 429;
+}
+
+/**
+ * A deadline in ISO-8601 form. Retry deadlines reach this handler as
+ * ISO-8601 strings: the selector summary and the account evidence both
+ * publish that shape. A missing or unparseable deadline never wins.
+ */
+function parseRetryDeadline(value) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+/** The earliest of the valid deadlines; a missing one never wins. */
+function earliestRetryDeadline(candidates) {
+  const deadlines = candidates
+    .map((value) => parseRetryDeadline(value))
+    .filter(Boolean)
+    .map((value) => Date.parse(value));
+  if (deadlines.length === 0) return null;
+  return new Date(Math.min(...deadlines)).toISOString();
+}
+
+/**
+ * The final retry hint: the selector summary and the attempted-account
+ * evidence describe the same requested image route, so the earliest valid
+ * deadline of the two wins. A summary that is not a rate limit for the route
+ * keeps the response it had before, and the selector's own wording is kept
+ * when its deadline wins.
+ */
+function combineRetryHint(summary, attempted) {
+  if (!routeRateLimited(summary)) return { retryAt: null, retryAfterHuman: "" };
+  const selectorDeadline = parseRetryDeadline(summary.retryAfter);
+  const retryAt = earliestRetryDeadline([selectorDeadline, attempted?.retryAt || null]);
+  if (!retryAt) return { retryAt: null, retryAfterHuman: "" };
+  const retryAfterHuman = selectorDeadline === retryAt && summary.retryAfterHuman ?
+    summary.retryAfterHuman :
+    formatRetryAfter(retryAt);
+  return { retryAt, retryAfterHuman };
 }
 
 async function recordImageUsage(apiKey, result, request, provider, model, connectionId, billingEpoch, apiKeyId = null) {

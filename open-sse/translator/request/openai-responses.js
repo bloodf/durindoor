@@ -19,8 +19,9 @@ import {
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
-import { normalizeToolSchema, normalizeToolParameters, sanitizeChatSchema } from "../concerns/toolSchema.js";
+import { normalizeToolSchema, normalizeToolParameters, sanitizeToolSchemaParameters } from "../concerns/toolSchema.js";
 
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -30,7 +31,6 @@ function withBooleanStrict(fn, source) {
 }
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
-
 
 /**
  * Scan a Responses API `input[]` and collect every `call_id` declared by a
@@ -278,6 +278,48 @@ function splitToolOutputImages(output) {
   return { content: parts.length === 0 ? "[]" : collapseTextParts(parts), images };
 }
 
+/**
+ * Fixed per-request bounds for tool-output images re-injected into Chat
+ * history (no configuration surface). Bytes reuse the existing per-image
+ * `MAX_IMAGE_BYTES` ceiling at twice that size, measured as URL length (a data
+ * URL's length is its base64 payload).
+ */
+export const MAX_TOOL_OUTPUT_IMAGES = 16;
+export const MAX_TOOL_OUTPUT_IMAGE_BYTES = 2 * MAX_IMAGE_BYTES;
+
+const imageUrlSize = (part) => {
+  const url = part?.image_url?.url;
+  return isString(url) ? url.length : 0;
+};
+
+/**
+ * Keep the newest tool-output images that fit both budgets and replace older
+ * ones, in place, with a text note. Keeping is a strict newest-first prefix, so
+ * a smaller older image never survives a newer dropped one; surviving images
+ * keep their original order. `groups` are follow-up user messages in history
+ * order, each `{ message, entries: [{ part, callId }] }`.
+ */
+export function boundToolOutputImages(groups, maxCount = MAX_TOOL_OUTPUT_IMAGES, maxBytes = MAX_TOOL_OUTPUT_IMAGE_BYTES) {
+  const all = groups.flatMap((g) => g.entries);
+  let count = 0;
+  let bytes = 0;
+  let cut = all.length;
+  while (cut > 0) {
+    const size = imageUrlSize(all[cut - 1].part);
+    if (count + 1 > maxCount || bytes + size > maxBytes) break;
+    count++;
+    bytes += size;
+    cut--;
+  }
+  if (cut === 0) return;
+  const dropped = new Set(all.slice(0, cut));
+  for (const { message, entries } of groups) {
+    message.content = entries.map((entry) => dropped.has(entry) ?
+    { type: OPENAI_BLOCK.TEXT, text: `[Earlier tool output image omitted to bound request size (tool_call_id: ${entry.callId})]` } :
+    entry.part);
+  }
+}
+
 function responsesContentToOpenAI(c) {
   if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
@@ -449,6 +491,13 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // Images lifted out of tool outputs wait here until the run of tool
   // messages ends, so a user message never splits parallel tool results.
   let pendingToolImages = [];
+  const toolImageGroups = [];
+  const flushToolImages = () => {
+    const message = { role: ROLE.USER, content: pendingToolImages.map((e) => e.part) };
+    toolImageGroups.push({ message, entries: pendingToolImages });
+    result.messages.push(message);
+    pendingToolImages = [];
+  };
 
   for (const item of inputItems) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
@@ -456,8 +505,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
 
     if (pendingToolImages.length > 0 && itemType !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT && itemType !== RESPONSES_ITEM.REASONING) {
-      result.messages.push({ role: ROLE.USER, content: pendingToolImages });
-      pendingToolImages = [];
+      flushToolImages();
     }
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
@@ -566,7 +614,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // Add tool result immediately; its images follow in a user message
       const { content, images } = splitToolOutputImages(item.output);
       result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content });
-      pendingToolImages.push(...images);
+      pendingToolImages.push(...images.map((part) => ({ part, callId: item.call_id })));
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
@@ -578,7 +626,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
 
   // Flush remaining
   flushAssistant();
-  if (pendingToolImages.length > 0) result.messages.push({ role: ROLE.USER, content: pendingToolImages });
+  if (pendingToolImages.length > 0) flushToolImages();
+  boundToolOutputImages(toolImageGroups);
   if (pendingToolResults.length > 0) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);
@@ -602,7 +651,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
       if (tool.function) {
         if (tool.function.parameters === undefined) return tool;
-        return { ...tool, function: { ...tool.function, parameters: normalizeToolSchema(tool.function.parameters, tool.function.name) } };
+        return { ...tool, function: { ...tool.function, parameters: sanitizeToolSchemaParameters(tool.function.parameters, tool.function.name) } };
       }
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
@@ -617,7 +666,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           function: withBooleanStrict({
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
+            parameters: normalizeToolParameters(sanitizeToolSchemaParameters(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
           }, subtool)
         }));
       }
@@ -631,12 +680,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           function: withBooleanStrict({
             name: tool.name,
             description: String(tool.description || ""),
-            parameters: {
+            parameters: sanitizeToolSchemaParameters({
               type: "object",
               properties: { input: { type: "string" } },
               required: ["input"],
               additionalProperties: false
-            }
+            }, tool.name)
           }, tool)
         };
       }
@@ -650,14 +699,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         function: withBooleanStrict({
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name))
+          parameters: normalizeToolParameters(sanitizeToolSchemaParameters(tool.parameters, name))
         }, tool)
       };
     }).
     filter(Boolean);
-    result.tools = result.tools.map((tool) => tool.function?.parameters === undefined ? tool : ({
-      ...tool, function: { ...tool.function, parameters: sanitizeChatSchema(tool.function.parameters) }
-    }));
   }
   const customToolNames = [...declaredToolTypes].filter(([, type]) => type === "custom").map(([name]) => name);
   if (customToolNames.length > 0) result._customToolNames = customToolNames;
@@ -838,14 +884,14 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
     // Convert user/assistant messages to input items
     if (msg.role === ROLE.USER || msg.role === ROLE.ASSISTANT) {
-      // Preserve reasoning_content as a reasoning item (before the message)
-      if (msg.role === ROLE.ASSISTANT && msg.reasoning_content) {
-        result.input.push({
-          type: RESPONSES_ITEM.REASONING,
-          summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: msg.reasoning_content }]
-        });
-      }
-
+      // Chat `reasoning_content` is NOT replayed as a Responses `reasoning`
+      // item. The Responses protocol only accepts a reasoning item the server
+      // issued: `ResponseReasoningItem.id` is required, and continuity for
+      // store=false backends rides on that same item's `encrypted_content` —
+      // never on a summary string. A client-built item is therefore invalid
+      // (OmniRoute #231: client-side ids caused 400 Invalid Request), and this
+      // fork never fabricates a server-generated id. Native Responses history
+      // keeps its own reasoning items through the `body.input` path above.
       const contentType = msg.role === ROLE.USER ? RESPONSES_ITEM.INPUT_TEXT : RESPONSES_ITEM.OUTPUT_TEXT;
       const content = isString(msg.content) ?
       [{ type: contentType, text: msg.content }] :

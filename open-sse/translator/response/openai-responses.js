@@ -92,7 +92,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (chunk.usage && isObject(chunk.usage)) {
     state.usage = { ...(state.usage || {}), ...chunk.usage };
   }
-  const responseUsage = completedUsage(chunk.usage);
+  const responseUsage = chunk.usage ? completedUsage(state.usage) : null;
   if (responseUsage) state.responsesUsage = responseUsage;
 
   if (!chunk.choices?.length) {
@@ -878,6 +878,16 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const doneItem = data.item;
     const doneKey = doneItem?.id || data.item_id || "";
+    // A done-only item still needs the same header and identity as an added item.
+    const anonymousKnown = !doneKey && !doneItem.call_id && state.currentToolCallId &&
+      state.respToolChatIndex?.has(state.currentToolCallId);
+    if (!anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
+        !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
+      const item = { ...doneItem, call_id: doneItem.call_id || fallbackToolCallId() };
+      const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", item }, state);
+      const args = openaiResponsesToOpenAIResponse({ type: eventType, item }, state);
+      return [header, ...(Array.isArray(args) ? args : [args])].filter(Boolean);
+    }
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
     (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
     Math.max(0, (state.toolCallIndex || 1) - 1);

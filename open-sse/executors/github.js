@@ -58,6 +58,17 @@ export class GithubExecutor extends BaseExecutor {
     return /claude/i.test(model || "");
   }
 
+  /**
+   * Whether an upstream response is an event stream. The Claude Messages and
+   * Responses routes convert the upstream stream through an SSE transformer;
+   * that transform is only valid for an event-stream response (OmniRoute
+   * #937). A successful response with another media type keeps its body.
+   */
+  isEventStreamResponse(response) {
+    const contentType = (response?.headers?.get?.("content-type") || "").toLowerCase();
+    return contentType.includes("text/event-stream");
+  }
+
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     return this.endpointUrl("baseUrl", credentials);
   }
@@ -80,6 +91,38 @@ export class GithubExecutor extends BaseExecutor {
       "anthropic-version": ANTHROPIC_API_VERSION,
       "Accept": stream ? "text/event-stream" : "application/json"
     };
+  }
+
+  /**
+   * Drop the reasoning fields GitHub Copilot rejects on assistant history.
+   *
+   * Copilot turns `reasoning_text` / `reasoning_content` on an assistant turn
+   * into Anthropic thinking blocks it cannot sign, and the upstream then
+   * answers 400 ("Invalid signature in thinking block"). Both fields are
+   * response-only artifacts, so a replayed history must not carry them.
+   *
+   * Assistant turns only: that is where clients replay the previous turn's
+   * reasoning. Every other role keeps its fields, and the message content,
+   * the tool calls and the tool results are left exactly as they were.
+   *
+   * The copy preserves the original property descriptors, so the
+   * non-enumerable Claude native blocks a message may carry survive the
+   * rewrite (see translator/schema/blocks.js).
+   */
+  stripAssistantReasoningFields(message) {
+    if (!message || message.role !== "assistant") return message;
+    const descriptors = Object.getOwnPropertyDescriptors(message);
+    if (!Object.hasOwn(descriptors, "reasoning_text") && !Object.hasOwn(descriptors, "reasoning_content")) {
+      return message;
+    }
+    // Keep only the OTHER descriptors on the new object. An own descriptor that
+    // is not configurable — a frozen or otherwise read-only message — cannot be
+    // deleted after construction, so dropping the field from the copy would
+    // throw instead of stripping it. Building the object from the remaining
+    // descriptors gives the same result for every message, mutable or not.
+    delete descriptors.reasoning_text;
+    delete descriptors.reasoning_content;
+    return Object.create(Object.getPrototypeOf(message), descriptors);
   }
 
   // Sanitize messages for GitHub Copilot /chat/completions endpoint (gpt/gemini/grok models —
@@ -115,6 +158,11 @@ export class GithubExecutor extends BaseExecutor {
 
       return msg;
     });
+
+    // Reasoning fields are response-only artifacts the chat endpoint rejects on
+    // assistant history (OmniRoute #923). Strip them here, on the one route that
+    // forwards assistant reasoning to Copilot's OpenAI-shaped endpoint.
+    sanitized.messages = sanitized.messages.map((msg) => this.stripAssistantReasoningFields(msg));
 
     // GitHub Copilot's /chat/completions rejects a conversation that ends with an
     // assistant message ("does not support assistant message prefill. The conversation
@@ -548,6 +596,24 @@ export class GithubExecutor extends BaseExecutor {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
     }
 
+    /**
+     * OmniRoute #937: the SSE transform runs only on a successful event-stream
+     * response. A successful response that is NOT an event stream (a JSON or
+     * plain-text body) keeps its status, headers and readable body, so the
+     * gateway classifies the upstream answer instead of the executor rewriting
+     * it into a `stream_error` frame with the upstream body lost.
+     */
+    if (!this.isEventStreamResponse(response)) {
+      return {
+        response,
+        url,
+        headers,
+        transformedBody,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "upstream"
+      };
+    }
+
     const state = initState(FORMATS.CLAUDE);
     state.model = model;
     if (toolNameMap) state.toolNameMap = toolNameMap;
@@ -729,6 +795,22 @@ export class GithubExecutor extends BaseExecutor {
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
+    }
+
+    /**
+     * OmniRoute #937: same event-stream precondition as the /v1/messages
+     * route above — a successful non-SSE response keeps its status, headers and
+     * readable body instead of being parsed as an event stream.
+     */
+    if (!this.isEventStreamResponse(response)) {
+      return {
+        response,
+        url,
+        headers,
+        transformedBody,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "upstream"
+      };
     }
 
     const state = initState("openai-responses");

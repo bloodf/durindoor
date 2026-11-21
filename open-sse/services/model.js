@@ -21,6 +21,36 @@ for (const entry of REGISTRY) {
   for (const a of entry.aliases || []) ALIAS_TO_PROVIDER_ID[a] = entry.id;
 }
 
+// Provider-scoped legacy model aliases. GitHub Copilot renamed its Gemini Pro
+// entry to `gemini-3.1-pro-preview`; clients still pinned to the retired
+// `gemini-3-pro` / `gemini-3-pro-preview` ids must keep resolving to the
+// current catalog model instead of 404-ing on a dead model.
+// Port of OmniRoute #924 (head a7fa34c2fcecfe71bdde16e935f4731d4fa803b1,
+// merge 24721cf2fafae0ad735dcfa2863dcb9a44edd0f2).
+// Scoping is by provider: a bare `gemini-3-pro` (no provider prefix) and any
+// other provider's `gemini-3-pro` keep their existing routing, and the
+// canonical id is never rewritten.
+const PROVIDER_MODEL_ALIASES = {
+  github: {
+    "gemini-3-pro": "gemini-3.1-pro-preview",
+    "gemini-3-pro-preview": "gemini-3.1-pro-preview"
+  }
+};
+
+/**
+ * Resolve a provider-scoped legacy model id to its canonical model id.
+ *
+ * @param {string} providerOrAlias - provider id or alias (e.g. "github", "gh")
+ * @param {string} modelId - model id as written by the client
+ * @returns {string} canonical model id, or the input when no mapping applies
+ */
+export function resolveProviderModelAlias(providerOrAlias, modelId) {
+  if (!isString(modelId) || !modelId) return modelId;
+  const providerId = resolveProviderAlias(providerOrAlias);
+  const aliases = PROVIDER_MODEL_ALIASES[providerId];
+  return aliases?.[modelId] || modelId;
+}
+
 /**
  * Strip a redundant leading `${nodePrefix}/` segment from a model id.
  *
@@ -51,10 +81,20 @@ export function resolveProviderAlias(aliasOrId) {
   return ALIAS_TO_PROVIDER_ID[aliasOrId] || aliasOrId;
 }
 
+/** Trim incidental whitespace at the reference boundaries and first slash. */
+export function normalizeModelReference(value) {
+  if (!isString(value)) return value;
+  const trimmed = value.trim();
+  const slash = trimmed.indexOf("/");
+  if (slash < 0) return trimmed;
+  return `${trimmed.slice(0, slash).trim()}/${trimmed.slice(slash + 1).trim()}`;
+}
+
 /**
  * Parse model string: "alias/model" or "provider/model" or just alias
  */
 export function parseModel(modelStr) {
+  modelStr = normalizeModelReference(modelStr);
   if (!modelStr) {
     return { provider: null, model: null, isAlias: false, providerAlias: null };
   }
@@ -120,7 +160,7 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
   if (!parsed.isAlias) {
     return {
       provider: parsed.provider,
-      model: parsed.model
+      model: resolveProviderModelAlias(parsed.provider, parsed.model)
     };
   }
 
@@ -133,7 +173,12 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
   // Resolve alias
   const resolved = resolveModelAliasFromMap(parsed.model, aliases);
   if (resolved) {
-    return resolved;
+    // An operator alias that explicitly targets a provider goes through the
+    // same provider-scoped normalization as a direct `provider/model` request.
+    return {
+      provider: resolved.provider,
+      model: resolveProviderModelAlias(resolved.provider, resolved.model)
+    };
   }
 
   // Fallback: infer provider from model name prefix

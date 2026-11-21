@@ -1,0 +1,17 @@
+# #1073 — November protocol residuals
+
+Compared each requested OmniRoute merge against its first parent, retaining the supplied source head and merge identities:
+
+- [#19407 head `ae369b4f5fede259f74a7a539667fbdecf83aa11`, merge `c1f85ae190cf0de5c4273207a5445d7a8413ffd8`](https://github.com/cheaper-inference/OmniRoute/commit/c1f85ae190cf0de5c4273207a5445d7a8413ffd8): latest Claude system directive reasoning effort.
+- [#19487 head `ae47a8978f28527dc6b22a36bd61b09aaa2e323a`, merge `c77f9061c61f22278756acf9f19e753a70a15002`](https://github.com/cheaper-inference/OmniRoute/commit/c77f9061c61f22278756acf9f19e753a70a15002): Codex empty-content-type SSE peek/filter and `currently overloaded` failure classification.
+- [#19579 head `95dfa1eb556036327fe0763b72cf39c1bb3fb510`, merge `352111de85c7dade4150223cae6f67ead9a76b3d`](https://github.com/cheaper-inference/OmniRoute/commit/352111de85c7dade4150223cae6f67ead9a76b3d): Antigravity schema meta-keyword cleanup preserving literal parameter names.
+
+## Verified parity
+
+- **Claude effort:** [claude-to-openai.js](../../../open-sse/translator/request/claude-to-openai.js) reads the last system message carrying nonblank `output_config.effort`, trims and lowercases it, and gives it precedence over the cached top-level effort. [translator/index.js](../../../open-sse/translator/index.js) captures that directive before translation for thinking intent. Existing `tests/unit/claude-opus-5-5.test.js` covers the mid-conversation directive path. The pipeline shape is present without changing route selection or authentication.
+- **Codex empty content type:** [codex.js](../../../open-sse/executors/codex.js) peeks response bodies without requiring a content-type header and replays unmatched bytes. Its existing overload tests cover split SSE frames and prevent classifying an answer that continues after the exact overload text. Thus the empty-header streaming case does not need the upstream `assumeSse` switch in this integration.
+- **Antigravity literal parameter names:** [antigravity-to-openai.js](../../../open-sse/translator/request/antigravity-to-openai.js) recursively clones schema entries by their original keys and does not treat property-map keys as schema keywords. Existing [Gemini conformance tests](../../../tests/translator/v5-conformance-matrix-gemini.test.js) and [Antigravity nested-schema tests](../../../tests/unit/antigravity-nested-schema-2222.test.js) cover keyword-like properties and nested schemas. The shared schema and usage/stream-terminal conformance suites are already present; no change to those contracts is indicated by these three source diffs.
+
+## Residual gap and offline acceptance criterion
+
+Codex still lacks the #19487 failure-classification parity. `classifyCodexSseFrame` in [codex.js](../../../open-sse/executors/codex.js) recognizes retry codes such as `server_is_overloaded`, but does not classify a `response.failed` event whose error message says “currently overloaded.” The separate exact-output detection covers a successful text delta, not this failed-event shape. Add an ordinary offline assertion to `tests/unit/codex-overload-3232.test.js`: feed `_peekSseTransientError` a 200 SSE response containing one complete `response.failed` frame with `error.message: "Our servers are currently overloaded. Please try again later."`; assert a non-null match, transient retry classification (`accountFallback === true` to advance to another account), and no replay body. Preserve existing route selection and authentication. No live provider call is required.

@@ -183,6 +183,65 @@ function sanitizeKiroToolName(name) {
 }
 
 /**
+ * Build the Kiro `toolSpecification` entries for the caller's declared tools.
+ *
+ * This is the single place where a declared tool becomes a Kiro tool spec, so
+ * every path that carries the schema into `currentMessage` produces exactly
+ * the same shape: sanitized name, string description, and the schema run
+ * through the shared Kiro normalizer.
+ *
+ * Only caller-declared tools are ever turned into specifications here. Nothing
+ * is synthesized for a tool the client did not declare — a fabricated spec
+ * would advertise a tool-calling capability the client never asked for and can
+ * provoke a phantom tool call on an otherwise plain turn.
+ *
+ * @param {Array} tools - the caller's declared tools (OpenAI function shape).
+ * @param {Map<string,string>} toolNameMap - populated with sanitized→original
+ *   tool names for any name Kiro would have rejected.
+ */
+function buildKiroToolSpecs(tools, toolNameMap) {
+  return tools.map((t) => {
+    const originalName = t.function?.name || t.name;
+    // Kiro rejects consecutive underscores in a tool name. Collapse them
+    // and remember the original so response translators can restore the
+    // name the client actually asked for.
+    const name = sanitizeKiroToolName(originalName);
+    if (name !== originalName) toolNameMap.set(name, originalName);
+    const rawDescription = t.function?.description || t.description || "";
+    // Clients may send object/number descriptions; Kiro needs a string (#1333).
+    let description = isString(rawDescription) ? rawDescription : JSON.stringify(rawDescription);
+
+    if (!description.trim()) {
+      description = `Tool: ${name}`;
+    }
+
+    const schema = t.function?.parameters || t.parameters || t.input_schema || {};
+    const normalizedSchema = normalizeKiroToolSchema(schema);
+
+    return {
+      toolSpecification: {
+        name,
+        description,
+        inputSchema: { json: normalizedSchema }
+      }
+    };
+  });
+}
+
+/**
+ * Neutral continuation for the Kiro current turn.
+ *
+ * Kiro requires `currentMessage` to be a user turn. When the client's transcript
+ * ends with an assistant or tool turn there is no user turn to promote, and
+ * promoting an older one instead would replay the transcript backwards — the
+ * assistant turn would be sent before the user turn that preceded it — and
+ * would restate that user content to the model. This is the same neutral
+ * continuation the Gemini request translator uses for the same trailing
+ * assistant shape (open-sse/translator/request/openai-to-gemini.js).
+ */
+const KIRO_CONTINUATION_CONTENT = "Continue";
+
+/**
  * Convert OpenAI messages to Kiro format
  * Rules: system/tool/user -> user role, merge consecutive same roles.
  *
@@ -250,32 +309,8 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         if (!userMsg.userInputMessage.userInputMessageContext) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
-        userMsg.userInputMessage.userInputMessageContext.tools = tools.map((t) => {
-          const originalName = t.function?.name || t.name;
-          // Kiro rejects consecutive underscores in a tool name. Collapse them
-          // and remember the original so response translators can restore the
-          // name the client actually asked for.
-          const name = sanitizeKiroToolName(originalName);
-          if (name !== originalName) toolNameMap.set(name, originalName);
-          const rawDescription = t.function?.description || t.description || "";
-          // Clients may send object/number descriptions; Kiro needs a string (#1333).
-          let description = isString(rawDescription) ? rawDescription : JSON.stringify(rawDescription);
-
-          if (!description.trim()) {
-            description = `Tool: ${name}`;
-          }
-
-          const schema = t.function?.parameters || t.parameters || t.input_schema || {};
-          const normalizedSchema = normalizeKiroToolSchema(schema);
-
-          return {
-            toolSpecification: {
-              name,
-              description,
-              inputSchema: { json: normalizedSchema }
-            }
-          };
-        });
+        userMsg.userInputMessage.userInputMessageContext.tools =
+        buildKiroToolSpecs(tools, toolNameMap);
         toolsInjectedToFirstUserMsg = true;
       }
 
@@ -434,16 +469,34 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
     flushPending();
   }
 
-  // Pop last userInputMessage as currentMessage (search from end, skip trailing assistant messages)
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].userInputMessage) {
-      currentMessage = history.splice(i, 1)[0];
-      break;
-    }
+  // Kiro requires currentMessage to be a user turn. When the transcript's last
+  // turn is a user turn, that turn becomes currentMessage and leaves history.
+  // When it ends with an assistant or tool turn, every original turn stays in
+  // history, in the client's order and exactly once, and the current turn is a
+  // neutral continuation: lifting an older user turn instead would send the
+  // trailing assistant turn before the user turn that preceded it.
+  const lastHistoryItem = history[history.length - 1];
+  if (lastHistoryItem?.userInputMessage) {
+    currentMessage = history.pop();
+  } else {
+    currentMessage = {
+      userInputMessage: {
+        content: KIRO_CONTINUATION_CONTENT,
+        modelId: model
+      }
+    };
   }
 
-  // Grab tools from first history item BEFORE cleanup removes them
-  const firstHistoryTools = history[0]?.userInputMessage?.userInputMessageContext?.tools;
+  // Grab the tools schema from whichever history turn received it BEFORE
+  // cleanup removes it. The schema is attached to the first *emitted user
+  // turn*, which is not necessarily history[0]: a transcript that opens with
+  // an assistant turn puts the schema on a later turn, and a transcript with
+  // no user turn at all leaves it on none. Reading history[0] alone dropped
+  // the schema in both shapes.
+  const toolsCarrier = history.find((item) =>
+  item?.userInputMessage?.userInputMessageContext?.tools?.length
+  );
+  const carriedTools = toolsCarrier?.userInputMessage?.userInputMessageContext?.tools;
 
   // Clean up history for Kiro API compatibility
   history.forEach((item) => {
@@ -490,17 +543,10 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
     }
   }
 
-  // When currentMessage is null (no user messages at all — edge case where
-  // input is only assistant messages), create a minimal currentMessage so
-  // tools and content can be injected.
-  if (!currentMessage) {
-    currentMessage = {
-      userInputMessage: {
-        content: "",
-        modelId: model
-      }
-    };
-  }
+  // currentMessage is already a user turn at this point: the trailing user
+  // turn when the transcript has one, otherwise the neutral continuation
+  // synthesized above (which also covers a transcript with no user turn at
+  // all). Both forms can carry tools and content.
 
   // Reconcile orphaned toolResults across history AND currentMessage — when
   // client-side compaction removes assistant messages containing tool_use but
@@ -516,10 +562,25 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
     reconcileOrphanedToolResults(mergedHistory, currentMessage);
   }
 
-  // Inject tools into currentMessage AFTER cleanup. Tools only exist here when
-  // the client explicitly sent them (otherwise flattenToolInteractions already
-  // collapsed all tool content to text upstream, so there is nothing to carry).
-  const resolvedTools = firstHistoryTools;
+  // Inject the declared schema into currentMessage AFTER cleanup, so the turn
+  // Kiro validates against tool use always carries it.
+  //
+  // Two sources, in order:
+  //   1. the history turn that already received the schema, carried over as
+  //      the same caller-declared specifications;
+  //   2. the caller's own `tools` array, for a transcript with no user turn
+  //      (the schema was attached to no turn at all) or one whose only user
+  //      turn became currentMessage without it.
+  //
+  // Only caller-declared specifications are ever carried. When the client
+  // declared no tools, flattenToolInteractions already collapsed every tool
+  // call and result to text, so nothing structured remains to validate and
+  // nothing is injected.
+  const resolvedTools = carriedTools?.length > 0
+  ? carriedTools
+  : (clientProvidedTools && Array.isArray(tools)
+    ? buildKiroToolSpecs(tools, toolNameMap)
+    : null);
 
   if (resolvedTools?.length > 0 &&
   !currentMessage.userInputMessage.userInputMessageContext?.tools) {

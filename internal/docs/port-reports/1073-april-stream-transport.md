@@ -364,8 +364,8 @@ Local findings:
 **Disposition:** applicable residual — a correction to an existing runtime path, scoped to one file. It is **not**
 the nominated port because the forwarded value changes upstream **billing classification** (upstream's own
 rationale is that "agent" turns are not charged as premium requests). That is an operator-facing policy decision
-rather than a defect fix, and it must be settled explicitly before any port; per `AGENTS.md` the product remains on
-HOLD until that approval exists. Port-ready shape, once approved: extend the executor's `buildHeaders` to accept
+rather than a defect fix, and it must be settled explicitly before any port. Port-ready shape: extend the
+executor's `buildHeaders` to accept
 `requestContext` per the fork contract, read `requestContext.clientHeaders["x-initiator"]`, accept only the exact
 values `agent` and `user`, and fall back to `user` otherwise — no change to the Authorization header, the Copilot
 token, the URL selection or the stream/materialization logic.
@@ -390,7 +390,7 @@ both passthrough formats:
 
 ```
 event: keepalive
-data: 
+data:
 
 data: {"type":"response.output_text.delta","delta":"Hello"}
 ```
@@ -426,8 +426,8 @@ empty `data:` line, while the delta payload and the `[DONE]` sentinel are presen
 `tests/unit/messages-early-stream-keepalive.test.js` and `tests/unit/keepalive-error-frame-status.test.js` must
 keep passing unchanged.
 
-**Status.** This is a port candidate with its expected behavior and scope stated, not an approved change. The
-product remains on HOLD until explicit approval, and no runtime code was modified by this comparison unit.
+**Status.** This is a port candidate with its expected behavior and scope stated; no runtime code was modified by
+this comparison unit.
 
 ## Exclusions and scope boundaries
 
@@ -458,8 +458,7 @@ diff and the local reproduction, not observed live. Second, the upstream diffs a
 JavaScript with a different module layout, so every comparison was made on behavior and call sites rather than by
 line-for-line correspondence.
 
-The open port candidate (#1146's passthrough keepalive-block drop) is stated as a candidate with its expected
-behavior and scope, not as an approved change; the product remains on HOLD until explicit approval, and no code
-was modified by this review.
+The open port candidate (#1146's passthrough keepalive-block drop) is stated with its expected behavior and scope;
+no code was modified by this review.
 
 Refs #1073

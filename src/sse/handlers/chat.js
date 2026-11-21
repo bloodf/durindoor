@@ -1,3 +1,4 @@
+import { normalizeModelReference } from "open-sse/services/model.js";
 import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
@@ -431,7 +432,8 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     clientRawRequest?.endpoint || new URL(request.url).pathname,
     body,
   ) || detectFormat(body);
-  let modelStr = body.model;
+  let modelStr = normalizeModelReference(body.model);
+  if (modelStr !== body.model) body = { ...body, model: modelStr };
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 

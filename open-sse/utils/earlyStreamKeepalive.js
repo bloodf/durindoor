@@ -189,6 +189,9 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   let stopKeepalive = () => {};
   let upstreamReader = null;
   let aborted = false;
+  // Keep only the suffix needed to recognize an LF or CRLF event boundary.
+  let sseSuffix = "";
+  let sseAtBoundary = true;
   const admissionSelection = createClientAdmissionSelection();
 
   const stream = new ReadableStream({
@@ -246,7 +249,13 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
             while (true) {
               const { done, value } = await upstreamReader.read();
               if (done) break;
-              if (value) controller.enqueue(value);
+              if (value) {
+                controller.enqueue(value);
+                for (const byte of value) {
+                  sseSuffix = (sseSuffix + String.fromCharCode(byte)).slice(-4);
+                  sseAtBoundary = sseSuffix.endsWith("\n\n") || sseSuffix.endsWith("\r\n\r\n");
+                }
+              }
             }
           } else {
             let bodyReadFailed = false;
@@ -264,7 +273,11 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
       } catch {
         if (!aborted) {
           try {
-            controller.enqueue(fallbackErrorFrame);
+            if (upstreamReader && !sseAtBoundary) {
+              controller.error(new Error(FALLBACK_ERROR_MESSAGE));
+            } else {
+              controller.enqueue(fallbackErrorFrame);
+            }
           } catch {
 
             /* consumer gone */}

@@ -3,6 +3,37 @@
 export const GITHUB_URL = "https://github.com/bloodf/durindoor";
 export const NPM_URL = "https://www.npmjs.com/package/durindoor";
 
+export const FOOTER_GROUPS = [
+  {
+    label: "DurinDoor",
+    links: [
+      ["Live demo", "/demo-preview"],
+      ["Quick start", "#quick-start"],
+      ["Providers", "#providers"],
+      ["Features", "#features"],
+      ["FAQ", "#faq"],
+    ],
+  },
+  {
+    label: "Docs",
+    links: [
+      ["Docs", "/docs"],
+      ["Quick start", "/docs/getting-started"],
+      ["Cookie capture extension", "/docs/providers/cookie-capture-extension"],
+      ["API key", "/docs/reference/api"],
+      ["Connect your tools", "/docs/integrations/other-tools"],
+    ],
+  },
+  {
+    label: "GitHub",
+    links: [
+      ["GitHub", GITHUB_URL],
+      ["npm", NPM_URL],
+      ["MIT License", `${GITHUB_URL}/blob/main/LICENSE`],
+    ],
+  },
+];
+
 const logo = (file) => `/home/providers/${file}.png`;
 
 export const CLIENTS = [

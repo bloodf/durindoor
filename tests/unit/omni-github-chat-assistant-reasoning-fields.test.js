@@ -28,6 +28,7 @@ const { GithubExecutor } = await import("../../open-sse/executors/github.js");
 const { DefaultExecutor } = await import("../../open-sse/executors/default.js");
 const { translateRequest } = await import("../../open-sse/translator/index.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
+const { CLAUDE_NATIVE_BLOCKS } = await import("../../open-sse/translator/schema/index.js");
 await import("../translator/registerAll.js");
 
 const CHAT_URL = "https://api.githubcopilot.com/chat/completions";
@@ -90,6 +91,37 @@ function chatBody() {
     ],
     tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object", properties: {} } } }],
   };
+}
+
+/**
+ * An ordinary assistant turn the caller made immutable: its reasoning fields
+ * are own, non-configurable descriptors, so they cannot be deleted once the
+ * copy has been constructed. It also carries the non-enumerable Claude native
+ * blocks a pivot attaches, which have to survive the rewrite.
+ */
+function immutableAssistantMessage() {
+  const message = {
+    role: "assistant",
+    content: "hello from a frozen turn",
+    reasoning_content: "internal chain of thought",
+    reasoning_text: "internal summary",
+  };
+  Object.defineProperty(message, CLAUDE_NATIVE_BLOCKS, {
+    value: [{ type: "thinking", thinking: "internal chain of thought", signature: SIGNED_SIGNATURE }],
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+  return Object.freeze(message);
+}
+
+/** A read-only ordinary assistant turn: the same shape, still writable content. */
+function readOnlyAssistantMessage() {
+  return Object.seal({
+    role: "assistant",
+    content: "hello from a read-only turn",
+    reasoning_content: "internal chain of thought",
+  });
 }
 
 function sentBody(callIndex = 0) {
@@ -272,6 +304,98 @@ describe("GitHub Copilot chat route: assistant reasoning fields (OmniRoute #923)
     const assistant = sent.messages.find((msg) => msg.role === "assistant");
     expect(assistant.reasoning_content).toBeUndefined();
     expect(assistant.content).toBe("hello");
+  });
+
+  it("strips the reasoning fields of an immutable assistant turn instead of failing", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(chatSSE());
+    const exec = new GithubExecutor();
+    const frozen = immutableAssistantMessage();
+    const readOnly = readOnlyAssistantMessage();
+
+    await exec.execute({
+      model: "gpt-5-mini",
+      body: {
+        model: "gpt-5-mini",
+        messages: [
+          { role: "user", content: "hi" },
+          frozen,
+          readOnly,
+          { role: "user", content: "more" },
+        ],
+      },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: null,
+    });
+
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    expect(proxyAwareFetch.mock.calls[0][0]).toBe(CHAT_URL);
+
+    const sent = sentBody();
+    const assistants = sent.messages.filter((msg) => msg.role === "assistant");
+    expect(assistants).toHaveLength(2);
+    for (const assistant of assistants) {
+      expect(assistant.reasoning_text).toBeUndefined();
+      expect(assistant.reasoning_content).toBeUndefined();
+      expect(Object.keys(assistant)).not.toContain("reasoning_text");
+      expect(Object.keys(assistant)).not.toContain("reasoning_content");
+    }
+    expect(assistants[0].content).toBe("hello from a frozen turn");
+    expect(assistants[1].content).toBe("hello from a read-only turn");
+  });
+
+  it("keeps the source, the prototype, the native blocks and the other settings of an immutable turn", () => {
+    const exec = new GithubExecutor();
+    const frozen = immutableAssistantMessage();
+    const readOnly = readOnlyAssistantMessage();
+    const body = {
+      model: "gpt-5-mini",
+      messages: [
+        { role: "user", content: "hi" },
+        frozen,
+        readOnly,
+        { role: "user", content: "more" },
+      ],
+    };
+
+    const sanitized = exec.sanitizeMessagesForChatCompletions(body);
+    const frozenClone = sanitized.messages[1];
+    const readOnlyClone = sanitized.messages[2];
+
+    // The source objects are left exactly as they were.
+    expect(frozen.reasoning_content).toBe("internal chain of thought");
+    expect(frozen.reasoning_text).toBe("internal summary");
+    expect(Object.isFrozen(frozen)).toBe(true);
+    expect(readOnly.reasoning_content).toBe("internal chain of thought");
+
+    // The copies drop exactly the two reasoning fields.
+    for (const clone of [frozenClone, readOnlyClone]) {
+      expect(clone.reasoning_content).toBeUndefined();
+      expect(clone.reasoning_text).toBeUndefined();
+      expect(Object.getOwnPropertyNames(clone)).not.toContain("reasoning_content");
+      expect(Object.getOwnPropertyNames(clone)).not.toContain("reasoning_text");
+    }
+
+    // Same prototype, same role, same content.
+    expect(Object.getPrototypeOf(frozenClone)).toBe(Object.getPrototypeOf(frozen));
+    expect(Object.getPrototypeOf(readOnlyClone)).toBe(Object.getPrototypeOf(readOnly));
+    expect(frozenClone.role).toBe("assistant");
+    expect(frozenClone.content).toBe("hello from a frozen turn");
+    expect(readOnlyClone.content).toBe("hello from a read-only turn");
+
+    // The non-enumerable native blocks survive the rewrite.
+    const nativeDescriptor = Object.getOwnPropertyDescriptor(frozenClone, CLAUDE_NATIVE_BLOCKS);
+    expect(nativeDescriptor).toBeDefined();
+    expect(nativeDescriptor.enumerable).toBe(false);
+    expect(nativeDescriptor.writable).toBe(false);
+    expect(nativeDescriptor.configurable).toBe(false);
+    expect(frozenClone[CLAUDE_NATIVE_BLOCKS]).toEqual(frozen[CLAUDE_NATIVE_BLOCKS]);
+
+    // The other descriptors keep their own settings.
+    const contentDescriptor = Object.getOwnPropertyDescriptor(frozenClone, "content");
+    expect(contentDescriptor.enumerable).toBe(true);
+    expect(contentDescriptor.writable).toBe(false);
+    expect(contentDescriptor.configurable).toBe(false);
   });
 });
 

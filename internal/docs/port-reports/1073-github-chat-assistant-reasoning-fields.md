@@ -88,4 +88,29 @@ Related existing coverage was run unchanged and still passes: the ten `unit/gith
 
 **Uncertainty that cannot be resolved offline.** No request was sent to Copilot, so the exact upstream 400 body was not reproduced here, and the assertion that Copilot rejects these two fields on assistant history rests on upstream's own report. Whether a specific Copilot account or model tolerates the fields was not measured, and the fix is a no-op for an account that accepted them.
 
+## Follow-up: immutable assistant turns followed the same scope
+
+**The defect.** `stripAssistantReasoningFields()` built its copy from **all** of the original own property descriptors and then removed the two reasoning fields with `delete` on the copy. An own descriptor that is not configurable cannot be deleted after the object has been constructed, so an assistant turn the caller made immutable — a frozen message, or one whose `reasoning_content` / `reasoning_text` is defined as a non-configurable descriptor — made `delete` throw `TypeError: Cannot delete property 'reasoning_text' of #<Object>` in the module's strict mode. The exception escaped `sanitizeMessagesForChatCompletions()` and the whole chat request failed before it reached Copilot, instead of being stripped.
+
+**The change.** `open-sse/executors/github.js` — `stripAssistantReasoningFields()` now keeps only the **other** descriptors on the new object: the descriptor map is read once, the two reasoning entries are dropped from the map, and the copy is created from what remains. A non-configurable descriptor is never deleted, so a mutable and an immutable assistant turn end up with the same scope: the two reasoning fields gone, everything else carried over.
+
+**What is preserved.**
+
+- **The source object.** The caller's message is never mutated; the frozen turn still carries its own reasoning fields afterwards.
+- **The native non-enumerable blocks.** The copy is still built from the original descriptors, so the non-enumerable Claude native blocks a pivoted message carries survive the rewrite with their own `enumerable` / `writable` / `configurable` flags.
+- **The original prototype.** The copy keeps the source's prototype, so a message with a custom prototype is not silently flattened to a plain object.
+- **The unaffected settings.** Every other descriptor keeps its own flags — a frozen turn's `content` stays non-writable and non-configurable on the copy.
+
+**Scope.** Chat route only, exactly as the original port: the Anthropic-native `/v1/messages` route returns before the shaper is reached and keeps its signed thinking blocks, the `/responses` route bypasses it and keeps its own body, and no provider, auth, credential or `/responses` behaviour changed. `paramSupport.js` is untouched, so `groq` / `mistral` / `cerebras` keep their own `dropMessageFields` rules.
+
+**Verification.** The focused fixture `tests/unit/omni-github-chat-assistant-reasoning-fields.test.js` keeps its nine existing assertions unchanged and adds two: one that drives a frozen and a read-only assistant turn through the actual outbound executor request, and one that checks the copy directly — the source is untouched, only the two reasoning fields are gone, and the prototype, the native blocks and the other descriptors' settings survive.
+
+```bash
+cd tests && node node_modules/vitest/vitest.mjs run --maxWorkers=2 unit/omni-github-chat-assistant-reasoning-fields.test.js
+```
+
+Result: `Test Files 1 passed (1)`, `Tests 11 passed (11)`. Against the pre-follow-up implementation the two new assertions fail with `TypeError: Cannot delete property 'reasoning_text' of #<Object>` and the nine existing ones still pass (`2 failed | 9 passed`), so they pin the defect rather than the fix.
+
+Related existing coverage was run unchanged and still passes: the ten `unit/github-*.test.js` files plus `unit/param-support.test.js`, `unit/omniroute-provider-field-strips-exec.test.js`, `unit/omni-responses-text-native-1073.test.js` and this fixture (14 files, 215 tests passed). The anti-slop/oxlint gate passes with 0 diagnostics across 2736 files. The whole-suite gate (`cd tests && npm run test:ci`) was not run, per the port's scope.
+
 Refs #1073

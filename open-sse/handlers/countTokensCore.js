@@ -133,7 +133,11 @@ export async function countInputTokens({ body, modelInfo, credentials = null, lo
   if (!url) return { tokens: estimateTokens(body), approximate: true };
 
   try {
-    const headers = getExecutor(provider).buildHeaders(credentials || {}, false, null, model);
+    const executor = getExecutor(provider);
+    // A guarded executor (opt-in dispatch, e.g. minimax-code) opts out: this pre-flight would
+    // otherwise send the prompt and the stored credential upstream before its guard runs.
+    if (executor?.supportsNativeTokenCount === false) return { tokens: estimateTokens(body), approximate: true };
+    const headers = executor.buildHeaders(credentials || {}, false, null, model);
     const res = await proxyAwareFetch(url, {
       method: "POST",
       headers,

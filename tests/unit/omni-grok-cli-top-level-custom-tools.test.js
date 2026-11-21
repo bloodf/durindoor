@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { runWithProviderAttemptContext, runQuotaBearingProviderRequest, runProviderAttemptDispatch, settleProviderAttemptDispatch } from "../../open-sse/services/providerAttemptContext.js";
 import { GrokCliExecutor } from "../../open-sse/executors/grok-cli.js";
 
 const { proxyAwareFetch } = vi.hoisted(() => ({ proxyAwareFetch: vi.fn() }));
@@ -54,6 +55,42 @@ describe("Grok CLI top-level Responses custom tools", () => {
     const { response } = await run(new Response(upstream, { headers: { "content-type": "text/event-stream" } }));
     await response.body.cancel();
     expect(cancelled).toBe(true);
+  });
+
+  it("keeps interleaved function frames and suppresses replayed custom arguments", async () => {
+    const normal = { type: "function_call", id: "fc_normal", call_id: "normal", name: "read", arguments: "{}" };
+    const frames = [
+      { type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } },
+      { type: "response.output_item.added", output_index: 1, item: normal },
+      { type: "response.function_call_arguments.delta", item_id: "fc_normal", output_index: 0, delta: "{}", annotation: "keep" },
+      { type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: call.arguments, annotation: "custom metadata" },
+      { type: "response.function_call_arguments.delta", item_id: "fc_1", output_index: 0, delta: "replay" },
+      { type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: call.arguments },
+      { type: "response.output_item.done", output_index: 0, item: call },
+      { type: "response.completed", response: { output: [call, normal] } },
+    ];
+    const bytes = new TextEncoder().encode(frames.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""));
+    const stream = new ReadableStream({ start(controller) { for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7)); controller.close(); } });
+    const { response } = await run(new Response(stream, { headers: { "content-type": "text/event-stream", "content-length": String(bytes.length) } }));
+    expect(response.headers.has("content-length")).toBe(false);
+    const result = events(await response.text());
+    expect(result.find(e => e.annotation === "keep")).toEqual(frames[2]);
+    expect(result.filter(e => e.type === "response.custom_tool_call_input.done")).toHaveLength(1);
+    expect(result.find(e => e.type === "response.custom_tool_call_input.done")).toMatchObject({ item_id: "fc_1", annotation: "custom metadata" });
+    expect(result.filter(e => e.type.startsWith("response.function_call_arguments"))).toEqual([frames[2]]);
+    expect(result.at(-1).response.output).toEqual([{ ...call, type: "custom_tool_call", arguments: undefined, input: 'a\n"b"' }, normal].map(({ arguments: args, ...item }) => args === undefined ? item : { ...item, arguments: args }));
+  });
+  it("transfers the quota ticket to the rebuilt response", async () => {
+    const settle = vi.fn().mockResolvedValue({ changed: true });
+    const upstream = new Response("data: {}\n\n", { headers: { "content-type": "text/event-stream" } });
+    proxyAwareFetch.mockImplementation(() => runProviderAttemptDispatch(async () => upstream));
+    const result = await runWithProviderAttemptContext(() => 1, () => runQuotaBearingProviderRequest(() =>
+      new GrokCliExecutor().execute({ model: "grok-build", body: body(), stream: true, credentials: { accessToken: "fixture" } })
+    ), { beginQuotaDispatch: async () => ({ tracked: true, settle }) });
+    expect(await settleProviderAttemptDispatch(upstream)).toEqual({ changed: false });
+    await settleProviderAttemptDispatch(result.response, { success: true });
+    expect(settle).toHaveBeenCalledWith({ success: true, reason: "success" });
+    await result.response.body.cancel();
   });
 
 });

@@ -58,16 +58,15 @@ function completedUsage(raw) {
   const usage = toResponsesUsage(raw);
   if (!Number.isInteger(usage.input_tokens) || usage.input_tokens + usage.output_tokens <= 0) return null;
   usage.total_tokens = usage.input_tokens + usage.output_tokens;
-  for (const [field, count] of [
-    ["input_tokens_details", "cached_tokens"],
-    ["output_tokens_details", "reasoning_tokens"]
+  for (const [field, count, optional] of [
+    ["input_tokens_details", "cached_tokens", ["cache_write_tokens", "cache_creation_tokens"]],
+    ["output_tokens_details", "reasoning_tokens", []]
   ]) {
     if (!usage[field]) continue;
-    // Codex requires this integer when the optional detail object is present.
-    // Preserve provider extras (e.g. cache creation/audio) when no cache read
-    // or reasoning count was reported, rather than dropping the whole object.
-    if (usage[field][count] === undefined) usage[field][count] = 0;
-    if (!Number.isInteger(usage[field][count]) || usage[field][count] < 0) delete usage[field];
+    // Keep sibling details while making known counters safe for integer clients.
+    for (const key of [count, ...optional.filter((name) => name in usage[field])]) {
+      if (!Number.isInteger(usage[field][key]) || usage[field][key] < 0) usage[field][key] = 0;
+    }
   }
   return usage;
 }

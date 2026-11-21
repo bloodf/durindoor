@@ -1,4 +1,5 @@
 import { PROVIDER_MODELS } from "@/shared/constants/models";
+import { filterModelsForRequest } from "@/sse/services/modelAccess.js";
 
 /**
  * Handle CORS preflight
@@ -17,7 +18,7 @@ export async function OPTIONS() {
  * GET /v1beta/models - Gemini compatible models list
  * Returns models in Gemini API format
  */
-export async function GET() {
+export async function GET(request) {
   try {
     const models = [];
     const seen = new Set();
@@ -54,7 +55,14 @@ export async function GET() {
       }
     }
 
-    return Response.json({ models });
+    const filtered = await filterModelsForRequest(request || new Request("http://localhost/v1beta/models"), models.map((model) => ({
+      ...model,
+      id: (() => {
+        const id = model.name.replace(/^models\//, "");
+        return id.includes("/") ? id : `gemini/${id}`;
+      })(),
+    })));
+    return Response.json({ models: filtered.map(({ id, ...model }) => model) });
   } catch (error) {
     console.log("Error fetching models:", error);
     return Response.json({ error: { message: error.message } }, { status: 500 });

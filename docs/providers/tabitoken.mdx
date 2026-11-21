@@ -1,0 +1,18 @@
+# TabiToken
+
+TabiToken is a NewAPI gateway exposing Claude Messages and OpenAI-compatible chat endpoints. DurinDoor stages the Claude Messages endpoint as its native transport; the API key is sent in `x-api-key`, and the Anthropic version header is included. The `/v1/models` endpoint is used for credential validation and model discovery.
+
+## Setup
+
+Create an API key in your TabiToken account and save it as the connection credential. Model availability, rate limits, and pricing follow your TabiToken account. The staged model list is a fallback; live discovery is authoritative.
+
+## Cookie capture
+
+No browser cookie is used for this API-key provider. If reporting a transport issue, redact credentials from any pasted cURL command, `Cookie` header, or HAR before sharing it.
+
+## Sources
+
+- [TabiToken](https://tabitoken.com/)
+- [OmniRoute provider entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/tabitoken/index.ts)
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

@@ -1,0 +1,9 @@
+# PromptQL
+
+OmniRoute's pinned PromptQL implementation targets the PromptQL web playground and labels the integration unofficial/experimental. It uses a project-scoped `enrich-token` JWT and project ID from the signed-in playground session, rather than a standalone API key. The public documentation currently requires sign-in for its API reference. The playground GraphQL endpoint is live, but the authentication, model discovery and chat flow are reverse-engineered from the web application and were not independently verified against a supported vendor API contract.
+
+The staged provider is not ready for registration. Before implementation, confirm with PromptQL that the playground JWT and GraphQL operations are supported for third-party API use, and obtain the official model discovery, usage/billing and error semantics. Do not paste real session cookies or tokens into issues or test fixtures.
+
+Sources: [PromptQL docs](https://www.promptql.io/en/docs), [OmniRoute pinned registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/promptql/index.ts), [OmniRoute pinned executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/promptql.ts).
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

@@ -16,7 +16,7 @@ Baseline for this plan: `main` at `0f513f755` (2026-11-21).
 | A1 | Link the existing UI branch/PR and confirm its owner | [PR #1313](https://github.com/bloodf/durindoor/pull/1313) merged 2026-11-03 at `816f871fa8e446d548fc6ac48d9b243f17c37bd9` from `codex/v5-admin-storybook`. The owner is `bloodf`, recorded here. | Post the owner and this plan's link as a #1300 comment when this doc merges. |
 | A2 | Reconcile the agreed V5 scope with #1066 and product/design docs | [PR #2049](https://github.com/bloodf/durindoor/pull/2049) reconciled the story inventory with current sources. [Section 2](#2-reconciled-scope) of this doc reconciles surfaces. | Owner acknowledgement of section 2 on #1300. 332 source rows and 1,273 reference stories in `tests/e2e/storybook-surfaces.json` still need review (see the related record). |
 | A3 | Preserve provider, key/account authorization, routing, accounting and data-management behavior | [PR #2043](https://github.com/bloodf/durindoor/pull/2043) extracted `ProviderRpmControl.jsx` so the review and production share one control, covered by `tests/unit/1300-v5-ui.test.js`. #1313 kept production request handling and API contracts. | Every slice adds a parity test: the same user action issues the same `fetch` method, URL and body with V5 on and off. No slice may change `src/app/api/**`, `src/lib/**` or `open-sse/**`. |
-| A4 | Record UI review plus interaction, loading/empty/error, responsive and accessibility checks for the changed surfaces | #1313 and the [V5 design audit](./audits/v5-design-2026-10-29/README.md) cover the Storybook build only: 854/854 story lifecycles, 328/328 Chromium axe/interaction cases, and 164 rendered snapshots. | No production surface has V5 evidence yet. Each slice adds the jsdom assertions in [section 4](#4-surface-table). Browser/axe evidence for production routes is collected at #1067. |
+| A4 | Record UI review plus interaction, loading/empty/error, responsive and accessibility checks for the changed surfaces | #1313 and the [V5 design audit](./audits/v5-design-2026-10-29/README.md) cover the Storybook build only: 854/854 story lifecycles, 328/328 Chromium axe/interaction cases, and 164 rendered snapshots. | Every slice adds the jsdom assertions in [section 4](#4-surface-table). Browser/axe evidence for production routes is `tests/unit/v5-route-evidence.browser.test.js` (chromium, 1440 and 360, dark and light, axe serious/critical = 0, no console errors). |
 | A5 | Integrate through independently reviewed PRs with exact-head checks | #2043 and #2049 followed the contributor contract. | Each slice: independent review, `npm run lint`, focused tests, `cd tests && npm run test:ci`. Run `npm run storybook:build` when `src/shared/ui/v5/**` or `.storybook/**` changes. Run the website build when the website demo's inputs change. |
 | A6 | Verify the integrated UI against the final V5 candidate before #1067 is accepted | Not started. | S20 flips the default. #1067 then runs the browser matrix (`tests/unit/v5-storybook.browser.test.js` and equivalent production-route checks) on the candidate head. |
 
@@ -163,3 +163,143 @@ Notes:
 - "Those route directories" means `src/app/(dashboard)/dashboard/<route>/**` (page, client, components and colocated stories). It never includes the shared components already assigned to S02, S03 or S08, nor `keys/components/ApiKeyLimitsCard.js`, which S10 owns.
 - A slice that finds a production behavior gap against a review scenario (a missing Retry, for example) fixes it only when the fix stays inside its own files and keeps the API contract. Anything else goes to a separate issue under #1066.
 - If a slice cannot fit in one hour, it splits by route before starting, never by layer.
+
+## 6. Production inventory
+
+### Routes
+
+| # | Route | Production source | V5 composition | Owning slice | Status |
+|---|---|---|---|---|---|
+| 1 | `/` | `src/app/page.js` | Redirect to `/dashboard`; no V5 composition | — | Redirect, out of V5 scope |
+| 2 | `/landing` | `src/app/landing/page.js` | Marketing page; no V5 composition | — | Out of scope (marketing) |
+| 3 | `/login` | `src/app/login/page.js`, `LoginView.js` | `shared/ui/v5/login/*` (ReviewLoginView, GateScene) | S04 | Merged in #2320 |
+| 4 | `/callback` | `src/app/callback/page.js`, `CallbackStatusView.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S04 | Merged in #2320 |
+| 5 | `/dashboard` | `src/app/(dashboard)/dashboard/page.js` | Redirect to `/dashboard/usage`; no V5 composition | S03 | Redirect |
+| 6 | `/dashboard/usage` | `src/app/(dashboard)/dashboard/usage/page.js`, `usage/components/*` | `shared/ui/v5/usage/UsageWidgetLayout.jsx`, `layout.js`, `ReviewUsageChart.jsx` | S10, S11 | Planned |
+| 7 | `/dashboard/providers` | `src/app/(dashboard)/dashboard/providers/page.js`, `providers/components/*` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S06 | Merged in #2320 |
+| 8 | `/dashboard/providers/[id]` | `src/app/(dashboard)/dashboard/providers/[id]/page.js`, `ModelAutoSyncPanel.js` | `shared/ui/v5/providers/ReviewAutoSyncCard.jsx` | S05, S07 | Merged in #2320 (S07) / Planned (S05) |
+| 9 | `/dashboard/combos` | `src/app/(dashboard)/dashboard/combos/page.js`, `combos/components/*` | `shared/ui/v5/combos/ReviewCombosPage.jsx`, `ReviewComboFormModal.jsx`, `ReviewModelSelectModal.jsx` | S08, S09 | Merged in #2320 (S08) / Planned (S09) |
+| 10 | `/dashboard/token-saver` | `src/app/(dashboard)/dashboard/token-saver/page.js`, `TokenSaverClient.jsx` | `shared/ui/v5/dashboards/TokenSaverDashboard.jsx`, `SaverWidgets.jsx`, `PxpipeWidgets.jsx`, `DashboardCanvas.jsx` | S12 | Planned |
+| 11 | `/dashboard/token-saver/settings` | `src/app/(dashboard)/dashboard/token-saver/settings/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S12 | Planned |
+| 12 | `/dashboard/health` | `src/app/(dashboard)/dashboard/health/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S13 | Planned |
+| 13 | `/dashboard/monitoring` | `src/app/(dashboard)/dashboard/monitoring/page.js` | `shared/ui/v5/dashboards/MonitoringWidget.jsx` (presentation) | S13 | Planned |
+| 14 | `/dashboard/timeline` | `src/app/(dashboard)/dashboard/timeline/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S13 | Planned |
+| 15 | `/dashboard/timeline/[id]` | `src/app/(dashboard)/dashboard/timeline/[id]/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S13 | Planned |
+| 16 | `/dashboard/console-log` | `src/app/(dashboard)/dashboard/console-log/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S14 | Planned |
+| 17 | `/dashboard/translator` | `src/app/(dashboard)/dashboard/translator/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S14 | Planned |
+| 18 | `/dashboard/skills` | `src/app/(dashboard)/dashboard/skills/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S14 | Planned |
+| 19 | `/dashboard/playground` | `src/app/(dashboard)/dashboard/playground/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S15 | Planned |
+| 20 | `/dashboard/compression-studio` | `src/app/(dashboard)/dashboard/compression-studio/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S15 | Planned |
+| 21 | `/dashboard/headroom` | `src/app/(dashboard)/dashboard/headroom/page.js`, `HeadroomClient` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S15 | Planned |
+| 22 | `/dashboard/pxpipe` | `src/app/(dashboard)/dashboard/pxpipe/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S15 | Planned |
+| 23 | `/dashboard/keys` | `src/app/(dashboard)/dashboard/keys/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S16 | Planned |
+| 24 | `/dashboard/endpoint` | `src/app/(dashboard)/dashboard/endpoint/page.js`, `EndpointPageClient` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S16 | Planned |
+| 25 | `/dashboard/mcp-gateway` | `src/app/(dashboard)/dashboard/mcp-gateway/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S16 | Planned |
+| 26 | `/dashboard/mcp-gateway/keys` | `src/app/(dashboard)/dashboard/mcp-gateway/keys/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S16 | Planned |
+| 27 | `/dashboard/media-providers/[kind]` | `src/app/(dashboard)/dashboard/media-providers/[kind]/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S17 | Planned |
+| 28 | `/dashboard/media-providers/[kind]/[id]` | `src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js` and components | Tokens + primitives from DESIGN.md and S02/S03 patterns | S17 | Planned |
+| 29 | `/dashboard/media-providers/combo/[id]` | `src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S17 | Planned |
+| 30 | `/dashboard/media-providers/web` | `src/app/(dashboard)/dashboard/media-providers/web/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S17 | Planned |
+| 31 | `/dashboard/media-routes` | `src/app/(dashboard)/dashboard/media-routes/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S17 | Planned |
+| 32 | `/dashboard/proxy-pools` | `src/app/(dashboard)/dashboard/proxy-pools/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S18 | Planned |
+| 33 | `/dashboard/mitm` | `src/app/(dashboard)/dashboard/mitm/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S18 | Planned |
+| 34 | `/dashboard/cli-tools` | `src/app/(dashboard)/dashboard/cli-tools/page.js`, `CLIToolsPageClient` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S18 | Planned |
+| 35 | `/dashboard/cli-tools/[toolId]` | `src/app/(dashboard)/dashboard/cli-tools/[toolId]/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S18 | Planned |
+| 36 | `/dashboard/auto-configure` | `src/app/(dashboard)/dashboard/auto-configure/page.js`, `AutoConfigureClient` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S18 | Planned |
+| 37 | `/dashboard/profile` | `src/app/(dashboard)/dashboard/profile/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S19 | Planned |
+| 38 | `/dashboard/settings/database` | `src/app/(dashboard)/dashboard/settings/database/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S19 | Planned |
+| 39 | `/dashboard/settings/pricing` | `src/app/dashboard/settings/pricing/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S19 | Planned |
+| 40 | `/dashboard/quota` | `src/app/(dashboard)/dashboard/quota/page.js` | Tokens + primitives from DESIGN.md and S02/S03 patterns | S19 | Planned |
+
+### Dialogs
+
+| Component | Location | Owning slice | Notes |
+|---|---|---|---|
+| `AddCustomEmbeddingModal.js` | `src/shared/components/` | S17 (media-providers) | Used in media provider detail |
+| `AddSystemoneCompatibleModal.js` | `src/shared/components/` | S07 (provider detail) | Provider compatible model add |
+| `ChangelogModal.js` | `src/shared/components/` | S19 (settings) | Settings changelog view |
+| `ComboFormModal.js` | `src/shared/components/` | S08, S09 | Merged in #2320 (S08) |
+| `CursorAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `EditConnectionModal.js` | `src/shared/components/` | S07 (provider detail) | Provider connection edit |
+| `GheCopilotAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `GitLabAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `IFlowCookieModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `ImportTokenModal.js` | `src/shared/components/` | S07 (provider detail) | Provider token import |
+| `KiroAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `KiroSocialOAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `ManualConfigModal.js` | `src/shared/components/` | S18 (cli-tools) | CLI tool manual config |
+| `McpMarketplaceModal.js` | `src/shared/components/` | S16 (mcp-gateway) | MCP marketplace browse |
+| `Modal.js` | `src/shared/components/` | — | Base modal component (shared) |
+| `ModelSelectModal.js` | `src/shared/components/` | S08 | Merged in #2320 |
+| `OAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Generic OAuth flow |
+| `OrcaRouterAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `PricingModal.js` | `src/shared/components/` | S19 (settings/pricing) | Pricing plan selection |
+| `WebLoginModal.js` | `src/shared/components/` | S07 (provider detail) | Web provider login |
+| `XiaomiMimoAuthModal.js` | `src/shared/components/` | S07 (provider detail) | Provider auth flow |
+| `ApiKeyModelAccessModal.js` | `src/app/(dashboard)/dashboard/endpoint/` | S16 | Endpoint key-model access |
+| `AddApiKeyModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Provider API key add |
+| `AddCustomModelModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Provider custom model add |
+| `AutoPingScheduleModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S05 | Auto-ping schedule (review coverage) |
+| `BulkImportCodexModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Bulk Codex import |
+| `BulkImportGrokCliModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Bulk Grok CLI import |
+| `CookieImportModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Cookie-based import |
+| `EditCompatibleNodeModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Compatible node edit |
+| `ProviderErrorRulesModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Error rules config |
+| `VisibleModelsModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/` | S07 | Visible models toggle |
+| `BulkReviewModal.js` | `src/app/(dashboard)/dashboard/providers/[id]/components/` | S07 | Bulk review |
+| `AddCompatibleModal.js` | `src/app/(dashboard)/dashboard/providers/components/` | S06 | Add compatible provider |
+
+### States (error.js, loading.js, not-found.js)
+
+| File | Route | Owning slice | Notes |
+|---|---|---|---|
+| `error.js` | `/dashboard/combos` | S09 | Combo page error boundary |
+| `error.js` | `/dashboard/mcp-gateway` | S16 | MCP gateway error boundary |
+| `error.js` | `/dashboard/mcp-gateway/keys` | S16 | MCP gateway keys error boundary |
+| `error.js` | `/dashboard/mitm` | S18 | MITM error boundary |
+| `error.js` | `/dashboard/providers/[id]` | S07 | Provider detail error boundary |
+| `error.js` | `/dashboard/pxpipe` | S15 | Pxpipe error boundary |
+| `error.js` | `/dashboard/translator` | S14 | Translator error boundary |
+| `loading.js` | — | — | No loading.js files in production |
+| `not-found.js` | — | — | No not-found.js files in production |
+
+### S19b Unowned dialogs and states
+
+The following dialogs and state files have no slice explicitly assigned in the current slice plan (S01–S21). They receive V5 tokens and primitives through the shared foundation (S01–S03) but have no dedicated composition work planned.
+
+**Dialogs:**
+- `AddCustomEmbeddingModal.js` (S17 media-providers — slice exists but dialog not called out)
+- `AddSystemoneCompatibleModal.js` (S07)
+- `ChangelogModal.js` (S19)
+- `CursorAuthModal.js` (S07)
+- `EditConnectionModal.js` (S07)
+- `GheCopilotAuthModal.js` (S07)
+- `GitLabAuthModal.js` (S07)
+- `IFlowCookieModal.js` (S07)
+- `ImportTokenModal.js` (S07)
+- `KiroAuthModal.js` (S07)
+- `KiroSocialOAuthModal.js` (S07)
+- `ManualConfigModal.js` (S18)
+- `McpMarketplaceModal.js` (S16)
+- `OAuthModal.js` (S07)
+- `OrcaRouterAuthModal.js` (S07)
+- `PricingModal.js` (S19)
+- `WebLoginModal.js` (S07)
+- `XiaomiMimoAuthModal.js` (S07)
+- `ApiKeyModelAccessModal.js` (S16)
+- `AddApiKeyModal.js` (S07)
+- `AddCustomModelModal.js` (S07)
+- `BulkImportCodexModal.js` (S07)
+- `BulkImportGrokCliModal.js` (S07)
+- `CookieImportModal.js` (S07)
+- `EditCompatibleNodeModal.js` (S07)
+- `ProviderErrorRulesModal.js` (S07)
+- `VisibleModelsModal.js` (S07)
+- `BulkReviewModal.js` (S07)
+- `AddCompatibleModal.js` (S06)
+
+**States:**
+- All seven `error.js` files listed above (S07, S09, S14, S15, S16, S18)
+- No `loading.js` or `not-found.js` files exist in production
+
+These components inherit V5 tokens and primitives (S01–S03) but have no dedicated V5 composition work. If visual or interaction changes are needed for any of them, they would require a new slice or an extension to an existing slice.

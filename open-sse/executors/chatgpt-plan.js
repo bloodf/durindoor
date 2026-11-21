@@ -1,4 +1,5 @@
 import { authorizeChatgptPlan, listChatgptPlanModels } from "../providers/chatgpt-plan/index.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 // Request normalization adapted from OmniRoute b748429cf5b3aeb142a708fd3e8751b6918b9dc8,
 // open-sse/executors/chatgpt.ts. This adapter is intentionally not registered.
@@ -8,18 +9,18 @@ const TOOLS = new Set(["function", "custom", "namespace", "web_search", "web_sea
 function checkTools(tools, depth = 0) {
   if (!Array.isArray(tools) || depth > 5) throw new Error("Invalid ChatGPT tools");
   for (const tool of tools) {
-    if (!tool || typeof tool !== "object" || !TOOLS.has(tool.type)) throw new Error("Unsupported ChatGPT tool");
+    if (!tool || !isObject(tool) || !TOOLS.has(tool.type)) throw new Error("Unsupported ChatGPT tool");
     if (tool.type === "namespace") checkTools(tool.tools, depth + 1);
   }
 }
 
 export function prepareChatgptPlanRequest(model, source) {
-  if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("Invalid request");
+  if (!source || !isObject(source) || Array.isArray(source)) throw new Error("Invalid request");
   const body = Object.fromEntries(Object.entries(source).filter(([key]) => !key.startsWith("_") && !OMIT.has(key)));
-  const input = typeof body.input === "string" ? [{ role: "user", content: body.input }] : body.input;
+  const input = isString(body.input) ? [{ role: "user", content: body.input }] : body.input;
   if (!Array.isArray(input)) throw new Error("Invalid ChatGPT input");
   body.input = input.map((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Invalid ChatGPT input");
+    if (!item || !isObject(item) || Array.isArray(item)) throw new Error("Invalid ChatGPT input");
     if (item.type === "additional_tools") checkTools(item.tools);
     return item.role === "system" ? { ...item, role: "developer" } : { ...item };
   });

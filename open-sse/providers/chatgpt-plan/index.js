@@ -1,3 +1,5 @@
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+
 // Private provider descriptor. Deliberately absent from the shared registry.
 // Source: OmniRoute b748429cf5b3aeb142a708fd3e8751b6918b9dc8,
 // open-sse/config/providers/registry/chatgpt/index.ts.
@@ -7,10 +9,10 @@ export const chatgptPlan = Object.freeze({
 
 export function authorizeChatgptPlan(connection, grant) {
   if (connection?.credentialClass !== "chatgpt-plan-oauth" ||
-      typeof connection.accessToken !== "string" || !connection.accessToken.trim() ||
-      typeof connection.id !== "string" || !connection.id.trim() ||
+      !isString(connection.accessToken) || !connection.accessToken.trim() ||
+      !isString(connection.id) || !connection.id.trim() ||
       grant?.allowed !== true || grant.connectionId !== connection.id ||
-      typeof grant.accountId !== "string" || !grant.accountId.trim() ||
+      !isString(grant.accountId) || !grant.accountId.trim() ||
       connection.accountId !== grant.accountId) {
     throw new Error("ChatGPT plan connection is not authorized");
   }
@@ -25,5 +27,5 @@ export async function listChatgptPlanModels({ connection, grant, signal, fetch: 
   const catalog = await response.json();
   if (!Array.isArray(catalog?.models)) throw new Error("Invalid ChatGPT model catalog");
   return catalog.models.filter((model) => model?.visibility === "list" &&
-    typeof model.slug === "string" && model.slug.trim()).map(({ slug, display_name }) => ({ slug, display_name }));
+    isString(model.slug) && model.slug.trim()).map(({ slug, display_name }) => ({ slug, display_name }));
 }

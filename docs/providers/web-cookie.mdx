@@ -58,7 +58,7 @@ The field is plain text, not a password field, so the cookie is visible on scree
 
 | Provider | Id | Paste |
 | --- | --- | --- |
-| Grok Web | `grok-web` | The `sso` cookie value, `sso=<value>`, or a full Cookie header that contains `sso=`. See [Grok Web](#grok-web) |
+| Grok Web | `grok-web` | The `sso` cookie value, `sso=<value>`, or a full Cookie header that contains `sso=`. An empty `sso=` is rejected. See [Grok Web](#grok-web) |
 | Perplexity Web | `perplexity-web` | The `__Secure-next-auth.session-token` value; chunked `.0`, `.1` cookies are accepted |
 | Copilot Web | `copilot-web` | An `access_token`, or a HAR from a signed-in browser |
 | Microsoft 365 Copilot Web | `copilot-m365-web` | `access_token=<jwt>; chathubPath=<oid>@<tenant>`, the Chathub WebSocket URL, or a HAR |
@@ -197,7 +197,7 @@ A 401 or 403 (including a rejected WebSocket upgrade) puts that connection on th
 `grok-web` (alias `gw`) sends chat requests to `grok.com` with your signed-in `sso` session. It is separate from the `xai` API provider and the Grok CLI device flow; their credentials do not work here.
 
 1. Sign in at grok.com. In DevTools, Application, Cookies, `https://grok.com`, copy the `sso` value. Or copy the whole `Cookie` request header from the Network tab.
-2. In **Providers → Grok Web**, paste it and save. Accepted forms: the bare value, `sso=<value>`, or a full header. A full header is sent as pasted and must contain `sso=`; a header without it is rejected locally with HTTP 401 and nothing is sent to grok.com.
+2. In **Providers → Grok Web**, paste it and save. Accepted forms: the bare value, `sso=<value>`, or a full header. A full header is sent as pasted and must contain `sso=`; a header without it is rejected locally with HTTP 401 and nothing is sent to grok.com. An `sso` with no value, such as a pasted `sso=` or a header whose `sso=` entry is empty, is an empty session and is rejected the same way: HTTP 401 locally, and no request to grok.com. A raw token that merely ends in `=` padding, such as `tok==`, is kept as the `sso` value.
 3. **Validate** and **Test Connection** are skipped for Grok Web. Its only chat endpoint creates a conversation per probe, so a skipped result does not prove the cookie works. Send one short request to confirm.
 4. Models are the registry list (`grok-3` to `grok-4.2`); unlisted ids pass through and map to `grok-4.1-fast` when DurinDoor has no mapping for them. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tools and image generation are not supported.
 

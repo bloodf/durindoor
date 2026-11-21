@@ -13,8 +13,8 @@
 
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
-// `\b` after the label keeps a longer name such as `keepalives` from matching.
-const PROVIDER_KEEPALIVE_EVENT_RE = /^event:\s*keepalive\b/i;
+// SSE event names are exact and case-sensitive.
+const PROVIDER_KEEPALIVE_EVENT_RE = /^event: ?keepalive$/;
 
 /**
  * @param {string} line trimmed SSE line
@@ -25,7 +25,8 @@ export function isProviderKeepaliveEvent(line) {
 }
 
 /**
- * Drop provider keepalive event blocks from a passthrough stream.
+ * Legacy line filter retained for compatibility; it cannot distinguish payloads.
+ * Passthrough streams use bounded candidate framing in stream.js instead.
  *
  * The filter owns the frame boundaries: once a keepalive label is seen, every
  * line of that block is dropped until the blank line that terminates it. The

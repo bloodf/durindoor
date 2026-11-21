@@ -43,6 +43,8 @@ Reviewed 2026-11-21 against DurinDoor current head. Source PR inventory from ups
 - **Focused tests to add**:
   `tests/unit/console-log-format.test.js` asserting entry parsing across request/response/background shapes, console level classification, tag extraction and sorting, symbol stripping, countByLevel and collectTags computations, sequence-based identity stability, and filter matching by level, tag, and search query.
 
+- **Ported in this unit**: Added client-side request and completion field parsing and structured row summaries using the existing string log payload; existing filters, counters, pause/wrap/copy/download controls, snapshot reconciliation, and routed-model DONE logs already cover the remaining behavior. Kept the server buffer and log API string-compatible. `tests/unit/port9r-5798-console-log-viewer.test.js` covers request and completion fields and leaves unrelated lines untouched.
+
 ---
 
 ### [#5796](https://github.com/decolua/9router/pull/5796) — fix(codebuddy): sanitize only agent identity lines in system prompts to preserve user rules

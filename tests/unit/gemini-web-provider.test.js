@@ -63,11 +63,12 @@ vi.mock("playwright", () => {
                 press: vi.fn(async (key) => {
                   if (key !== "Enter") return;
                   const { status, text, body } = world.answer(header());
-                  setTimeout(() => onResponse?.({
+                  // Deliver this context's cookie-keyed response before the mock timeout can fire.
+                  await onResponse?.({
                     url: () => STREAM_URL,
                     status: () => status,
                     text: async () => body ?? frameBody(text),
-                  }), 0);
+                  });
                 }),
               },
               // The long response wait collapses to a short real delay so a missing answer finishes fast.

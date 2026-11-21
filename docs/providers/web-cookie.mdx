@@ -80,20 +80,66 @@ chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure
 
 These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
 
-Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). See [Hidden and retired providers](./retired.mdx) for unsupported entries. You can save a connection for them, but no request will run until the executor ships.
+Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `huggingchat`, `muse-spark-web`, `suno` and `udio`. ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). Adapta Web, T3 Chat Web and Tencent Yuanbao Web have their own executors and are documented below. See [Hidden and retired providers](./retired.mdx) for unsupported entries. You can save a connection for a pending provider, but no request will run until the executor ships.
+
+## Import cookies in the dashboard
+
+For the importable providers (ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web), the provider page has an **Import cookies** button next to **Add Connection**. The manual paste in the add dialog stays exactly as it was; the import is an extra way in.
+
+The import dialog offers three sources and one handover:
+
+- **Paste header or cURL.** Paste a raw `Cookie` header or a cURL command copied from the browser. The input is read as data in the page: the command is never run, and the URL it names is never requested.
+- **HAR file.** Choose a `.har` file from the machine. The file is parsed in the page and never uploaded. Only requests to the provider's own origin are read, and only the provider's approved cookie names are kept; requests to any other origin are ignored.
+- **Browser extension.** Create a one-use pairing and hand it to the extension, which then sends the session itself. See [Import from a browser extension](#import-from-a-browser-extension).
+
+Choose a target first: a **new connection** with a name, or an existing cookie connection whose cookies are replaced.
+
+The dialog shows what it found before anything is sent: the request URL, the cookie **names**, and the names it ignored. A cookie value is never displayed and never appears in a message. When a HAR file holds several requests to the provider origin with different credentials, the dialog asks which one to import; requests that carry the same credentials are not ambiguous.
+
+Chunked session cookies keep every chunk. A stale unchunked copy is dropped, and a missing chunk is refused before the import, because an incomplete session token would fail later. A pasted header names no origin, so it is imported as the provider's own origin.
+
+The pasted text, the parsed cookies and the pairing secret are dropped from the page as soon as the operator submits or dismisses the dialog.
+
+The import goes through the same API the browser extension uses, so the provider's origin and cookie allowlist are enforced by the server as well, and the stored value is the same encrypted cookie header as a manual paste.
+
+## Import cookies in the dashboard
+
+For the importable providers (ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web), the provider page has an **Import cookies** button next to **Add Connection**. The manual paste in the add dialog stays exactly as it was; the import is an extra way in.
+
+The import dialog offers three sources and one handover:
+
+- **Paste header or cURL.** Paste a raw `Cookie` header or a cURL command copied from the browser. The input is read as data in the page: the command is never run, and the URL it names is never requested.
+- **HAR file.** Choose a `.har` file from the machine. The file is parsed in the page and never uploaded. Only requests to the provider's own origin are read, and only the provider's approved cookie names are kept; requests to any other origin are ignored.
+- **Browser extension.** Create a one-use pairing and hand it to the extension, which then sends the session itself. See [Import from a browser extension](#import-from-a-browser-extension).
+
+Choose a target first: a **new connection** with a name, or an existing cookie connection whose cookies are replaced.
+
+The dialog shows what it found before anything is sent: the request URL, the cookie **names**, and the names it ignored. A cookie value is never displayed and never appears in a message. When a HAR file holds several requests to the provider origin with different credentials, the dialog asks which one to import; requests that carry the same credentials are not ambiguous.
+
+Chunked session cookies keep every chunk. A stale unchunked copy is dropped, and a missing chunk is refused before the import, because an incomplete session token would fail later. A pasted header names no origin, so it is imported as the provider's own origin.
+
+The pasted text, the parsed cookies and the pairing secret are dropped from the page as soon as the operator submits or dismisses the dialog.
+
+The import goes through the same API the browser extension uses, so the provider's origin and cookie allowlist are enforced by the server as well, and the stored value is the same encrypted cookie header as a manual paste.
 
 ## Import from a browser extension
 
 A browser extension can send a signed-in session to DurinDoor instead of you pasting it. It works for ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web; the full-header providers such as HuggingChat are not supported.
 
-1. In the dashboard, an operator asks for a pairing for one provider, either for a new named connection or for one existing cookie connection. The pairing secret is shown once and expires after two minutes.
+1. In the dashboard, an operator asks for a pairing for one provider, either for a new named connection or for one existing cookie connection. The pairing secret is shown once and expires after two minutes. The provider page's **Import cookies** dialog creates the pairing in its **Browser extension** tab and shows the secret, the import URL and the approved cookie names.
 2. The extension sends the provider's approved cookies, the exact provider origin and that secret to `/api/providers/cookie-import`, in the `x-durindoor-pairing-token` header.
 
 The secret works once, only for that provider and target, and only on that route; it is not an API key. Pair again after any failed attempt. The call must use HTTPS, except to `localhost`, `127.0.0.1` or `[::1]` for local development, and the body is limited to 32 KiB. Cookies the provider does not approve, such as `cf_clearance`, are rejected. DurinDoor checks the shape of the cookies and does not contact the provider, so use **Validate** afterwards. Replacing the cookie on an existing connection clears a pending sign-in-again state. The pairing is kept in server memory, so run a single DurinDoor process behind the address the extension uses.
 
+### Install the extension
+
+The extension lives in `extensions/provider-cookie-capture` and has no build step. In a Chromium browser open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select that folder. To keep a copy, run `node scripts/package-cookie-extension.mjs`: it writes a zip and a `.sha256` file that are byte-identical for the same sources. Unpack the zip and load the folder the same way.
+
+To use it, create a pairing as an operator, sign in to the provider in a tab, open the extension on that tab and paste the pairing. It shows the provider, the provider site and your dashboard address. Tick the confirmation and choose **Send cookies**. The browser then asks to let the extension read cookies for those two sites only, and the extension removes that access when it finishes. It never runs on its own, keeps no copy of the cookies and makes one request. If a permission is denied, the pairing has expired or the dashboard rejects it, create a new pairing and try again. See the [extension README](https://github.com/bloodf/durindoor/blob/main/extensions/provider-cookie-capture/README.md) for its permissions and limits.
+
 ## Validation
 
-**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web and ZenMux Free skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free and Adapta Web skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
 A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
 
@@ -101,7 +147,7 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 - Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
 - The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
-- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web and ChatGPT Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which neither site exposes through a stable API. Token counts are estimates of about four characters per token.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, Adapta Web and T3 Chat Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Token counts are estimates of about four characters per token.
 
 ## When the session ends
 
@@ -131,3 +177,29 @@ Microsoft 365 Copilot Web uses a separate Chathub path and access token. Set `pr
 Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `sso` cookie); 429 means grok.com is rate limiting you. With more than one Grok Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above. Signing out of grok.com in that browser profile ends the session.
 
 Known limits: no cookie rotation is written back (unlike ChatGPT Web), so a renewed `sso` must be pasted by hand. Paired `sso-rw` handling beyond forwarding it from a pasted header is untested. DurinDoor does not emulate browser attestation or work around access controls; if grok.com challenges a session, use a different session or provider.
+
+## Adapta Web
+
+`adapta-web` (alias `adp-web`) sends chat requests to `agent.adapta.one` with your signed-in Clerk session. It signs in through `clerk.agent.adapta.one`, so it is separate from the Adapta API and from any other Clerk-based provider.
+
+1. Sign in at agent.adapta.one. In DevTools, Application, Cookies, `https://clerk.agent.adapta.one`, copy the `__client` value. Or copy the `Cookie` request header from the Network tab.
+2. In **Providers → Adapta Web**, paste it and save. Accepted forms: the bare `__client` value, or `__client=<value>`. A paste that starts with a different cookie name is not unwrapped, so copy the `__client` value itself. The value is stored in the connection's encrypted `apiKey` column and is never returned to the dashboard.
+3. **Validate** and **Test Connection** are skipped for Adapta Web. Its chat endpoint creates a conversation per probe, so a skipped result does not prove the cookie works. Send one short request to confirm.
+4. Models are the registry list (`adapta-one`, `adapta-gpt`, `adapta-claude`, `adapta-gemini`, `adapta-grok`, `adapta-deepseek`, `adapta-llama`), and the model's lane name in a request is `adp-web/<model>`. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tool calls are emulated: DurinDoor writes your tool definitions into the prompt and reads the call back out of the answer text, so the result depends on the model. Image generation is not supported.
+
+Recovery: the session is exchanged for a short-lived token on every request cycle. HTTP 401 means the session was rejected. The message is `Adapta authentication failed` when the Clerk session check fails, and `Adapta request failed` when the chat endpoint refuses the exchanged token. HTTP 429 means Adapta is rate limiting you. With more than one Adapta Web connection the request falls back to the next one, and only the connection that failed is put on cooldown. To recover a connection, paste the fresh `__client` value with **Edit** as above, which clears the cooldown and the recorded error. Signing out of agent.adapta.one in that browser profile ends the session.
+
+Known limits: every registry lane maps to the same upstream auto-select model, so the lane names do not pin a distinct upstream model. DurinDoor does not emulate browser attestation or work around access controls; if Adapta challenges a session, use a different session or provider.
+
+## T3 Chat Web
+
+`t3-web` (alias `t3chat`) sends chat requests to `t3.chat` with your signed-in session. The site's chat endpoint needs the session cookie that carries the `convex-session-id`.
+
+1. Sign in at t3.chat. In DevTools, Application, Cookies, `https://t3.chat`, copy the `convex-session-id` value together with the rest of the `Cookie` request header.
+2. In **Providers → T3 Chat Web**, paste it and save. Accepted forms: the whole `Cookie` header, including the `convex-session-id` cookie, or the two-line pair `cookies=<header>` on the first line and `convexSessionId=<id>` on the second. A paste without a `convex-session-id` is rejected locally with HTTP 400 and nothing is sent to t3.chat.
+3. **Validate** and **Test Connection** use a read-only `HEAD` request against the site root. A 401 or 403 means the session was rejected. A redirect or a transport failure reports the check as unavailable rather than as a rejection, because it does not establish anything about the session. Send one short request to confirm the session works.
+4. Models are the registry list (`claude-opus-4` to `kimi-k2`), and the model's lane name in a request is `t3/<model>`. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tools are not supported.
+
+Recovery: HTTP 401 or 403 means the session was rejected (message: `T3 Chat request failed`). With more than one T3 Chat Web connection the request falls back to the next one, and only the connection that failed is put on cooldown. To recover a connection, paste the fresh cookie with **Edit** as above, which clears the cooldown and the recorded error. Signing out of t3.chat in that browser profile ends the session.
+
+Known limits: an HTTP relay route cannot carry the session cookie, so T3 Chat refuses a connection that is routed through one and answers HTTP 400 instead of sending the session. Use a direct or proxied route for this provider. Deployment-specific server functions, binary TSS framing, media and session renewal are outside the supported contract.

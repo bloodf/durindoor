@@ -879,7 +879,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const doneItem = data.item;
     const doneKey = doneItem?.id || data.item_id || "";
     // A done-only item still needs the same header and identity as an added item.
-    if (!(doneKey && state.respToolChatIndex?.has(doneKey)) &&
+    const anonymousKnown = !doneKey && !doneItem.call_id && state.currentToolCallId &&
+      state.respToolChatIndex?.has(state.currentToolCallId);
+    if (!anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
         !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
       const item = { ...doneItem, call_id: doneItem.call_id || fallbackToolCallId() };
       const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", item }, state);

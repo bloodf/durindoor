@@ -49,4 +49,19 @@ describe("Responses stream parity", () => {
     expect(chunks.filter((c) => c.choices?.[0]?.finish_reason)).toHaveLength(1);
     expect(chunks.at(-1).choices[0].finish_reason).toBe("tool_calls");
   });
+
+  it("does not invent another call for an anonymous done after added and delta", () => {
+    const state = initState(FORMATS.OPENAI);
+    const events = [
+      { type: "response.output_item.added", item: { type: "function_call", call_id: "call_a", name: "lookup" } },
+      { type: "response.function_call_arguments.delta", delta: '{"x":1}' },
+      { type: "response.output_item.done", item: { type: "function_call" } },
+      { type: "response.completed", response: { usage: { input_tokens: 1, output_tokens: 1 } } }
+    ];
+    const chunks = events.flatMap((event) => flatten(toChat(event, state)));
+    const calls = chunks.flatMap((chunk) => chunk.choices?.[0]?.delta?.tool_calls || []);
+    expect(calls.filter((call) => call.id)).toHaveLength(1);
+    expect(calls.every((call) => call.index === 0)).toBe(true);
+    expect(calls.map((call) => call.function?.arguments || "").join("")).toBe('{"x":1}');
+  });
 });

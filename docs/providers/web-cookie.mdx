@@ -102,6 +102,26 @@ The pasted text, the parsed cookies and the pairing secret are dropped from the 
 
 The import goes through the same API the browser extension uses, so the provider's origin and cookie allowlist are enforced by the server as well, and the stored value is the same encrypted cookie header as a manual paste.
 
+## Import cookies in the dashboard
+
+For the importable providers (ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web), the provider page has an **Import cookies** button next to **Add Connection**. The manual paste in the add dialog stays exactly as it was; the import is an extra way in.
+
+The import dialog offers three sources and one handover:
+
+- **Paste header or cURL.** Paste a raw `Cookie` header or a cURL command copied from the browser. The input is read as data in the page: the command is never run, and the URL it names is never requested.
+- **HAR file.** Choose a `.har` file from the machine. The file is parsed in the page and never uploaded. Only requests to the provider's own origin are read, and only the provider's approved cookie names are kept; requests to any other origin are ignored.
+- **Browser extension.** Create a one-use pairing and hand it to the extension, which then sends the session itself. See [Import from a browser extension](#import-from-a-browser-extension).
+
+Choose a target first: a **new connection** with a name, or an existing cookie connection whose cookies are replaced.
+
+The dialog shows what it found before anything is sent: the request URL, the cookie **names**, and the names it ignored. A cookie value is never displayed and never appears in a message. When a HAR file holds several requests to the provider origin with different credentials, the dialog asks which one to import; requests that carry the same credentials are not ambiguous.
+
+Chunked session cookies keep every chunk. A stale unchunked copy is dropped, and a missing chunk is refused before the import, because an incomplete session token would fail later. A pasted header names no origin, so it is imported as the provider's own origin.
+
+The pasted text, the parsed cookies and the pairing secret are dropped from the page as soon as the operator submits or dismisses the dialog.
+
+The import goes through the same API the browser extension uses, so the provider's origin and cookie allowlist are enforced by the server as well, and the stored value is the same encrypted cookie header as a manual paste.
+
 ## Import from a browser extension
 
 A browser extension can send a signed-in session to DurinDoor instead of you pasting it. It works for ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web; the full-header providers such as HuggingChat are not supported.

@@ -325,9 +325,10 @@ async function cancelResponseBody(response) {
  *   `fmtThink(intent)` for the thinking label, `line(tag, symbol, message)`
  *   for INFO lines, and `errorLine(tag, symbol, message)` for always-printed
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
+ * @param {object} [options.executorOverride] - Server-bound executor for a scoped dispatch.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -394,7 +395,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : log?.nextTag ? log.nextTag() : "";
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
-  const executor = getExecutor(provider);
+  const executor = executorOverride || getExecutor(provider);
   const clientRequestError = executor.validateClientRequest?.(body, sourceFormat);
   if (clientRequestError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, clientRequestError);
 
@@ -468,9 +469,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   resolveTransport(provider, oauthTransportFormat) || defaultRuntimeTransport :
   defaultRuntimeTransport;
   const transportFormat = runtimeTransport?.format?.replace(/-(apikey|oauth)$/, "") || null;
-  const targetFormat = oauthTransportFormat ?
+  const targetFormat = executorOverride?.targetFormat || (oauthTransportFormat ?
   transportFormat === sourceFormat ? sourceFormat : transportFormat :
-  defaultTargetFormat;
+  defaultTargetFormat);
   // Attach selected transport only when executor can use its matching wire
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
@@ -535,7 +536,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const clientRequestedNonStreaming = rawClientStream === false;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
   const providerRequiresStreaming = !isCompactRequest &&
-  (PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
+  (executorOverride?.forceStream === true || PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, cleanModel);
   const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(cleanModel);

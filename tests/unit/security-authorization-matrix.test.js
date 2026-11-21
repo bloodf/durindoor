@@ -260,6 +260,32 @@ describe("#1090 fusion tool media authorization", () => {
     expect(fixture.core).not.toHaveBeenCalled();
   });
 
+  it.each(["model", "account", "combo-account", "combo"])("honors the %s ACL on fallback Responses output", async (boundary) => {
+    fixture.settings.comboStrategy = "fallback";
+    if (boundary === "model") fixture.keys.get("matrix-owner").policy = { allowedModels: ["minimax/MiniMax-M2.1"] };
+    if (boundary === "account") fixture.scopes.set("owner", ["minimax-account"]);
+    if (boundary === "combo-account") fixture.combo.allowedConnectionIds = ["minimax-account"];
+    if (boundary === "combo") fixture.keys.get("matrix-owner").allowedCombos = ["another-combo"];
+    const body = {
+      model: fixture.combo.name,
+      input: [
+        { type: "function_call", call_id: "shot", name: "capture", arguments: "{}" },
+        { type: "function_call_output", call_id: "shot", output: [
+          { type: "input_image", image_url: "data:image/png;base64,AA==" },
+        ] },
+      ],
+    };
+
+    const response = await handleChat(request("/api/v1/responses", "owner", "POST", body));
+    expect(response.status).toBe(403);
+    if (boundary !== "combo") {
+      const { error } = await response.json();
+      expect(error.code).toBe("capability_unavailable");
+      expect(error.message).toBe("Access denied");
+    }
+    expect(fixture.core).not.toHaveBeenCalled();
+  });
+
   it("does not dispatch a forbidden explicit judge", async () => {
     fixture.settings.comboStrategies = { "matrix-combo": { judgeModel: "openai/gpt-4.1" } };
     fixture.keys.get("matrix-owner").policy = { allowedModels: ["openai/gpt-4o"] };

@@ -30,6 +30,7 @@ it("backfills exact matches atomically and preserves all legacy fields", () => {
     applyVersionedMigrations(db, MIGRATIONS.filter(({ version }) => version <= 28));
     // Migration 001 reads the current schema. Remove the new column to model a
     // database created before 030 shipped.
+    db.exec(`DROP INDEX idx_uh_key_session; DROP INDEX idx_uh_key_project`);
     db.exec(`ALTER TABLE usageHistory DROP COLUMN apiKeyId`);
     db.run(`INSERT INTO apiKeys(id, key, createdAt) VALUES ('stable-id', 'fixture-match', ?), ('deleted-id', 'fixture-deleted', ?)`,
       [timestamp, timestamp]);
@@ -52,7 +53,7 @@ it("backfills exact matches atomically and preserves all legacy fields", () => {
     expect(markers()).toEqual(markersBefore);
 
     db.exec(`DROP TRIGGER fail_stamp`);
-    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 1, from: 28, to: 30 });
+    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 2, from: 28, to: 31 });
     const after = before.map((row, index) => ({ ...row, apiKeyId: index === 0 ? "stable-id" : null }));
     expect(db.all(`SELECT * FROM usageHistory ORDER BY id`)).toEqual(after);
     expect(db.all(`SELECT * FROM apiKeys`)).toEqual(keys);

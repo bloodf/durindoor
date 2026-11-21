@@ -50,6 +50,7 @@ import { buildTimelineHref } from "../../timeline/href.js";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { useNotificationStore } from "@/store/notificationStore";
 import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from "./connectionDelete";
+import { connectionPage, togglePageSelection } from "./connectionPagination";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
@@ -141,6 +142,7 @@ function ProviderDetail({ providerId }) {
   const [editingCustomModel, setEditingCustomModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [connectionFilter, setConnectionFilter] = useState("");
+  const [connectionPageNumber, setConnectionPageNumber] = useState(1);
   const [bulkFailures, setBulkFailures] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
@@ -1325,7 +1327,8 @@ function ProviderDetail({ providerId }) {
   const selectedActiveCount = selectedConnections.filter((conn) => conn.isActive !== false).length;
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
   const visibleConnections = connections.filter((conn) => `${conn.name || ""} ${conn.email || ""}`.toLowerCase().includes(connectionFilter.trim().toLowerCase()));
-  const allSelected = visibleConnections.length > 0 && visibleConnections.every((conn) => selectedConnectionIds.includes(conn.id));
+  const { page, pageCount, items: pageConnections } = connectionPage(visibleConnections, connectionPageNumber);
+  const allSelected = pageConnections.length > 0 && pageConnections.every((conn) => selectedConnectionIds.includes(conn.id));
   const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped", "unavailable"].includes(oneByOneResults[conn.id]?.state)).length;
 
   const toggleSelectConnection = (connectionId) => {
@@ -1337,10 +1340,7 @@ function ProviderDetail({ providerId }) {
   };
 
   const toggleSelectAllConnections = () => {
-    const visibleIds = new Set(visibleConnections.map((conn) => conn.id));
-    setSelectedConnectionIds((prev) => allSelected
-      ? prev.filter((id) => !visibleIds.has(id))
-      : [...new Set([...prev, ...visibleIds])]);
+    setSelectedConnectionIds((prev) => togglePageSelection(prev, pageConnections));
   };
 
   const clearSelection = () => {
@@ -1425,7 +1425,7 @@ function ProviderDetail({ providerId }) {
   const connectionsList =
   <div role="region" aria-label="Connections" tabIndex={0} className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03] max-h-[500px] overflow-y-auto pr-1">
       {connections.
-    map((conn, index) => ({ conn, index })).filter(({ conn }) => visibleConnections.includes(conn)).map(({ conn, index }) =>
+    map((conn, index) => ({ conn, index })).filter(({ conn }) => pageConnections.includes(conn)).map(({ conn, index }) =>
     <div key={conn.id} className="flex min-w-0 items-stretch">
             <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center pl-1 sm:pl-2">
               <input
@@ -2196,13 +2196,13 @@ function ProviderDetail({ providerId }) {
                   </ul>}
                   {hiddenTestResultCount > 0 && <div className="mt-2 flex flex-wrap items-center gap-2" role="status">
                     <span>{hiddenTestResultCount} completed {hiddenTestResultCount === 1 ? "result" : "results"} hidden by the filter.</span>
-                    <Button size="sm" variant="secondary" onClick={() => setConnectionFilter("")}>Clear filter to view results</Button>
+                    <Button size="sm" variant="secondary" onClick={() => { setConnectionFilter(""); setConnectionPageNumber(1); }}>Clear filter to view results</Button>
                   </div>}
                 </div>
           }
               {connections.length > 0 &&
           <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-dd-border-subtle pb-2">
-                  <Input aria-label="Filter connections" aria-describedby={connectionFilter.length > 0 ? "connection-filter-reorder-hint" : undefined} placeholder="Filter connections" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} />
+                  <Input aria-label="Filter connections" aria-describedby={connectionFilter.length > 0 ? "connection-filter-reorder-hint" : undefined} placeholder="Filter connections" value={connectionFilter} onChange={(event) => { setConnectionFilter(event.target.value); setConnectionPageNumber(1); }} />
                   <span aria-live="polite" className="text-xs text-dd-muted">{selectedConnectionIds.length} selected</span>
                   <label className="flex min-h-11 min-w-11 cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
                     <input
@@ -2210,7 +2210,7 @@ function ProviderDetail({ providerId }) {
                       checked={allSelected}
                       onChange={toggleSelectAllConnections}
                       className="h-3.5 w-3.5 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
-                    Select visible
+                    Select this page
                   </label>
                 </div>
           }
@@ -2218,6 +2218,11 @@ function ProviderDetail({ providerId }) {
               {selectedConnections.length > 0 && <details className="mb-3 text-sm text-dd-muted"><summary className="min-h-11 cursor-pointer py-3">Review {selectedConnections.length} selected connections</summary><ul>{selectedConnections.map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id} ({conn.id})</li>)}</ul></details>}
               {bulkFailures.length > 0 && <div role="alert" className="mb-3 text-sm text-dd-danger"><p>Some connections could not be updated:</p><ul>{bulkFailures.map((failure) => <li key={failure.id}>{failure.name} ({failure.id}): {failure.reason}</li>)}</ul></div>}
               {connectionsList}
+              {pageCount > 1 && <nav aria-label="Connection pages" className="mt-3 flex items-center gap-2">
+                <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setConnectionPageNumber(page - 1)}>Previous</Button>
+                <span aria-live="polite" className="text-xs text-dd-muted">Page {page} of {pageCount} ({visibleConnections.length} matching)</span>
+                <Button size="sm" variant="secondary" disabled={page >= pageCount} onClick={() => setConnectionPageNumber(page + 1)}>Next</Button>
+              </nav>}
               {!isCompatible &&
           <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">
                   {providerId === "iflow" &&

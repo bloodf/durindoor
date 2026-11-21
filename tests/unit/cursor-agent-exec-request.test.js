@@ -202,6 +202,30 @@ describe("CursorExecutor AgentService exec_request handling", () => {
     expect(JSON.stringify(events)).not.toContain("private reasoning");
   });
 
+  it.each([
+    [["<|fi", "nal|> answer ", "<|/fi", "nal|>"], " answer "],
+    [["<｜final｜>A", "<｜/final", "｜>"], "A"],
+    [["<b>keep</b> <|fin", "ish>"], "<b>keep</b> <|finish>"],
+    [["text <|/fin"], "text <|/fin"],
+  ])("handles Composer framing fragments in AgentService %#", async (fragments, expected) => {
+    for (const stream of [true, false]) {
+      const { result } = await runAgent({ model: "composer-2.5", stream,
+        frames: [...fragments.map((part, index) => thinkingFrame((index ? "" : "private</think>") + part)), turnEndedFrame()] });
+      const payload = stream ? parseSSE(await result.response.text()) : await result.response.json();
+      const content = stream ? payload.map((event) => event.choices?.[0]?.delta?.content || "").join("") : payload.choices[0].message.content;
+      expect(content).toBe(expected);
+      expect(JSON.stringify(payload)).not.toContain("private");
+    }
+  });
+
+  it("leaves native text deltas untouched for Composer", async () => {
+    const { result } = await runAgent({ model: "composer-2.5", stream: true,
+      frames: [textFrame("<|final|>native</think>"), turnEndedFrame()] });
+    const events = parseSSE(await result.response.text());
+    expect(events.map((event) => event.choices?.[0]?.delta?.content || "").join(""))
+      .toBe("<|final|>native</think>");
+  });
+
   it("flushes Grok thinking as visible content when the turn has no text_delta", async () => {
     const { result } = await runAgent({
       model: "grok-4.5",

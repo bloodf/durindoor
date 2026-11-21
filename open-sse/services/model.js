@@ -51,10 +51,20 @@ export function resolveProviderAlias(aliasOrId) {
   return ALIAS_TO_PROVIDER_ID[aliasOrId] || aliasOrId;
 }
 
+/** Trim incidental whitespace at the reference boundaries and first slash. */
+export function normalizeModelReference(value) {
+  if (!isString(value)) return value;
+  const trimmed = value.trim();
+  const slash = trimmed.indexOf("/");
+  if (slash < 0) return trimmed;
+  return `${trimmed.slice(0, slash).trim()}/${trimmed.slice(slash + 1).trim()}`;
+}
+
 /**
  * Parse model string: "alias/model" or "provider/model" or just alias
  */
 export function parseModel(modelStr) {
+  modelStr = normalizeModelReference(modelStr);
   if (!modelStr) {
     return { provider: null, model: null, isAlias: false, providerAlias: null };
   }

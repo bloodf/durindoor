@@ -175,7 +175,7 @@ import {
   getSyncedModelCatalogs,
   getSettings } from
 "@/lib/localDb";
-import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
+import { parseModel as parseModelCore, normalizeModelReference, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { filterExposedModels } from "@/shared/utils/modelExposureList.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
@@ -271,6 +271,7 @@ export function createRoutableModelIdChecker() {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
+  modelStr = normalizeModelReference(modelStr);
   let parsed = parseModel(modelStr);
   if (parsed.isAlias) {
     const combo = await getComboForModel(parsed.model);

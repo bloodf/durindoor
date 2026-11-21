@@ -40,6 +40,16 @@ describe.each([false, true])("Kiro tool results (Claude blocks: %s)", (claude) =
     }
   });
 
+  it("ignores nested lists between supported blocks", () => {
+    const state = translate([
+      { type: "text", text: "Before" },
+      [{ type: "text", text: "Unsupported" }],
+      { type: "text", text: "After" }
+    ], claude);
+    expect(state.currentMessage.userInputMessage.userInputMessageContext.toolResults[0])
+      .toEqual({ toolUseId: "caller-id", status: "error", content: [{ text: "Before\nAfter" }] });
+  });
+
   it("preserves result content when tools are absent", () => {
     const state = translate([{ type: "json", data: { count: 2 } }], claude, false);
     expect(state.currentMessage.userInputMessage.content).toContain('[Tool error: {"type":"json","data":{"count":2}}]');

@@ -17,3 +17,8 @@ copying their payload or URL. Empty and invalid content retains the existing
 empty text, rather than adopting upstream's `(no output)` placeholder. Caller
 IDs, error status, result wire shape, routing, and turn handling remain local
 contracts. Native converters and upstream's ID synthesis are not ported.
+
+The supported representation is a string, a result record, or a top-level list
+of strings and result blocks. The list is walked once: nested lists are
+unsupported and produce no output. Structured records still use JSON
+serialization, and recognized image blocks retain their safe placeholders.

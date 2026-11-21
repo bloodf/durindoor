@@ -35,8 +35,13 @@ function toolCallToText(name, input) {
 function serializeToolResultContent(content) {
   if (isString(content)) return content;
   if (Array.isArray(content)) {
-    return content.map(serializeToolResultContent).filter(Boolean).join("\n");
+    return content.map(serializeToolResultBlock).filter(Boolean).join("\n");
   }
+  return serializeToolResultBlock(content);
+}
+
+function serializeToolResultBlock(content) {
+  if (isString(content)) return content;
   if (!isRecord(content)) return "";
   if (content.type === CLAUDE_BLOCK.IMAGE || content.type === OPENAI_BLOCK.IMAGE_URL) {
     const mediaType = content.source?.media_type ?? content.media_type;

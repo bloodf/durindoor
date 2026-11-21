@@ -5,6 +5,7 @@
   "pages": [
     "index",
     "connecting-accounts",
+    "sign-in-methods",
     "catalog",
     "api-key-providers",
     "arcee-platform",

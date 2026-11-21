@@ -26,7 +26,9 @@ const tools = [
 describe("Codex free-plan CLI hosted image declaration compatibility", () => {
   it.each([
     ["chatgptPlanType", { chatgptPlanType: "FREE", workspacePlanType: "plus" }],
+    ["trimmed chatgptPlanType", { chatgptPlanType: "  FrEe \t", workspacePlanType: "plus" }],
     ["workspacePlanType fallback", { workspacePlanType: "free" }],
+    ["trimmed workspacePlanType fallback", { workspacePlanType: "  FREE  " }],
   ])("filters only image_generation for explicit free %s", (_label, planData) => {
     const body = transform(planData, structuredClone(tools));
     expect(body.tools.map((tool) => tool.type)).toEqual(["web_search", "function", "mcp"]);
@@ -36,6 +38,7 @@ describe("Codex free-plan CLI hosted image declaration compatibility", () => {
     for (const planData of [
       { chatgptPlanType: "plus" },
       { chatgptPlanType: "unknown", workspacePlanType: "free" },
+      { chatgptPlanType: 1, workspacePlanType: "free" },
       {},
       undefined,
     ]) {
@@ -44,10 +47,24 @@ describe("Codex free-plan CLI hosted image declaration compatibility", () => {
     }
   });
 
-  it("keeps explicit hosted image choice when its declaration is filtered", () => {
+  it("preserves the declaration for an explicit hosted image choice", () => {
     const choice = { type: "image_generation" };
     const body = transform({ chatgptPlanType: "free" }, [structuredClone(tools[0])], choice);
-    expect(body.tools).toEqual([]);
+    expect(body.tools).toEqual([tools[0]]);
     expect(body.tool_choice).toEqual(choice);
+  });
+
+  it("preserves image_generation when required choice has no other executable option", () => {
+    const body = transform({ chatgptPlanType: "free" }, [structuredClone(tools[0])], "required");
+    expect(body.tools).toEqual([tools[0]]);
+    expect(body.tool_choice).toBe("required");
+  });
+
+  it("filters image_generation for required choice when another executable option remains", () => {
+    const body = transform({ chatgptPlanType: "free" }, [
+      structuredClone(tools[0]), structuredClone(tools[2]),
+    ], "required");
+    expect(body.tools.map((tool) => tool.type)).toEqual(["function"]);
+    expect(body.tool_choice).toBe("required");
   });
 });

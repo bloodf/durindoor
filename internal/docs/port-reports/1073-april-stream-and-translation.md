@@ -4,10 +4,13 @@ Reviewed 2026-11-21 against DurinDoor `454e1359220c6a8b2cd9a43c0f82758f29340cd3`
 `orq/tornf6/audit-omni-april-stream-and-translation-a1-l2`. Source: [`cheaper-inference/OmniRoute`](https://github.com/cheaper-inference/OmniRoute).
 This is a bounded source-change comparison and a disposition ledger. It produces no owner selection list.
 
+Gate: Heitor's orq gate supersedes the older HOLD and the independent gate-receipt rules for this unit;
+work ships continuously instead of waiting on a separate approval step.
+
 ## Scope and method
 
-Six merged April 2026 OmniRoute pull requests were compared. Complete changed-path lists come from
-`/var/tmp/durindoor-omni-early-metadata.gnjcuh68/2026-04.json`; every row is `MERGED`, every head and
+Six merged April 2026 OmniRoute pull requests were compared. Complete changed-path lists come from the
+April 2026 OmniRoute pull-request metadata capture (`2026-04.json`); every row is `MERGED`, every head and
 merge SHA is 40-character lowercase hex, and each row's `totalCount` equals its path list. Metadata was
 treated as data only.
 
@@ -27,6 +30,10 @@ Local comparison used static source reading of the current tree plus focused off
 change, no provider request, no paid API, no browser, no Docker, no e2e run and no full-suite run was made.
 Dependencies were installed locally (`npm install` at the root and in `tests/`) only to execute the focused
 offline fixtures; the generated lockfiles were removed again and the tree carries only this report.
+
+Local file citations are repository-relative links into this tree, with the line anchor carrying the
+observed line number. The single citation whose path contains parentheses uses a pinned public repository
+link, because a Markdown link destination cannot carry that path shape.
 
 Offline fixture evidence, focused run (no full suite):
 
@@ -74,23 +81,23 @@ Local findings:
   contains no `anthropic-compatible-cc-*` handling, no `claudeCodeCompatible` module, no
   `CLAUDE_CODE_COMPATIBLE_PREFIX`, and no `ENABLE_CC_COMPATIBLE_PROVIDER` flag (whole-tree search, zero
   hits). The fork does support generic `anthropic-compatible-*` nodes
-  ([open-sse/executors/base.js:215](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:215),
-  [open-sse/executors/default.js:26](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/default.js:26)),
+  ([open-sse/executors/base.js:215](../../../open-sse/executors/base.js#L215),
+  [open-sse/executors/default.js:26](../../../open-sse/executors/default.js#L26)),
   but that is a different provider surface, not the bridge the source edits.
 - **The upstream defect does not reproduce locally.** The source's own regression test asserts that a
   streaming `401` response keeps its status and a readable body. Locally the GitHub Claude route returns
   the upstream response untouched when it is not `ok`
-  ([open-sse/executors/github.js:547](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/github.js:547)),
+  ([open-sse/executors/github.js:547](../../../open-sse/executors/github.js#L547)),
   the `/responses` route does the same
-  ([open-sse/executors/github.js:730](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/github.js:730)),
+  ([open-sse/executors/github.js:730](../../../open-sse/executors/github.js#L730)),
   and the generic executor only clones the body for an optional bounded probe, so the original body stays
-  intact ([open-sse/executors/base.js:579](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:579)).
+  intact ([open-sse/executors/base.js:579](../../../open-sse/executors/base.js#L579)).
   Probe result: a `401 text/plain` streaming response comes back with status `401` and the exact body text.
   The `ok` half of the upstream guard is therefore already satisfied.
 - **One narrow residual difference remains.** The fork has no content-type precondition on the SSE
   transform, so an `ok` response whose content type is not `text/event-stream` is still piped through the
-  Claude SSE translator ([open-sse/executors/github.js:688](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/github.js:688),
-  [open-sse/executors/github.js:819](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/github.js:819)).
+  Claude SSE translator ([open-sse/executors/github.js:688](../../../open-sse/executors/github.js#L688),
+  [open-sse/executors/github.js:819](../../../open-sse/executors/github.js#L819)).
   Probe result: a `200 application/json` body `{"error":{"message":"boom"}}` is converted into
   `data: {"error":{"message":"GitHub Messages stream failed","type":"stream_error"}}`; the upstream body is
   lost. The source would have passed it through untouched. This is the only applicable local difference in
@@ -125,7 +132,7 @@ a behavior-preserving rewrite of the `baseUrl` super-refine condition.
 
 Local findings: the fork has no general per-connection `User-Agent` override for API-key providers. The only
 `customUserAgent` in the tree is a ChatGPT-web browser-fingerprint field, consumed by
-[open-sse/utils/chatgptWebExecutorAdapter.js:444](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/utils/chatgptWebExecutorAdapter.js:444);
+[open-sse/utils/chatgptWebExecutorAdapter.js:444](../../../open-sse/utils/chatgptWebExecutorAdapter.js#L444);
 it is a provider-specific browser identity, not a request-header override.
 
 **Disposition:** excluded. This is a new feature with a new persisted field, a new validation path and new
@@ -146,10 +153,10 @@ Local findings: the fork has no semantic cache. There is no `src/lib/semanticCac
 route, no `getCacheMetrics` provider cache-metric query, no `idempotencyLayer`, and no
 `alwaysPreserveClientCache` setting anywhere in `src/` or `open-sse/`. The fork's cache-control handling is
 provider-scoped instead: `preserveCacheControl` is a per-provider registry quirk applied by the translators
-([open-sse/translator/index.js:169](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/translator/index.js:169),
-[open-sse/translator/index.js:283](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/translator/index.js:283)),
+([open-sse/translator/index.js:169](../../../open-sse/translator/index.js#L169),
+[open-sse/translator/index.js:283](../../../open-sse/translator/index.js#L283)),
 and Claude-native cache breakpoints are re-anchored on the final body
-([open-sse/handlers/chatCore.js:1054](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/handlers/chatCore.js:1054)).
+([open-sse/handlers/chatCore.js:1054](../../../open-sse/handlers/chatCore.js#L1054)).
 
 **Disposition:** excluded. The semantic cache, its toggle, the cache dashboard and the MCP cache-stats shape
 are new surfaces for this fork, and the `chatCore` settings-read consolidation has no local counterpart to
@@ -178,7 +185,7 @@ and no bridge cache-control setting to trim; a port would be a port of a feature
 
 **Expected existing behavior (today):** the fork sends `anthropic-beta` flags per provider and per request
 shape — for example it removes `redact-thinking-2026-02-12` when the request asks for summarized thinking
-([open-sse/executors/base.js:437](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:437)) —
+([open-sse/executors/base.js:437](../../../open-sse/executors/base.js#L437)) —
 and client `cache_control` is preserved or dropped per provider quirk, never by a bridge-owned marker
 strategy.
 
@@ -201,21 +208,21 @@ Local findings:
 
 - **The response-start timeout is already the local behavior.** The generic executor arms a per-attempt
   connect/header timer and clears it once the response arrives
-  ([open-sse/executors/base.js:442](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:442),
-  [open-sse/executors/base.js:564](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:564));
+  ([open-sse/executors/base.js:442](../../../open-sse/executors/base.js#L442),
+  [open-sse/executors/base.js:564](../../../open-sse/executors/base.js#L564));
   the only case that keeps the timer alive is the relayed-SSE path, which deliberately bounds the whole
-  stream lifetime ([open-sse/executors/base.js:546](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:546)).
+  stream lifetime ([open-sse/executors/base.js:546](../../../open-sse/executors/base.js#L546)).
   Abort-reason propagation is likewise already present through `AbortSignal.any`
-  ([open-sse/executors/base.js:451](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/executors/base.js:451)),
+  ([open-sse/executors/base.js:451](../../../open-sse/executors/base.js#L451)),
   which is what the source's rewritten `mergeAbortSignals` achieves. Probe result: with a 150 ms header
   timeout, a stream whose headers arrive immediately and whose terminal chunk arrives 400 ms later
   completes normally (`data: {"a":1}` then `data: [DONE]`), i.e. the timeout does not cover the stream.
   Offline evidence: `unit/stream-first-chunk-timeout.test.js`, `unit/body-timeout.test.js`,
   `unit/combo-timeout.test.js` pass unchanged.
 - **The combo timeout caps do not exist here.** The fork stores the combo strategy timeout in seconds with
-  no upper bound in the dashboard ([src/app/(dashboard)/dashboard/combos/page.js:733](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/src/app/(dashboard)/dashboard/combos/page.js:733)),
+  no upper bound in the dashboard ([src/app/(dashboard)/dashboard/combos/page.js:733](https://github.com/bloodf/durindoor/blob/6b07e66fc54f2391783cd1862bda15d4a6f8f25a/src/app/%28dashboard%29/dashboard/combos/page.js#L733)),
   and the combo per-model timeout is a first-response deadline that does not replace the streaming stall
-  timeouts ([open-sse/services/combo.js:1637](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/services/combo.js:1637)).
+  timeouts ([open-sse/services/combo.js:1637](../../../open-sse/services/combo.js#L1637)).
 - The bridge hunks have no local target, as in #1230.
 
 **Disposition:** already covered for the runtime behavior; the cap removal has nothing to remove and the
@@ -238,18 +245,18 @@ Local findings: the fork owns an equivalent mechanism at the same pipeline posit
 larger implementation.
 
 - The compression seam runs after translation and before dispatch
-  ([open-sse/handlers/chatCore.js:965](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/handlers/chatCore.js:965)).
+  ([open-sse/handlers/chatCore.js:965](../../../open-sse/handlers/chatCore.js#L965)).
 - It is context-budget aware: the seam receives `estimatedTokens` for the translated body and the resolved
   model's `contextWindow`, and the adaptive resolver turns that into a target and escalates an engine ladder
   until the request fits, never dropping content
-  ([open-sse/services/compression/adaptiveCompression/resolveAdaptivePlan.js:15](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/services/compression/adaptiveCompression/resolveAdaptivePlan.js:15),
-  [open-sse/services/compression/adaptiveCompression/computeTarget.js:11](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/services/compression/adaptiveCompression/computeTarget.js:11)).
+  ([open-sse/services/compression/adaptiveCompression/resolveAdaptivePlan.js:15](../../../open-sse/services/compression/adaptiveCompression/resolveAdaptivePlan.js#L15),
+  [open-sse/services/compression/adaptiveCompression/computeTarget.js:11](../../../open-sse/services/compression/adaptiveCompression/computeTarget.js#L11)).
 - The fork's percentage policy default is the same 85 % threshold the source used
-  ([open-sse/services/compression/adaptiveCompression/types.js:23](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/services/compression/adaptiveCompression/types.js:23)).
+  ([open-sse/services/compression/adaptiveCompression/types.js:23](../../../open-sse/services/compression/adaptiveCompression/types.js#L23)).
 - The difference is the trigger's default: the source compresses unconditionally above the threshold, while
   the fork's context-budget mode is persisted as `off`
-  ([src/lib/db/repos/settingsRepo.js:146](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/src/lib/db/repos/settingsRepo.js:146),
-  [open-sse/services/compression/adaptiveCompression/types.js:19](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-291480515c299177/open-sse/services/compression/adaptiveCompression/types.js:19)),
+  ([src/lib/db/repos/settingsRepo.js:146](../../../src/lib/db/repos/settingsRepo.js#L146),
+  [open-sse/services/compression/adaptiveCompression/types.js:19](../../../open-sse/services/compression/adaptiveCompression/types.js#L19)),
   and the seam itself runs only when the token saver is enabled and compression is turned on.
 - The fork has no `contextManager`, no `compressContext`, and no `getTokenLimit`; its model context window
   comes from the resolved model capabilities, and the estimate from `estimateTokens`.
@@ -291,5 +298,5 @@ the metadata path list), the current local runtime behavior of the compared surf
 fixture results quoted above. It does not re-audit the rest of the April 2026 OmniRoute window, does not
 classify any other merged record, and does not claim that the remaining April records are unported or safe.
 The single open port candidate (#937's content-type precondition on the GitHub streaming routes) is stated as
-a candidate with its expected behavior and scope, not as an approved change; the product remains on HOLD
-until explicit approval, and no code was modified by this review.
+a candidate with its expected behavior and scope, not as a change already made here; it stays open for the
+isolated port it describes, and no code was modified by this review.

@@ -214,7 +214,7 @@ beforeAll(async () => {
   metrics = await import("../../open-sse/services/operationalMetrics.js");
   correlation = await import("../../src/sse/utils/requestCorrelation.js");
   phase("correlation ready");
-});
+}, 30_000);
 
 beforeEach(async () => {
   await db.updateSettings({ requireApiKey: true, enableProxyTimeline: false, visionBridgeEnabled: false });

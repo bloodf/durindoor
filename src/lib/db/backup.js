@@ -24,6 +24,7 @@ import {
   SECRET_FILE_MODE,
 } from "./paths.js";
 import { timestampSlug, getAppVersion } from "./version.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const KEEP_BACKUPS = 3;
 
@@ -158,7 +159,7 @@ function readLeasedBases(backupsDir) {
     try {
       const lease = JSON.parse(fs.readFileSync(file, "utf8"));
       if (Date.now() - fs.statSync(file).mtimeMs < LEASE_MAX_AGE_MS && isProcessAlive(lease?.pid)) {
-        if (typeof lease.base === "string" && lease.base) bases.add(lease.base);
+        if (isString(lease.base) && lease.base) bases.add(lease.base);
         continue;
       }
       fs.rmSync(file, { force: true }); // the owner is gone: drop its lease

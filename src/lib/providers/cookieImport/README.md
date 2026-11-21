@@ -40,19 +40,36 @@ The dialog imports through the same two routes as the extension: it mints a pair
 
 ## Supported providers
 
-The contract is derived from the registry `webLogin` block, the same source the dashboard sign-in capture reads. A provider is importable when that block has:
+The dashboard and pairing API resolve the same registry metadata. A narrow
+`cookieImport` profile takes precedence over `webLogin` and does not activate
+in-page sign-in. The extension uses only its compiled capture allowlist.
+`extensionCapture: false` in a pairing indicates that the dashboard can import
+the credential from local input. Imports store the existing Cookie header
+through the normal connection path.
 
-- an `origin` that is an exact HTTPS origin (no path, no query), and
-- an explicit `cookieNames` array. `cookieNames: "*"` (full Cookie header, probe-validated) is **not** importable, because it names no approved cookies.
-
-Today that is `chatgpt-web`, `perplexity-web`, `grok-web` and `muse-spark-web`. `huggingchat` is excluded. Adding `webLogin` metadata to a provider makes it importable; there is no separate list to keep in sync. `cookiePrefixes` approves chunk names `<prefix><index>` for a prefix that starts with one of the approved names.
+| Provider | Import decision | Credential evidence |
+| --- | --- | --- |
+| ChatGPT Web | Extension and dashboard | Existing `chatgpt.com` profile. NextAuth session cookie or contiguous numbered chunks. |
+| Perplexity Web | Extension and dashboard | Existing `www.perplexity.ai` profile. NextAuth session cookie or contiguous numbered chunks. |
+| Grok Web | Extension and dashboard | Existing `grok.com` profile requires `sso`. |
+| Muse Spark Web | Extension and dashboard, guarded runtime | Existing `www.meta.ai` profile requires `ecto_1_sess`. Import leaves guard-only dispatch in place. |
+| Adapta Web | Dashboard only | `__client` is accepted as a Cookie header at the Clerk origin, `https://clerk.agent.adapta.one`. The chat site `agent.adapta.one` has a separate origin. cURL and HAR input must identify the Clerk origin. [Pinned comparison](../../../../internal/docs/adapta-t3-web-cookie-parity-2034.md) |
+| Tencent Yuanbao Web | Extension and dashboard | The normal connection requires both `hy_user` and `hy_token` for `https://yuanbao.tencent.com`. The executor supplies `hy_source=web`. [Pinned comparison](../../../../internal/docs/yuanbao-web-signin-parity-2034.md) |
+| T3 Chat Web | Manual header | The local parser requires `convex-session-id`, and the pinned source calls for the full session cookie set. A complete narrow allowlist is unverified. [Pinned comparison](../../../../internal/docs/t3-web-signin-parity-2034.md) |
+| HuggingChat | Manual header or existing in-page sign-in, guarded runtime | The in-page flow needs a full header and a readiness probe. The pinned `hf-chat` name alone does not establish the complete access requirements. [Pinned comparison](../../../../internal/docs/huggingchat-signin-parity-2034.md) |
+| Kimi Web | Manual token | The connection uses access and refresh tokens from local storage. [Pinned comparison](../../../../internal/docs/kimi-web-signin-parity-2034.md) |
+| Copilot Web | Manual token | The connection uses an access token. [Pinned comparison](../../../../internal/docs/copilot-web-parity-2034.md) |
+| Microsoft 365 Copilot Web | Manual token and path | The connection uses an access token and Chathub WebSocket path. [Registry](../../../../open-sse/providers/registry/copilot-m365-web.js) |
+| ZenMux Free | Manual header | The pinned source requires `ctoken` and forwards the full header. [Pinned comparison](../../../../internal/docs/zenmux-free-signin-parity-2034.md) |
+| Suno | Manual header | The session header and separate API host are documented, with no complete cookie-name allowlist. [Pinned comparison](../../../../internal/docs/suno-signin-parity-2034.md) |
+| Udio | Manual header | The parity source forwards the supplied session header and does not specify an exact cookie set. [Pinned comparison](../../../../internal/docs/udio-signin-parity-2034.md) |
 
 ## Flow
 
 1. **Pair.** The operator, in the dashboard, calls `POST /api/providers/cookie-import/pairing` with either
    `{ "provider", "action": "create", "name" }` or `{ "provider", "action": "update", "connectionId" }`.
    The action is explicit; the other action's fields are rejected. An update target must exist, belong to the provider and be a cookie connection. The response carries the secret once, plus the contract the extension should collect:
-   `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes } } }`.
+   `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes, extensionCapture? } } }`.
 2. **Import.** The extension reads the approved cookies for the provider origin and calls `POST /api/providers/cookie-import` with header `x-durindoor-pairing-token: <token>` and
    `{ "provider", "origin", "cookies": [{ "name", "value", "domain"?, "secure"?, "expirationDate"? }], "connectionId"? , "name"? }`.
    `connectionId` is required and must match for an update pairing, and must be absent for a create pairing. `name` may be repeated for a create pairing and must then match.

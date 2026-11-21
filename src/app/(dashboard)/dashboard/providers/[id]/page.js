@@ -20,7 +20,6 @@ import { translate } from "@/i18n/runtime";
 import { applyQoderModelNames, getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
-import { resolveCookieImportContract } from "@/shared/utils/cookieImportContract";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow, { getDeclaredModelCapabilities } from "./ModelRow";
 import NativeProviderReadiness from "./NativeProviderReadiness.jsx";
@@ -303,7 +302,7 @@ function ProviderDetail({ providerId }) {
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
   // Only a provider with an exact HTTPS origin and an explicit cookie allowlist
   // can be imported into; the import modal stays hidden for the others.
-  const cookieImportContract = resolveCookieImportContract(providerInfo?.webLogin);
+  const cookieImportContract = providerInfo?.cookieImport;
   const models = liveAntigravityModels || syncedModels || getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
 
@@ -2536,7 +2535,7 @@ function ProviderDetail({ providerId }) {
         isOpen={showCookieImportModal}
         provider={providerId}
         providerName={providerInfo?.name}
-        webLogin={providerInfo?.webLogin}
+        importContract={cookieImportContract}
         connections={connections}
         onSuccess={fetchConnections}
         onClose={() => setShowCookieImportModal(false)} />

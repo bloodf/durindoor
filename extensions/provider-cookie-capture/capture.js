@@ -92,13 +92,13 @@ export function parsePairing(text, now = Date.now()) {
   if (!destination) return fail("invalid_destination");
 
   const contract = pairing.contract;
-  if (!isRecord(contract) || !Array.isArray(contract.cookieNames)) return fail("invalid_pairing");
+  if (!isRecord(contract) || contract.extensionCapture === false || !Array.isArray(contract.cookieNames)) return fail("invalid_pairing");
   if (contract.origin !== def.origin) return fail("origin_mismatch");
   // A pairing may only narrow the built-in allowlist.
   const cookieNames = def.cookieNames.filter((name) => contract.cookieNames.includes(name));
   const prefixes = Array.isArray(contract.cookiePrefixes) ? contract.cookiePrefixes : [];
   const cookiePrefixes = def.cookiePrefixes.filter((prefix) => prefixes.includes(prefix));
-  if (cookieNames.length === 0) return fail("invalid_pairing");
+  if (cookieNames.length !== def.cookieNames.length) return fail("invalid_pairing");
 
   const expiresAt = isString(pairing.expiresAt) ? Date.parse(pairing.expiresAt) : NaN;
   if (!Number.isFinite(expiresAt) || expiresAt - now > MAX_PAIRING_LIFETIME_MS) return fail("invalid_pairing");

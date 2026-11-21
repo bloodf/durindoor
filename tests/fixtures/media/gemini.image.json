@@ -1,0 +1,58 @@
+{
+  "vendor": "gemini",
+  "kind": "image",
+  "model": "gemini-2.5-flash-image",
+  "verifiedLive": false,
+  "source": "https://ai.google.dev/gemini-api/docs/image-generation",
+  "liveGap": "No live upstream call was made for this fixture. The generateContent URL, the request parts and the inlineData response are asserted offline against the adapter; the safety blocking responses and the upstream error bodies were not re-read from the vendor documentation.",
+  "request": {
+    "method": "POST",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=fixture-key",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contents": [
+        {
+          "parts": [
+            {
+              "text": "a cat"
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "responseModalities": [
+          "TEXT",
+          "IMAGE"
+        ]
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/png",
+                  "data": "Zml4dHVyZS1pbWFnZQ=="
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "normalized": {
+      "data": [
+        {
+          "b64_json": "Zml4dHVyZS1pbWFnZQ=="
+        }
+      ]
+    }
+  }
+}

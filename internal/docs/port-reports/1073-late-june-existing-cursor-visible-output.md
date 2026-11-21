@@ -22,9 +22,11 @@ For request history, `open-sse/translator/formats/openai.js` returns assistant m
 
 The installed Cursor executor extracts Composer's visible suffix after the last `</think>` while keeping the preceding reasoning private. Direct offline tests cover AgentService and buffered responses, so no separate #4554 port is needed.
 
-### #4842 — adapted
+### #4842 — pending product and gate work
 
-The previous report incorrectly concluded there was no local Cursor path or demonstrated gap. The existing helper returned literal final framing markers in the visible suffix. The narrow adaptation and its offline evidence are recorded in [the #4842 report](1073-cursor-composer-final-markers-4842.md).
+The previous report incorrectly concluded there was no local Cursor path. The existing helper does return literal final framing markers in the visible suffix, so a gap was demonstrated. The proposed adaptation has been withdrawn from the product tree and is not shipped: it deleted a quoted marker inside valid answer text and also changed the terminal-flush and fallback behavior of the shipped Cursor route. The shipped executor keeps its pre-candidate behavior byte-for-byte.
+
+The port therefore stays pending product and gate work. A complete replacement needs a product decision on how a framing marker is distinguished from a quoted marker inside answer text, and it needs gate work — its own offline fixtures, none of them restating the withdrawn candidate's marker-stripping assertions, and landing under the local CI mode its changed paths require. The withdrawn proposal, the shipped behavior and the pending conditions are recorded in [the #4842 report](1073-cursor-composer-final-markers-4842.md), with the exact withdrawal record in [the withdrawal report](1073-cursor-composer-marker-withdrawal.md).
 
 ### #5122 — no demonstrated gap; do not port
 
@@ -32,4 +34,4 @@ The PR-specific change is about replaying client-supplied `reasoning_content` al
 
 ## Offline acceptance
 
-Composer acceptance uses the two direct Cursor unit files named above. The independent #5122 disposition remains supported by the request-history fixtures described above; no live provider validation is claimed.
+Composer acceptance for the already-covered #4554 behavior uses the two direct Cursor unit files named above, and both pass against the restored executor. The withdrawn candidate's added fixtures were removed with it, so #4842 currently has no offline acceptance of its own and none is claimed; its acceptance is part of the pending product and gate work. The independent #5122 disposition remains supported by the request-history fixtures described above; no live provider validation is claimed.

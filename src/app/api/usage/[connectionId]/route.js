@@ -19,6 +19,8 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "zenmux-free": "ZenMux Free",
   suno: "Suno",
   udio: "Udio",
+  "kimi-web": "Kimi Web",
+  "perplexity-web": "Perplexity Web",
   "adapta-web": "Adapta Web",
   "t3-web": "T3 Chat Web",
 };

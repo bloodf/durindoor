@@ -147,7 +147,7 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 - Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
 - The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
-- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, ZenMux Free, Suno, Udio, Adapta Web and T3 Chat Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Music jobs show as requests with no tokens; Suno clip durations are kept in the usage ledger, not on the card. Token counts are estimates of about four characters per token.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, Kimi Web, Perplexity Web, ZenMux Free, Suno, Udio, Adapta Web and T3 Chat Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Music jobs show as requests with no tokens; Suno clip durations are kept in the usage ledger, not on the card. Token counts are estimates of about four characters per token.
 
 ## When the session ends
 
@@ -204,6 +204,19 @@ A 401 or 403 (including a rejected WebSocket upgrade) puts that connection on th
 Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `sso` cookie); 429 means grok.com is rate limiting you. With more than one Grok Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above. Signing out of grok.com in that browser profile ends the session.
 
 Known limits: no cookie rotation is written back (unlike ChatGPT Web), so a renewed `sso` must be pasted by hand. Paired `sso-rw` handling beyond forwarding it from a pasted header is untested. DurinDoor does not emulate browser attestation or work around access controls; if grok.com challenges a session, use a different session or provider.
+
+## Perplexity Web
+
+`perplexity-web` (alias `pw`) sends chat requests to `www.perplexity.ai` with your signed-in session. It is separate from the `perplexity` API-key provider.
+
+1. Sign in at perplexity.ai. In DevTools, Application, Cookies, copy `__Secure-next-auth.session-token`. If the value is split into `.0`, `.1` chunks, copy every chunk, or copy the whole `Cookie` request header.
+2. In **Providers → Perplexity Web**, paste it and save. Chunks may be in any order; DurinDoor sends them back in index order.
+3. **Validate** and **Test Connection** call `https://www.perplexity.ai/api/auth/session` only and create no conversation. A live session answers with a `user`; `{}` means expired or incomplete.
+4. Models are the `pplx-*` registry list (for example `pw/pplx-auto`). The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming.
+
+Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `__Secure-next-auth.session-token`); 429 means Perplexity is rate limiting you and is not treated as an expired session. With more than one Perplexity Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above; other connections are untouched.
+
+Known limits: no cookie rotation is written back, so a renewed session must be pasted by hand. Conversation continuation is kept only for the same saved session. The model list follows the registry and may drift from the site. DurinDoor does not emulate browser attestation or work around access controls.
 
 ## Adapta Web
 

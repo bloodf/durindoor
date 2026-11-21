@@ -480,8 +480,14 @@ export class KimiWebExecutor extends BaseExecutor {
       // Authorization key) would slip past the generic sanitizer, so redact
       // the known credential first.
       const scrubbed = jwt ? errText.split(jwt).join("[redacted]") : errText;
+      // chatCore has already tried the refresh token on a 401 by the time this reaches a
+      // client, so a 401/403 here means the saved session cannot be renewed: say how to
+      // recover instead of echoing Kimi's bare "unauthenticated".
+      const message = upstream.status === 401 || upstream.status === 403 ?
+      `Kimi auth failed — session may be expired. Log in at ${origin} again, run the connect dialog's console snippet and re-paste the new tokens.` :
+      `Kimi error: ${sanitizeErrorMessage(scrubbed)}`;
       return {
-        response: errorResponse(upstream.status, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
+        response: errorResponse(upstream.status, message),
         url: chatUrl,
         headers: reqHeaders,
         transformedBody: bodyObj
@@ -678,12 +684,18 @@ export class KimiWebExecutor extends BaseExecutor {
 
     const message = { role: "assistant", content: answer };
     if (reasoning) message.reasoning_content = reasoning;
+    // Kimi's web stream carries no token counts. Estimate them (about four characters per
+    // token, the same rule the other web-session executors use) so a non-streamed reply
+    // is recorded in Usage like a streamed one.
+    const promptTokens = Math.ceil(prompt.length / 4);
+    const completionTokens = Math.ceil((answer.length + reasoning.length) / 4);
     const completion = {
       id,
       object: "chat.completion",
       created,
       model: modelId,
-      choices: [{ index: 0, message, finish_reason: "stop" }]
+      choices: [{ index: 0, message, finish_reason: "stop" }],
+      usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens }
     };
     return {
       response: new Response(JSON.stringify(completion), {

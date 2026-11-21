@@ -15,7 +15,7 @@ No code is ported. The extension is an original implementation against DurinDoor
 1. Operator: `POST /api/providers/cookie-import/pairing` returns `{ pairing }` (token, expiry, `importUrl`, contract).
 2. Popup (`popup.js`) → `prepareCapture` (`capture.js`): `parsePairing` binds the pairing to the compiled-in table in `providers.js`, then `tabs.query` checks the active tab's origin. No cookie is read.
 3. Confirmation: the user ticks a checkbox naming provider site and dashboard. `runCapture` requires `confirmed` to equal `confirmationFor(plan)`.
-4. `runCapture`: `permissions.contains`/`request` for `cookies` plus the provider and dashboard patterns → `tabs.get` re-check → `cookies.getAllCookieStores` (tab's store) → `cookies.get` per approved name → one `fetch` POST to `importUrl` → `permissions.remove` of what the run was granted.
+4. `prepareCapture` checks existing `cookies` and origin grants during Review; `runCapture` invokes `permissions.request` for missing grants directly from the confirmed Send gesture → `tabs.get` re-check → `cookies.getAllCookieStores` (tab's store) → `cookies.get` per approved name → one `fetch` POST to `importUrl` → `permissions.remove` of what the run was granted.
 5. Server: `handleCookieImport` consumes the pairing and validates the body. The extension keeps its own filters (secure, host-bound domain, approved names) so it never sends what the server would reject.
 
 ## Decisions

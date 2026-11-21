@@ -564,6 +564,24 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
   };
 }
 
+// Excluded accounts remain ineligible in this request. Only use a retryable
+// model lock to improve an otherwise known quota-reset hint for a later request.
+function includeExcludedModelRetry(summary, blocked, connections, exclusions, decisions, rawModel, boundedModel, now, rpmLimit) {
+  if (!rawModel || summary.status !== 429 || !summary.retryAfter ||
+      !blocked.every((connection) => decisions.get(connection.id)?.skip)) return summary;
+  const deadlines = connections.filter((connection) =>
+    exclusions.has(connection.id) && ![401, 403].includes(Number(connection.errorCode)) &&
+    !decisions.get(connection.id)?.skip &&
+    !getActiveModelLockUntil(connection, null, now) &&
+    !(new Date(connection.rateLimitedUntil || "").getTime() > now) &&
+    !isConnectionGated(connection, now) && !isOverLimit(connection.id, rpmLimit, now)
+  ).map((connection) => requestedModelLockUntil(connection, rawModel, boundedModel, now)).
+  filter((deadline) => deadline && Date.parse(deadline) < Date.parse(summary.retryAfter)).
+  sort((a, b) => Date.parse(a) - Date.parse(b));
+  if (!deadlines.length) return summary;
+  return { ...summary, retryAfter: deadlines[0], retryAfterHuman: formatRetryAfter(deadlines[0], now) };
+}
+
 // port(omniroute): peak-hour protection + per-connection RPD (OmniRoute
 // c11f661a8 #11622, c49ee53bc #12147). A connection in an active "block" peak
 // window, or one that has spent its own providerSpecificData.rateLimitOverrides.rpd
@@ -830,7 +848,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
         );
         if (blockedConnections.length > 0) {
-          const summary = summarizeBlockedConnections(blockedConnections, quotaDecisions, model, boundedModel, selectionNow);
+          const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConnections, quotaDecisions, model, boundedModel, selectionNow), blockedConnections, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
           log.warn("AUTH", `${provider} | all stored accounts unavailable for requested scope`);
           return {
             allRateLimited: true,
@@ -927,7 +945,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
       );
       if (blockedConns.length > 0) {
-        const summary = summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow);
+        const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow), blockedConns, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
         log.warn("AUTH", `${provider} | all accounts unavailable for requested scope`);
         return {
           allRateLimited: true,

@@ -21,9 +21,11 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [OmniRoute security-audit applicability (#1150)](./omniroute-security-audit-1150.md)
 - [OmniRoute open-PR working notes (#1073)](./omniroute-open-prs-1073.md)
 - [Claude Code sign-in comparison (#2034)](./claude-signin-parity-2034.md)
+- [OpenCode Go DeepSeek effort tiers (#2034)](./opencode-go-effort-parity-2034.md)
 - [Vertex AI service-account and ADC comparison (#2034)](./vertex-signin-parity-2034.md)
 - [Copilot Web and Microsoft 365 Copilot Web cookie lifecycle (#2034)](./copilot-cookie-lifecycle-2034.md)
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)
+- [NoTrack developer API provider (#2034)](./notrack-2034.md)
 
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.
 

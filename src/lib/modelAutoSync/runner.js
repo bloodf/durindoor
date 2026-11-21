@@ -121,7 +121,7 @@ async function fetchCatalogEntry(providerId, connection, previous, { now, fetchM
 }
 
 /**
- * Sync a connection-scoped provider (mlx, opencode-server): every active
+ * Sync a connection-scoped provider: every active
  * connection is fetched and stored under its own key, so no connection's
  * model IDs end up in another's catalog. The provider-keyed row is only a
  * status summary (timestamps only); it never carries model IDs, which
@@ -263,14 +263,19 @@ async function runModelAutoSyncImpl({ providerIds = null, force = false, now = D
   const intervalHours = getModelAutoSyncIntervalHours(settings);
   const explicit = Array.isArray(providerIds) && providerIds.length > 0;
   let candidates = providerIds;
+  let connections = [];
   if (!explicit) {
-    const connections = await getProviderConnections({ isActive: true });
+    connections = await getProviderConnections({ isActive: true });
     candidates = [...new Set(connections.map((c) => c.provider))].
     filter((id) => isModelAutoSyncEnabled(id, settings));
   }
   const catalogs = force || explicit ? {} : await getSyncedModelCatalogs();
   const dueProviders = candidates.filter((providerId) => isModelAutoSyncEligible(providerId) &&
-    (force || explicit || isSyncDue(catalogs[providerId], intervalHours, now)));
+    (force || explicit || (intervalHours > 0 && (
+      isSyncDue(catalogs[providerId], intervalHours, now) ||
+      (isConnectionScopedSyncProvider(providerId) && connections.some((connection) =>
+        connection.provider === providerId && !catalogEntryForConnection(catalogs, providerId, connection)))
+    ))));
   // Enrich only when a roster is due, or an operator requests a refresh.
   // The HTTP dependency is independent of the roster fetch dependency.
   if (dueProviders.length || force || explicit) {

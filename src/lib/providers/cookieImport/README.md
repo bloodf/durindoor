@@ -98,7 +98,7 @@ The store is per process (a `globalThis` map, like web-login sessions). A deploy
 
 ## Persistence
 
-Create goes through `createProvider`, which encrypts the cookie at rest. A same-name cookie connection for the same provider causes a `409`, checked atomically with insertion; names may be reused across providers or credential types. Update calls `updateProviderConnection` with `provider` pinned, so the repository refuses the write inside its transaction if the row's provider changed, and sets `testStatus: "active"`, which is the repository's marker for an explicit credential replacement and clears a pending reauthentication state. All other connection fields are kept.
+Create goes through `createProvider`, which encrypts the cookie at rest. An import targeting a same-name cookie connection for the same provider causes a `409`, checked atomically with insertion; names may be reused across providers or credential types. Manual cookie creation retains its existing duplicate-name behavior. Update calls `updateProviderConnection` with `provider` pinned, so the repository refuses the write inside its transaction if the row's provider changed, and sets `testStatus: "active"`, which is the repository's marker for an explicit credential replacement and clears a pending reauthentication state. All other connection fields are kept.
 
 ## Secret handling
 

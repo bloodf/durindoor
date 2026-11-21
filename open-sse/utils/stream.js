@@ -16,6 +16,7 @@ import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
 import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
+import { CLAUDE_STOP, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
@@ -31,7 +32,7 @@ import {
 "./minimaxThinkingStream.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
-import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
@@ -302,6 +303,8 @@ export function createSSEStream(options = {}) {
     let claudeRole = "assistant";
     let claudeStopReason = "end_turn";
     let claudeStopSequence = null;
+    let sawClaudeMessageStart = false;
+    let sawClaudeMessageStop = false;
     const geminiParts = [];
     let geminiRole = "model";
     let geminiFinishReason = "STOP";
@@ -352,6 +355,7 @@ export function createSSEStream(options = {}) {
           sawAny = true;
           if (chunk.type === "message_start") {
             const message = chunk.message || {};
+            sawClaudeMessageStart = Array.isArray(message.content);
             claudeId = bounded(message.id, MAX_ID) || claudeId;
             summaryModel = bounded(message.model, MAX_MODEL) || summaryModel;
             claudeRole = bounded(message.role, 32) || claudeRole;
@@ -375,7 +379,10 @@ export function createSSEStream(options = {}) {
             claudeStopReason = bounded(chunk.delta?.stop_reason, 64) || claudeStopReason;
             claudeStopSequence = bounded(chunk.delta?.stop_sequence, MAX_FIELD) || claudeStopSequence;
             if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
-          } else if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
+          } else {
+            if (chunk.type === "message_stop") sawClaudeMessageStop = true;
+            if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
+          }
           return;
         }
         if (isGemini) {
@@ -413,6 +420,9 @@ export function createSSEStream(options = {}) {
             if (tool.id) toolCalls.set(`id:${tool.id}`, tool);
           }
         }
+      },
+      hasClaudeTokenLimitReason() {
+        return sawClaudeMessageStart && sawClaudeMessageStop && claudeStopReason === CLAUDE_STOP.MAX_TOKENS;
       },
       finalize(finalUsage) {
         if (!sawAny) return undefined;
@@ -473,7 +483,14 @@ export function createSSEStream(options = {}) {
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
   let onStreamCompleteFired = false; // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
-  const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
+  let sawOpenAITokenLimit = false;
+  const isOpenAITokenLimitFrame = (chunk) => targetFormat === FORMATS.OPENAI &&
+    Array.isArray(chunk?.choices) && chunk.choices.some((choice) =>
+      choice?.finish_reason === OPENAI_FINISH.LENGTH && isRecord(choice.delta));
+  const recordCompletionData = (parsed, {
+    summary = true, trackUsage = true, content = false, tokenLimit = isOpenAITokenLimitFrame(parsed)
+  } = {}) => {
+    if (summary) sawOpenAITokenLimit ||= tokenLimit;
     if (targetFormat === FORMATS.OPENAI_RESPONSES && (mode === STREAM_MODE.PASSTHROUGH || sourceFormat === FORMATS.OPENAI_RESPONSES) && hasResponsesSnapshotOutput(parsed)) hasSnapshotOutput = true;
     if (summary) providerSummary.ingest(parsed);
     const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
@@ -611,6 +628,12 @@ export function createSSEStream(options = {}) {
     terminalBody?.generationConfig?.candidateCount ??
     terminalBody?.generation_config?.candidate_count
   });
+  const hasTokenLimitTerminal = () => !streamErrorPayload && upstreamTerminal.outcome === "success" &&
+    (sawOpenAITokenLimit || providerSummary.hasClaudeTokenLimitReason());
+  const completionSummary = (usage) => {
+    const summary = providerSummary.finalize(usage);
+    return hasTokenLimitTerminal() ? { ...summary, hasTokenLimitTerminal: true } : summary;
+  };
   const observeBufferedUpstream = (text, pendingEventName = null) => {
     let eventName = pendingEventName;
     for (const rawLine of String(text || "").split(/\r?\n/)) {
@@ -759,7 +782,7 @@ export function createSSEStream(options = {}) {
         ...(hadToolCalls ? { hadToolCalls: true } : null),
         ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
         ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-      }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
+      }, state?.usage, ttftAt, completionSummary(state?.usage));
     }
   };
 
@@ -901,6 +924,7 @@ export function createSSEStream(options = {}) {
                 };
               }
 
+              const openAITokenLimitFrame = isOpenAITokenLimitFrame(parsed);
               const idFixed = fixInvalidId(parsed);
 
               // Decloak tool names in Claude content_block_start events.
@@ -997,7 +1021,7 @@ export function createSSEStream(options = {}) {
               parsed?.type === "message_stop" &&
               upstreamTerminal.outcome === "success")
               claudeTerminalSeen = true;
-              recordCompletionData(parsed, { trackUsage: false });
+              recordCompletionData(parsed, { trackUsage: false, tokenLimit: openAITokenLimitFrame });
 
 
               // Usage-only OpenAI chunks have choices:[] and would otherwise
@@ -1181,7 +1205,7 @@ export function createSSEStream(options = {}) {
                   },
                   usage,
                   ttftAt,
-                  providerSummary.finalize(usage)
+                  completionSummary(usage)
                 );
               }
               if (toolNameDecloaked && !injectedUsage) {
@@ -1395,7 +1419,7 @@ export function createSSEStream(options = {}) {
             ...(hadToolCalls ? { hadToolCalls: true } : null),
             ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
             ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-          }, state.usage, ttftAt, providerSummary.finalize(state.usage));
+          }, state.usage, ttftAt, completionSummary(state.usage));
         }
 
         // Provider-specific normalization must also run in TRANSLATE mode:
@@ -1552,6 +1576,7 @@ export function createSSEStream(options = {}) {
               const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
               output = `${prefix}${JSON.stringify(parsed)}\n\n`;
             } else if (parsed && targetFormat === FORMATS.OPENAI) {
+              const tokenLimit = isOpenAITokenLimitFrame(parsed);
               PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
               const normalized = normalizeOpenAIPassthroughChunk(parsed);
               if (normalized.keep) {
@@ -1561,7 +1586,7 @@ export function createSSEStream(options = {}) {
                 sanitizePublicErrorEnvelope(parsed, errorSecrets);
                 upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
                 currentUpstreamEvent = null;
-                recordCompletionData(parsed, { content: true });
+                recordCompletionData(parsed, { content: true, tokenLimit });
                 const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
                 output = `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
@@ -1648,7 +1673,7 @@ export function createSSEStream(options = {}) {
               ...(hadToolCalls ? { hadToolCalls: true } : null),
               ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
               ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-            }, usage, ttftAt, providerSummary.finalize(usage));
+            }, usage, ttftAt, completionSummary(usage));
           }
           return;
         }
@@ -1682,7 +1707,7 @@ export function createSSEStream(options = {}) {
             onStreamComplete({
               ...getAccumulatedCompletion(),
               upstreamError: streamErrorPayload
-            }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
+            }, state?.usage, ttftAt, completionSummary(state?.usage));
           }
           return;
         }
@@ -1770,11 +1795,13 @@ export function createSSEStream(options = {}) {
     }
   });
   transformStream.getStreamSnapshot = getStreamSnapshot;
+  transformStream.hasTokenLimitTerminal = hasTokenLimitTerminal;
   // Keep interruption snapshots stable; terminal classification also needs
   // tool and error state that is not part of the accounting snapshot contract.
   transformStream.getEmptyStreamSnapshot = () => ({
     ...getStreamSnapshot(),
     hadToolCalls,
+    hasTokenLimitTerminal: hasTokenLimitTerminal(),
     upstreamError: streamErrorPayload
   });
   return transformStream;

@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { errorResponse, unavailableResponse, getClientStatusFromError } from "../utils/error.js";
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
+import { hasTokenLimitCompletion } from "../utils/streamTerminal.js";
 import { peekStreamForContent } from "../utils/streamContentPeek.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
@@ -1357,6 +1358,8 @@ async function isBodyEmpty(response) {
   try {payload = JSON.parse(bodyText);} catch {return false;}
   if (!payload || Array.isArray(payload) && payload.length === 0) return true;
   if (!isObject(payload) || Object.keys(payload).length === 0) return true;
+
+  if (hasTokenLimitCompletion(payload)) return false;
 
   // Policy refusals and paused provider turns are valid responses even without text.
   if ((Array.isArray(payload.choices) && payload.choices.some((choice) => choice?.finish_reason === OPENAI_FINISH.CONTENT_FILTER || nonEmptyString(choice?.message?.refusal))) ||

@@ -19,6 +19,7 @@ const groups = [
     links: [
       ["Docs", "/docs"],
       ["Quick start", "/docs/getting-started"],
+      ["Cookie capture extension", "/docs/providers/cookie-capture-extension"],
       ["API key", "/docs/reference/api"],
       ["Connect your tools", "/docs/integrations/other-tools"],
     ],

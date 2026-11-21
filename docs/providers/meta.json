@@ -10,6 +10,7 @@
     "arcee-platform",
     "cerebrium",
     "web-cookie",
+    "cookie-capture-extension",
     "openai-compatible-nodes",
     "network-llm-servers",
     "free-and-local",

@@ -21,43 +21,50 @@ function detectTag(message) {
   return firstWord && VERB_TAGS.has(firstWord) ? firstWord : null;
 }
 
+// Match the formatter's field order so free text such as the account name
+// cannot be mistaken for a mode or count. Unknown layouts remain raw rows.
 function parseRequest(message) {
-  const match = message.match(/\bPOST\s+(.+?)\s+→\s+([^\s·]+)/);
+  const match = message.match(/^[^\p{L}\p{N}]*POST (?<model>.+?) → (?<routedModel>.+?) · FMT: (?<format>.+?) · (?<mode>STREAM|JSON) · (?<messages>\d+) MSG(?: · (?<tools>\d+) TOOL)?(?: · THINK:(?<thinking>[^\n]+?))? · ACC:(?<account>[\s\S]*)$/u);
   if (!match) return null;
-  const fmt = message.match(/\bFMT:\s*([^·\n]+)/);
-  const count = (name) => {
-    const found = message.match(new RegExp(`\\b(\\d+) ${name}\\b`));
-    return found ? Number(found[1]) : null;
+  const { model, routedModel, format, mode, messages, tools, thinking, account } = match.groups;
+  const request = {
+    model, routedModel, format, mode, messages: Number(messages),
+    tools: tools === undefined ? null : Number(tools),
+    account,
   };
-  const account = message.match(/\bACC:([^·\n]+)/);
-  return {
-    model: match[1], routedModel: match[2],
-    format: fmt ? fmt[1].trim() : null,
-    mode: /\bSTREAM\b/.test(message) ? "STREAM" : /\bJSON\b/.test(message) ? "JSON" : null,
-    messages: count("MSG"), tools: count("TOOL"), account: account ? account[1].trim() : null,
-  };
+  if (thinking !== undefined) request.thinking = thinking;
+  return request;
 }
 
 function parseCompletion(message) {
-  const match = message.match(/\bDONE\s+(\d+)\s*ms/);
-  if (!match) return null;
-  const number = (pattern) => {
-    const found = message.match(pattern);
-    return found ? Number(found[1]) : null;
+  const [body, ...suffix] = message.split(" · ");
+  const total = body.match(/^[^\p{L}\p{N}]*DONE (\d+)\s*ms$/u);
+  if (!total) return null;
+
+  const ttft = suffix[0]?.match(/^TTFT (\d+)\s*ms$/);
+  if (ttft) suffix.shift();
+  const input = suffix.shift()?.match(/^IN (\d+)(?: \(CACHE (?:↻(\d+))? ?(?:\+(\d+))?\))?$/);
+  const output = suffix.shift()?.match(/^OUT (\d+)$/);
+  if (!input || !output) return null;
+
+  const session = suffix.at(-1)?.match(/^sid:(.*)$/);
+  if (session) suffix.pop();
+  const credits = suffix.at(-1)?.match(/^(\d+(?:\.\d+)?(?:e\+\d+)?)cr$/);
+  if (credits) suffix.pop();
+  if (suffix.length > 1) return null;
+
+  const completion = {
+    totalMs: Number(total[1]),
+    ttftMs: ttft ? Number(ttft[1]) : null,
+    inputTokens: Number(input[1]),
+    outputTokens: Number(output[1]),
+    cacheRead: Number(input[2] ?? 0),
+    cacheCreate: Number(input[3] ?? 0),
+    routedModel: suffix[0] ?? null,
   };
-  const cache = message.match(/CACHE\s+([^)]*)/);
-  const cacheNumbers = cache ? (cache[1].match(/\d+/g) || []).map(Number) : [];
-  const parts = message.split(" · ");
-  const suffix = parts.at(-1)?.trim();
-  return {
-    totalMs: Number(match[1]),
-    ttftMs: number(/\bTTFT\s+(\d+)\s*ms/),
-    inputTokens: number(/\bIN\s+(\d+)/),
-    outputTokens: number(/\bOUT\s+(\d+)/),
-    cacheRead: cacheNumbers[0] ?? 0,
-    cacheCreate: cacheNumbers[1] ?? 0,
-    routedModel: suffix && /^[\w.-]+\/[\w.:/-]+$/.test(suffix) ? suffix : null,
-  };
+  if (credits) completion.credits = Number(credits[1]);
+  if (session) completion.sessionId = session[1];
+  return completion;
 }
 
 /**
@@ -72,7 +79,8 @@ function parseCompletion(message) {
  * - `tag`: the first `[WORD]` token that is not a level marker (`HEADROOM`,
  *   `TIER`, …); otherwise the first word when it is `POST`, `DONE`, `GET` or
  *   `CANCELLED`, skipping the leading session/phase glyphs; otherwise `null`.
- * - `message`: the line without its timestamp prefix.
+ * - `message`: the line without its timestamp prefix, displayed in Wrap lines mode.
+ * - `raw`: the original captured line, including its timestamp.
  *
  * @param {string} raw Captured console line.
  * @returns {{ ts: string|null, level: "error"|"warn"|"info"|"debug", tag: string|null, message: string, raw: string }}

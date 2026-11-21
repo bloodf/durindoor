@@ -1,4 +1,5 @@
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
+import { globalCircuitManager } from "@/lib/routing/connectionCircuitState.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { NextResponse } from "next/server";
 import { isValidGitHubCreditLimit } from "open-sse/services/githubCreditLimit.js";
@@ -540,6 +541,9 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await updateProviderConnection(id, updateData);
+    // Activation clears persisted model locks; invalidate any in-flight probe
+    // only after that update succeeds. Quota and reauthentication remain separate.
+    if (updated && testStatus === "active") globalCircuitManager.reset(id);
     if (isActive === false) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);
 
     // Hide sensitive fields. Without redacting here, an API-key caller could

@@ -47,6 +47,16 @@ const CREDENTIAL_PATTERNS = [
 // Generic OpenAI-compatible `sk-` keys. Must stay last so specific labels win.
 { name: "openai_compatible", regex: /(?<![A-Za-z0-9])sk-[A-Za-z0-9._~+/=-]{20,}/g, label: "openai_compatible" }];
 
+// Secrets pasted from env/config files often have no recognizable provider prefix.
+// Keep the label and separator, and require a long value to avoid masking prose.
+const SECRET_LABEL = String.raw`(?<![A-Za-z0-9_-])[A-Za-z0-9_-]*(?:password|passwd|secret|secret[_-]?key|secret[_-]?access[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token)["']?\s*[:=]\s*["']?`;
+const SECRET_VALUE_CHAR = String.raw`[A-Za-z0-9._~+/=!@#$%^*:-]`;
+CREDENTIAL_PATTERNS.splice(CREDENTIAL_PATTERNS.length - 1, 0, {
+  name: "labelled_secret",
+  regex: new RegExp(`(${SECRET_LABEL})(?![$%])${SECRET_VALUE_CHAR}{12,}`, "gi"),
+  label: "secret"
+});
+
 
 function luhn(digits) {
   let sum = 0;

@@ -267,6 +267,10 @@
   box-shadow: none;
   margin-block: 24px;
 }
+/* Shiki's light comment color needs a lighter surface for AA contrast. */
+html:not(.dark) .dd-docs figure.shiki {
+  background: #faf9f5;
+}
 .dd-docs figure.shiki pre {
   font-size: 13px;
   line-height: 1.75;

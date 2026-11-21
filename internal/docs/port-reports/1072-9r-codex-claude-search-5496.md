@@ -35,7 +35,7 @@ fixture. Their commands and results are in "Verification performed".
 The row for this source is still open in the
 [#800 reconciliation](800-scan-reconciliation.md): "Large Codex/Claude core change; decompose and review
 before any port decision." (`internal/docs/port-reports/800-scan-reconciliation.md:48`). The later
-[#1072 qualification](1072-qualify-large-core-residuals.md:154-212) disposed of it as an "applicable gap —
+[#1072 qualification, lines 154–212](1072-qualify-large-core-residuals.md) disposed of it as an "applicable gap —
 not ported in this work order; it needs a translator route the fork does not have", and recorded a
 four-point minimum acceptance list.
 
@@ -150,7 +150,7 @@ so upstream's `anthropic` route had the same loss before #5496 closed it.
 
 This is a defensible small residual because it is deterministic, it is reproducible offline, it needs no
 new upstream contract, and it contradicts the fork's own recorded intent: the
-[#1072 qualification](1072-qualify-large-core-residuals.md:197-201) states that native Anthropic routes
+[#1072 qualification, lines 154–212](1072-qualify-large-core-residuals.md) states that native Anthropic routes
 `claude`, `anthropic` and `anthropic-compatible-*` pass the tool through, and the fork's own port report
 records that native Anthropic routes "retain their existing behavior".
 

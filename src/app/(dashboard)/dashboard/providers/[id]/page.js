@@ -3,6 +3,7 @@
 import ProviderRpmControl from "./ProviderRpmControl.jsx";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
@@ -95,6 +96,7 @@ export default function ProviderDetailPage() {
 }
 
 function ProviderDetail({ providerId }) {
+  const uiV5 = useUiV5();
   const router = useRouter();
   const notify = useNotificationStore();
   const currentProviderIdRef = useRef(providerId);
@@ -1812,6 +1814,15 @@ function ProviderDetail({ providerId }) {
   }
 
 
+  const autoSyncPanel = !isCompatible ? (
+    <ModelAutoSyncPanel
+      key={providerId}
+      providerId={providerId}
+      hasConnection={connections.some((conn) => conn.isActive !== false)}
+      onModelsChange={setSyncedModels}
+    />
+  ) : null;
+
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
       {/* Header */}
@@ -2057,11 +2068,23 @@ function ProviderDetail({ providerId }) {
                 </Button>
             }
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-dd-muted font-medium">Round Robin</span>
-                <Toggle
-                ariaLabel="Toggle round robin"
-                checked={providerStrategy === "round-robin"}
-                onChange={handleRoundRobinToggle} />
+                {uiV5 ? (
+                  <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-xs text-dd-muted font-medium">Round Robin</span>
+                    <Toggle
+                      ariaLabel="Toggle round robin"
+                      checked={providerStrategy === "round-robin"}
+                      onChange={handleRoundRobinToggle} />
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-xs text-dd-muted font-medium">Round Robin</span>
+                    <Toggle
+                      ariaLabel="Toggle round robin"
+                      checked={providerStrategy === "round-robin"}
+                      onChange={handleRoundRobinToggle} />
+                  </>
+                )}
               
                 {providerStrategy === "round-robin" &&
               <div className="flex items-center gap-1.5">
@@ -2076,11 +2099,23 @@ function ProviderDetail({ providerId }) {
                 
                   </div>
               }
-                <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
-                <Toggle
-                ariaLabel="Toggle cache affinity"
-                checked={providerStrategy === "cache-affinity"}
-                onChange={handleCacheAffinityToggle} />
+                {uiV5 ? (
+                  <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
+                    <Toggle
+                      ariaLabel="Toggle cache affinity"
+                      checked={providerStrategy === "cache-affinity"}
+                      onChange={handleCacheAffinityToggle} />
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
+                    <Toggle
+                      ariaLabel="Toggle cache affinity"
+                      checked={providerStrategy === "cache-affinity"}
+                      onChange={handleCacheAffinityToggle} />
+                  </>
+                )}
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">
@@ -2308,6 +2343,8 @@ function ProviderDetail({ providerId }) {
         </Card>
       }
 
+      {uiV5 ? autoSyncPanel : null}
+
       {/* Models */}
       <Card>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2354,13 +2391,7 @@ function ProviderDetail({ providerId }) {
         {/* buildModelsList publishes compatible-provider catalogs from their
             custom/alias ids only and never applies this allowlist to them, so
             the control would silently do nothing for these providers. */}
-        {!isCompatible &&
-        <ModelAutoSyncPanel
-          key={providerId}
-          providerId={providerId}
-          hasConnection={connections.some((conn) => conn.isActive !== false)}
-          onModelsChange={setSyncedModels} />
-        }
+        {!uiV5 ? autoSyncPanel : null}
         {!isCompatible &&
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" icon="visibility" onClick={() => setShowVisibleModels(true)}>

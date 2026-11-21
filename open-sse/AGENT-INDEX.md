@@ -359,7 +359,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `paraloncloud` |  | apikey | `https://paraloncloud.com/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
 | `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
-| `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
+| `perplexity-web` | openai | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
 | `piapi` |  | apikey | `https://api.piapi.ai/v1/chat/completions` |
 | `pioneer` | openai | apikey | `https://api.fastino.ai/v1/chat/completions` |
 | `plamo` | openai | apikey | `https://api.platform.preferredai.jp/v1/chat/completions` |

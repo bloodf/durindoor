@@ -30,6 +30,8 @@ import {
 } from "@/shared/utils/credentialEnvelope";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"chatgptPlanAccount",
+"chatgptPlanBindingRevision",
 "managementApiKey",
 "clientSecret",
 "qwenCloudCookie",
@@ -280,6 +282,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
+    if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return invalidRequest("providerSpecificData.chatgptPlanAccount");
     const {
       name,
       priority,

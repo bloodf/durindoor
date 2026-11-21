@@ -28,6 +28,8 @@ import {
 } from "@/shared/utils/credentialEnvelope";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"chatgptPlanAccount",
+"chatgptPlanBindingRevision",
 "managementApiKey",
 "clientSecret",
 "qwenCloudCookie",
@@ -211,6 +213,7 @@ export async function GET(request) {
 export async function createProvider(request, { shouldCommit } = {}) {
   try {
     const body = await request.json();
+    if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return NextResponse.json({ error: "Private account references cannot be supplied" }, { status: 400 });
     const provider = normalizeProviderId(body.provider);
     const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
     const proxyConfig = normalizeProxyConfig(body);

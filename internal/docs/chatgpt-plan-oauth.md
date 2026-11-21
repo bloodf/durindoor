@@ -11,3 +11,50 @@ The internal module `src/lib/oauth/chatgptPlanProtocol.js` implements OpenAI's p
 Store each connection's `issuer`, verified `subject`, issued `clientId`, associated `hostId`, optional verified `email`, retained `idToken`, `accessToken`, optional `refreshToken`, `tokenType`, granted `scopes`, `savedAt`, `expiresAt` and optional `earliestRefreshAt` together in an encrypted record. Times are Unix milliseconds. Derive `planEnabled` from the scopes. Keep registrations separate even when email matches. Attempt state, nonce, PKCE verifier and authorization code belong only to the pending exchange. Keep the runtime's stable host ID independently so VM credential transfer preserves the VM's own ID for its next authorization.
 
 The authorization and identity checks adapt OmniRoute's [chatgptProtocol.ts](https://github.com/diegosouzapw/OmniRoute/blob/b748429cf5b3aeb142a708fd3e8751b6918b9dc8/src/lib/oauth/chatgptProtocol.ts), and refresh fields and error codes draw on its [ChatGPT refresh provider](https://github.com/diegosouzapw/OmniRoute/blob/b748429cf5b3aeb142a708fd3e8751b6918b9dc8/open-sse/services/tokenRefresh/providers/chatgpt.ts). OpenAI's protocol defines the wire contract. [Registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [Accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions), [Token reference](https://developers.openai.com/siwc/token-sharing-open-source/token-reference), [Models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [Errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery), [Self-hosted VMs](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms).
+
+## Private account service
+
+Create `createChatGptPlanAccounts({ fetchAdapter, clock? })` from
+`src/lib/oauth/chatgptPlanAccounts.js` in the trusted runtime. The owner keeps
+`DATA_DIR/chatgpt-plan-host-id` stable across restarts and uses a distinct
+persistent data directory for each host. Keep authorization URLs, transfer
+records and returned session credentials private.
+
+- `beginAuthorization({ redirectUri, selection? })` returns an authorization
+  URL and an opaque in-memory handle. Omit the selection for an initial private
+  sign-in. Pass the saved selection for returning sign-in.
+  `finishAuthorization(handle, callbackUrl)` consumes the handle before
+  exchange and returns the verified `{ id, issuer, subject, clientId }`
+  selection. Start a fresh attempt after failure.
+- `readAccount(selection)` reads that host's selected account.
+  `refresh(selection)` atomically commits the replacement tokens, scopes and
+  timing. Schedule renewal near expiry and at or after `earliestRefreshAt` when
+  supplied. A durable claim blocks refresh and remote revocation while the
+  token may already have been sent. A failed or interrupted refresh leaves the
+  claim in place. Recover with a fresh sign-in for the selected registration.
+- `signOut(selection)` attempts remote revocation before clearing the three
+  local tokens. Retry transient revocation failures with backoff. Explicit
+  `signOut(selection, { localOnly: true })` clears local credentials and
+  reports unconfirmed revocation when a refresh token was present. The owner
+  can disconnect the app in ChatGPT Settings. The account selection survives
+  sign-out.
+- For an owner-operated VM, initialize the destination host identity first and
+  complete sign-in on the local machine. `detachForVm(selection)` clears
+  the source session and returns its transfer record. Transfer it privately
+  over an authenticated secure channel, then call
+  `bindFromOwnerTransfer(selection, record)` in the destination runtime.
+  Binding accepts a trusted record from the source service, requires a fresh
+  destination slot, and encrypts the credentials with the destination key.
+  The VM owns subsequent refreshes and uses its own host ID for reauthorization.
+  Treat the transfer as a one-time handoff and destroy temporary copies.
+  If the transfer record is lost after detaching, sign in again.
+  [OpenAI self-hosted VM guidance](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms)
+
+The service stores private records in the database's
+`privateChatGptPlanAccounts` namespace and uses the existing connection
+credential encoding for `accessToken`, `refreshToken` and `idToken`.
+`providerSpecificData` contains the registration identifiers, grant scopes
+and timing metadata. The service requires a shared transactional adapter and
+follows DurinDoor's `claimProviderConnectionPing` writer-lock pattern in
+`connectionsRepo.js`. Credential comparison and a random revision fence
+stale writes, including writes after sign-out or reauthorization.

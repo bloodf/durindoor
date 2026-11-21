@@ -4,7 +4,7 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
 import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
-import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
+import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
 import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
@@ -196,6 +196,46 @@ function upsert(db, c) {
        data=excluded.data, updatedAt=excluded.updatedAt`,
     [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
   );
+}
+
+// Keep private ChatGPT plan sessions out of the enumerable provider connection inventory.
+const CHATGPT_PLAN_SCOPE = "privateChatGptPlanAccounts";
+
+async function getChatGptPlanAdapter() {
+  const db = await getAdapter();
+  // sql.js writes a private, asynchronously flushed snapshot in each process.
+  if (db.driver === "sql.js") throw new Error("ChatGPT plan accounts require a shared transactional database");
+  return db;
+}
+
+function readChatGptPlanAccount(db, id) {
+  const row = db.get("SELECT value FROM kv WHERE scope = ? AND key = ?", [CHATGPT_PLAN_SCOPE, id]);
+  return row ? rowToConn(JSON.parse(row.value)) : null;
+}
+
+export async function readPrivateChatGptPlanAccount(id) {
+  return readChatGptPlanAccount(await getChatGptPlanAdapter(), id);
+}
+
+// Use the same pre-read writer lock as claimProviderConnectionPing. A revision
+// also fences sign-out, reauthorization and session handoff with identical bytes.
+export async function compareAndSwapPrivateChatGptPlanAccount(id, expected, next) {
+  const db = await getChatGptPlanAdapter();
+  let applied = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("ChatGPT plan accounts require an initialized schema");
+    const current = readChatGptPlanAccount(db, id);
+    if ((current?.revision ?? null) !== (expected?.revision ?? null) ||
+        !providerCredentialBytesMatch(current, expected)) return;
+    db.run(
+      `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)
+       ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+      [CHATGPT_PLAN_SCOPE, id, stringifyJson(connToRow(next))]
+    );
+    applied = true;
+  });
+  return applied;
 }
 
 /**

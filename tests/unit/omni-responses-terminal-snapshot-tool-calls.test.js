@@ -48,6 +48,25 @@ describe("Responses terminal function snapshots", () => {
     it(`${name} recovers a terminal-only call`, async () => verify(await translate([terminal([items[0]])]), [items[0]]));
     it(`${name} preserves mixed call order without replay`, async () => verify(await translate(mixed), items));
     it(`${name} does not replay done-only calls`, async () => verify(await translate([{ type: "response.output_item.done", output_index: 0, item: items[0] }, terminal([items[0]])]), [items[0]]));
+    it(`${name} recovers a distinct anonymous snapshot call`, async () => {
+      const second = { type: "function_call", name: "second", arguments: '{"b":2}' };
+      const chunks = await translate([...mixed.slice(0, -1), terminal([items[0], second])]);
+      const calls = chunks.flatMap((chunk) => chunk.choices?.[0]?.delta?.tool_calls || []);
+      const headers = calls.filter((call) => call.id);
+      expect(headers).toHaveLength(2);
+      expect(headers[0].id).toBe("call_a");
+      expect(headers[1].id).toBeTruthy();
+      expect(headers[1].id).not.toBe(headers[0].id);
+      verify(chunks, [items[0], { ...second, call_id: headers[1].id }]);
+    });
+    it(`${name} does not replay an anonymous call at the same output index`, async () => {
+      const item = { type: "function_call", name: "first", arguments: '{"a":1}' };
+      const chunks = await translate([{ type: "response.output_item.added", output_index: 0, item }, { type: "response.output_item.done", output_index: 0, item }, terminal([item])]);
+      const calls = chunks.flatMap((chunk) => chunk.choices?.[0]?.delta?.tool_calls || []);
+      const headers = calls.filter((call) => call.id);
+      expect(headers).toHaveLength(1);
+      verify(chunks, [{ ...item, call_id: headers[0].id }]);
+    });
   }
   it("does not turn incomplete or failed terminals into successful tool calls", () => {
     const incomplete = direct([{ type: "response.done", response: { status: "incomplete", output: items } }]);

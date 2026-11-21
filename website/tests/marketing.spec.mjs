@@ -175,6 +175,16 @@ test("marketing and docs layouts retain readable themes without serious accessib
       const result = await new AxeBuilder({ page }).analyze();
       expect(result.violations.filter((violation) => ["serious", "critical"].includes(violation.impact)), `${route} ${width}`).toEqual([]);
       await page.screenshot({ path: join(screenshots, `${route.replaceAll("/", "-") || "home"}-${width}.png`), fullPage: false, animations: "disabled" });
+      if (route === "/") {
+        for (const theme of ["light", "dark"]) {
+          const isDark = await page.locator("html").evaluate((node) => node.classList.contains("dark"));
+          if (isDark !== (theme === "dark")) await page.locator(".site-nav").getByRole("button", { name: /Switch to (light|dark) mode/ }).click();
+          const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+          expect(audit.violations, `${route} ${width} ${theme}`).toEqual([]);
+          await page.screenshot({ path: join(screenshots, `home-${width}-${theme}.png`), fullPage: true, animations: "disabled" });
+        }
+        await page.locator(".site-nav").getByRole("button", { name: "Switch to light mode" }).click();
+      }
       if (route.startsWith("/docs")) {
         await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
         await page.evaluate(async () => {

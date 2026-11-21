@@ -51,6 +51,7 @@ export default {
       format: "openai",
       baseUrl: "https://api.xiaomimimo.com/v1/chat/completions",
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      quirks: { preserveCacheControl: true },
     },
     {
       format: "claude",

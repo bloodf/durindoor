@@ -129,7 +129,7 @@ Local fixtures that pin this behavior:
 | [`tests/unit/context-limit-enforcement.test.js`](../../../tests/unit/context-limit-enforcement.test.js) | `resolveModelLimits` source and honesty; feature-flag-only rows stay `known: false`; Grok's unpublished output ceiling stays unset; and the *"effective output reservation"* block that matches what `clampCustomMaxOutput` actually lets through, including *"reserves nothing without an output request, operator limit, or default"*. |
 | [`tests/unit/custom-max-output-ceiling.test.js`](../../../tests/unit/custom-max-output-ceiling.test.js) | A configured ceiling still clamps; a routed provider ceiling above the bare fallback is preserved; an explicit client value under the cap is kept. |
 | [`tests/unit/custom-caps-executor-matrix.test.js`](../../../tests/unit/custom-caps-executor-matrix.test.js) | The executor clamp matrix for `max_tokens` and for the Gemini `generationConfig.maxOutputTokens` envelope. |
-| [`internal/docs/product/reference/model-limits.mdx`](../../product/reference/model-limits.mdx) | The documented contract: *"Numeric limits must not come from transport defaults or compaction thresholds"* and *"Preserve explicit false and null, unknown output ceilings"*. |
+| [`internal/docs/product/reference/model-limits.mdx`](../product/reference/model-limits.mdx) | The documented contract: *"Numeric limits must not come from transport defaults or compaction thresholds"* and *"Preserve explicit false and null, unknown output ceilings"*. |
 
 Offline probe against the working tree (`node --input-type=module`, no network, no provider call),
 with `modelCapabilities.maxOutput` driven directly and `max_output_tokens: 32000` in the body:
@@ -183,7 +183,7 @@ This is **outside the compared surface**: the OpenAI-compatible Responses path i
 `DefaultExecutor` plus `BaseExecutor.clampCustomMaxOutput`, never by the Claude translator, and
 `DEFAULT_MAX_TOKENS` is a transport request default that the local reference document classifies
 as request configuration rather than a model capacity
-([`model-limits.mdx`](../../product/reference/model-limits.mdx)). It is recorded here so a later
+([`model-limits.mdx`](../product/reference/model-limits.mdx)). It is recorded here so a later
 reader can see the one place where upstream's post-patch Claude-path semantics differ. It is not
 claimed as a port gap and no acceptance is asserted for it.
 

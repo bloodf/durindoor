@@ -668,3 +668,12 @@
 .section-tools {
   padding-block-end: clamp(60px, 8vw, 100px);
 }
+
+/* Native disclosure controls keep the FAQ usable with keyboard and touch. */
+.home-faq .faq-list { max-width: 54rem; margin: 2rem auto 0; }
+.home-faq details { border-bottom: 1px solid var(--home-line-strong); padding: 1.25rem 0; }
+.home-faq summary { cursor: pointer; font-size: 1.125rem; font-weight: 600; }
+.home-faq summary:focus-visible, .home-faq a:focus-visible { outline: 3px solid var(--home-emerald); outline-offset: 4px; }
+.home-faq p { color: var(--home-muted); margin: 1rem 0; }
+.home-faq a { color: var(--home-emerald); text-decoration: underline; text-underline-offset: .2em; }
+.gateway-audience { font-weight: 600; }

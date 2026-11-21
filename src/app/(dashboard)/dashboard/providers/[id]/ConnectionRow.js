@@ -8,6 +8,7 @@ import PropTypes from "prop-types";
 import { Badge, Button, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 import { buildTimelineHref } from "../../timeline/href.js";
+import { classifyProviderDiagnostic } from "./providerDiagnostics.js";
 
 export default function ConnectionRow({ connection, providerId = null, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, onClearCooldown = null, clearingCooldown = false, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
@@ -147,6 +148,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
   const errorDisplay = getConnectionErrorDisplay(connection);
+  const savedDiagnostic = errorDisplay ? classifyProviderDiagnostic(errorDisplay.reason, { unavailable: connection.testStatus === "unavailable" }) : null;
   // Only OAuth rows can be reconnected, and only when the durable reauth_required
   // state is pinned. The action re-runs the same OAuth flow, replacing this row.
   const isReauthRequired = isOAuthConnection && effectiveStatus === "reauth_required";
@@ -165,7 +167,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
     if (oneByOneStatus.state === "testing") return "testing";
     if (oneByOneStatus.state === "success") return "success";
     if (oneByOneStatus.state === "skipped") return "skipped";
-    if (oneByOneStatus.state === "failed") return oneByOneStatus.error ? `failed: ${oneByOneStatus.error}` : "failed";
+    if (oneByOneStatus.state === "failed") return "failed";
     return null;
   };
 
@@ -236,11 +238,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                 )}
               </span>
             )}
-            {errorDisplay && (
-              <span className="max-w-full truncate text-xs text-dd-danger sm:max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
-                {errorDisplay.reason}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}
-              </span>
-            )}
+            {savedDiagnostic && <span className="max-w-full text-xs text-dd-danger" role="status">{savedDiagnostic.title}: {savedDiagnostic.guidance}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}</span>}
             <span className="text-xs text-dd-muted">#{connection.priority}</span>
             {connection.globalPriority && (
               <span className="text-xs text-dd-muted">Auto: {connection.globalPriority}</span>
@@ -250,6 +248,10 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                 {getOneByOneLabel()}
               </Badge>
             )}
+            {oneByOneStatus && ["failed", "unavailable", "skipped"].includes(oneByOneStatus.state) && (() => {
+              const diagnostic = classifyProviderDiagnostic(oneByOneStatus.error, { unavailable: oneByOneStatus.state === "unavailable", skipped: oneByOneStatus.state === "skipped" });
+              return <span className="w-full text-xs text-dd-muted" role="status">{oneByOneStatus.state === "failed" && diagnostic.safeLabel ? <><strong>failed: {diagnostic.safeLabel}.</strong> <strong>{diagnostic.title}.</strong> </> : <><strong>{diagnostic.title}.</strong> </>}{diagnostic.guidance}</span>;
+            })()}
           </div>
           {hasAnyProxy && (
             <div className="mt-1 flex items-center gap-2 flex-wrap">

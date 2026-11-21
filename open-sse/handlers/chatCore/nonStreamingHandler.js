@@ -23,6 +23,7 @@ import { createResponsesToolNameResolver } from "../../translator/response/opena
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
@@ -858,7 +859,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
           response: new Response(formatSSE(translatedResponse, sourceFormat), {
             headers: {
               "Content-Type": "text/event-stream",
-              ...SSE_HEADERS_CORS
+              ...SSE_HEADERS_CORS,
+              ...resolvedModelHeaders(provider, model)
             }
           })
         };
@@ -887,7 +889,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         response: new Response(sseText, {
           headers: {
             "Content-Type": "text/event-stream",
-            ...SSE_HEADERS_CORS
+            ...SSE_HEADERS_CORS,
+            ...resolvedModelHeaders(provider, model)
           }
         })
       };
@@ -897,7 +900,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     return {
       success: true,
       response: new Response(JSON.stringify(translatedResponse), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          ...resolvedModelHeaders(provider, model)
+        }
       })
     };
   } finally {

@@ -28,7 +28,7 @@ const FORMAT_TO_NATIVE = {
 
 // Extract unified thinking intent from a request body (post-translation, mixed shapes).
 // Returns { mode, budget?, level? } or null when no thinking intent present.
-export function extractThinking(body) {
+export function extractThinking(body, model = null, provider = null, modelCapabilities = null) {
   if (!body || !isObject(body)) return null;
 
   // Claude output_config.effort (explicit) — priority over adaptive thinking
@@ -82,15 +82,54 @@ export function extractThinking(body) {
     return value ? { mode: "auto" } : { mode: "none" };
   }
 
-  // Gemini shape (top-level, generationConfig, or request envelope)
-  const tc = body.thinkingConfig || body.generationConfig?.thinkingConfig || body.request?.generationConfig?.thinkingConfig;
-  if (tc && isObject(tc)) {
-    if (isString(tc.thinkingLevel)) return { mode: "level", level: tc.thinkingLevel.toLowerCase() };
+  // Gemini shape. Keep candidate order explicit so a blank or unsupported
+  // nested override does not hide a valid fallback at another spelling/path.
+  const geminiConfigs = [
+    body.thinkingConfig,
+    body.thinking_config,
+    body.generationConfig?.thinkingConfig,
+    body.generationConfig?.thinking_config,
+    body.generation_config?.thinkingConfig,
+    body.generation_config?.thinking_config,
+    body.request?.thinkingConfig,
+    body.request?.thinking_config,
+    body.request?.generationConfig?.thinkingConfig,
+    body.request?.generationConfig?.thinking_config,
+    body.request?.generation_config?.thinkingConfig,
+    body.request?.generation_config?.thinking_config,
+  ];
+  const explicitLevels = [
+    ...geminiConfigs.flatMap((config) => config && isObject(config)
+      ? [config.thinkingLevel, config.thinking_level] : []),
+    body.thinkingLevel,
+    body.thinking_level,
+  ];
+  const caps = modelCapabilities || getCapabilitiesForModel(provider, model || "");
+  const nativeGeminiLevels = caps?.thinkingFormat === "gemini-level";
+  for (const candidate of explicitLevels) {
+    if (!isString(candidate) || !candidate.trim()) continue;
+    const trimmed = candidate.trim();
+    if (nativeGeminiLevels) {
+      const level = trimmed.toLowerCase();
+      if (["minimal", "low", "medium", "high"].includes(level)) return { mode: "level", level };
+      continue;
+    }
+    return { mode: "level", level: trimmed.toLowerCase() };
+  }
+  for (const tc of geminiConfigs) {
+    if (tc && isObject(tc)) {
     const tb = Number(tc.thinkingBudget);
     if (Number.isFinite(tb)) {
       if (tb === 0) return { mode: "none" };
       if (tb < 0) return { mode: "auto" };
       return { mode: "budget", budget: tb };
+    }
+    const tbSnake = Number(tc.thinking_budget);
+    if (Number.isFinite(tbSnake)) {
+      if (tbSnake === 0) return { mode: "none" };
+      if (tbSnake < 0) return { mode: "auto" };
+      return { mode: "budget", budget: tbSnake };
+    }
     }
   }
 
@@ -107,7 +146,9 @@ export function extractThinking(body) {
 
 // Capture thinking intent from a body. Alias of extractThinking, named for clarity
 // at the call-site where intent is snapshotted before format translation.
-export const captureThinking = extractThinking;
+export function captureThinking(body, model = null, provider = null, modelCapabilities = null) {
+  return extractThinking(body, model, provider, modelCapabilities);
+}
 
 // Resolve thinking format: provider override > capability > derive(targetFormat).
 function resolveFormat(targetFormat, model, provider, caps = null) {
@@ -295,9 +336,12 @@ function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning
   for (const target of targets) {
     delete target.thinking;
     delete target.reasoning_effort;
+    // Nested objects below may be shared with the client's body or with another combo target
+    // (the per-target body copy is shallow): replace them, never delete inside them.
     if (preserveResponsesReasoning && target.reasoning && isObject(target.reasoning) && !Array.isArray(target.reasoning)) {
-      delete target.reasoning.effort;
-      if (Object.keys(target.reasoning).length === 0) delete target.reasoning;
+      const { effort: _effort, ...reasoning } = target.reasoning;
+      if (Object.keys(reasoning).length === 0) delete target.reasoning;
+      else target.reasoning = reasoning;
     } else {
       delete target.reasoning;
     }
@@ -312,8 +356,14 @@ function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning
       delete target.output_config;
     }
     delete target.think;
-    if (target.generationConfig) delete target.generationConfig.thinkingConfig;
-    if (target.request?.generationConfig) delete target.request.generationConfig.thinkingConfig;
+    if (target.generationConfig?.thinkingConfig !== undefined) {
+      const { thinkingConfig: _thinking, ...generationConfig } = target.generationConfig;
+      target.generationConfig = generationConfig;
+    }
+    if (target.request?.generationConfig?.thinkingConfig !== undefined) {
+      const { thinkingConfig: _thinking, ...generationConfig } = target.request.generationConfig;
+      target.request = { ...target.request, generationConfig };
+    }
   }
 }
 
@@ -647,7 +697,8 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
       if (body.thinking) {
         delete body.reasoning_effort;
       } else {
-        body.output_config = body.output_config || {};
+        // Copy, not edit: output_config may be shared with another combo target.
+        body.output_config = { ...body.output_config };
         if (!body.output_config.effort) body.output_config.effort = body.reasoning_effort;
         delete body.reasoning_effort;
       }
@@ -665,8 +716,8 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     return body;
   }
 
-  const cfg = override || intent || extractThinking(body);
   const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
+  const cfg = override || intent || extractThinking(body, cleanModel, provider, caps);
 
   // OpenCode Go publishes model-scoped DeepSeek effort tiers (the same rows the
   // catalog advertises). Fold the requested tier onto the declared set once,

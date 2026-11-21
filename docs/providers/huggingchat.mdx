@@ -1,0 +1,61 @@
+# HuggingChat
+
+HuggingChat (`huggingchat`) uses a session from your own signed-in `huggingface.co/chat` account. It is not a Hugging Face inference token; those belong to the separate `huggingface` provider.
+
+## Guarded by default
+
+Chat requests to a HuggingChat connection return HTTP 501 with `type: "provider_port_pending"` and send nothing upstream. Public Hugging Face sources do not authorize an external client to reuse the hosted web session, so dispatch is opt-in per connection.
+
+To enable it, set this on the connection's provider-specific data:
+
+```json
+{ "enableSessionDispatch": true }
+```
+
+The value must be the boolean `true`. A missing flag, `false`, or any other value (including the string `"true"`) keeps the guard and its 501 unchanged. The flag is read from the connection that is serving the request, so enabling one connection never opens another one, and the guarded connection's cookie is never sent.
+
+### Risk
+
+- DurinDoor will act as a non-browser client using your signed-in web session. Hugging Face may rate limit, challenge, or restrict the account, and the web endpoints are internal and can change without notice.
+- Every request creates a conversation on the account. Those conversations appear in your HuggingChat history.
+- Anyone who holds the cookie holds the session. Keep it private and enable the flag only on connections you operate yourself.
+- **Validate** and **Test Connection** stay skipped with the flag on, so they never create a conversation. Success is only shown by a real request.
+
+## Setup
+
+Sign in at [huggingface.co/chat](https://huggingface.co/chat) and import the Cookie header with the in-page sign-in or by pasting it. A bare `hf-chat` cookie value is also accepted. Then enable the flag on the connection.
+
+## Request flow (flag on)
+
+1. `POST /chat/conversation` with `{ model, preprompt? }` creates a conversation. System and developer messages become `preprompt`. Cookies the response sets are merged into the later requests of the same call; they are not written back to the saved connection.
+2. `GET /chat/api/v2/conversations/{id}` returns the root message id (`rootMessageId`, optionally wrapped in a `json` object).
+3. `POST /chat/conversation/{id}` sends multipart `data` with `inputs`, the parent `id`, a fresh `generationId` and the local timezone. The answer is a JSONL stream.
+
+Multi-turn history is flattened into a `User:` and `Assistant:` transcript in `inputs`. The route accepts text content only.
+
+The JSONL stream carries `stream` tokens (NUL padding is stripped), `reasoning` tokens, a `finalAnswer`, and `status` events. Tokens become OpenAI `chat.completion.chunk` deltas, reasoning becomes `reasoning_content`, and the same output serves the Chat Completions, Messages and Responses routes, streamed or not. A response over 4 MiB, or a generation error, fails the request. A generation error before any content is a real HTTP 502, not a 200 stream that fails later.
+
+## Errors
+
+| Upstream | Result |
+| --- | --- |
+| 401 or 403 at any step | The same status. The message says the `hf-chat` cookie is expired or revoked and asks you to sign in again and re-import it. The connection is marked failed and DurinDoor falls back to the next connection. |
+| 429 at any step | HTTP 429 with a quota or rate limit message; the connection cools down. |
+| 404 on send | The model id was not found. |
+| No `conversationId` or parent id | HTTP 502. |
+
+Re-importing a cookie into the same connection keeps the flag. Cookie values never appear in an error message or response.
+
+## Models
+
+The model list is the static catalog in the provider registry. DurinDoor does not call Hugging Face to list models, and a listed model may not be available to your account.
+
+## Sources
+
+Contract read at OmniRoute `4265bb2ad5477450a07d3a43ea33a62c6c874878` (MIT):
+
+- [Executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/huggingchat.ts)
+- [JSONL stream translator](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/huggingchat/jsonlStream.ts)
+- [Registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/huggingchat/index.ts)
+
+The contract is verified only against closed mocks in `tests/unit/huggingchat-guarded-dispatch.test.js`. No live Hugging Face request has been made.

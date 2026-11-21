@@ -378,6 +378,9 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         content = msg.content;
       } else if (Array.isArray(msg.content) && msg.role !== ROLE.TOOL) {
         const textParts = [];
+        // Images Kiro cannot take (no inline bytes) are said so in the text, so the
+        // model does not answer as if none was sent.
+        let omittedImages = 0;
         for (const c of msg.content) {
           if (c.type === OPENAI_BLOCK.TEXT || c.text) {
             textParts.push(c.text || "");
@@ -393,6 +396,8 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
               const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 data URI.");
               error.statusCode = HTTP_STATUS.BAD_REQUEST;
               throw error;
+            } else {
+              omittedImages++;
             }
           } else if (c.type === CLAUDE_BLOCK.IMAGE) {
             // Claude format: source.type = "base64", source.media_type, source.data
@@ -400,8 +405,13 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
               const mediaType = c.source.media_type || DEFAULT_IMAGE_MIME;
               const format = mediaType.split("/")[1] || mediaType;
               pendingImages.push({ format, source: { bytes: c.source.data } });
+            } else {
+              omittedImages++;
             }
           }
+        }
+        if (omittedImages > 0) {
+          textParts.push(`[${omittedImages} ${omittedImages === 1 ? "image" : "images"} omitted: Kiro accepts only inline image data]`);
         }
         content = textParts.join("\n");
 

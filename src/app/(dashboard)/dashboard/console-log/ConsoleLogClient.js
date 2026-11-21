@@ -113,6 +113,31 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
     return () => observer?.disconnect();
   }, [entry.id, wrap, onMeasure]);
   const [firstLine, ...moreLines] = entry.message.split("\n");
+  const cache = [
+    entry.completion?.cacheRead ? `↻${entry.completion.cacheRead}` : "",
+    entry.completion?.cacheCreate ? `+${entry.completion.cacheCreate}` : "",
+  ].filter(Boolean).join(" ");
+  const summary = entry.request
+    ? [
+        `POST ${entry.request.model} → ${entry.request.routedModel}`,
+        entry.request.format && `FMT: ${entry.request.format}`,
+        entry.request.mode,
+        entry.request.messages !== null && `${entry.request.messages} MSG`,
+        entry.request.tools !== null && `${entry.request.tools} TOOL`,
+        entry.request.thinking && `THINK:${entry.request.thinking}`,
+        entry.request.account && `ACC:${entry.request.account}`,
+      ].filter(Boolean).join(" · ")
+    : entry.completion
+      ? [
+          `DONE ${entry.completion.totalMs}ms`,
+          entry.completion.ttftMs !== null && `TTFT ${entry.completion.ttftMs}ms`,
+          `IN ${entry.completion.inputTokens}${cache ? ` (CACHE ${cache})` : ""}`,
+          `OUT ${entry.completion.outputTokens}`,
+          entry.completion.routedModel,
+          entry.completion.credits !== undefined && `${entry.completion.credits}cr`,
+          entry.completion.sessionId !== undefined && `sid:${entry.completion.sessionId}`,
+        ].filter(Boolean).join(" · ")
+      : null;
   return (
     <div
       data-console-row={entry.id}
@@ -134,7 +159,7 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
       ) : (
         <>
           <span className="min-w-0 flex-1 truncate whitespace-pre text-dd-text">
-            <HighlightedText text={firstLine} needle={needle} />
+            <HighlightedText text={summary ?? firstLine} needle={needle} />
           </span>
           {moreLines.length > 0 ? <span className="shrink-0 text-dd-subtle">+{moreLines.length} lines</span> : null}
         </>

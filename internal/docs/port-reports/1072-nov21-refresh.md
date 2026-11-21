@@ -43,6 +43,8 @@ Reviewed 2026-11-21 against DurinDoor current head. Source PR inventory from ups
 - **Focused tests to add**:
   `tests/unit/console-log-format.test.js` asserting entry parsing across request/response/background shapes, console level classification, tag extraction and sorting, symbol stripping, countByLevel and collectTags computations, sequence-based identity stability, and filter matching by level, tag, and search query.
 
+- **Ported in this unit**: Added client-side request and completion field parsing and structured row summaries using the existing string log payload; existing filters, counters, pause/wrap/copy/download controls, snapshot reconciliation, and routed-model DONE logs already cover the remaining behavior. Kept the server buffer and log API string-compatible. `tests/unit/port9r-5798-console-log-viewer.test.js` covers request and completion fields and leaves unrelated lines untouched.
+
 ---
 
 ### [#5796](https://github.com/decolua/9router/pull/5796) — fix(codebuddy): sanitize only agent identity lines in system prompts to preserve user rules
@@ -62,6 +64,8 @@ Reviewed 2026-11-21 against DurinDoor current head. Source PR inventory from ups
   In both `CodeBuddyExecutor` and `CodeBuddyIntlExecutor`, replace full system message replacement with line-level sanitization: scan system and developer message text, replace the first line matching `AGENT_PATTERN` with `NEUTRAL_PROMPT`, strip subsequent matching agent marker tokens, and keep all non-matching lines (such as `Instructions from: .../AGENTS.md` and repository rules) intact even when system prompts exceed 2,000 characters. Preserve typed content block arrays where present.
 - **Focused tests to add**:
   `tests/unit/codebuddy-intl-system-prompt.test.js` (or `tests/unit/port9r-codebuddy-system-prompt-5796.test.js`) asserting that system prompts containing agent identity preambles (e.g. `You are an AI coding agent`) have only the identity line neutralized to `NEUTRAL_PROMPT` while appended `AGENTS.md` rules (>2,000 chars) and custom instructions are preserved across both `codebuddy-cn` and `codebuddy-intl` executors.
+
+- **Ported in this unit**: Both executors sanitize matching identity lines in system and developer text while preserving other lines and typed blocks; `tests/unit/port9r-5796-codebuddy-identity-lines.test.js` covers long rules, block metadata, and untouched user prompts.
 
 ---
 

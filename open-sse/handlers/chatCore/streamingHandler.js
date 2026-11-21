@@ -15,6 +15,7 @@ import { createEmptyTerminalGuard } from "../../utils/emptyStreamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
+import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
 import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
@@ -78,7 +79,8 @@ export function completionToStream(completion) {
  * @returns {{stream: TransformStream, emittedFormat: string}}
  */
 export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials }) {
-  const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
+  // `\bdroid\b`: a bare substring test also matched "Android" (Dalvik, mobile browsers).
+  const isDroidCLI = /\bdroid\b/i.test(userAgent ?? "") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
   const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
   const needsCodexTranslation = isResponsesProvider && targetFormat === FORMATS.OPENAI_RESPONSES && !isDroidCLI;
@@ -259,7 +261,9 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 
   return {
     success: true,
-    response: new Response(transformedBody, { headers: SSE_HEADERS })
+    response: new Response(transformedBody, {
+      headers: { ...SSE_HEADERS, ...resolvedModelHeaders(provider, model) }
+    })
   };
 }
 

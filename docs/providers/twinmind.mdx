@@ -1,0 +1,19 @@
+# TwinMind
+
+The pinned OmniRoute integration uses TwinMind's app API rather than an OpenAI-compatible API. Chat is a provider-specific envelope at `https://api2.twinmind.com/api/v3/chat`; credentials are Firebase ID tokens and may require refresh. The registry module is staged, but a matching DurinDoor executor is required before registration or dispatch is enabled.
+
+## Setup and limits
+
+The app API is experimental and the provider-specific authentication lifecycle is not covered by a vendor public API contract. The pinned integration uses fallback models and attempts authenticated model discovery. Do not treat this staged entry as a generally supported API-key connection.
+
+## Cookie capture
+
+Cookie capture is not the authentication mechanism in the pinned integration. Do not share Firebase tokens, cookies, pasted cURL headers, or HAR files without removing credentials.
+
+## Sources
+
+- [TwinMind](https://twinmind.com/)
+- [Pinned OmniRoute registry entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/twinmind/index.ts)
+- [Pinned OmniRoute executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/twinmind.ts)
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

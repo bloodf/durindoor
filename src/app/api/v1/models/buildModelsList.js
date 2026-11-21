@@ -869,7 +869,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
         if (!kindFilter.includes(kind)) continue;
-        const caps = isRecord(liveModel.capabilities) ? liveModel.capabilities : getCapabilitiesForModel(providerId, modelId);
+        const caps = isRecord(liveModel.capabilities) ? liveModel.capabilities : getCapabilitiesForModel(providerId, modelId, kind);
         models.push({
           id: `${alias}/${modelId}`,
           object: "model",
@@ -1280,7 +1280,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           const hasStaticLimits = hasStaticModel ||
           !isUncatalogedIdOnlyLiveModel && resolveModelLimits(providerId, modelId).known;
           const caps = hasStaticLimits ?
-          { ...getCapabilitiesForModel(providerId, modelId), ...explicitCaps } :
+          { ...getCapabilitiesForModel(providerId, modelId, kind), ...explicitCaps } :
           explicitCaps;
           const presentationModel = customModelById.get(modelId)
             || liveModelById.get(modelId)

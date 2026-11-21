@@ -35,6 +35,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
 | `devin-cli-agentic` | DevinCliAgenticExecutor | `./devin-cli-agentic.js` |
 | `dify` | DifyExecutor | `./dify.js` |
+| `doubao-web` | DoubaoWebExecutor | `./doubao-web.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
 | `gemini-interactions` | GeminiInteractionsExecutor | `./gemini-interactions.js` |
@@ -152,12 +153,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `chatanywhere` |  | apikey | `https://api.chatanywhere.org/v1/chat/completions` |
 | `chatgpt-plan` | openai-responses | oauth | `` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
+| `chatgpt-web-codex` | openai | webCookie | `https://chatgpt.com/backend-api/f/conversation` |
 | `cheaperinference` |  | apikey | `https://api.cheaperinference.com/v1/chat/completions` |
 | `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
 | `chutes` |  |  | `https://llm.chutes.ai/v1/chat/completions` |
 | `clarifai` |  | apikey | `https://api.clarifai.com/v2/ext/openai/v1/chat/completions` |
 | `claude` | claude | oauth | `https://api.anthropic.com/v1/messages` |
+| `claude-web` | openai | webCookie | `https://claude.ai/api` |
 | `cline` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
 | `clinepass` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
 | `cliproxyapi` |  | apikey | `http://127.0.0.1:8317/v1/chat/completions` |
@@ -189,6 +192,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
+| `deepseek-web` | openai | apikey | `https://chat.deepseek.com/api/v0/chat/completion` |
 | `demonroute` | openai | apikey | `https://api.demonroute.com/v1/chat/completions` |
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
@@ -200,6 +204,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `docker-model-runner` | openai | apikey | `http://localhost:12434/v1` |
 | `dothoosh` |  | apikey | `https://gateway.dothoosh.com/v1/chat/completions` |
 | `doubao` |  | apikey | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
+| `doubao-web` | openai | webCookie | `https://www.dola.com/chat/completion` |
 | `duckduckgo-web` | openai | free | `https://duckduckgo.com/duckchat/v1/chat` |
 | `dxnt` |  | apikey | `https://www.dxnt.com/v1/chat/completions` |
 | `edge-tts` |  | freeTier | `` |
@@ -228,6 +233,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
 | `gemini-interactions` | openai | apikey | `https://generativelanguage.googleapis.com/v1beta/interactions` |
+| `gemini-web` | openai | webCookie | `https://gemini.google.com/app` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
@@ -464,6 +470,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `youcom` |  | apikey | `` |
 | `yuanbao-web` | openai | webCookie | `https://yuanbao.tencent.com/api/chat` |
 | `zai` | claude | apikey | `https://api.z.ai/api/anthropic/v1/messages` |
+| `zai-web` | openai | webCookie | `https://chat.z.ai/api/v2/chat/completions` |
 | `zed` |  | oauth | `` |
 | `zenmux` |  | freeTier | `https://zenmux.ai/api/v1/chat/completions` |
 | `zenmux-free` | openai | webCookie | `https://zenmux.ai/api/anthropic/v1/messages` |

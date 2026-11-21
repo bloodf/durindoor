@@ -8,10 +8,6 @@
 // (4265bb2ad5477450a07d3a43ea33a62c6c874878):
 // open-sse/config/providers/registry/gemini/web/index.ts. MIT.
 //
-// Staged module: not in open-sse/providers/registry/index.js yet, and the
-// executor is not in open-sse/executors/index.js. The registration steps are
-// listed at the end of docs/providers/gemini-web.mdx.
-//
 // The Argon model upstream gates behind OMNIROUTE_GEMINI_WEB_ARGON_ENABLED has
 // unvalidated mode-selection selectors, so it is not ported.
 
@@ -52,6 +48,7 @@ export const GEMINI_WEB_MODELS = Object.freeze([
 
 export default {
   id: "gemini-web",
+  priority: 248,
   alias: "gweb",
   uiAlias: "gweb",
   display: {

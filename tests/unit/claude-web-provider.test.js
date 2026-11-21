@@ -1,22 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
-import entry, { claudeWebCookieProfile } from "../../open-sse/providers/private/claude-web.js";
+import entry, { claudeWebCookieProfile } from "../../open-sse/providers/registry/claude-web.js";
 import { normalizeClaudeWebCookie } from "../../open-sse/executors/claude-web.js";
 import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({ ...(await importOriginal()), proxyAwareFetch: fetchMock }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: privateEntry } = await import("../../open-sse/providers/private/claude-web.js");
-  return { ...original, default: [...original.default, privateEntry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { ClaudeWebExecutor } = await import("../../open-sse/executors/claude-web.js");
-  const claude = new ClaudeWebExecutor();
-  return { ...original, getExecutor: (provider) => provider === "claude-web" || provider === "cw" ? claude : original.getExecutor(provider) };
-});
 import { getExecutor } from "../../open-sse/executors/index.js";
 
 const COOKIE_A = "sessionKey=synthetic-session-a";
@@ -26,7 +15,7 @@ const stream = (events) => new Response(events.map((event) => `data: ${JSON.stri
 const orgs = json([{ uuid: "org-synthetic" }]);
 const chatBody = (streaming = false) => ({ model: "claude-sonnet-4-6", stream: streaming, messages: [{ role: "user", content: "hello" }] });
 
-describe("Claude Web private provider profile", () => {
+describe("Claude Web provider profile", () => {
   it("defines the cookie capture contract and model catalog", () => {
     expect(entry).toMatchObject({ id: "claude-web", alias: "cw", category: "webCookie", authType: "cookie" });
     expect(entry.models.map((model) => model.id)).toContain("claude-sonnet-4-6");

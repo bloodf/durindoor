@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import provider, { doubaoWebCookieProfile } from "../../open-sse/providers/private/doubao-web.js";
+import provider, { doubaoWebCookieProfile } from "../../open-sse/providers/registry/doubao-web.js";
 import { DoubaoWebExecutor } from "../../open-sse/executors/doubao-web.js";
 
 const cookieA = "sessionid=synth_a; ttwid=t_a; s_v_web_id=verify_a";

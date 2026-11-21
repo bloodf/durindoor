@@ -9,6 +9,8 @@ import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
+import { validateClaudeWebSession } from "open-sse/executors/claude-web.js";
+import { validateGeminiWebSession } from "open-sse/executors/gemini-web.js";
 import { validateMaxaiSession } from "open-sse/executors/maxai.js";
 import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 
@@ -34,6 +36,11 @@ const SPECIALTY_VALIDATORS = {
   bedrock: validateBedrockSignedProvider,
   dify: validateDifyProvider,
   "chatgpt-web": validateChatgptWebSession,
+  // Same NextAuth session exchange as chatgpt-web; the Codex lanes share its cookie.
+  "chatgpt-web-codex": validateChatgptWebSession,
+  // Read-only GETs: neither creates a conversation or sends the cookie to a chat endpoint.
+  "claude-web": validateClaudeWebSession,
+  "gemini-web": validateGeminiWebSession,
   maxai: ({ apiKey, fetcher, providerSpecificData }) => validateMaxaiSession({ apiKey, providerSpecificData }, fetcher),
   lmarena: ({ apiKey, fetcher, providerSpecificData }) => validateLmarenaSession({ apiKey, providerSpecificData }, fetcher),
 };

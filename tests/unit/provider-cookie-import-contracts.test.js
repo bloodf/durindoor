@@ -14,6 +14,11 @@ const profiles = [
   ["muse-spark-web", "https://www.meta.ai", ["ecto_1_sess"], true],
   ["adapta-web", "https://clerk.agent.adapta.one", ["__client"], false],
   ["yuanbao-web", "https://yuanbao.tencent.com", ["hy_user", "hy_token"], true],
+  ["chatgpt-web-codex", "https://chatgpt.com", [session], true, [`${session}.`]],
+  ["claude-web", "https://claude.ai", ["sessionKey"], true],
+  ["gemini-web", "https://gemini.google.com", ["__Secure-1PSID", "__Secure-1PSIDTS"], true],
+  ["doubao-web", "https://www.dola.com", ["sessionid", "s_v_web_id"], true],
+  ["zai-web", "https://chat.z.ai", ["token"], true],
 ];
 const manual = [
   "copilot-web", "copilot-m365-web", "huggingchat", "kimi-web",

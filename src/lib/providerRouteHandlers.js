@@ -1,4 +1,5 @@
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
+import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -81,7 +82,7 @@ function sanitizeProviderConnection(connection) {
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
-  if (provider === "t3-web" || provider === "adapta-web") return true; // Curated local catalog.
+  if (LOCAL_CATALOG_WEB_PROVIDERS.has(provider)) return true; // Curated local catalog.
   if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {

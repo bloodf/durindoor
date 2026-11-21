@@ -386,6 +386,23 @@ test("embedded navigation scrolls its links while brand and settings stay visibl
   expect(spacing.buttonGap).toBeGreaterThanOrEqual(27);
 });
 
+test("docs landing heading stays visible at desktop and phone widths", async ({ page }) => {
+  for (const width of [1280, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/docs", { waitUntil: "domcontentloaded" });
+    const heading = page.getByRole("heading", { name: "DurinDoor documentation", exact: true });
+    await expect(heading).toBeVisible();
+    const box = await heading.boundingBox();
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
+    const quickStart = page.getByRole("link", { name: "Set up your gateway" });
+    await quickStart.focus();
+    await expect(quickStart).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/docs\/getting-started$/);
+  }
+});
+
 test("docs onboarding links, API tabs, and reading themes work", async ({
   page,
 }) => {

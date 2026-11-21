@@ -51,3 +51,5 @@ If the dashboard rejects the pairing, or anything fails after the request went o
 ## Tests
 
 `tests/unit/provider-cookie-capture-extension.test.js`.
+
+If cookie access is revoked after Review or a cookie read fails, Send reports permission denial without sending cookies. You can retry from the review screen or cancel to discard the pairing.

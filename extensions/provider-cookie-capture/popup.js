@@ -22,10 +22,12 @@ export function mountPopup(doc, { chrome, fetch, now = Date.now }) {
     status.className = isError ? "error" : "";
   };
   const reset = () => {
+    if (plan) plan.token = "";
     plan = null;
     controller = null;
     input.value = "";
     confirm.checked = false;
+    confirm.disabled = false;
     send.disabled = true;
     stepReview.hidden = true;
     stepInput.hidden = false;
@@ -65,6 +67,7 @@ export function mountPopup(doc, { chrome, fetch, now = Date.now }) {
     const result = await runCapture({
       chrome, fetch, plan: current, confirmed: confirmationFor(current), signal: controller.signal, now,
     });
+    if (plan !== current) return;
     confirm.disabled = false;
     if (result.ok) {
       reset();

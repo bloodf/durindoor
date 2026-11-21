@@ -21,10 +21,12 @@
  *                        (169.254.0.0/16) blocked; LAN/loopback allowed.
  *   - "public-only"    → every private/LAN host blocked (RFC1918, loopback,
  *                        100.64/10, ULA, IPv6 link-local fe80::/10, plus the
- *                        special-use 192.0.0.0/24, multicast and reserved
- *                        224.0.0.0/4 and 240.0.0.0/4 ranges, including their
- *                        IPv4-mapped and NAT64 spellings); metadata is a
- *                        subset of private so also blocked.
+ *                        special-use 192.0.0.0/24 — except the two globally
+ *                        reachable anycast assignments 192.0.0.9 and
+ *                        192.0.0.10 — multicast and reserved 224.0.0.0/4 and
+ *                        240.0.0.0/4 ranges, including their IPv4-mapped and
+ *                        NAT64 spellings); metadata is a subset of private so
+ *                        also blocked.
  *
  * Upstream #3313 closes the DNS-rebinding ceiling: active guard modes install
  * an Undici dispatcher whose lookup validates every answer used by the socket.
@@ -116,14 +118,24 @@ export function isPrivateHost(hostname) {
   }
 
   if (isIP(normalized) === 4) {
-    const [a, b, c] = normalized.split(".").map((s) => parseInt(s, 10));
+    const [a, b, c, d] = normalized.split(".").map((s) => parseInt(s, 10));
     if (a === 0 || a === 10 || a === 127) return true;
     if (a === 169 && b === 254) return true;
     if (a === 192 && b === 168) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 100 && b >= 64 && b <= 127) return true;
-    // 192.0.0.0/24 IETF protocol assignments (special-use, never a public host).
-    if (a === 192 && b === 0 && c === 0) return true;
+    // 192.0.0.0/24 IETF protocol assignments (special-use). The block itself is
+    // "not useable unless by virtue of a more specific reservation" (IANA
+    // footnote), and two /32 reservations inside it are real anycast
+    // destinations that IANA marks Globally Reachable = True:
+    //   192.0.0.9  — Port Control Protocol Anycast (RFC 7723)
+    //   192.0.0.10 — Traversal Using Relays around NAT Anycast (RFC 8155)
+    // Both are protocol-independent routable anycast addresses, so they stay
+    // public. Every other address in the /24 (the IPv4 Service Continuity
+    // Prefix 192.0.0.0/29, the 192.0.0.8 dummy address, the NAT64/DNS64
+    // discovery addresses 192.0.0.170/171 and everything unassigned) keeps the
+    // non-public classification.
+    if (a === 192 && b === 0 && c === 0 && d !== 9 && d !== 10) return true;
     // 224.0.0.0/4 multicast plus 240.0.0.0/4 reserved, whose top address is the
     // limited broadcast 255.255.255.255. 198.18.0.0/15 (benchmarking) stays
     // allowed for fake-IP proxy setups.

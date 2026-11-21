@@ -14,6 +14,9 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
+import { resolveInlineThinkingFormat } from "../../handlers/chatCore/inlineThinking.js";
+import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
+import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { normalizeArrayContentDelta } from "../../utils/arrayContentDelta.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
@@ -92,7 +95,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (chunk.usage && isObject(chunk.usage)) {
     state.usage = { ...(state.usage || {}), ...chunk.usage };
   }
-  const responseUsage = completedUsage(chunk.usage);
+  const responseUsage = chunk.usage ? completedUsage(state.usage) : null;
   if (responseUsage) state.responsesUsage = responseUsage;
 
   if (!chunk.choices?.length) {
@@ -156,6 +159,25 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     normalizeArrayContentDelta(delta);
   }
 
+  // Only the selected transport/model contract permits interpreting textual tags.
+  // Keep the requested model in state: a chunk's model is upstream-controlled.
+  if (resolveInlineThinkingFormat(state.provider, state.requestedModel, FORMATS.OPENAI) === INLINE_THINKING_FORMATS.THINK_TAGS) {
+    const extractor = state.inlineResponsesExtractor ||= createThinkTagStreamExtractor();
+    if (delta.reasoning_content != null && !isString(delta.reasoning_content)) {
+      const pending = extractor.failOpen();
+      if (pending.content && isString(delta.content)) delta.content = pending.content + delta.content;
+    } else if (isString(delta.content)) {
+      const result = extractor.process(delta.content);
+      delta.content = result.content;
+      if (result.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + result.reasoning;
+    }
+    if (choice.finish_reason) {
+      const pending = extractor.flush();
+      delta.content = (delta.content || "") + (pending.content || "");
+      if (pending.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + pending.reasoning;
+    }
+  }
+
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
   const reasoningText = extractReasoningText(delta);
   if (reasoningText && !isInternalReasoningPlaceholder(reasoningText)) {
@@ -174,27 +196,6 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     // inject literal tag markers into content.
     if (state.reasoningId && !state.reasoningDone && !state.inThinking) {
       closeReasoning(state, emit);
-    }
-
-    if (content.includes("<think>")) {
-      state.inThinking = true;
-      content = content.replace("<think>", "");
-      startReasoning(state, emit, idx);
-    }
-
-    if (content.includes("</think>")) {
-      const parts = content.split("</think>");
-      const thinkPart = parts[0];
-      const textPart = parts.slice(1).join("</think>");
-      if (thinkPart) emitReasoningDelta(state, emit, thinkPart);
-      closeReasoning(state, emit);
-      state.inThinking = false;
-      content = textPart;
-    }
-
-    if (state.inThinking && content) {
-      emitReasoningDelta(state, emit, content);
-      content = "";
     }
 
     if (content) {
@@ -878,6 +879,16 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const doneItem = data.item;
     const doneKey = doneItem?.id || data.item_id || "";
+    // A done-only item still needs the same header and identity as an added item.
+    const anonymousKnown = !doneKey && !doneItem.call_id && state.currentToolCallId &&
+      state.respToolChatIndex?.has(state.currentToolCallId);
+    if (!anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
+        !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
+      const item = { ...doneItem, call_id: doneItem.call_id || fallbackToolCallId() };
+      const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", item }, state);
+      const args = openaiResponsesToOpenAIResponse({ type: eventType, item }, state);
+      return [header, ...(Array.isArray(args) ? args : [args])].filter(Boolean);
+    }
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
     (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
     Math.max(0, (state.toolCallIndex || 1) - 1);

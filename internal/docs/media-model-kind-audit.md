@@ -67,7 +67,10 @@ fixture may only claim `verifiedLive: true` when it carries `liveEvidence`.
 | `elevenlabs.tts.json` | tts | `text-to-speech` URL with `output_format`, `xi-api-key` header, body, audio response | Voice and model availability, upstream error bodies |
 | `deepgram.stt.json` | stt | `listen` URL with model and formatting query, `Token` header, transcript response | Diarization, utterances and profanity filters |
 
-The fixtures cover image, embedding, speech and transcription. Video, music,
-search and fetch have no per-vendor fixture yet, and the full browser matrix,
-the remaining #1136 catalog, picker and endpoint-pair evidence, and every live
+The fixtures cover image, embedding, speech, transcription, synchronous video
+(`veoaifree-web.video-sync.json`) and asynchronous video
+(`minimax.video-async.json`). The video fixtures are explicitly synthetic and
+have `verifiedLive: false`; their live gaps identify the unverified upstream
+behavior. Music, search and fetch have no per-vendor fixture yet. The full
+browser matrix, remaining #1136 catalog and picker evidence, and all live
 provider verification stay open.

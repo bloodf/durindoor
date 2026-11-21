@@ -1,0 +1,17 @@
+{
+  "synthetic": true,
+  "vendor": "veoaifree-web",
+  "kind": "video",
+  "transport": "synchronous",
+  "model": "veo",
+  "verifiedLive": false,
+  "source": "https://veoaifree.com/",
+  "liveGap": "Synthetic fixture only. No live verification; the web form nonce, polling cadence, response variations, and current service availability remain unverified.",
+  "request": {
+    "method": "POST",
+    "url": "https://veoaifree.com/wp-admin/admin-ajax.php",
+    "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+    "body": { "action": "veo_video_generator", "prompt": "A lantern over a lake", "totalVariations": "1", "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE", "actionType": "full-video-generate" }
+  },
+  "response": { "status": 200, "body": { "object": "video.generation", "data": [{ "url": "https://cdn.example.invalid/fixture.mp4", "type": "video" }], "status": "completed" } }
+}

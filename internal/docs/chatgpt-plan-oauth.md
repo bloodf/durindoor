@@ -58,3 +58,54 @@ and timing metadata. The service requires a shared transactional adapter and
 follows DurinDoor's `claimProviderConnectionPing` writer-lock pattern in
 `connectionsRepo.js`. Credential comparison and a random revision fence
 stale writes, including writes after sign-out or reauthorization.
+
+## Owner enrollment into a gateway connection
+
+This is an explicitly enabled private local operation. Set
+`DURINDOOR_CHATGPT_PLAN_ENROLLMENT=1` on the owner-controlled runtime and
+restart it. The endpoint accepts only loopback peers proven by the local server,
+a valid dashboard session or machine-bound CLI token, and a same-origin request.
+An open dashboard or inference API key alone is insufficient. Disable the flag
+again after enrollment. The production provider registry is intentionally not
+registered by this change; this prepares connections for the registration batch.
+
+From an authenticated local dashboard session, POST JSON to
+`/api/oauth/chatgpt-plan/enrollment`. Use `{"action":"create","name":"Owner plan"}`
+to create an inactive OAuth connection, then `{"action":"start","connectionId":"<id>"}`.
+Open the returned private `authorizationUrl` on that same machine; do not log or
+share it. Poll with `{"action":"status","attemptId":"<id>"}`. A completed
+attempt binds the verified private selection to that connection; `failed` requires
+a fresh attempt. Status is consumed when terminal. To stop a pending attempt use
+`{"action":"cancel","attemptId":"<id>"}`. To sign in again, start the same
+connection: its saved private selection is used automatically. To sign out use
+`{"action":"signOut","connectionId":"<id>"}`; `"localOnly":true` explicitly
+removes local credentials without confirmed remote revocation. The selection
+remains for later sign-in. Account references are never supplied by the caller.
+For example, from the authenticated local dashboard's same-origin JavaScript
+console, the following creates the connection without exposing the session cookie:
+
+```js
+const post = async (body) => (await fetch("/api/oauth/chatgpt-plan/enrollment", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+})).json();
+const { connectionId } = await post({ action: "create", name: "Owner plan" });
+const { attemptId, authorizationUrl } = await post({ action: "start", connectionId });
+// Open authorizationUrl privately, then poll:
+await post({ action: "status", attemptId });
+```
+
+All requests must originate on the machine running the loopback listener. The
+endpoint is not a hosted subscription gateway and must not be exposed through a
+remote proxy or used to enroll another person's account.
+
+For an owner-operated VM, follow the private-service handoff above: initialize
+its separate persistent data directory and host ID, detach on the source, send
+the transfer record over an authenticated secure channel, and bind it through
+`bindFromOwnerTransfer` in the destination's trusted runtime. Bind the resulting
+verified selection to the destination's own OAuth connection using the repository
+compare-and-set and its current connection snapshot. Never send transfer records,
+credentials, or authorization URLs through the public connection API. The source
+session is cleared before transfer; destroy temporary copies and recover from a
+lost transfer by signing in again. No shared refresh token may remain active on
+both machines.

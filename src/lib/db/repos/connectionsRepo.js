@@ -238,6 +238,27 @@ export async function compareAndSwapPrivateChatGptPlanAccount(id, expected, next
   return applied;
 }
 
+// The verified selection can only be installed by the private enrollment flow.
+// Read and compare it under the same writer lock used by connection updates.
+export async function compareAndSwapChatGptPlanSelection(id, expected, selection, shouldCommit = () => true) {
+  const db = await getChatGptPlanAdapter();
+  let applied = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Connection binding requires an initialized schema");
+    const current = rowToConn(db.get("SELECT * FROM providerConnections WHERE id = ?", [id]));
+    if (!current || current.provider !== "chatgpt-plan" || current.authType !== "oauth" ||
+        JSON.stringify(current) !== expected.snapshot ||
+        JSON.stringify(current.providerSpecificData?.chatgptPlanAccount ?? null) !== JSON.stringify(expected.selection ?? null) ||
+        !shouldCommit()) return;
+    upsert(db, { ...current, updatedAt: new Date().toISOString(), providerSpecificData: {
+      ...current.providerSpecificData, chatgptPlanAccount: selection, chatgptPlanBindingRevision: uuidv4(),
+    } });
+    applied = true;
+  });
+  return applied;
+}
+
 /**
  * Derive a human-readable connection name from provider identity data.
  *

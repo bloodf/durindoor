@@ -90,6 +90,12 @@ const DEFAULT_SETTINGS = {
    */
   modelAutoSyncIntervalHours: 24,
   modelAutoSyncProviders: {},
+  /**
+   * Opt-in: after a successful, non-empty model sync of a provider, move combo
+   * steps whose model left that provider's live catalog to the combo's
+   * prunedSteps (restorable from the combo editor). Off by default.
+   */
+  autoPruneStaleComboSteps: false,
   observabilityMaxRecords: 1000,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,

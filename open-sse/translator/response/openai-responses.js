@@ -714,7 +714,7 @@ function computeFinishReason(state) {
  * Translate OpenAI Responses API chunk to OpenAI Chat Completions format
  * This is for when Codex returns data and we need to send it to an OpenAI-compatible client
  */
-export function openaiResponsesToOpenAIResponse(chunk, state) {
+export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot = false) {
   if (!chunk) {
     // Flush: send final chunk with finish_reason
     if (state.finishReasonSent || !state.started) return null;
@@ -882,7 +882,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const doneKey = doneItem?.id || data.item_id || "";
     // A done-only item still needs the same header and identity as an added item.
     const outputKnown = Number.isInteger(data.output_index) && state.respToolOutputIndex?.has(data.output_index);
-    const anonymousKnown = !doneKey && !doneItem.call_id && state.currentToolCallId &&
+    // Snapshot positions identify distinct items; ordinary anonymous done events
+    // may still correlate with the most recently started call.
+    const anonymousKnown = !(terminalSnapshot && isString(doneItem.name) && doneItem.name) &&
+      !doneKey && !doneItem.call_id && state.currentToolCallId &&
       state.respToolChatIndex?.has(state.currentToolCallId);
     if (!outputKnown && !anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
         !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
@@ -944,7 +947,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         (data.response?.status == null || data.response.status === "completed") && Array.isArray(data.response?.output)) {
       for (const [output_index, item] of data.response.output.entries()) {
         if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL) continue;
-        const result = openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state);
+        const result = openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state, true);
         if (result) toolSnapshots.push(...(Array.isArray(result) ? result : [result]));
       }
     }

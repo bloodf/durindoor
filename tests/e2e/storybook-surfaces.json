@@ -24749,7 +24749,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "1f5be6e3ab8c95f8ebc567da4abe33ecfdc0374eed7027b49df869db7c9b0252",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26091,7 +26091,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26104,7 +26104,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26117,7 +26117,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26130,7 +26130,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -26168,7 +26168,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26191,7 +26191,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26213,7 +26213,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26235,7 +26235,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26407,7 +26407,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26439,7 +26439,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -26554,7 +26554,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26642,7 +26642,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7d37ea983f397bfa425df78c4d4e665d0fe58d227e66dc50597ec1194f0b5dac",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "54d16525b9b209402b5d5a3e7e5a928d89387d2313538863b055cfddcfbd5234",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -48539,7 +48539,7 @@
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
       "sourcePath": "src/shared/components/ModelSelectModal.js",
       "symbol": "ModelSelectModal",
-      "sourceSha256": "33b7611acb085efd6cb74295c6d874377f5765d5f76906a9c67f24dba4435cca",
+      "sourceSha256": "e0e1d03ca446cf7c87427fe758067f46d64e0a352ddc79194c30db8a7dcb75ec",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48564,8 +48564,8 @@
             "search"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "33b7611acb085efd6cb74295c6d874377f5765d5f76906a9c67f24dba4435cca",
-            "src/shared/components/ModelSelectModal.stories.jsx": "ee1759ed9c826ef61ca3739f35d2ea0f55bee8919034774821caa65a2d3fcd72"
+            "src/shared/components/ModelSelectModal.js": "e0e1d03ca446cf7c87427fe758067f46d64e0a352ddc79194c30db8a7dcb75ec",
+            "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "OpenLLM opens Select Model, waits for Combos, then types into rendered Search models textbox.",
           "expectedVisibleText": "Combos"
@@ -48579,8 +48579,8 @@
             "selected-model"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "33b7611acb085efd6cb74295c6d874377f5765d5f76906a9c67f24dba4435cca",
-            "src/shared/components/ModelSelectModal.stories.jsx": "ee1759ed9c826ef61ca3739f35d2ea0f55bee8919034774821caa65a2d3fcd72"
+            "src/shared/components/ModelSelectModal.js": "e0e1d03ca446cf7c87427fe758067f46d64e0a352ddc79194c30db8a7dcb75ec",
+            "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithSelection supplies selected and added Claude Sonnet model; play asserts rendered pressed chip.",
           "expectedVisibleText": "Claude Sonnet 4.5"
@@ -48594,8 +48594,8 @@
             "selected-combo"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "33b7611acb085efd6cb74295c6d874377f5765d5f76906a9c67f24dba4435cca",
-            "src/shared/components/ModelSelectModal.stories.jsx": "ee1759ed9c826ef61ca3739f35d2ea0f55bee8919034774821caa65a2d3fcd72"
+            "src/shared/components/ModelSelectModal.js": "e0e1d03ca446cf7c87427fe758067f46d64e0a352ddc79194c30db8a7dcb75ec",
+            "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithCombosAndSelection supplies selected fast combo; play asserts rendered pressed fast chip.",
           "expectedVisibleText": "fast"
@@ -48609,8 +48609,8 @@
             "embedding-kind"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "33b7611acb085efd6cb74295c6d874377f5765d5f76906a9c67f24dba4435cca",
-            "src/shared/components/ModelSelectModal.stories.jsx": "ee1759ed9c826ef61ca3739f35d2ea0f55bee8919034774821caa65a2d3fcd72"
+            "src/shared/components/ModelSelectModal.js": "e0e1d03ca446cf7c87427fe758067f46d64e0a352ddc79194c30db8a7dcb75ec",
+            "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "EmbeddingKind opens Select Embedding Model with kindFilter=embedding; play verifies Combos is absent.",
           "expectedVisibleText": "Click to add, click again to remove. Changes are saved automatically."
@@ -48624,8 +48624,8 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "33b7611acb085efd6cb74295c6d874377f5765d5f76906a9c67f24dba4435cca",
-            "src/shared/components/ModelSelectModal.stories.jsx": "ee1759ed9c826ef61ca3739f35d2ea0f55bee8919034774821caa65a2d3fcd72"
+            "src/shared/components/ModelSelectModal.js": "e0e1d03ca446cf7c87427fe758067f46d64e0a352ddc79194c30db8a7dcb75ec",
+            "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false; play asserts Select Model dialog absent.",
           "expectedAbsentRole": {
@@ -81479,6 +81479,16 @@
       }
     },
     {
+      "storyId": "production-shared-config-modelselectmodal--owner-plan-catalog",
+      "sourcePath": "./src/shared/components/ModelSelectModal.stories.jsx",
+      "sourceSha256": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
       "storyId": "production-shared-provider-providerinfocard--no-config-returns-null",
       "sourcePath": "./src/shared/components/ProviderInfoCard.stories.jsx",
       "sourceSha256": "8594f11a57332f733f6b55536c9777158a7aef4b6d38e7b57abd537bbec6ef05",
@@ -81838,6 +81848,16 @@
       "storyId": "production-profile-profilepage--settings-loading",
       "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
       "sourceSha256": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--mnn-ai-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92515,11 +92535,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "69a0588e8a7656e8d9d35c280d84e67589a69a09231203c3e4f82a2e1ad92927",
-    "sourceCensusSha256": "89c089853b3bb1553a474f4559852d3ca095c03a653b65cae32ca74d232db064",
+    "builtIndexSha256": "a02a814dca83b8de02bf695bc0efead1c66e9e1b33f171600fb047e3dddc4706",
+    "sourceCensusSha256": "0e216beb16a7dfc8c72650204463201b475a87d70ddf08d373c38149ae2b3844",
     "pendingRows": 344,
     "retainedApprovedRows": 270,
-    "pendingReferences": 1275,
+    "pendingReferences": 1277,
     "runtimeStatus": "pending"
   }
 }

@@ -1355,7 +1355,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   if (kindFilter.includes(LLM_KIND) && process.env.DURINDOOR_CHATGPT_PLAN_ENROLLMENT === "1" &&
       PROVIDERS["chatgpt-plan"] && options.verifiedKey?.isActive === true &&
       Array.isArray(options.allowedConnectionIds) && options.allowedConnectionIds.length) {
-    const conn = connections.find((c) => c.provider === "chatgpt-plan" && options.allowedConnectionIds.includes(c.id));
+    const eligiblePlanConnections = connections.filter((c) => c.provider === "chatgpt-plan" && c.isActive === true && c.authType === "oauth" && options.allowedConnectionIds.includes(c.id));
+    const conn = eligiblePlanConnections.length === 1 ? eligiblePlanConnections[0] : null;
     if (conn) {
       try {
         const { createChatGptPlanAccounts } = await import("@/lib/oauth/chatgptPlanAccounts.js");

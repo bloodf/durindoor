@@ -149,7 +149,7 @@ The shared endpoint provider-health table has a named keyboard-focusable horizon
 
 ## Docker website verification
 
-From the repository root, run `pnpm -C website run verify:docker` with Docker
+From the repository root, run `sh website/scripts/verify-docker.sh` with Docker
 available. The image installs the locked website dependencies and Chromium, then
 builds the website. A temporary container runs the production server and all
 existing Playwright suites, plus a strict sweep of every sitemap page at 1280px

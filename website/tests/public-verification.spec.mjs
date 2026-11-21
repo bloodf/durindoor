@@ -5,7 +5,6 @@ import { expect, test } from "@playwright/test";
 
 // The sitemap is the website's authoritative inventory of indexable public pages.
 test("all public pages have screenshots and no console or axe violations", async ({ page, request }) => {
-  test.skip(!process.env.WEBSITE_VERIFY_SCREENSHOTS, "Docker verification only");
   test.setTimeout(10 * 60 * 1000);
   const response = await request.get("/sitemap.xml");
   expect(response.status()).toBe(200);
@@ -14,7 +13,7 @@ test("all public pages have screenshots and no console or axe violations", async
   expect(routes).toContain("/");
   expect(routes).toContain("/docs");
   expect(new Set(routes).size).toBe(routes.length);
-  const output = process.env.WEBSITE_VERIFY_SCREENSHOTS;
+  const output = process.env.WEBSITE_VERIFY_SCREENSHOTS || "/tmp/durindoor-public-verification";
   mkdirSync(output, { recursive: true });
   const failures = [];
   for (const width of [1280, 360]) {

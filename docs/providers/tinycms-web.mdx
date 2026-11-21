@@ -1,0 +1,49 @@
+# TinyCMS Web
+
+TinyCMS identifies a device by its UUID rather than a browser cookie. DurinDoor stores that UUID as the connection credential and, on every request, performs the same signed-challenge handshake the TinyCMS web client does.
+
+## Setup
+
+1. Open [site.tinycms.xyz](https://site.tinycms.xyz) in a browser.
+2. In the developer tools, open Application, then Local Storage, then `https://site.tinycms.xyz`, and copy the value of `app-config-uuid`. It starts with `R`.
+3. Add a **TinyCMS Web** connection and paste the value as the credential.
+4. Use models as `tcw/<model>`, for example `tcw/gpt-5.5` or `tcw/claude-sonnet-5`, on `/v1/chat/completions` or `/v1/messages`.
+
+## Credential capture
+
+There is no session cookie to capture. The cookie capture extension, a pasted Cookie header, a cURL command, or a HAR contains nothing DurinDoor can use for this provider; only the `app-config-uuid` localStorage value counts. The import profile exported from `open-sse/providers/private/tinycms-web.js` (`TINYCMS_WEB_CREDENTIAL_PROFILE`) lists the origin, the two domains involved (`site.tinycms.xyz`, `gov.freegpt.win`), the localStorage key, the credential pattern, and the validation probe (`GET https://gov.freegpt.win/api/challenge` with the `uuid` header; a live device gets HTTP 200 and a challenge).
+
+## How a request works
+
+1. DurinDoor looks up the egress public IP (cached for five minutes per proxy setting).
+2. It requests a challenge from `/api/challenge` with the `uuid` and `x-origin` headers.
+3. The vendored WASM signer produces the signature and canvas fingerprint and solves the proof of work for the challenge. The challenge difficulty is the number of leading zero hex digits the hash needs. The solver runs synchronously, so a difficulty above 5 is refused with a 502 rather than stalling the gateway.
+4. The chat request goes to `gov.freegpt.win/api/openai/oneapi/v1/chat/completions` with the `x-secure-*` headers. The upstream speaks the OpenAI chat format, JSON or server-sent events, so a good response is passed through unchanged.
+
+## Errors and limits
+
+| Upstream | DurinDoor |
+| --- | --- |
+| 401 or 403 from the challenge or chat endpoint | 401 `invalid_session`: copy `app-config-uuid` again |
+| 429 | 429 `quota_exceeded`, with `Retry-After` when sent |
+| Malformed challenge, difficulty above 5, 5xx, network failure | 502 without upstream internals |
+
+Free tier and subscription availability, quotas, and rate limits are decided by TinyCMS and are not verified by DurinDoor. The catalog is the 22 model IDs in the pinned upstream provider (Claude, GPT, Gemini, Grok, DeepSeek, Kimi, GLM, Qwen, Mimo); there is no live model list. The server may rotate the device identity, the signing scheme, or the challenge version at any time, which shows up as 401 or 502 until the port is updated.
+
+## Sources
+
+- [OmniRoute TinyCMS provider](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/tinycms/index.ts) and [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/tinycms.ts)
+- Vendored, MIT licensed, from the same pin: [tinycmsSigner.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/tinycmsSigner.ts) (WASM binary and wasm-bindgen glue) and [tinycmsDomMocks.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/tinycmsDomMocks.ts), now under `open-sse/providers/private/tinycms-web/`. The stub window, document, and canvas objects are shared singletons here, because fresh stubs on a later call make the fingerprint report `fp_error`.
+
+<!-- Registration steps:
+1. Registry promotion: move open-sse/providers/private/tinycms-web.js to open-sse/providers/registry/tinycms-web.js (keep the TINYCMS_WEB_CREDENTIAL_PROFILE export), then run pnpm run gen:registry-index and pnpm run gen:agent-index.
+2. open-sse/executors/index.js: import TinyCmsExecutor from ./tinycms-web.js and map "tinycms-web" (alias "tcw") to it.
+3. Credential validation: call validateTinyCmsSession({ apiKey, proxyOptions }) from open-sse/executors/tinycms-web.js in src/app/api/providers/validate/route.js for provider "tinycms-web" (valid true means HTTP 200 plus a challenge).
+4. Extension: extensions/provider-cookie-capture/providers.js entry reading localStorage "app-config-uuid" (no cookies), and manifest.json host permissions for https://site.tinycms.xyz/* and https://gov.freegpt.win/*.
+5. Dashboard import: add tinycms-web to the dashboard provider import UI as a paste-the-UUID credential (authType apikey), using TINYCMS_WEB_CREDENTIAL_PROFILE.credentialPattern for client-side checks.
+6. ProviderIcon.js and ProviderLogo.jsx: add the TinyCMS Web logo (fallback textIcon "TC", color #5B5BD6).
+7. Catalog: docs/providers/catalog.mdx row, docs/providers/index.mdx and docs/providers/meta.json navigation entries.
+8. modelsConfig.js: static catalog entry (no live discovery endpoint).
+9. Stories: page.stories.jsx and tests/e2e/storybook-surfaces.json entries for the provider page.
+10. Packaging: confirm open-sse/providers/private/tinycms-web/signer.js (about 78 KB, WASM inlined as base64) is included in the published package and bundle.
+-->

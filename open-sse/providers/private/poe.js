@@ -1,0 +1,35 @@
+// Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
+// open-sse/config/providers/registry/poe/index.ts.
+export default {
+  id: "poe",
+  alias: "poe",
+  display: {
+    name: "Poe",
+    icon: "chat",
+    color: "#F97316",
+    textIcon: "PO",
+    website: "https://creator.poe.com/api-reference",
+    notice: { text: "Use a Poe API key. Available bots and points depend on your Poe account.", apiKeyUrl: "https://poe.com/api/keys" },
+  },
+  category: "apikey",
+  authType: "apikey",
+  transport: {
+    baseUrl: "https://api.poe.com/v1/chat/completions",
+    responsesBaseUrl: "https://api.poe.com/v1/responses",
+    messagesUrl: "https://api.poe.com/v1/messages",
+    validateUrl: "https://api.poe.com/v1/models",
+    modelsUrl: "https://api.poe.com/v1/models",
+    format: "openai",
+    authType: "apikey",
+    authHeader: "bearer",
+    executor: "poe",
+  },
+  serviceKinds: ["llm"],
+  models: [
+    { id: "gpt-5.2", name: "GPT-5.2" },
+    { id: "claude-opus-4.8", name: "Claude Opus 4.8", targetFormat: "claude", supportsReasoning: true },
+    { id: "gemini-3.0-pro", name: "Gemini 3.0 Pro" },
+  ],
+  passthroughModels: true,
+  modelsFetcher: { url: "https://api.poe.com/v1/models", type: "openai" },
+};

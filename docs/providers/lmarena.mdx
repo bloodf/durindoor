@@ -1,0 +1,23 @@
+# Arena (LMArena)
+
+Arena (formerly LMArena) exposes a browser-session chat flow, not a public API-key API. DurinDoor follows OmniRoute's pinned provider: `POST https://arena.ai/nextjs-api/stream/create-evaluation` with the `arena-auth-prod-v1` Supabase session cookie. Numbered cookie chunks (`arena-auth-prod-v1.0`, `.1`, …) are reconstructed in order.
+
+## Setup and session capture
+
+Sign in at [Arena](https://arena.ai/) and import the `arena-auth-prod-v1` cookie through the extension, or paste the browser's Cookie header, cURL command, or HAR. Keep every numbered cookie chunk from the same session. The integration uses the pinned Direct-chat model allowlist; Arena's available models and access can change. If the browser flow requires reCAPTCHA, supply a browser-issued token through connection-specific provider data.
+
+Arena has no stable public model-list or session-validation API. The endpoint accepts no unauthenticated GET (the API host returned HTTP 405 during the one unauthenticated host check); connection validation treats this method response as route reachability, while chat is the definitive session check. A 401/403 indicates an expired or rejected session. Arena may apply Cloudflare/browser checks and rate limits.
+
+## Limits
+
+This is a web endpoint and can change without notice. Model IDs and routes are pinned to a catalog snapshot. Tool calling, images, usage reporting, and model availability are not guaranteed by Arena's web interface. Provider-side quotas and access restrictions remain controlled by Arena.
+
+## Sources
+
+- [OmniRoute pinned LMArena registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/lmarena/index.ts)
+- [OmniRoute pinned LMArena executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/lmarena.ts)
+- [Arena](https://arena.ai/)
+
+## Registration steps
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

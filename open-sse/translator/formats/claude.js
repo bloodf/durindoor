@@ -1029,7 +1029,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   if (body.tools && Array.isArray(body.tools)) {
     const supportedToolTypes = PROVIDERS[provider]?.quirks?.claudeSupportedToolTypes;
     const hasToolTypeWhitelist = Array.isArray(supportedToolTypes);
-    const nativeClaudeRoute = provider === "claude" || provider?.startsWith("anthropic-compatible");
+    const nativeClaudeRoute = provider === "claude" || provider === "anthropic" || provider?.startsWith("anthropic-compatible");
     if (!nativeClaudeRoute) {
       body.tools = body.tools.
       filter((tool) => {

@@ -6,6 +6,7 @@ import ModelCatalogProvenance from "./ModelCatalogProvenance";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { isBoolean, isRecord } from "@/shared/utils/typeChecks.js";
 import "@/shared/ui/v5/providers/providers.css";
 
 /**
@@ -178,7 +179,7 @@ function V5ModelAutoSyncPanel({ providerId, hasConnection, onModelsChange }) {
       if (!res.ok) throw new Error("Model sync status is unavailable.");
       const data = await res.json();
       const next = data?.providers?.[providerId];
-      if (!next || typeof next.eligible !== "boolean" || typeof next.enabled !== "boolean") {
+      if (!isRecord(next) || !isBoolean(next.eligible) || !isBoolean(next.enabled)) {
         throw new Error("Model sync status is unavailable.");
       }
       if (signal?.aborted || generation !== operation.current) return;

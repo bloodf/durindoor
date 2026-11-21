@@ -4,7 +4,11 @@ import { errorResponse } from "../utils/error.js";
 const BASE = "https://www.dola.com";
 const CHAT = `${BASE}/chat/completion`;
 const cookieValue = (cookie, name) => new RegExp(`(?:^|;\\s*)${name}=([^;]*)`).exec(cookie)?.[1] || "";
-const textOf = (value) => Array.isArray(value) ? value.map((x) => String(x?.text || "")).join("\n") : value == null ? "" : String(value);
+// The chat route supplies OpenAI content as text or a list of text parts.
+const textOf = (value) => {
+  if (Array.isArray(value)) return value.map((part) => `${part?.text || ""}`).join("\n");
+  return value == null ? "" : `${value}`;
+};
 const promptOf = (messages) => (messages || []).map((m) => `${m.role}: ${textOf(m.content)}`).join("\n\n");
 
 export class DoubaoWebExecutor extends BaseExecutor {

@@ -73,6 +73,22 @@ describe("combo non-JSON provider error classification (#943)", () => {
     expect(await jsonOnly.response.text()).toContain(message);
   });
 
+  it.each([
+    ["plain text", () => plainText("unsupported parameter: foo", 400)],
+    ["JSON", () => jsonBody({ error: { message: "unsupported parameter: foo" } }, 400)],
+  ])("reads one clone for a request-scoped %s error", async (_format, makeResponse) => {
+    const original = makeResponse();
+    const clone = original.clone();
+    const cloneSpy = vi.spyOn(original, "clone").mockReturnValue(clone);
+    const textSpy = vi.spyOn(clone, "text");
+    const { response } = await run([{ response: () => original }]);
+
+    expect(cloneSpy).toHaveBeenCalledTimes(1);
+    expect(textSpy).toHaveBeenCalledTimes(1);
+    expect(response).toBe(original);
+    expect(await response.text()).toContain("unsupported parameter: foo");
+  });
+
   it("keeps the plain-text provider reason in the final error message", async () => {
     const { response } = await run([
       { response: () => plainText("quota exceeded for this account", 429) },

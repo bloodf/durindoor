@@ -1,7 +1,7 @@
 import { FORMATS } from "../translator/formats.js";
-import { GEMINI_ERROR_FINISH_REASONS } from "../translator/schema/finishReasons.js";
+import { CLAUDE_STOP, GEMINI_ERROR_FINISH_REASONS, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
 import { buildAbortedResponsesTerminalBytes } from "./responsesStreamHelpers.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 const RESPONSES_SUCCESS_EVENTS = new Set([
 "response.completed",
@@ -292,6 +292,16 @@ function isCoherentOpenAICompletion(chunk) {
   choice.finish_reason !== "error" && (
   choice.message && isObject(choice.message) || isString(choice.text))
   );
+}
+
+/** Recognize an explicit token limit on a completion with the expected wire shape. */
+export function hasTokenLimitCompletion(response) {
+  if (Array.isArray(response?.choices)) {
+    return response.choices.some((choice) =>
+      choice?.finish_reason === OPENAI_FINISH.LENGTH && isRecord(choice.message));
+  }
+  return response?.type === "message" && Array.isArray(response.content) &&
+    response.stop_reason === CLAUDE_STOP.MAX_TOKENS;
 }
 
 /** Validate a fully buffered provider response before clearing runtime health. */

@@ -34,7 +34,7 @@ The source patch removes stale content-encoding, content-length, and transfer-en
 
 The current integration's embeddings orchestrator at `open-sse/handlers/embeddingsCore.js` likewise consumes and parses the provider response, then constructs a new `Response` from normalized JSON with a JSON content type. It does not pass through the original provider response headers. The compared stale-header concern is therefore handled structurally in this implementation; no provider header values are needed to establish that. Existing offline embeddings fixtures exercise normalized response handling, while the source patch's success/error stale-header assertions are not represented as a local pass-through-header contract.
 
-Local evidence: [`embeddingsCore.js`](../../../open-sse/handlers/embeddingsCore.js), [`src/app/api/v1/embeddings/route.js`](../../../src/app/api/v1/embeddings/route.js), [`embedding-rerank-provider-registry.test.js`](../../../tests/unit/embedding-rerank-provider-registry.test.js).
+Local evidence: [`embeddingsCore.js`](../../../open-sse/handlers/embeddingsCore.js), [`src/app/api/v1/embeddings/route.js`](../../../src/app/api/v1/embeddings/route.js), [`embeddingsCore.test.js`](../../../tests/unit/embeddingsCore.test.js), which supports normalized response handling but does not assert stale-header pass-through behavior.
 
 ## Disposition
 

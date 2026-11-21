@@ -306,7 +306,13 @@ function classifyCodexSseFrame(frame) {
   firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
   if (contextMatch) return { userOutput: false, kind: "context", matched: contextMatch, message };
 
-  const accountMatch = firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
+  // OmniRoute #19487: only an explicit failed response with a structured error
+  // message routes the overload phrase to the existing account fallback.
+  const failedResponse = [eventName, payloadType, payloadEvent].includes("response.failed");
+  const failedOverload = failedResponse && firstPattern(
+    errorObjects.map((error) => error.message), ["currently overloaded"]
+  );
+  const accountMatch = failedOverload || firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
   if (accountMatch) return { userOutput: false, kind: "account", matched: accountMatch, message };
 
   const retryMatch = firstPattern(values, CODEX_SSE_RETRY_PATTERNS);
@@ -409,9 +415,12 @@ function normalizeCodexTools(body) {
     // Preserve an explicit strict flag (flat or nested under .function) across the
     // in-place rewrite below; leave it unset when the caller never set one.
     const strict = isBoolean(tool.strict) || tool.strict === null ? tool.strict : fn?.strict;
+    // Responses function declarations preserve only explicit boolean deferred-loading metadata.
+    const deferLoading = isBoolean(tool.defer_loading) ? tool.defer_loading : fn?.defer_loading;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     if (isBoolean(strict) || strict === null) tool.strict = strict;
+    if (isBoolean(deferLoading)) tool.defer_loading = deferLoading;
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = stripCodexUnsupportedPatterns(parameters);

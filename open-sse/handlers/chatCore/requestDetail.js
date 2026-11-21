@@ -2,7 +2,7 @@ import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usa
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage, reasoningIsSubsetOfOutput } from "../../utils/usageTracking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
-import { isObject } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const OPTIONAL_PARAMS = [
 "temperature", "top_p", "top_k",
@@ -36,7 +36,7 @@ export function extractUsageFromResponse(responseBody) {
       responseUsage.cached_tokens == null && details?.cached_tokens == null &&
       responseUsage.cache_read_input_tokens === undefined &&
       (responseUsage.cache_creation_input_tokens === undefined || details?.cache_creation_tokens !== undefined) &&
-      typeof flatCache === "number" && Number.isFinite(flatCache) && flatCache >= 0;
+      isNumber(flatCache) && Number.isFinite(flatCache) && flatCache >= 0;
     const canonical = canonicalizeUsage(useFlatCache ? { ...responseUsage, cached_tokens: flatCache } : responseUsage);
     // OpenAI-shaped usage counts reasoning inside the output count, but a few
     // OpenAI-compatible upstreams (xAI) report it on top instead.

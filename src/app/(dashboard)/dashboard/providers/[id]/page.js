@@ -52,6 +52,10 @@ import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { useNotificationStore } from "@/store/notificationStore";
 import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from "./connectionDelete";
 import { connectionPage, togglePageSelection } from "./connectionPagination";
+import BulkReviewModal from "./components/BulkReviewModal";
+import PersistedTestResult from "./components/PersistedTestResult";
+import { buildBulkReview, reviewedTargets } from "./components/bulkReview";
+import { saveProviderTestResult, loadProviderTestResults } from "./components/providerTestStore";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
@@ -201,6 +205,8 @@ function ProviderDetail({ providerId }) {
   const [oneByOneStopping, setOneByOneStopping] = useState(false);
   const [oneByOneCurrentConnectionId, setOneByOneCurrentConnectionId] = useState(null);
   const [oneByOneResults, setOneByOneResults] = useState({});
+  const [persistedTests, setPersistedTests] = useState({});
+  const [bulkReview, setBulkReview] = useState(null);
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const oneByOneRunRef = useRef(null);
@@ -509,6 +515,7 @@ function ProviderDetail({ providerId }) {
 
         if (!isCurrentRequest()) return;
         setConnections(filtered);
+        setPersistedTests(loadProviderTestResults(filtered.map((conn) => conn.id)));
         // Prune selection with the authoritative response, in the same batch.
         setSelectedConnectionIds((prev) => prev.filter((id) => filtered.some((conn) => conn.id === id)));
         setCodexPlans(plans);
@@ -962,6 +969,12 @@ function ProviderDetail({ providerId }) {
     }
   };
 
+  // Persist only the safe status and fixed guidance, never the upstream text.
+  const rememberTestResult = (connectionId, outcome) => {
+    const record = saveProviderTestResult(connectionId, outcome);
+    if (record) setPersistedTests((prev) => ({ ...prev, [connectionId]: record }));
+  };
+
   const handleRunOneByOneTest = async (targets = connections) => {
     if (oneByOneRunning || targets.length === 0 || oneByOneRunRef.current) return;
     const run = new AbortController();
@@ -1025,23 +1038,18 @@ function ProviderDetail({ providerId }) {
             failed += 1;
           }
 
-          setOneByOneResults((prev) => ({
-            ...prev,
-            [connection.id]: {
-              state: wasUnavailable ? "unavailable" : wasSkipped ? "skipped" : valid ? "success" : "failed",
-              error: valid ? null : data.error || null
-            }
-          }));
+          const outcome = {
+            state: wasUnavailable ? "unavailable" : wasSkipped ? "skipped" : valid ? "success" : "failed",
+            error: valid ? null : data.error || null
+          };
+          setOneByOneResults((prev) => ({ ...prev, [connection.id]: outcome }));
+          rememberTestResult(connection.id, outcome);
         } catch (error) {
           if (!isCurrent()) return;
           failed += 1;
-          setOneByOneResults((prev) => ({
-            ...prev,
-            [connection.id]: {
-              state: "failed",
-              error: error.message || "Test failed"
-            }
-          }));
+          const outcome = { state: "failed", error: error.message || "Test failed" };
+          setOneByOneResults((prev) => ({ ...prev, [connection.id]: outcome }));
+          rememberTestResult(connection.id, outcome);
         }
 
         setOneByOneSummary({
@@ -1090,27 +1098,18 @@ function ProviderDetail({ providerId }) {
     });
   };
 
-  const handleBulkDelete = () => {
-    const count = selectedConnectionIds.length;
-    if (count === 0) return;
+  const runBulkDelete = async (ids) => {
+    if (ids.length === 0) return;
     const generation = providerGenerationRef.current;
-    setConfirmState({
-      title: `Delete ${count} Connection${count > 1 ? "s" : ""}`,
-      message: `Delete ${count} connection${count > 1 ? "s" : ""}? This cannot be undone.`,
-      onConfirm: async () => {
-        setConfirmState(null);
-        if (generation !== providerGenerationRef.current) return;
-        setBulkFailures([]);
-        const result = await deleteConnections([...selectedConnectionIds]);
-        if (generation !== providerGenerationRef.current) return;
-        setBulkFailures(result.failures.map(({ id, error }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: sanitizeErrorMessage(error) })));
-        const deleted = new Set(result.deletedIds);
-        setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
-        // Failed rows stay listed and selected so the operator can fix and retry them.
-        setSelectedConnectionIds((prev) => prev.filter((id) => !deleted.has(id)));
-        if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
-      }
-    });
+    setBulkFailures([]);
+    const result = await deleteConnections([...ids]);
+    if (generation !== providerGenerationRef.current) return;
+    setBulkFailures(result.failures.map(({ id, error }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: sanitizeErrorMessage(error) })));
+    const deleted = new Set(result.deletedIds);
+    setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
+    // Failed rows stay listed and selected so the operator can fix and retry them.
+    setSelectedConnectionIds((prev) => prev.filter((id) => !deleted.has(id)));
+    if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
   };
 
   const handleOAuthSuccess = () => {
@@ -1248,8 +1247,8 @@ function ProviderDetail({ providerId }) {
     }
   };
 
-  const handleBulkSetConnectionStatus = async (isActive) => {
-    const idsToUpdate = [...selectedConnectionIds];
+  const handleBulkSetConnectionStatus = async (isActive, ids = selectedConnectionIds) => {
+    const idsToUpdate = [...ids];
     if (idsToUpdate.length === 0) return;
     const generation = providerGenerationRef.current;
 
@@ -1403,9 +1402,48 @@ function ProviderDetail({ providerId }) {
     }
   };
 
+  // Every bulk change goes through a review step first. The reviewed ids are
+  // frozen in the summary, so Confirm applies only to what was shown.
+  const requestBulkReview = (action, targets, detail, run) => {
+    if (targets.length === 0) return;
+    const generation = providerGenerationRef.current;
+    setBulkReview({
+      review: buildBulkReview({ action, detail, targets, visibleConnections: pageConnections }),
+      run: (reviewed) => {
+        if (generation === providerGenerationRef.current) return run(reviewed);
+      },
+    });
+  };
+
+  const cancelBulkReview = () => setBulkReview(null);
+
+  const confirmBulkReview = async () => {
+    if (!bulkReview) return;
+    const { review, run } = bulkReview;
+    setBulkReview(null);
+    await run(reviewedTargets(review, connections));
+  };
+
+  const requestBulkStatusReview = (isActive) => {
+    const targets = selectedConnections.filter((conn) => (conn.isActive !== false) !== isActive);
+    requestBulkReview(isActive ? "enable" : "disable", targets, "", (reviewed) => handleBulkSetConnectionStatus(isActive, reviewed.map((conn) => conn.id)));
+  };
+
+  const requestBulkDeleteReview = () => {
+    requestBulkReview("delete", selectedConnections, "this cannot be undone", (reviewed) => runBulkDelete(reviewed.map((conn) => conn.id)));
+  };
+
+  // Proxy changes apply to the selection; with nothing selected they apply to every connection.
+  const requestProxyReview = (detail, buildAssignments) => {
+    const targets = selectedConnections.length > 0 ? selectedConnections : connections;
+    setShowBulkProxyModal(false);
+    requestBulkReview("proxy", targets, detail, (reviewed) => applyProxyAssignments(buildAssignments(reviewed)));
+  };
+
   const handleApplySinglePool = (proxyPoolId) => {
-    const targets = connections.map((c) => ({ connectionId: c.id, proxyPoolId }));
-    return applyProxyAssignments(targets);
+    const poolName = proxyPools.find((p) => p.id === proxyPoolId)?.name;
+    const detail = proxyPoolId ? `bind to ${poolName || proxyPoolId}` : "unbind proxy";
+    requestProxyReview(detail, (reviewed) => reviewed.map((c) => ({ connectionId: c.id, proxyPoolId })));
   };
 
   const handleApplyOneToOne = () => {
@@ -1414,13 +1452,11 @@ function ProviderDetail({ providerId }) {
       alert("No active proxy pools available.");
       return;
     }
-    const targets = connections.map((c, i) => ({
+    requestProxyReview("rotate across active proxy pools", (reviewed) => reviewed.map((c, i) => ({
       connectionId: c.id,
       proxyPoolId: activePools[i % activePools.length].id
-    }));
-    return applyProxyAssignments(targets);
+    })));
   };
-
 
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
@@ -1486,6 +1522,7 @@ function ProviderDetail({ providerId }) {
                 onReconnect={() => handleReconnect(conn)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
+              {!oneByOneResults[conn.id] && <PersistedTestResult result={persistedTests[conn.id]} />}
               {(isCompatible || providerId === "ollama-local") && (
                 <NetworkNodeStatus
                   connection={conn}
@@ -1507,7 +1544,7 @@ function ProviderDetail({ providerId }) {
   <Modal
     isOpen={showBulkProxyModal}
     onClose={closeBulkProxyModal}
-    title={`Apply Proxy (${connections.length} connections)`}>
+    title={`Apply Proxy (${selectedConnections.length > 0 ? `${selectedConnections.length} selected` : `all ${connections.length}`} connections)`}>
     
       <div className="flex flex-col gap-3">
         <div className="flex flex-col">
@@ -2005,7 +2042,7 @@ function ProviderDetail({ providerId }) {
                   size="sm"
                   variant="secondary"
                   icon="check_circle"
-                  onClick={() => handleBulkSetConnectionStatus(true)}
+                  onClick={() => requestBulkStatusReview(true)}
                   disabled={bulkStatusAction !== null || selectedInactiveCount === 0}>
                   
                         {bulkStatusAction === "on" ? "Turning On..." : `On Selected (${selectedConnectionIds.length})`}
@@ -2014,7 +2051,7 @@ function ProviderDetail({ providerId }) {
                   size="sm"
                   variant="secondary"
                   icon="block"
-                  onClick={() => handleBulkSetConnectionStatus(false)}
+                  onClick={() => requestBulkStatusReview(false)}
                   disabled={bulkStatusAction !== null || selectedActiveCount === 0}>
                   
                         {bulkStatusAction === "off" ? "Turning Off..." : `Off Selected (${selectedConnectionIds.length})`}
@@ -2026,7 +2063,7 @@ function ProviderDetail({ providerId }) {
                   size="sm"
                   variant="danger"
                   icon="delete"
-                  onClick={handleBulkDelete}
+                  onClick={requestBulkDeleteReview}
                   disabled={bulkStatusAction !== null}>
                   
                         Delete Selected ({selectedConnectionIds.length})
@@ -2683,6 +2720,8 @@ function ProviderDetail({ providerId }) {
         cancelText="Cancel"
         variant="danger" />
       
+
+      <BulkReviewModal review={bulkReview?.review ?? null} onConfirm={confirmBulkReview} onCancel={cancelBulkReview} />
 
       {/* Confirm Modal */}
       <ConfirmModal

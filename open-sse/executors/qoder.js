@@ -335,9 +335,11 @@ function isBillingBlock(body) {
       if (!isObject(value) || Array.isArray(value)) return false;
       const code = String(value.code ?? "");
       if (code === "110" || code === "112") return true;
-      return Object.values(value).some((child) => isObject(child) || isString(child) && child.trim().startsWith("{"))
-        ? visit(child, depth + 1)
-        : false);
+      return Object.values(value).some((child) => {
+        if (isObject(child)) return visit(child, depth + 1);
+        if (isString(child) && child.trim().startsWith("{")) return visit(child, depth + 1);
+        return false;
+      });
     };
     return visit(parsed);
   } catch {

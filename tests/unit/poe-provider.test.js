@@ -107,4 +107,19 @@ describe("staged Poe provider", () => {
     expect((await executor.execute({ model: MODEL, body: {}, stream: false, credentials: { apiKey: KEY_A } })).response.status).toBe(402);
     expect((await new PoeExecutor(routedFetch).execute({ model: "claude-opus-4.8", body: {}, stream: false, credentials: {} })).response.status).toBe(401);
   });
+
+  it("defers proxyAwareFetch resolution until execute() when constructed without a custom fetcher", async () => {
+    const executor = new PoeExecutor();
+    expect(executor.fetcher).toBeNull();
+    routedFetch.mockResolvedValueOnce(json(claudeMessage));
+    const result = await executor.execute({
+      model: "claude-opus-4.8",
+      body: { model: "claude-opus-4.8", max_tokens: 32, messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: KEY_A },
+    });
+    expect(result.response.status).toBe(200);
+    expect(routedFetch).toHaveBeenCalledTimes(1);
+    expect(routedFetch.mock.calls[0][0]).toBe("https://api.poe.com/v1/messages");
+  });
 });

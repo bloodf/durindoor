@@ -456,7 +456,11 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
         }
 
         const remainingFraction = info.quotaInfo.remainingFraction || 0;
-        const remainingPercentage = remainingFraction * 100;
+        // Keep provider-derived counts intact; only bound the percentage consumed
+        // by the legacy display surface. The grouped parser has its own clamp.
+        const displayFraction = Number.isFinite(remainingFraction) ?
+        Math.max(0, Math.min(1, remainingFraction)) : remainingFraction;
+        const remainingPercentage = displayFraction * 100;
 
         // Convert percentage to used/total for UI compatibility
         const total = 1000; // Normalized base

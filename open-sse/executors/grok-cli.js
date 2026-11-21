@@ -12,6 +12,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getConsistentMachineId } from "../shared/machineId.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { flattenGrokCliNamespaceTools, restoreGrokCliNamespaceIdentity } from "./grokCliNamespaceTools.js";
+import { convertGrokBuildCustomTools, restoreGrokBuildCustomToolCalls } from "./grokCliCustomTools.js";
 import { normalizeGrokCliToolSchemas } from "./grokCliToolSchema.js";
 
 // Server-generated item id prefixes that /responses cannot resolve when store=false.
@@ -310,8 +311,10 @@ export class GrokCliExecutor extends BaseExecutor {
     // with a 422; flatten them into function tools before dispatch and restore
     // their `{namespace, name}` identity on any function call Grok returns, so
     // Codex can still dispatch it. Upstream OmniRoute#14596.
-    const { body: flattenedBody, identityMap } = flattenGrokCliNamespaceTools(ctx.body);
-    const nextCtx = identityMap ? { ...ctx, body: flattenedBody } : ctx;
+    const converted = convertGrokBuildCustomTools(ctx.body);
+    const { body: flattenedBody, identityMap } = flattenGrokCliNamespaceTools(converted.body);
+    const dispatchBody = identityMap ? flattenedBody : converted.body;
+    const nextCtx = dispatchBody !== ctx.body ? { ...ctx, body: dispatchBody } : ctx;
     if (identityMap) {
       const toolCount = Array.isArray(flattenedBody?.tools) ? flattenedBody.tools.length : 0;
       if (toolCount > GROK_CLI_MAX_TOOLS) {
@@ -320,8 +323,11 @@ export class GrokCliExecutor extends BaseExecutor {
     }
 
     const result = await super.execute(nextCtx);
-    if (!identityMap || !result?.response) return result;
-    return { ...result, response: await restoreGrokCliNamespaceIdentity(result.response, identityMap) };
+    if (!result?.response || (!identityMap && !converted.customTools)) return result;
+    let response = result.response;
+    if (identityMap) response = await restoreGrokCliNamespaceIdentity(response, identityMap);
+    if (converted.customTools) response = await restoreGrokBuildCustomToolCalls(response, converted.customTools);
+    return { ...result, response };
   }
 
   // Refresh goes through the shared manager: rotation, dedup lock, merge and

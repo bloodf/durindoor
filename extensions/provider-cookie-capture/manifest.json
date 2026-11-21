@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "DurinDoor Cookie Capture",
+  "version": "0.1.0",
+  "description": "Send one signed-in provider session to your own DurinDoor dashboard, only when you ask and confirm.",
+  "action": {
+    "default_title": "DurinDoor Cookie Capture",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab"],
+  "optional_permissions": ["cookies"],
+  "optional_host_permissions": [
+    "https://chatgpt.com/*",
+    "https://grok.com/*",
+    "https://www.meta.ai/*",
+    "https://www.perplexity.ai/*",
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://[::1]/*"
+  ]
+}

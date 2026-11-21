@@ -100,4 +100,19 @@ describe("pingModelByKind reasoning models (#3010)", () => {
     const result = await pingModelByKind("openai/gpt-4o", "llm", "http://127.0.0.1:20127");
     expect(result.ok).toBe(true);
   });
+
+  it("returns a sanitized timed-out chat result and keeps normal chat results intact", async () => {
+    const timeout = new Error("timeout containing a secret token");
+    timeout.name = "TimeoutError";
+    fetchMock.mockRejectedValueOnce(timeout);
+
+    const failed = await pingModelByKind("openai/gpt-4o", "llm", "http://127.0.0.1:20127");
+    expect(failed).toMatchObject({ ok: false, status: 408, error: "Request timed out" });
+    expect(failed.latencyMs).toEqual(expect.any(Number));
+    expect(failed.error).not.toContain("secret");
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: "Hello!" } }] }));
+    const normal = await pingModelByKind("openai/gpt-4o", "llm", "http://127.0.0.1:20127");
+    expect(normal).toMatchObject({ ok: true, status: 200, error: null });
+  });
 });

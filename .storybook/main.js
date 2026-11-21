@@ -6,6 +6,8 @@ import { reviewGlyphs } from "./review-glyph-boundary.mjs";
 
 const storybookDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(storybookDir, "..");
+/** Files importing this module own their V5 behavior and skip the review boundary. */
+const MIGRATED_SOURCE_MARKER = "@/shared/ui/v5/production/uiVersion";
 
 /**
  * Durin DS Storybook — @storybook/react-vite (NOT the Next.js framework).
@@ -42,6 +44,10 @@ const config = {
         transform(source, id) {
           if (id === path.join(projectRoot, "src/app/globals.css")) return { code: reviewIconStyles(source), map: null };
           if (!id.startsWith(`${projectRoot}/src/`) || !/\.(?:js|jsx)$/.test(id) || id.endsWith("/NativeSelect.jsx")) return null;
+          // A migrated file renders V5 from its own source behind the production
+          // switch. A second build-time transform would duplicate it and the
+          // replacement-signature check below would throw.
+          if (source.includes(MIGRATED_SOURCE_MARKER)) return null;
           let code = source;
           if (id.endsWith("/dashboard/skills/page.js")) {
             code = code.replace('className="min-w-0 flex-1 whitespace-pre-wrap break-all', 'className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "min-w-0 flex-1 basis-full sm:basis-0 whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" : "min-w-0 flex-1 whitespace-pre-wrap break-all');

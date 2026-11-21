@@ -9,12 +9,21 @@ import { parseDataUri } from "../concerns/image.js";
 import { extractTextContent } from "../formats/gemini.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { effortToBudget } from "../concerns/thinking.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
+
+/** A message `content` that is one bare block object becomes a one-item block array. */
+function wrapBareContentBlock(content) {
+  return isRecord(content) ? [content] : content;
+}
+
+/** MIME-wrapped base64 (some Python and Java clients) carries line breaks that Claude rejects. */
+const compactBase64 = (data) => data.replace(/\s+/g, "");
 
 /**
  * Convert OpenAI requests while preserving client system instructions.
@@ -76,13 +85,12 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
       if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-        const text = isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n");
-        if (msg.role === ROLE.SYSTEM && translationContext?.provider === "claude") {
-          const stripped = text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
-          if (stripped !== "" || text === stripped) systemParts.push(stripped);
-        } else {
-          systemParts.push(text);
-        }
+        const text = isString(msg.content) ? msg.content : extractTextContent(wrapBareContentBlock(msg.content), "\n");
+        // Anthropic rejects an empty text block (400), so an empty instruction adds nothing.
+        const kept = msg.role === ROLE.SYSTEM && translationContext?.provider === "claude" ?
+        text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "") :
+        text;
+        if (kept) systemParts.push(kept);
       }
     }
 
@@ -269,6 +277,15 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
 /** Strip temperature after centralized normalization activates Claude thinking. */
 openaiToClaudeRequest.finalize = (_model, body) => {
   if (body.thinking && body.thinking.type !== "disabled") delete body.temperature;
+  // Anthropic answers 400 to `thinking: { type: "enabled" }` without a positive
+  // budget_tokens (the DeepSeek/GLM-style shape, or a 0 budget). Give it the medium
+  // level's budget; reconcileClaudeThinkingBudget later fits max_tokens around it.
+  // A body that carries a reasoning effort is left alone: Z.ai-style upstreams derive
+  // their budget from that effort downstream.
+  if (body.thinking?.type === "enabled" && !(Number(body.thinking.budget_tokens) > 0) &&
+    body.reasoning_effort === undefined && body.reasoning === undefined) {
+    body.thinking.budget_tokens = effortToBudget("medium");
+  }
 };
 
 // Get content blocks from single message
@@ -287,7 +304,7 @@ function claudePdfDocumentSource(part) {
   const file = part.file;
   const parsed = parseDataUri(file.file_data);
   if (parsed?.mimeType === "application/pdf") {
-    return { type: "base64", media_type: parsed.mimeType, data: parsed.base64 };
+    return { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) };
   }
   const url = isString(file.file_url) ? file.file_url : isString(file.file_data) ? file.file_data : null;
   if (url?.startsWith("http://") || url?.startsWith("https://")) return { type: "url", url };
@@ -326,7 +343,7 @@ function convertToolResultContent(content) {
       if (parsed?.mimeType.startsWith("image/")) {
         parts.push({
           type: CLAUDE_BLOCK.IMAGE,
-          source: { type: "base64", media_type: parsed.mimeType, data: parsed.base64 },
+          source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) },
           ...cache
         });
       } else if (isToolResultImageUrl(url)) {
@@ -361,12 +378,13 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       ...(msg.is_error === true && { is_error: true })
     });
   } else if (msg.role === ROLE.USER) {
-    if (isString(msg.content)) {
-      if (msg.content) {
-        blocks.push({ type: CLAUDE_BLOCK.TEXT, text: msg.content });
+    const userContent = wrapBareContentBlock(msg.content);
+    if (isString(userContent)) {
+      if (userContent) {
+        blocks.push({ type: CLAUDE_BLOCK.TEXT, text: userContent });
       }
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
+    } else if (Array.isArray(userContent)) {
+      for (const part of userContent) {
         if (part.type === OPENAI_BLOCK.TEXT && part.text) {
           blocks.push({ type: CLAUDE_BLOCK.TEXT, text: part.text });
         } else if (part.type === CLAUDE_BLOCK.TOOL_RESULT) {
@@ -382,7 +400,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
           if (parsed) {
             blocks.push({
               type: CLAUDE_BLOCK.IMAGE,
-              source: { type: "base64", media_type: parsed.mimeType, data: parsed.base64 }
+              source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) }
             });
           } else if (url.startsWith("http://") || url.startsWith("https://")) {
             blocks.push({
@@ -419,7 +437,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
         }
       }
     } else if (msg.content) {
-      const text = isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n");
+      const text = isString(msg.content) ? msg.content : extractTextContent(wrapBareContentBlock(msg.content), "\n");
       if (text) {
         blocks.push({ type: CLAUDE_BLOCK.TEXT, text });
       }

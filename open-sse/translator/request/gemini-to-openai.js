@@ -125,13 +125,27 @@ function responseCallId({ queueByName }, response) {
   return queue.shift() ?? generatedCallId(response.name);
 }
 
+/**
+ * OpenAI role of a Gemini content. Older clients send `function` or `tool` for tool results
+ * sent as the user's turn, and single-turn requests omit the role: those map to user, with an
+ * omitted role inferred from the parts (functionCall or thought parts mean the model spoke).
+ * Any other explicit role (`model`) stays assistant.
+ */
+function geminiTurnRole(content) {
+  const role = isString(content?.role) ? content.role.trim().toLowerCase() : "";
+  if (role === GEMINI_ROLE.USER || role === "function" || role === "tool") return ROLE.USER;
+  if (role) return ROLE.ASSISTANT;
+  const parts = Array.isArray(content?.parts) ? content.parts : [];
+  return parts.some((part) => part && (part.functionCall || part.thought === true)) ? ROLE.ASSISTANT : ROLE.USER;
+}
+
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content, ids = { serialByName: new Map(), queueByName: new Map() }) {
   // A reply pairs with the calls of the turn just before it: each model turn with calls starts a fresh pairing queue (the serial stays global so ids are unique across the history).
   if (content?.parts?.some?.((part) => part?.functionCall)) {
     ids.queueByName.clear();
   }
-  const role = content.role === GEMINI_ROLE.USER ? ROLE.USER : ROLE.ASSISTANT;
+  const role = geminiTurnRole(content);
 
   if (!content.parts || !Array.isArray(content.parts)) {
     return null;

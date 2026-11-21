@@ -50,4 +50,33 @@ describe("combo served model breakdown", () => {
     expect(empty.modelBreakdown).toEqual([]);
     expect(empty.rows).toEqual([]);
   });
+  it("keeps model shares and row totals on one snapshot when a write intervenes", async () => {
+    adapter.run("DELETE FROM usageHistory");
+    const insert = (model) => adapter.run(
+      `INSERT INTO usageHistory(timestamp, provider, model, connectionId, comboId, comboName, tokens) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+      ["2026-09-01T00:00:00.000Z", "provider", model, "connection-a", "combo-1", "Production", "{}"],
+    );
+    insert("small");
+    insert(null);
+    const all = adapter.all.bind(adapter);
+    const spy = vi.spyOn(adapter, "all").mockImplementation((sql, params) => {
+      const result = all(sql, params);
+      if (sql.includes("FROM usageHistory")) {
+        spy.mockRestore();
+        insert("large");
+      }
+      return result;
+    });
+    try {
+      const result = await report();
+      expect(result.rows[0].requests).toBe(2);
+      expect(result.modelBreakdown).toEqual([
+        { comboId: "combo-1", comboName: "Production", connectionId: "connection-a", provider: "provider", model: "small", requests: 1, share: 50 },
+      ]);
+      expect(adapter.get("SELECT COUNT(*) AS count FROM usageHistory").count).toBe(3);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
 });

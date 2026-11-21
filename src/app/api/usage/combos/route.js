@@ -56,15 +56,16 @@ export async function GET(request) {
     params.push(upper.toISOString());
     const boundsSql = `AND ${bounds.join(" AND ")}`;
     const db = await getAdapter();
-    const rows = db.all(
-      `SELECT comboId, comboName, connectionId, COUNT(*) AS requests,
+    // Aggregate totals and model counts from the same statement snapshot.
+    const groups = db.all(
+      `SELECT comboId, comboName, connectionId, provider, model, COUNT(*) AS requests,
         COALESCE(SUM(promptTokens), 0) AS promptTokens,
         COALESCE(SUM(completionTokens), 0) AS completionTokens,
         COALESCE(SUM(cost), 0) AS cost
        FROM usageHistory
        WHERE comboId IS NOT NULL AND comboName IS NOT NULL ${boundsSql}
-       GROUP BY comboId, comboName, connectionId
-       ORDER BY comboName COLLATE NOCASE, connectionId`,
+       GROUP BY comboId, comboName, connectionId, provider, model
+       ORDER BY comboName COLLATE NOCASE, connectionId, provider, model`,
       params,
     );
     const unattributed = db.get(
@@ -76,20 +77,22 @@ export async function GET(request) {
        WHERE (comboId IS NULL OR comboName IS NULL) ${boundsSql}`,
       params,
     );
-    const models = db.all(
-      `SELECT comboId, comboName, connectionId, provider, model, COUNT(*) AS requests
-       FROM usageHistory
-       WHERE comboId IS NOT NULL AND comboName IS NOT NULL
-         AND provider IS NOT NULL AND provider <> '' AND model IS NOT NULL AND model <> '' ${boundsSql}
-       GROUP BY comboId, comboName, connectionId, provider, model
-       ORDER BY comboName COLLATE NOCASE, connectionId, provider, model`,
-      params,
-    );
+    const rowTotals = new Map();
     const comboTotals = new Map();
-    for (const row of rows) {
-      const key = JSON.stringify([row.comboId, row.comboName]);
-      comboTotals.set(key, (comboTotals.get(key) || 0) + Number(row.requests));
+    const models = [];
+    for (const group of groups) {
+      const rowKey = JSON.stringify([group.comboId, group.comboName, group.connectionId]);
+      const comboKey = JSON.stringify([group.comboId, group.comboName]);
+      let row = rowTotals.get(rowKey);
+      if (!row) {
+        row = { comboId: group.comboId, comboName: group.comboName, connectionId: group.connectionId, requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
+        rowTotals.set(rowKey, row);
+      }
+      for (const field of ["requests", "promptTokens", "completionTokens", "cost"]) row[field] += Number(group[field] || 0);
+      comboTotals.set(comboKey, (comboTotals.get(comboKey) || 0) + Number(group.requests));
+      if (group.provider != null && group.provider !== "" && group.model != null && group.model !== "") models.push(group);
     }
+    const rows = [...rowTotals.values()];
     return NextResponse.json({
       mode: "future-only",
       boundary: BOUNDARY,

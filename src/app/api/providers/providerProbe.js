@@ -11,6 +11,8 @@ import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
 import { validateClaudeWebSession } from "open-sse/executors/claude-web.js";
 import { validateGeminiWebSession } from "open-sse/executors/gemini-web.js";
+import { validateMaxaiSession } from "open-sse/executors/maxai.js";
+import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -39,6 +41,8 @@ const SPECIALTY_VALIDATORS = {
   // Read-only GETs: neither creates a conversation or sends the cookie to a chat endpoint.
   "claude-web": validateClaudeWebSession,
   "gemini-web": validateGeminiWebSession,
+  maxai: ({ apiKey, fetcher, providerSpecificData }) => validateMaxaiSession({ apiKey, providerSpecificData }, fetcher),
+  lmarena: ({ apiKey, fetcher, providerSpecificData }) => validateLmarenaSession({ apiKey, providerSpecificData }, fetcher),
 };
 
 const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";

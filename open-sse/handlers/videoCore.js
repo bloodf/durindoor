@@ -149,7 +149,9 @@ export async function handleVideoProxyCore({
 }) {
   const config = getVideoConfig(provider);
   if (!config) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support video generation`);
+    // This is the async job API. A provider that only generates video
+    // synchronously serves /v1/video/generations, so do not deny it video.
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support asynchronous video jobs on /v1/videos`);
   }
   if (!requestId && !VIDEO_ACTIONS.has(action)) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Unknown video action: ${action}`);

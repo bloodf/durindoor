@@ -27,6 +27,7 @@ import {
   providerOfModelId,
   supportsVideoJobs
 } from "../services/mediaRoutes.js";
+import { mediaEndpointSupport } from "../services/mediaTransport.js";
 
 
 async function enforceVideoPolicy(request, provider, model, apiKey) {
@@ -107,6 +108,10 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
   if (policyError) return policyError;
   const kindError = await modelKindError(modelInfo.provider, modelInfo.model, await getSettings(), "video");
   if (kindError) return kindError;
+  // The sync endpoint runs only the providers with a synchronous generator; a
+  // job-only provider is not "unsupported at video", it is a different endpoint.
+  const endpointSupport = mediaEndpointSupport("video", "/v1/video/generations", modelInfo.provider, modelInfo.model);
+  if (!endpointSupport.supported) return errorResponse(HTTP_STATUS.BAD_REQUEST, endpointSupport.reason);
   const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId });
   if (credentials?.providerDisabled) {
     log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
@@ -213,12 +218,6 @@ async function resolveVideoProvider(requestedModel, settings, apiKeyId) {
   if (!modelInfo.provider) {
     return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Combos are not supported for video generation") };
   }
-  if (!getVideoConfig(modelInfo.provider)) {
-    const message = modelStr.includes("/")
-      ? `Provider '${modelInfo.provider}' does not support video generation`
-      : `No connected video provider serves model '${modelStr}'`;
-    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, message) };
-  }
   return { provider: modelInfo.provider, model: modelInfo.model };
 }
 
@@ -280,6 +279,12 @@ async function handleVideoCreateHandler(request, action) {
   if (policyError) return policyError;
   const kindError = await modelKindError(provider, model, settings, "video");
   if (kindError) return kindError;
+  // Only providers with an async job API can serve /v1/videos. A sync-only
+  // provider serves the other video endpoint, so say which one it serves.
+  const endpointSupport = mediaEndpointSupport("video", "/v1/videos", provider, model);
+  if (!endpointSupport.supported) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, endpointSupport.reason);
+  }
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
   // otherwise forward the original bytes untouched.

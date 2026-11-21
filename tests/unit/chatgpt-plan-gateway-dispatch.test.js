@@ -14,13 +14,6 @@ const state = vi.hoisted(() => ({
   combos: [],
 }));
 
-vi.mock("open-sse/providers/registry/index.js", async (original) => ({
-  ...(await original()),
-  default: [...(await original()).default, {
-    id: "chatgpt-plan", alias: "fixture-plan", name: "Fixture Plan", authType: "oauth",
-    format: "openai-responses", models: [{ id: "eligible" }, { id: "alternate" }],
-  }],
-}));
 vi.mock("@/lib/localDb", () => ({
   getSettings: async () => ({ requireApiKey: true }),
   getApiKeyByKey: async () => state.key,
@@ -94,8 +87,8 @@ function connection(id) {
 const first = connection("first");
 const second = connection("second");
 const selection = (row) => row.providerSpecificData.chatgptPlanAccount;
-const model = "fixture-plan/eligible";
-const alternate = "fixture-plan/alternate";
+const model = "chatgpt-plan/eligible";
+const alternate = "chatgpt-plan/alternate";
 const combo = (name, models, allowedConnectionIds) => ({ id: name, name, models, allowedConnectionIds });
 const frame = (event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 const textItem = { id: "msg_fixture", type: "message", role: "assistant", status: "completed",

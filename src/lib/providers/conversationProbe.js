@@ -2,7 +2,9 @@
 // automated probes get accounts suspended (OmniRoute #14780/#14818). Callers MUST skip
 // (not fail) and never persist an error status for these providers. Read-only session
 // checks (e.g. perplexity-web GET /api/auth/session) create nothing and stay allowed.
-const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "adapta-web", "yuanbao-web"]);
+// suno and udio belong here too: their only generic probe POSTs the music submit endpoint,
+// which starts a billable generation on the account.
+const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "adapta-web", "yuanbao-web", "suno", "udio"]);
 
 // Web sessions whose dispatch is deliberately closed (#2034): the executor returns provider_port_pending
 // because no authorized, verified non-browser request contract exists. Validate and Test Connection must

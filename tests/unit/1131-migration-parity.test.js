@@ -38,11 +38,11 @@ function pgFacade(db) {
 const markers = (db) => db.all("SELECT key, value FROM _meta ORDER BY key");
 
 describe("migration 031 parity", () => {
-  it("registers the same migration as the latest version in both engines", () => {
-    expect(latestVersion()).toBe(31);
-    expect(pgLatestVersion()).toBe(31);
-    expect(MIGRATIONS.at(-1)).toBe(sqliteMigration);
-    expect(PG_MIGRATIONS.at(-1)).toBe(pgMigration);
+  it("registers migration 031 in both engines", () => {
+    expect(latestVersion()).toBe(32);
+    expect(pgLatestVersion()).toBe(latestVersion());
+    expect(MIGRATIONS.find((migration) => migration.version === 31)).toBe(sqliteMigration);
+    expect(PG_MIGRATIONS.find((migration) => migration.version === 31)).toBe(pgMigration);
     expect(pgMigration).toBe(sqliteMigration);
   });
 

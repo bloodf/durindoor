@@ -8,14 +8,9 @@ no product edit.
 
 ## Scope and method
 
-Eight merged May 2026 OmniRoute pull requests were compared. Complete changed-path lists and exact merge
-records come from `/var/tmp/durindoor-omni-early-metadata.gnjcuh68/2026-05.json`; every row is `MERGED`,
-every head and merge SHA is 40-character lowercase hex, and each row's `totalCount` equals its path list.
-Metadata was treated as data only.
+Eight merged May 2026 OmniRoute pull requests were compared. Complete changed-path lists and exact merge records were checked against the linked upstream pull requests; every row is `MERGED`, every head and merge SHA is 40-character lowercase hex, and each row's path count matches its recorded total. Metadata was treated as data only.
 
-The exact merged source diff for each pull request was reconstructed from the read-only source mirror at
-`/var/tmp/durindoor-omniroute-source.4eUb6QtM/source.git` and **validated against the metadata path list
-before any comparison**:
+The exact merged source diff for each pull request was reconstructed from the pinned upstream merge commits and **validated against the pull request changed-path list before any comparison**:
 
 | PR | Head SHA | Merge SHA | Merge shape | Diff base used | Path list vs metadata |
 | --- | --- | --- | --- | --- | --- |
@@ -65,8 +60,8 @@ NONSTRM  canonicalize  : {"prompt_tokens":1000,"completion_tokens":100,"total_to
 | [#1888](https://github.com/cheaper-inference/OmniRoute/pull/1888) | `3700db2d382e09b3f068e7918d471eecad1e0e97` | `d4408add0476169f9a28019210f302fb9248e08c` | Authentication work (OAuth account rotation) | Covered by a different, existing local mechanism that is broader than the upstream change: account rotation on 429 is provider-agnostic in the fork, not Codex-specific, and does not depend on an explicit affinity delete. |
 | [#1899](https://github.com/cheaper-inference/OmniRoute/pull/1899) | `8dfe648b7ad256de4aa95fe19d972f26f34f9b39` | `37a4a66e9375df74b51915758e757a0fbb8d0f38` | Provider addition (NanoGPT image generation) | Excluded as a provider addition. The fork has NanoGPT as a chat/transport provider only, with no image adapter and no image-provider registry to extend. |
 | [#1923](https://github.com/cheaper-inference/OmniRoute/pull/1923) | `4c17c3527c435f57413878b2cea7e7ef045e34f8` | `3f063e5c52238d9e9bea4a135862aa7bdcf76f42` | New feature (request-log column) | Covered by a different, existing local mechanism. The fork has no `call_logs` table and reports compression savings through a response header and per-engine stats instead of a stored token column. |
-| [#1930](https://github.com/cheaper-inference/OmniRoute/pull/1930) | `bfcb068a5502c57dbaf3b4d31fdf08c0d7ef43c3` | `37058ad3d278ba1e22cd4a82370ab10bd5e261c3` | New feature (usage extraction) + catalog values | Mixed. The streaming extractor already reads the provider's flat cache field. The non-streaming extractor does not, and the divergence is confirmed by the offline probe above. The pricing rows are a catalog-value divergence, not a mechanism gap. |
-| [#2061](https://github.com/cheaper-inference/OmniRoute/pull/2061) | `abe830101a720dc2f37aabaf092b9564c3ada448` | `962faa84e9c8dda1e43dc98854a2f48e99a60349` | New feature (request admission boundary) | Confirmed applicable gap requiring a new code unit. The fork has no provider-scoped tool-limit detection and no proactive tool truncation on the chat path. Safe expected behavior is recorded below. |
+| [#1930](https://github.com/cheaper-inference/OmniRoute/pull/1930) | `bfcb068a5502c57dbaf3b4d31fdf08c0d7ef43c3` | `37058ad3d278ba1e22cd4a82370ab10bd5e261c3` | Narrow usage-parser repair + catalog values | The non-streaming usage parser has a narrow existing repair gap for the provider flat cache-read field, confirmed by the offline probe. Dated promotional pricing is catalog data and is not part of the port. |
+| [#2061](https://github.com/cheaper-inference/OmniRoute/pull/2061) | `abe830101a720dc2f37aabaf092b9564c3ada448` | `962faa84e9c8dda1e43dc98854a2f48e99a60349` | New non-provider capability (dynamic tool-limit learning + proactive truncation) | Out of scope. The fork has no provider-scoped tool-limit detection and no proactive tool truncation on the chat path; these static findings do not make the capability an applicable port. |
 | [#2123](https://github.com/cheaper-inference/OmniRoute/pull/2123) | `fa524f4ac13eac8f56637af9a35fdce3ac065934` | `86db9bcf4768a6fcbd1d25325032c413f7edd40d` | Provider addition (Inworld TTS formats) + catalog refresh | Excluded as a provider addition and a provider-catalog refresh. The fork has no audio-provider `supportedFormats` concept and resolves Inworld voices from the live provider instead of a hardcoded preset list. |
 
 ## #1840 — hide combo compression controls when disabled
@@ -90,24 +85,24 @@ Source change, exact diff `3d70ad414ef9568c80f59e8f656fc8a0ddaa1459` → first p
 Local findings:
 
 - **The upstream rule is already the local rule.** The fork's compression plan derivation is
-  [open-sse/services/compression/deriveDefaultPlan.js:20](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/services/compression/deriveDefaultPlan.js:20),
+  [open-sse/services/compression/deriveDefaultPlan.js:20](../../../open-sse/services/compression/deriveDefaultPlan.js#L20),
   and its first rule is `if (!masterEnabled) return { mode: "off", stackedPipeline: [] };`
-  ([deriveDefaultPlan.js:21](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/services/compression/deriveDefaultPlan.js:21)).
+  ([deriveDefaultPlan.js:21](../../../open-sse/services/compression/deriveDefaultPlan.js#L21)).
   The master flag is evaluated before any per-engine toggle is read, which is exactly the upstream assertion
   "keeps disabled config off despite combo override and auto-trigger".
 - **The seam is operator-gated end to end.** The engine stack runs only inside
   `if (tokenSaverEnabled && compressionEnabled)`
-  ([open-sse/handlers/chatCore.js:961](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore.js:961)),
+  ([open-sse/handlers/chatCore.js:961](../../../open-sse/handlers/chatCore.js#L961)),
   and the flag comes from the settings store at
-  [src/sse/handlers/chat.js:1350](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:1350)
+  [src/sse/handlers/chat.js:1350](../../../src/sse/handlers/chat.js#L1350)
   (`compressionEnabled: !!chatSettings.compressionEnabled`). The seam contract itself documents that a
   disabled request returns before any engine is resolved or applied
-  ([open-sse/handlers/chatCore/compressionHook.js:9](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore/compressionHook.js:9)).
+  ([open-sse/handlers/chatCore/compressionHook.js:9](../../../open-sse/handlers/chatCore/compressionHook.js#L9)).
 - **The upstream dashboard hunk has no local surface.** The fork has no per-combo compression override:
   a whole-tree search for `compressionMode` and `compressionOverride` returns no hit in `src/`, `open-sse/` or
   `tests/`. The only occurrence of the upstream concept is the vestigial `comboOverrides: {}` default on the
   fork's compression config type
-  ([open-sse/services/compression/types.js:30](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/services/compression/types.js:30)),
+  ([open-sse/services/compression/types.js:30](../../../open-sse/services/compression/types.js#L30)),
   which is never populated or consulted. There is therefore no combo card, no dropdown and no override write
   path to hide.
 - **The upstream test-fixture change has a local analogue.** Local coverage for the seam is
@@ -141,12 +136,12 @@ Local findings:
 - **The streaming-boundary hunk is already implemented, with the same restrictive rule.** The fork's provider
   summary gates assistant text on the Responses output-text event:
   `if (chunk.type === "response.output_text.delta") responseText = append(responseText, chunk.delta, MAX_TEXT);`
-  ([open-sse/utils/stream.js:322](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/stream.js:322)).
+  ([open-sse/utils/stream.js:322](../../../open-sse/utils/stream.js#L322)).
   Reasoning-summary deltas are not handled in that branch at all, and function-call argument deltas are routed
   into `tool.arguments` rather than into text
-  ([open-sse/utils/stream.js:330](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/stream.js:330)).
+  ([open-sse/utils/stream.js:330](../../../open-sse/utils/stream.js#L330)).
   The summary is finalized into the provider response at
-  [open-sse/utils/stream.js:411](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/stream.js:411),
+  [open-sse/utils/stream.js:411](../../../open-sse/utils/stream.js#L411),
   where the assistant message is built from `responseText` only, and only when there are no tool calls — so the
   fork is at least as restrictive as the upstream fix.
   This hunk is security-sensitive: it is the boundary that keeps internal reasoning text and tool-call
@@ -155,18 +150,18 @@ Local findings:
 - **The CLI-fingerprint hunk has no local counterpart.** A whole-tree search for `CLI_FINGERPRINTS` and
   `bodyFieldOrder` returns no hit in `src/`, `open-sse/` or `tests/`. The fork does not reorder request body
   keys by CLI fingerprint. The Codex executor instead strips unsupported fields from the forwarded body
-  ([open-sse/executors/codex.js:1080](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/executors/codex.js:1080)
+  ([open-sse/executors/codex.js:1080](../../../open-sse/executors/codex.js#L1080)
   through
-  [open-sse/executors/codex.js:1098](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/executors/codex.js:1098)),
+  [open-sse/executors/codex.js:1098](../../../open-sse/executors/codex.js#L1098)),
   and the local Responses request translator owns the field set it emits.
 - **The remembered-conversation hunk has no local counterpart.** A whole-tree search for
   `responsesToolCallState`, `rememberResponseFunctionCalls`, `rememberResponseConversationState` and
   `getRememberedResponseConversationItems` returns no hit in `src/`, `open-sse/` or `tests/`. The fork keeps no
   server-side store of remembered Responses conversation items or function calls keyed by response id. The
   Codex executor removes `previous_response_id` before forwarding
-  ([open-sse/executors/codex.js:1098](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/executors/codex.js:1098)),
+  ([open-sse/executors/codex.js:1098](../../../open-sse/executors/codex.js#L1098)),
   so there is no replay path in which a stale internal frame could be re-injected. The closest local surface,
-  [open-sse/translator/response/openai-responses/historyToolIdentity.js:1](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/translator/response/openai-responses/historyToolIdentity.js:1),
+  [open-sse/translator/response/openai-responses/historyToolIdentity.js:1](../../../open-sse/translator/response/openai-responses/historyToolIdentity.js#L1),
   reads only the client-supplied request `input`, not a server-side remembered store, and its purpose is
   recovering namespaced tool identities.
 
@@ -192,31 +187,31 @@ Local findings:
 
 - **The fork already rotates accounts on 429, and does so for every provider.** The chat entry point owns
   the retry loop: an `excludeConnectionIds` set is created at
-  [src/sse/handlers/chat.js:1065](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:1065),
+  [src/sse/handlers/chat.js:1065](../../../src/sse/handlers/chat.js#L1065),
   and each attempt re-selects credentials through
   `getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, …)`
-  ([src/sse/handlers/chat.js:1102](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:1102)).
+  ([src/sse/handlers/chat.js:1102](../../../src/sse/handlers/chat.js#L1102)).
   A failed attempt is turned into a rotation by `markAccountUnavailable` and its `shouldFallback` verdict
-  ([src/sse/handlers/chat.js:1578](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:1578)),
+  ([src/sse/handlers/chat.js:1578](../../../src/sse/handlers/chat.js#L1578)),
   after which the connection is excluded and the loop continues
-  ([src/sse/handlers/chat.js:1606](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:1606)).
+  ([src/sse/handlers/chat.js:1606](../../../src/sse/handlers/chat.js#L1606)).
 - **429 is a rotation trigger in the fork.** The fallback rule table marks 429 as a backoff-and-rotate status
-  (`{ status: 429, backoff: true }`, [open-sse/config/errorConfig.js:220](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/config/errorConfig.js:220)),
+  (`{ status: 429, backoff: true }`, [open-sse/config/errorConfig.js:220](../../../open-sse/config/errorConfig.js#L220)),
   and `checkFallbackError` is the single decision point
-  ([open-sse/services/accountFallback.js:53](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/services/accountFallback.js:53)).
+  ([open-sse/services/accountFallback.js:53](../../../open-sse/services/accountFallback.js#L53)).
 - **The fork's affinity model differs, and the outcome is the same.** Session affinity is an in-memory map
-  ([src/sse/services/auth.js:129](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/services/auth.js:129)),
+  ([src/sse/services/auth.js:129](../../../src/sse/services/auth.js#L129)),
   consulted only for the round-robin strategy
-  ([src/sse/services/auth.js:1047](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/services/auth.js:1047)),
+  ([src/sse/services/auth.js:1047](../../../src/sse/services/auth.js#L1047)),
   and it is honored only when the remembered connection is still among the eligible connections. A connection
   that has just been benched by the 429 handling is no longer eligible, so the sticky pin does not survive the
   failure and the next attempt lands on a different account without an explicit affinity delete. The fork
   therefore reaches the upstream outcome by a different route: the upstream delete of a database affinity row
   has no local counterpart because the fork has no such table.
 - **The attempt budget is bounded locally, and more generously.** `MAX_ACCOUNT_ATTEMPTS_PER_REQUEST` is 1024
-  ([src/sse/handlers/chat.js:93](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:93)),
+  ([src/sse/handlers/chat.js:93](../../../src/sse/handlers/chat.js#L93)),
   and the per-connection attempt count is capped by `allowedAttempts`
-  ([src/sse/handlers/chat.js:1199](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/sse/handlers/chat.js:1199)).
+  ([src/sse/handlers/chat.js:1199](../../../src/sse/handlers/chat.js#L1199)).
 - **Existing local coverage.** `tests/unit/account-fallback-request-errors.test.js`,
   `tests/unit/account-fallback-request-scoped-4xx.test.js`,
   `tests/unit/account-fallback-cloudcode.test.js`, `tests/unit/chat-quota-fallback.test.js` and
@@ -242,17 +237,17 @@ Source change, exact diff `37a4a66e9375df74b51915758e757a0fbb8d0f38` → first p
 Local findings:
 
 - **NanoGPT exists here as a chat provider only.** The registry entry
-  ([open-sse/providers/registry/nanogpt.js:19](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/registry/nanogpt.js:19))
+  ([open-sse/providers/registry/nanogpt.js:19](../../../open-sse/providers/registry/nanogpt.js#L19))
   declares a `transport` with base URL `https://nano-gpt.com/api/v1/chat/completions` and the OpenAI format,
   and carries a chat model list only.
 - **There is no image-provider registry to extend.** The fork's image adapters are a fixed map in
-  [open-sse/handlers/imageProviders/index.js:22](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/imageProviders/index.js:22)
+  [open-sse/handlers/imageProviders/index.js:22](../../../open-sse/handlers/imageProviders/index.js#L22)
   through
-  [open-sse/handlers/imageProviders/index.js:50](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/imageProviders/index.js:50),
+  [open-sse/handlers/imageProviders/index.js:50](../../../open-sse/handlers/imageProviders/index.js#L50),
   with no `nanogpt` entry and no per-provider size or modality registry. A search for `nanogpt` across
   `open-sse/handlers/imageProviders/` and `open-sse/handlers/imageGenerationCore.js` returns no hit.
 - The fork's provider capability map does know NanoGPT for text
-  ([open-sse/providers/capabilities.js:524](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/capabilities.js:524)),
+  ([open-sse/providers/capabilities.js:524](../../../open-sse/providers/capabilities.js#L524)),
   which confirms the provider is present but only on the chat surface.
 
 Disposition: excluded. This is a provider addition — a new upstream service, endpoint and model catalog on a
@@ -274,18 +269,18 @@ Local findings:
 - **The fork has no `call_logs` table.** A whole-tree search for `call_logs` under `src/lib/db/` returns no
   hit, and there is no `tokens_compressed` or `tokensCompressed` field anywhere in `src/`, `open-sse/` or
   `tests/`. The fork's request log is the request-detail record built by
-  [open-sse/handlers/chatCore/requestDetail.js:59](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore/requestDetail.js:59),
+  [open-sse/handlers/chatCore/requestDetail.js:59](../../../open-sse/handlers/chatCore/requestDetail.js#L59),
   whose `tokens` field carries prompt, completion, cache-read and cache-creation counts.
 - **Compression savings are surfaced by a different, existing mechanism.** When at least one engine actually
   compressed the body, the fork stamps an `X-DurinDoor-Compression` response header
-  ([open-sse/handlers/chatCore.js:99](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore.js:99),
+  ([open-sse/handlers/chatCore.js:99](../../../open-sse/handlers/chatCore.js#L99),
   applied at
-  [open-sse/handlers/chatCore.js:138](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore.js:138)),
+  [open-sse/handlers/chatCore.js:138](../../../open-sse/handlers/chatCore.js#L138)),
   whose value is `"<engineId>[,<engineId>…]|<overallSavingsPercent>%"`
-  ([open-sse/handlers/chatCore/compressionHook.js:23](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore/compressionHook.js:23)).
+  ([open-sse/handlers/chatCore/compressionHook.js:23](../../../open-sse/handlers/chatCore/compressionHook.js#L23)).
   The percentage is computed from the stack input versus the final output token estimate, and per-engine
   counters are produced by
-  [open-sse/services/compression/stats.js:92](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/services/compression/stats.js:92).
+  [open-sse/services/compression/stats.js:92](../../../open-sse/services/compression/stats.js#L92).
   The fork therefore reports compression savings as a percentage plus engine list rather than as a persisted
   count of eliminated tokens.
 - Existing local coverage: `tests/unit/compression-chatcore-header.test.js`,
@@ -316,54 +311,52 @@ Source change, exact diff `37058ad3d278ba1e22cd4a82370ab10bd5e261c3` → first p
 Local findings:
 
 - **The streaming extractor already reads the flat field.**
-  [open-sse/utils/usageTracking.js:465](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/usageTracking.js:465)
+  [open-sse/utils/usageTracking.js:465](../../../open-sse/utils/usageTracking.js#L465)
   resolves `cached_tokens` from `prompt_tokens_details?.cached_tokens` **or** `prompt_cache_hit_tokens`, and
   the comment above it names DeepSeek as the reason.
 - **The non-streaming extractor does not read it, and this is a confirmed divergence.** The non-streaming
   path is `extractUsageFromResponse`
-  ([open-sse/handlers/chatCore/requestDetail.js:26](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore/requestDetail.js:26)),
+  ([open-sse/handlers/chatCore/requestDetail.js:26](../../../open-sse/handlers/chatCore/requestDetail.js#L26)),
   called from
-  [open-sse/handlers/chatCore/nonStreamingHandler.js:668](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore/nonStreamingHandler.js:668),
+  [open-sse/handlers/chatCore/nonStreamingHandler.js:668](../../../open-sse/handlers/chatCore/nonStreamingHandler.js#L668),
   which canonicalizes with `canonicalizeUsage`
-  ([open-sse/handlers/chatCore/requestDetail.js:31](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/chatCore/requestDetail.js:31)).
+  ([open-sse/handlers/chatCore/requestDetail.js:31](../../../open-sse/handlers/chatCore/requestDetail.js#L31)).
   The canonicalizer selects its detail object as
   `usage.prompt_tokens_details ?? usage.input_tokens_details`
-  ([open-sse/utils/usageTracking.js:256](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/usageTracking.js:256))
+  ([open-sse/utils/usageTracking.js:256](../../../open-sse/utils/usageTracking.js#L256))
   and then computes the cache-read count as
   `cached = num(usage.cached_tokens ?? inputDetails?.cached_tokens)`
-  ([open-sse/utils/usageTracking.js:280](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/usageTracking.js:280)).
+  ([open-sse/utils/usageTracking.js:280](../../../open-sse/utils/usageTracking.js#L280)).
   There is no `prompt_cache_hit_tokens` term. The offline probe above shows the consequence on an identical
   payload: the streaming extractor reports `cached_tokens: 768`, the non-streaming canonicalizer reports
   `cached_tokens: 0`.
 - **The upstream Responses-translator hunk is already covered locally.** The fork's shared usage projection
   reads `raw.input_tokens_details || raw.prompt_tokens_details`
-  ([open-sse/translator/concerns/usage.js:125](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/translator/concerns/usage.js:125))
+  ([open-sse/translator/concerns/usage.js:125](../../../open-sse/translator/concerns/usage.js#L125))
   and prefers the flat `cache_read_input_tokens` / `cache_creation_input_tokens` when present
-  ([open-sse/translator/concerns/usage.js:132](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/translator/concerns/usage.js:132)).
+  ([open-sse/translator/concerns/usage.js:132](../../../open-sse/translator/concerns/usage.js#L132)).
   The Responses response translator applies the same cache-read sources, checking
   `cache_read_input_tokens`, `cached_tokens`, `input_tokens_details.cached_tokens` and
   `prompt_tokens_details.cached_tokens`
-  ([open-sse/translator/response/openai-responses.js:946](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/translator/response/openai-responses.js:946)).
+  ([open-sse/translator/response/openai-responses.js:946](../../../open-sse/translator/response/openai-responses.js#L946)).
 - **The pricing rows are a catalog divergence, not a mechanism gap.** The fork already prices both models:
   `deepseek-v4-pro` is input 0.435, output 0.87, cached 0.003625, reasoning 0.87, cache creation 0.435, and
   `deepseek-v4-flash` is input 0.14, output 0.28, cached 0.0028, reasoning 0.28, cache creation 0.14
-  ([open-sse/providers/pricing.js:300](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/pricing.js:300),
-  [open-sse/providers/pricing.js:301](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/pricing.js:301)).
+  ([open-sse/providers/pricing.js:300](../../../open-sse/providers/pricing.js#L300),
+  [open-sse/providers/pricing.js:301](../../../open-sse/providers/pricing.js#L301)).
   The `deepseek-v4-pro` row matches upstream apart from a rounding difference on the cached rate
   (0.003625 against 0.0036). The `deepseek-v4-flash` row differs from upstream's promoted row on input
   (0.14 against 0.07) and cached (0.0028 against 0.014). Upstream's own comment states that its row is a
   promotion expiring on 2026-05-31 with list pricing of $0.145 / $3.48 afterwards, so the two catalogs
   describe different price points for the same model id. The fork's prices are operator-overridable through
   the pricing store
-  ([src/lib/db/repos/pricingRepo.js:99](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/lib/db/repos/pricingRepo.js:99)),
+  ([src/lib/db/repos/pricingRepo.js:99](../../../src/lib/db/repos/pricingRepo.js#L99)),
   so the catalog is not a fixed upstream copy.
 - **The divergence is untested locally.** A search for `prompt_cache_hit_tokens` across `tests/` returns no
   hit; `tests/unit/cached-token-usage.test.js` exercises `canonicalizeUsage` and `extractUsage` for the
   Claude, OpenAI and Ollama cache shapes but not for the DeepSeek flat field.
 
-Disposition: mixed. The upstream change is confirmed applicable in one narrow place — the non-streaming
-extractor — and the safe expected behavior for it is recorded in the next section. The Responses-translator
-hunk is already covered, and the pricing rows are a value divergence rather than a missing mechanism.
+Disposition: narrow existing usage-parser repair only. The non-streaming extractor does not read the flat cache-read field; the Responses-translator hunk is already covered. The dated promotional pricing rows are catalog values and are not ported.
 
 ## #2061 — dynamic tool limit detection with proactive truncation
 
@@ -389,14 +382,14 @@ Local findings:
   inspection that reads a provider's advertised tool limit.
 - **The only tool cap on the request path is provider-specific and fixed.** The Grok CLI executor caps its
   flattened namespace tools at `GROK_CLI_MAX_TOOLS = 200`
-  ([open-sse/executors/grok-cli.js:35](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/executors/grok-cli.js:35))
+  ([open-sse/executors/grok-cli.js:35](../../../open-sse/executors/grok-cli.js#L35))
   and truncates the body at
-  [open-sse/executors/grok-cli.js:449](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/executors/grok-cli.js:449).
+  [open-sse/executors/grok-cli.js:449](../../../open-sse/executors/grok-cli.js#L449).
   That is one provider, a static ceiling, and it is not error-driven: nothing in the fork learns a limit from
   a rejection.
 - **The other tool cap in the tree is not a request cap.**
   `const MAX_TOOLS = 64` inside the provider summary
-  ([open-sse/utils/stream.js:247](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/stream.js:247))
+  ([open-sse/utils/stream.js:247](../../../open-sse/utils/stream.js#L247))
   bounds how many tool calls the summary retains while parsing a stream; it does not alter the outgoing
   request, and it is not derived from any provider limit.
 - **The chat path performs no proactive tool truncation.** The request body is assembled and forwarded
@@ -404,10 +397,7 @@ Local findings:
 - **No local fixture covers a tool-limit rejection.** There is no test that feeds a tool-limit error body
   through the chat path, and no test asserting a truncated tool array.
 
-Disposition: confirmed applicable gap requiring a new code unit. The fork's existing per-provider caps do not
-cover the upstream behavior: they are static rather than detected, they apply to one provider rather than
-being provider-scoped and generic, and they cannot react to a provider that advertises a lower ceiling than
-the default. Safe expected behavior is recorded below.
+Disposition: out of scope. Dynamic upstream tool-limit learning and proactive tool truncation add a new non-provider capability. The fork has no provider-scoped tool-limit detection and no proactive tool truncation on the chat path; the existing Grok CLI static cap and stream-summary retention cap remain distinct mechanisms.
 
 ## #2123 — enhance Inworld TTS support
 
@@ -434,38 +424,38 @@ Local findings:
 
 - **The fork has no audio-provider format declaration.** The `supportedFormats` identifier that exists in
   this tree is unrelated: it names model wire formats such as `openai-responses`
-  ([open-sse/providers/models/schema.js:55](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/models/schema.js:55)),
+  ([open-sse/providers/models/schema.js:55](../../../open-sse/providers/models/schema.js#L55)),
   not audio output formats. No provider registry entry declares an output format set.
 - **The Inworld adapter hardcodes one format.**
-  [open-sse/handlers/ttsProviders/genericFormats.js:85](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/ttsProviders/genericFormats.js:85)
+  [open-sse/handlers/ttsProviders/genericFormats.js:85](../../../open-sse/handlers/ttsProviders/genericFormats.js#L85)
   builds the request with `audioConfig: { audioEncoding: "MP3" }`
-  ([genericFormats.js:93](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/ttsProviders/genericFormats.js:93))
+  ([genericFormats.js:93](../../../open-sse/handlers/ttsProviders/genericFormats.js#L93))
   and returns `format: "mp3"`
-  ([genericFormats.js:99](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/ttsProviders/genericFormats.js:99)).
+  ([genericFormats.js:99](../../../open-sse/handlers/ttsProviders/genericFormats.js#L99)).
   The core handler does accept a `response_format` and forwards it to the adapter
-  ([open-sse/handlers/ttsCore.js:93](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/ttsCore.js:93)),
+  ([open-sse/handlers/ttsCore.js:93](../../../open-sse/handlers/ttsCore.js#L93)),
   but the Inworld adapter ignores it. A request for WAV or Opus is therefore not rejected; it silently returns
   MP3 bytes labeled as MP3. There is no 400 for an unsupported format.
 - **The Inworld model list differs.** The registry entry lists `inworld-tts-1.5-mini` and
   `inworld-tts-1.5-max`
-  ([open-sse/providers/registry/inworld.js:27](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/registry/inworld.js:27),
-  [open-sse/providers/registry/inworld.js:31](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/registry/inworld.js:31));
+  ([open-sse/providers/registry/inworld.js:27](../../../open-sse/providers/registry/inworld.js#L27),
+  [open-sse/providers/registry/inworld.js:31](../../../open-sse/providers/registry/inworld.js#L31));
   there is no `inworld-tts-2`.
 - **Voice resolution differs, and the fork's route is not a smaller capability.** The fork has no hardcoded
   voice preset table. Inworld voices are read from the provider's live voices endpoint through
-  [src/app/api/media-providers/tts/inworld/voices/route.js:7](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/src/app/api/media-providers/tts/inworld/voices/route.js:7),
+  [src/app/api/media-providers/tts/inworld/voices/route.js:7](../../../src/app/api/media-providers/tts/inworld/voices/route.js#L7),
   with the adapter's default voice being `Alex`
-  ([genericFormats.js:91](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/ttsProviders/genericFormats.js:91)).
+  ([genericFormats.js:91](../../../open-sse/handlers/ttsProviders/genericFormats.js#L91)).
   The upstream change adds a large static preset list instead, which is a catalog refresh of a different shape
   rather than a boundary change.
 - **The Runway hunk concerns a surface the fork does not have.** The fork's Runway entry is an image provider
   whose models are `gen4_image`, `gen4_image_turbo`, `gen4_turbo` and `gen3a_turbo`
-  ([open-sse/providers/registry/runwayml.js:31](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/providers/registry/runwayml.js:31)),
+  ([open-sse/providers/registry/runwayml.js:31](../../../open-sse/providers/registry/runwayml.js#L31)),
   with `serviceKinds: ["image"]`. The upstream file is a video model allowlist with a different membership
   (`gen4_turbo`, `veo3.1`, `veo3.1_fast` after the change) and a companion image-required model set. The fork
   has no equivalent of `RUNWAYML_IMAGE_REQUIRED_MODELS`, and its Runway adapter is an asynchronous image
   submit-and-poll
-  ([open-sse/handlers/imageProviders/runwayml.js:1](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/handlers/imageProviders/runwayml.js:1)).
+  ([open-sse/handlers/imageProviders/runwayml.js:1](../../../open-sse/handlers/imageProviders/runwayml.js#L1)).
 - **Existing local coverage.** `tests/unit/native-speech-adapters.test.js` and
   `tests/unit/audio-voices-internal-auth.test.js` cover the local speech adapters and the voice routes.
 
@@ -475,17 +465,16 @@ the fork does not have. The one behavior worth noting is that the local Inworld 
 `response_format` and then ignores it, which is a catalog-consistency observation for the TTS surface rather
 than a boundary this comparison covers.
 
-## Confirmed applicable gaps
+## Confirmed applicable gap
 
-Two gaps were confirmed as applicable to this fork. Both are recorded with the behavior a correct local
-implementation must have. No implementation is proposed, started or described as scheduled here.
+One narrow existing usage-parser repair is confirmed. No implementation is proposed, started or described as scheduled here.
 
 ### Non-streaming extraction of a provider's flat cache-read field
 
 Confirmed applicable. The streaming extractor reads the flat field
-([open-sse/utils/usageTracking.js:465](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/usageTracking.js:465));
+([open-sse/utils/usageTracking.js:465](../../../open-sse/utils/usageTracking.js#L465));
 the non-streaming canonicalizer does not
-([open-sse/utils/usageTracking.js:280](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/utils/usageTracking.js:280)).
+([open-sse/utils/usageTracking.js:280](../../../open-sse/utils/usageTracking.js#L280)).
 The offline probe above shows the same provider payload yielding a cache-read count of 768 on the streaming
 path and 0 on the non-streaming path.
 
@@ -504,30 +493,6 @@ Safe expected behavior:
 - The behavior must hold for both the JSON response path and the Responses-translated path, so a client sees
   one consistent usage block regardless of which path served the request.
 
-### Provider-scoped tool-limit detection with proactive truncation
-
-Confirmed applicable. The fork has no tool ceiling on the chat request path and no mechanism that learns a
-provider's advertised limit from a rejection; the only request-side cap is the Grok CLI executor's static 200
-([open-sse/executors/grok-cli.js:35](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-m-df5ba85dcf8c62e4/open-sse/executors/grok-cli.js:35)).
-
-Safe expected behavior:
-
-- The default ceiling matches the provider's own documented default, 128 tools, and applies to the outgoing
-  request only. It must not alter the client's response contract.
-- Truncation must keep the first N tools in their original order and must not rewrite the retained tool
-  schemas, names, or `tool_choice`. It must not modify any other field of the request body.
-- A limit learned from an upstream rejection must only ever lower the effective ceiling for that provider.
-  A higher advertised limit must never raise it, and a provider with no detected limit must keep the default.
-- Detection must be bounded to a request-scoped error response. Only an HTTP 400 whose body carries a
-  recognizable tool-limit indication may update the ceiling; other statuses and other 400 causes must not.
-- A parsed limit must be a positive integer in a sane range. An unparsable, zero, negative, non-numeric or
-  implausibly large value must leave the ceiling unchanged. An ambiguous error body must not produce a guess.
-- The learned ceiling must be provider-scoped and time-bounded, with a lifetime on the order of a day, so that
-  a transient upstream condition does not permanently reduce the tool allowance. The state should be
-  process-local and bounded in size, so that it cannot grow without limit or outlive a restart.
-- The error body may contain material that should not be persisted or echoed. Detection must read only the
-  numeric limit out of the body and must not log the body wholesale, and the detection path must not alter
-  the error returned to the client.
 
 ## Evidence collected
 
@@ -538,10 +503,7 @@ Safe expected behavior:
   [PR #1923](https://github.com/cheaper-inference/OmniRoute/pull/1923/files),
   [PR #1930](https://github.com/cheaper-inference/OmniRoute/pull/1930/files),
   [PR #2061](https://github.com/cheaper-inference/OmniRoute/pull/2061/files),
-  [PR #2123](https://github.com/cheaper-inference/OmniRoute/pull/2123/files); commits pinned in the table
-  above. Patch reconstruction used the read-only mirror at
-  `/var/tmp/durindoor-omniroute-source.4eUb6QtM/source.git`; metadata came from
-  `/var/tmp/durindoor-omni-early-metadata.gnjcuh68/2026-05.json`.
+  [PR #2123](https://github.com/cheaper-inference/OmniRoute/pull/2123/files); commits pinned in the table above.
 - Local source: `open-sse/services/compression/deriveDefaultPlan.js`,
   `open-sse/handlers/chatCore.js`, `open-sse/handlers/chatCore/compressionHook.js`,
   `open-sse/handlers/chatCore/requestDetail.js`, `open-sse/handlers/chatCore/nonStreamingHandler.js`,

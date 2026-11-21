@@ -29,6 +29,10 @@ const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 
+// Bound for a plain-text (non-JSON) provider error message kept for the
+// fallback classifier. The message is diagnostic context, never a payload.
+const PLAIN_ERROR_TEXT_LIMIT = 500;
+
 // HTTP-date allows IMF-fixdate and the two obsolete HTTP date formats.
 const HTTP_DATE = /^(?:[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]+, \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d{2}:\d{2}:\d{2} \d{4})$/;
 
@@ -1782,13 +1786,26 @@ export async function handleComboChat({
       let errorText = result.statusText || "";
       let errorBody = null;
       let retryAfter = null;
+      // True only when the provider body was not JSON. A provider body is
+      // upstream content and never a locally generated lifecycle event.
+      let plainProviderBody = false;
       try {
         errorBody = await result.clone().json();
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
         retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
       } catch {
-
-        // Ignore JSON parse errors
+        // The provider body is not JSON. Keep a bounded, useful message for the
+        // fallback classifier, read from a second clone so the original
+        // response body stays readable for the direct-return paths below.
+        try {
+          const rawText = await result.clone().text();
+          if (rawText && rawText.trim()) {
+            plainProviderBody = true;
+            errorText = rawText.substring(0, PLAIN_ERROR_TEXT_LIMIT);
+          }
+        } catch {
+          // Body unreadable — keep the status text
+        }
       }
       // Normalize error text to string (Worker-safe)
       if (!isString(errorText)) {
@@ -1800,7 +1817,10 @@ export async function handleComboChat({
       // defaulting to 502) is a local stream lifecycle event, not a provider
       // failure. Do not spend a fallback attempt or accrue cooldown on it
       // (OmniRoute #7907/#7908) — surface the abort directly.
-      if (isLocalStreamLifecycleError(errorText)) {
+      // A provider's own body is upstream content: a plain-text body that
+      // repeats an abort marker must not be reinterpreted as a locally
+      // generated lifecycle event, so that path classifies the status text.
+      if (isLocalStreamLifecycleError(plainProviderBody ? result.statusText : errorText)) {
         releaseFailedAffinity(modelStr, i);
         return abortedResponse();
       }

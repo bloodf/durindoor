@@ -49,7 +49,7 @@ export { CONNECTION_SCOPED_SYNC_PROVIDERS, isConnectionScopedSyncProvider, conne
 export function connectionEndpoint(providerId, connection) {
   const psd = isRecord(connection?.providerSpecificData) ? connection.providerSpecificData : {};
   const registered = REGISTRY.find((entry) => entry.id === providerId);
-  const raw = isString(psd.baseUrl) && psd.baseUrl.trim() ? psd.baseUrl.trim() : registered?.transport?.baseUrl;
+  const raw = providerId === "codex" ? registered?.transport?.baseUrl : isString(psd.baseUrl) && psd.baseUrl.trim() ? psd.baseUrl.trim() : registered?.transport?.baseUrl;
   try {
     const url = new URL(raw);
     return `${url.origin}${url.pathname}`.replace(/\/+$/, "");

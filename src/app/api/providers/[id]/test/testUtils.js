@@ -39,7 +39,7 @@ import { OutboundUrlGuardError, guardedProbeFetch } from "open-sse/utils/outboun
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
 
-import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
+import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/providers/conversationProbe.js";
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -1171,7 +1171,7 @@ export async function testSingleConnection(id) {
     if (connection.provider === "zenmux-free" && !extractZenmuxCtoken(connection.apiKey)) {
       return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken", latencyMs: 0, testedAt: new Date().toISOString() };
     }
-    return { valid: false, skipped: true, error: SKIPPED_WEB_SESSION_ERROR, latencyMs: 0, testedAt: new Date().toISOString() };
+    return { valid: false, skipped: true, error: skippedWebSessionError(connection.provider), latencyMs: 0, testedAt: new Date().toISOString() };
   }
 
   const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});

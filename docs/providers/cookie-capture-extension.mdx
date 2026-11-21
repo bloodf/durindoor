@@ -3,7 +3,7 @@ title: Browser cookie capture extension
 description: Install and use the opt-in extension to import a supported browser session into DurinDoor.
 ---
 
-The DurinDoor Cookie Capture extension sends approved cookies from a signed-in browser tab to your own dashboard after you review and confirm the transfer. It supports **ChatGPT Web**, **Perplexity Web**, **Grok Web**, and **Muse Spark Web**. Other providers, including HuggingChat, are not supported by the extension. Importing a session does not add a missing provider executor; Muse Spark Web chat requests currently return `provider_port_pending`.
+The DurinDoor Cookie Capture extension sends approved cookies from a signed-in browser tab to your own dashboard after you review and confirm the transfer. It supports **ChatGPT Web**, **Perplexity Web**, **Grok Web**, **Muse Spark Web**, and **Tencent Yuanbao Web**. Other providers, including HuggingChat, are not supported by the extension. Importing a session does not add a missing provider executor; Muse Spark Web chat requests currently return `provider_port_pending`.
 
 A session cookie grants access to your account. Protect your dashboard and restrict access to your gateway; see [API key scoping](../operations/api-key-scoping.mdx).
 
@@ -37,7 +37,7 @@ It reads only the built-in approved cookie names and contiguous chunks from the 
 ## Limitations
 
 - The extension has not been exercised in a real browser; its automated tests mock browser APIs and network requests.
-- Only the four providers above and their approved cookie names are supported. The extension does not capture localStorage tokens or arbitrary cookie headers.
+- Only the five providers above and their approved cookie names are supported. The extension does not capture localStorage tokens or arbitrary cookie headers.
 - Browser support for the optional IPv6 loopback host pattern may vary; use `localhost` if `[::1]` is rejected.
 - Pairings live in one DurinDoor process's memory. Run a single process behind the address used by the extension.
 - A captured session can expire or be rejected by the provider. See [web cookie providers](./web-cookie.mdx) for alternatives, provider limitations and recovery.

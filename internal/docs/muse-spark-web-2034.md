@@ -11,3 +11,14 @@ Reference pins used for this investigation:
 The local `muse-code` device grant and `meta-llama` API key are separate provider identities from the web-cookie session. The focused mock regression covers web-login session expiry, static catalog identities, OAuth provider separation, fail-closed dispatch for both web aliases, and isolated parser snapshots and authentication errors. It does not verify live session validity, upstream protocol, model discovery, real expiry responses, or end-to-end sign-in. No live provider, browser, or account was used. A compatible authorized non-browser request contract and its closed-mock coverage remain necessary before enabling dispatch.
 
 The response parser follows OmniRoute's `open-sse/executors/muse-spark-web/response-parser.ts` error-state and security-block classifications: an assistant `streamingState: ERROR` is a failure, and security-block text maps to 403. This parser is still not reached by normal Muse Spark Web dispatch while the provider remains guarded.
+
+## Saved-cookie lifecycle (#2034)
+
+Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-muse-yuanbao-hugging.test.js`. It uses the real database, provider routes, validate and test routes, `/v1/models`, `handleChat`, the Messages and Responses routes, account fallback, executors and the usage route; only credentials and outbound bytes are synthetic, and `fetch` is closed by default. The source pins above are the 2026-11-20 snapshot and were reused, not re-fetched. No provider request, real session, browser or Docker was used.
+
+The guard stays closed: no authorized non-browser request contract is established, so nothing was enabled. Verified through every entry point (Chat Completions JSON and stream, Messages, Responses, direct executor and translate-path `buildHeaders` and `buildUrl`): HTTP 501 `provider_port_pending`, no outbound request, no credential in any response, static three-model catalog in `/v1/models`, per-account rows untouched, and re-paste through the Edit route stores the new cookie without changing the guard.
+
+Gaps found and fixed (DurinDoor-original):
+
+- **Validate and Test Connection sent the saved cookie.** The generic probe POSTed `Authorization: Bearer <cookie>` to `https://www.meta.ai/api/graphql`, bypassing the dispatch guard. Both now return `skipped` through `src/lib/providers/conversationProbe.js` without any request.
+- **The guard locked and rotated accounts.** `chatCore` flattens the guard body to `[501]: ... runtime execution is not ported yet`, which dropped the `provider_port_pending` type that `checkFallbackError` matched, so every connection was locked for 30 seconds and the router tried each sibling. `checkFallbackError` now also matches the guard's own 501 wording, so no cooldown or fallback is recorded. The same wording covers every provider behind `UnsupportedOmniRouteWebSessionExecutor`.

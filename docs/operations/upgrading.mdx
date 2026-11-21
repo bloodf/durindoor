@@ -13,6 +13,8 @@ Stop DurinDoor and any watchdog that restarts it. Make a full [data backup](./da
 
 Startup migration copies are safety copies, not full backups. They retain only the newest three backup directories and can omit request details. SQLite timeline history has its own sidecar.
 
+Before switching runtimes, record `node --version` for npm or source installations and verify the selected release’s declared engine range. Use Node `24.22.2` for this source checkout; see the [runtime evidence matrix](../reference/cli.mdx#runtime-and-artifact-evidence). Rebuild source artifacts under the selected runtime and validate the actual target artifact before returning traffic. For Docker, record the image digest; the image supplies Node.
+
 ## Install the selected version
 
 <Tabs items={['Docker', 'npm', 'Source']}>
@@ -80,4 +82,4 @@ If SQLite startup reports corruption, stop every writer and restore a verified b
 4. Select the previous image, package version, or source tag.
 5. Start the app and repeat health, inference, and dashboard checks.
 
-Starting an old binary against a migrated database does not undo migrations. For a PostgreSQL-to-SQLite rollback, [Postgres](./postgres.mdx#rollback) also explains the loss of PostgreSQL-era writes and required environment changes.
+Restore the previous compatible Node runtime as well when rolling back a source or npm installation. Reinstall or rebuild the previous artifact under that runtime before starting it. Starting an old binary against a migrated database does not undo migrations. For a PostgreSQL-to-SQLite rollback, [Postgres](./postgres.mdx#rollback) also explains the loss of PostgreSQL-era writes and required environment changes.

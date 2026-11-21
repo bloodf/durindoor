@@ -195,3 +195,7 @@ export const CompatibleProxyOpen = {
     await expect(form.getByRole("button", { name: /^cancel$/i })).toBeEnabled();
   },
 };
+
+export const MnnAiConnection = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers/mnn-ai", params: { id: "mnn-ai" }, routes: providerFixture("mnn-ai").routes } },
+};

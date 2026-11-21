@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ connections: vi.fn(), key: vi.fn(), ids: vi.fn(), read: vi.fn(), registered: {} }));
+const m = vi.hoisted(() => ({ connections: vi.fn(), key: vi.fn(), ids: vi.fn(), read: vi.fn(), registered: { value: {} } }));
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: m.connections, getApiKeyByKey: m.key, getApiKeyProviderConnectionIds: m.ids,
   getCombos: vi.fn(async () => []), getCustomModels: vi.fn(async () => []),
@@ -53,6 +53,13 @@ describe("private ChatGPT plan model listing", () => {
     if (reason === "unregistered") m.registered.value = undefined;
     if (reason === "selection") m.connections.mockResolvedValue([{ ...connection, providerSpecificData: {} }]);
     expect(await catalog("right")).toEqual([]);
+    expect(m.read).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("does not choose between multiple scoped plan connections", async () => {
+    m.connections.mockResolvedValue([connection, { ...connection, id: "b" }]);
+    m.ids.mockResolvedValue(["a", "b"]);
+    expect(await catalog()).toEqual([]);
     expect(m.read).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });

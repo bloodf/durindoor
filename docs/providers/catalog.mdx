@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 358 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 360 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -66,6 +66,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Cerebrium | `cerebrium` | apikey | 0 | [site](https://cerebrium.ai) |
 | Charm Hyper | `charm-hyper` | apikey | 20 | [site](https://hyper.charm.land) |
 | ChatAnywhere | `chatanywhere` | apikey | 0 |  |
+| ChatGPT Plan (owner-operated) | `chatgpt-plan` | oauth | 0 | [site](https://chatgpt.com) |
 | ChatGPT Web | `chatgpt-web` | cookie | 11 | [site](https://chatgpt.com) |
 | Cheaper Inference | `cheaperinference` | apikey | 39 | [site](https://cheaperinference.com) |
 | Chenzk API | `chenzk` | apikey | 16 | [site](https://chenzk.top) |
@@ -230,6 +231,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Mixlayer | `mixlayer` | apikey | 1 |  |
 | MLX | `mlx` | apikey | 0 | [site](https://github.com/ml-explore/mlx-lm) |
 | MMF | `mmf` | apikey | 1 |  |
+| MNN AI | `mnn-ai` | apikey | 0 | [site](https://mnnai.ru) |
 | Modal | `modal` | apikey | 1 | [site](https://modal.com/docs) |
 | ModelScope | `modelscope` | apikey | 0 | [site](https://modelscope.cn) |
 | Morph | `morph` | apikey | 6 | [site](https://morphllm.com) |

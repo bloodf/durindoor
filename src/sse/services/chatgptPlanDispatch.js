@@ -1,5 +1,6 @@
 import { getApiKeyProviderConnectionIds, getProviderConnections } from "@/lib/localDb";
 import { createChatGptPlanAccounts } from "@/lib/oauth/chatgptPlanAccounts.js";
+import { listChatgptPlanModels } from "open-sse/providers/chatgpt-plan/index.js";
 import { executeChatgptPlan } from "open-sse/executors/chatgpt-plan.js";
 import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredentialManager.js";
 import { FORMATS } from "open-sse/translator/formats.js";
@@ -114,6 +115,9 @@ export async function resolveChatgptPlanDispatch({
 
   return {
     connectionId: scope.binding.connectionId,
+    async listModels() {
+      return listChatgptPlanModels({ ...access, signal, fetch });
+    },
     credentials: {
       authType: "oauth",
       connectionName: projected.connectionName,

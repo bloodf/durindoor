@@ -71,10 +71,9 @@ This is an explicitly enabled private local operation. Set
 `DURINDOOR_CHATGPT_PLAN_ENROLLMENT=1` on the owner-controlled runtime and
 restart it. The endpoint accepts only loopback peers proven by the local server,
 a valid dashboard session or machine-bound CLI token, and a same-origin request.
-An open dashboard or inference API key alone is insufficient. Disable the flag
-again after enrollment. The endpoint returns 404 until the provider is registered in the production
-registry, even when the owner has enabled enrollment. The registry is intentionally
-not registered by this change.
+An open dashboard or inference API key alone is insufficient. Keep the flag enabled while using the plan; disabling it stops enrollment,
+discovery and dispatch. The connection is hidden from the generic public OAuth
+flow and must be created through this guarded endpoint.
 
 From an authenticated local dashboard session, POST JSON to
 `/api/oauth/chatgpt-plan/enrollment`. Use `{"action":"create","name":"Owner plan"}`

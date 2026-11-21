@@ -261,4 +261,4 @@ map((r) => r.id);
 // /api/providers/[id]/models and that the model picker offers. Single source of
 // truth: a provider listed here must be reachable from the picker, and a
 // provider whose live catalog the route serves must be listed here.
-export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode"];
+export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode", "mnn-ai"];

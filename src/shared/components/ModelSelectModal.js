@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
@@ -89,11 +89,26 @@ export default function ModelSelectModal({
   );
   const orcaCatalog = useOrcaRouterCatalog(isOpen, orcaConnectionIds, orcaCapability, null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [planKey, setPlanKey] = useState("");
+  const [planConnection, setPlanConnection] = useState("");
+  const [planStatus, setPlanStatus] = useState("");
+  const planRequestVersion = useRef(0);
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
   const [fetchedModels, setFetchedModels] = useState({});
+  // Clear a transient credential when the parent closes the modal externally.
+  useEffect(() => {
+    if (!isOpen) {
+      planRequestVersion.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPlanKey("");
+      setPlanStatus("");
+      setFetchedModels((previous) => previous["chatgpt-plan"]?.length ? { ...previous, "chatgpt-plan": [] } : previous);
+    }
+    return () => { planRequestVersion.current++; };
+  }, [isOpen]);
   // Effective auto-synced model lists by provider id (/api/models/auto-sync);
   // a provider listed here shows its synced list instead of the registry.
   const [syncedModelLists, setSyncedModelLists] = useState({});
@@ -713,6 +728,29 @@ export default function ModelSelectModal({
     return filtered;
   }, [groupedModels, searchQuery, addedModelValues]);
 
+  const planConnections = filteredActiveProviders.filter((p) => p.provider === "chatgpt-plan" && p.id);
+  const loadPlanModels = async () => {
+    if (!planConnection || !planKey) return;
+    const version = ++planRequestVersion.current;
+    setPlanStatus("Loading models…");
+    try {
+      const response = await fetch(`/api/providers/${encodeURIComponent(planConnection)}/models`, {
+        headers: { Authorization: `Bearer ${planKey}` }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Unavailable");
+      const data = await response.json();
+      if (version !== planRequestVersion.current) return;
+      setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": data.models || [] }));
+      setPlanStatus("Models loaded for the selected connection.");
+    } catch {
+      if (version !== planRequestVersion.current) return;
+      setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
+      setPlanStatus("Could not load models. Check the key and connection scope.");
+    } finally {
+      if (version === planRequestVersion.current) setPlanKey("");
+    }
+  };
+
   const handleSelect = (model) => {
     const value = model?.value || model?.name || model;
     const isAdded = addedModelValues.includes(value);
@@ -724,6 +762,9 @@ export default function ModelSelectModal({
     }
 
     if (closeOnSelect) {
+      planRequestVersion.current++;
+      setPlanKey("");
+      setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
       onClose();
       setSearchQuery("");
     }
@@ -733,8 +774,12 @@ export default function ModelSelectModal({
     <Modal
       open={isOpen}
       onClose={() => {
+        planRequestVersion.current++;
         onClose();
         setSearchQuery("");
+        setPlanKey("");
+        setPlanStatus("");
+        setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
       }}
       title={title}
       size="md"
@@ -746,6 +791,19 @@ export default function ModelSelectModal({
           <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">info</span>
           <span>Click to add, click again to remove. Changes are saved automatically.</span>
         </div>
+        {planConnections.length > 0 && (!kindFilter || kindFilter === "llm") && (
+          <div className="flex flex-col gap-2 rounded-dd-lg border border-dd-border p-3">
+            <label htmlFor="plan-connection">ChatGPT plan connection</label>
+            <select id="plan-connection" value={planConnection} onChange={(event) => { planRequestVersion.current++; setPlanStatus(""); setPlanConnection(event.target.value); setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] })); }}>
+              <option value="">Select a connection</option>
+              {planConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name || connection.id}</option>)}
+            </select>
+            <label htmlFor="plan-key">Gateway API key scoped to this connection</label>
+            <input id="plan-key" type="password" autoComplete="off" value={planKey} onChange={(event) => setPlanKey(event.target.value)} />
+            <button type="button" onClick={loadPlanModels} disabled={!planConnection || !planKey}>Load plan models</button>
+            <span role="status">{planStatus}</span>
+          </div>
+        )}
         {/* A degraded (fallback) OrcaRouter list is labelled rather than presented
             as live discovery. */}
         {orcaCatalog.models.length > 0 && orcaCatalog.degraded ? (

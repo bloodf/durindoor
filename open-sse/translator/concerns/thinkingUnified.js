@@ -336,9 +336,12 @@ function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning
   for (const target of targets) {
     delete target.thinking;
     delete target.reasoning_effort;
+    // Nested objects below may be shared with the client's body or with another combo target
+    // (the per-target body copy is shallow): replace them, never delete inside them.
     if (preserveResponsesReasoning && target.reasoning && isObject(target.reasoning) && !Array.isArray(target.reasoning)) {
-      delete target.reasoning.effort;
-      if (Object.keys(target.reasoning).length === 0) delete target.reasoning;
+      const { effort: _effort, ...reasoning } = target.reasoning;
+      if (Object.keys(reasoning).length === 0) delete target.reasoning;
+      else target.reasoning = reasoning;
     } else {
       delete target.reasoning;
     }
@@ -353,8 +356,14 @@ function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning
       delete target.output_config;
     }
     delete target.think;
-    if (target.generationConfig) delete target.generationConfig.thinkingConfig;
-    if (target.request?.generationConfig) delete target.request.generationConfig.thinkingConfig;
+    if (target.generationConfig?.thinkingConfig !== undefined) {
+      const { thinkingConfig: _thinking, ...generationConfig } = target.generationConfig;
+      target.generationConfig = generationConfig;
+    }
+    if (target.request?.generationConfig?.thinkingConfig !== undefined) {
+      const { thinkingConfig: _thinking, ...generationConfig } = target.request.generationConfig;
+      target.request = { ...target.request, generationConfig };
+    }
   }
 }
 
@@ -688,7 +697,8 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
       if (body.thinking) {
         delete body.reasoning_effort;
       } else {
-        body.output_config = body.output_config || {};
+        // Copy, not edit: output_config may be shared with another combo target.
+        body.output_config = { ...body.output_config };
         if (!body.output_config.effort) body.output_config.effort = body.reasoning_effort;
         delete body.reasoning_effort;
       }

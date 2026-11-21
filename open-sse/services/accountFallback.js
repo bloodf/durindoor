@@ -80,11 +80,15 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   }
 
   // OpenRouter capability and routing preferences describe this request, not
-  // model health. Keep ordinary missing-model 404s on their existing path.
+  // model health. A model OpenRouter removed answers the same 404 on every key,
+  // and its passthrough id collapses to the account-wide lock scope, so cooling
+  // the key down would refuse every other OpenRouter model for the whole window.
+  // Keep other missing-model 404s on their existing path.
   if (Number(status) === 404 && provider === "openrouter" && (
     /\bno endpoints found that support\b/i.test(normalizedText) ||
     /\bno allowed providers\b/i.test(normalizedText) ||
-    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText)
+    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText) ||
+    /\bno longer available on openrouter\b/i.test(normalizedText)
   )) {
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }

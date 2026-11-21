@@ -1,3 +1,4 @@
+import { isOpenRouterAnthropicModel, capOpenAICacheBreakpoints } from "./concerns/openrouterAnthropicCache.js";
 import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
@@ -118,6 +119,8 @@ function isDefiniteXiaomiCloudOpenAIRoute(model, credentials, openAITransport) {
  */
 function shouldPreserveOpenAICacheControl(targetFormat, provider, model, credentials) {
   if (targetFormat !== FORMATS.OPENAI || !provider) return false;
+  // OpenRouter relays explicit breakpoints only for anthropic/* models (OmniRoute #19755).
+  if (isOpenRouterAnthropicModel(provider, model)) return true;
   const providerConfig = PROVIDERS[provider];
   if (providerConfig?.quirks?.preserveCacheControl === true) return true;
   const openAITransport = Array.isArray(providerConfig?.transports) ?
@@ -356,6 +359,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||
         getCapabilitiesForModel(provider, translationModel).videoInput === true
     });
+    // Anthropic allows four breakpoints; OpenRouter anthropic/* only (other providers unchanged).
+    if (preserveCacheControl && isOpenRouterAnthropicModel(provider, translationContext?.capabilityModel || translationModel)) {
+      result = capOpenAICacheBreakpoints(result);
+    }
     // Poe rejects image-only user turns with 400; Poe-only, other providers unchanged.
     if (Array.isArray(result?.messages)) result.messages = ensurePoeUserTurnHasText(result.messages, provider);
     /**

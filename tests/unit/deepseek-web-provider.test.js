@@ -3,24 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const upstreamFetch = vi.hoisted(() => vi.fn());
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
-vi.mock("open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const entry = (await import("../../open-sse/providers/private/deepseek-web.js")).default;
-  return { default: [...original.default, entry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { DeepSeekWebExecutor } = await import("../../open-sse/executors/deepseek-web.js");
-  const deepseek = new DeepSeekWebExecutor();
-  return { ...original, getExecutor: (provider) => provider === "deepseek-web" || provider === "ds-web" ? deepseek : original.getExecutor(provider) };
-});
 vi.stubGlobal("fetch", upstreamFetch);
 
 import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
 import DeepSeekWebExecutor from "../../open-sse/executors/deepseek-web.js";
-import deepseekWeb, { DEEPSEEK_WEB_COOKIE_PROFILE } from "../../open-sse/providers/private/deepseek-web.js";
+import deepseekWeb, { DEEPSEEK_WEB_COOKIE_PROFILE } from "../../open-sse/providers/registry/deepseek-web.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 
 const TOKEN_A = "synthetic-user-token-alpha";

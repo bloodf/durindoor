@@ -35,6 +35,12 @@ const ALIASES = {
   augment: "auggie",
   chipotle: "chipotle",
   "github-copilot": "copilot",
+  // Registered web-session providers reuse their vendor's mark.
+  "chatgpt-web-codex": "codex",
+  "deepseek-web": "deepseek",
+  "doubao-web": "doubao",
+  "gemini-web": "gemini",
+  "zai-web": "glm",
 };
 
 // Local asset availability; provider metadata is not imported (it starts runtime services).

@@ -1,9 +1,9 @@
 /**
- * Issue #1190 acceptance scope: offline native Gemini comparison only.
- * Gemini Web / gweb is a distinct cookie-authenticated web UI transport, not
- * the installed Gemini API alias. Mocked responses prove wire behavior, not
- * account-backed support. Web tools, reasoning and streaming remain unverified;
- * metadata alone must not authorize dispatch or expose those capabilities.
+ * Issue #1190 acceptance scope: offline native Gemini comparison and the registered
+ * Gemini Web identity. Gemini Web / gweb is a distinct cookie-authenticated web UI
+ * transport, not the installed Gemini API alias: it never sends its cookie to the
+ * API host and the native API key never reaches gemini.google.com. Mocked responses
+ * prove wire behavior, not account-backed support.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/providers/validate/route.js";
@@ -35,11 +35,11 @@ const toolReply = { candidates: [{ content: { role: "model", parts: [
   { functionCall: { name: "weather", args: { city: "Oslo" } } },
 ] }, finishReason: "STOP" }] };
 
-function validate(provider) {
+function validate(provider, apiKey = credentials.apiKey) {
   return POST(new Request("http://localhost/api/providers/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, apiKey: credentials.apiKey }),
+    body: JSON.stringify({ provider, apiKey }),
   }));
 }
 
@@ -49,7 +49,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("#1190 Gemini Web identity boundary", () => {
-  it("validates native Gemini API auth but refuses the web identity without probing", async () => {
+  it("validates native Gemini API auth and keeps the web identity on its own read-only probe", async () => {
     fetch.mockResolvedValueOnce(Response.json({ models: [] }));
     expect(await (await validate("gemini")).json()).toEqual({ valid: true, error: null });
     expect(fetch).toHaveBeenCalledWith(
@@ -57,15 +57,20 @@ describe("#1190 Gemini Web identity boundary", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     fetch.mockClear();
-    for (const provider of ["gemini-web", "gweb"]) {
-      const response = await validate(provider);
-      expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: "Provider validation not supported" });
-    }
-    expect(fetch).not.toHaveBeenCalled();
+    const cookie = "__Secure-1PSID=offline-psid; __Secure-1PSIDTS=offline-psidts";
+    fetch.mockResolvedValueOnce(new Response('<html>{"SNlM0e":"token"}</html>', { status: 200 }));
+    const response = await validate("gemini-web", cookie);
+    expect(await response.json()).toMatchObject({ valid: true });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("https://gemini.google.com/app");
+    expect(options.method).toBe("GET");
+    expect(options.headers.Cookie).toBe(cookie);
+    expect(options.headers.Authorization).toBeUndefined();
+    expect(options.headers["x-goog-api-key"]).toBeUndefined();
   });
 
-  it("discovers native API models without treating overlapping web names as web support", async () => {
+  it("discovers native API models; gemini-web answers from its own catalog without a request", async () => {
     fetch.mockResolvedValueOnce(Response.json({ models: [{ name: `models/${model}` }] }));
     expect(await fetchConnectionModels({ id: "offline", provider: "gemini", ...credentials }))
       .toEqual({ models: [{ name: `models/${model}` }] });
@@ -74,11 +79,11 @@ describe("#1190 Gemini Web identity boundary", () => {
       expect.objectContaining({ method: "GET" }), null,
     );
     fetch.mockClear();
-    for (const provider of ["gemini-web", "gweb"]) {
-      expect(await fetchConnectionModels({ id: "offline", provider, ...credentials }))
-        .toEqual({ error: `Provider ${provider} does not support models listing`, status: 400 });
-      expect(AI_PROVIDERS[provider]).toBeUndefined();
-    }
+    const web = await fetchConnectionModels({ id: "offline", provider: "gemini-web", ...credentials });
+    expect(web).toMatchObject({ provider: "gemini-web", source: "local_catalog" });
+    expect(web.models.map(({ id }) => id)).toEqual(["gemini-3.1-pro", "gemini-3.7-flash", "gemini-3.1-flash-lite"]);
+    expect(AI_PROVIDERS["gemini-web"]).toMatchObject({ authType: "cookie" });
+    expect(AI_PROVIDERS.gemini).not.toBe(AI_PROVIDERS["gemini-web"]);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -111,10 +116,13 @@ describe("#1190 Gemini Web identity boundary", () => {
     expect(await rejected.response.json()).toEqual(error);
   });
 
-  it.each(["gemini-web", "gweb"])("rejects %s transport before vending a foreign authenticated endpoint", (provider) => {
-    // Genuine regression: unknown identities currently inherit the OpenAI transport.
-    // A pending web port must fail closed, not send its cookie/key to another vendor.
-    expect(() => getExecutor(provider).buildUrl(model, false, 0, credentials)).toThrow();
+  it.each(["gemini-web", "gweb"])("%s dispatches to the web executor, never to the API host or another vendor", async (provider) => {
+    const executor = getExecutor(provider);
+    expect(executor).toBe(getExecutor("gemini-web"));
+    expect(executor).not.toBe(getExecutor("gemini"));
+    expect(executor.constructor.name).toBe("GeminiWebExecutor");
+    const url = executor.buildUrl(model, false, 0, credentials);
+    expect(url).toBe("https://gemini.google.com/app");
     expect(fetch).not.toHaveBeenCalled();
   });
 });

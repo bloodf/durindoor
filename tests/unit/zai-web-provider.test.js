@@ -4,17 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const wire = vi.hoisted(() => ({ calls: [], reply: null }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const provider = (await import("../../open-sse/providers/private/zai-web.js")).default;
-  return { ...actual, default: [...actual.default, provider] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const { ZaiWebExecutor } = await import("../../open-sse/executors/zai-web.js");
-  const executor = new ZaiWebExecutor();
-  return { ...actual, getExecutor: (id) => id === "zai-web" ? executor : actual.getExecutor(id) };
-});
 vi.mock("@/lib/usageDb.js", async (importOriginal) => ({ ...(await importOriginal()), appendRequestLog: vi.fn(() => Promise.resolve()), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), saveRequestDetail: vi.fn(() => Promise.resolve()), saveRequestUsage: vi.fn(() => Promise.resolve()) }));
 
 const ORIGIN = "https://chat.z.ai";

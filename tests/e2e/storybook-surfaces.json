@@ -24749,7 +24749,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "1f5be6e3ab8c95f8ebc567da4abe33ecfdc0374eed7027b49df869db7c9b0252",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26131,7 +26131,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26144,7 +26144,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26157,7 +26157,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -26170,7 +26170,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -26208,7 +26208,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26231,7 +26231,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26253,7 +26253,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26275,7 +26275,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26447,7 +26447,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26479,7 +26479,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -26594,7 +26594,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -26682,7 +26682,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "a229adcd515ed756c4f1333d43acc306f7412e15b405733f660182edc024a85c",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -56724,12 +56724,12 @@
       "id": "src/shared/ui/components/ProviderLogo.jsx#ProviderLogo",
       "sourcePath": "src/shared/ui/components/ProviderLogo.jsx",
       "symbol": "ProviderLogo",
-      "sourceSha256": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+      "sourceSha256": "3f5c74eb069b14559f65eea5b943c0f6c8ed39a04294b4d831240679140e0333",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Existing CSF imports actual production shared UI surface or parent state; runtime proof remains pending.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "durin-ds-surfaces-providerlogo--grid",
         "durin-ds-surfaces-providerlogo--aliases-and-fallback",
@@ -56737,13 +56737,7 @@
         "durin-ds-surfaces-providerlogo--missing",
         "durin-ds-surfaces-providerlogo--sizes"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-surfaces-providerlogo--grid",
-        "durin-ds-surfaces-providerlogo--aliases-and-fallback",
-        "durin-ds-surfaces-providerlogo--case-insensitive",
-        "durin-ds-surfaces-providerlogo--missing",
-        "durin-ds-surfaces-providerlogo--sizes"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-surfaces-providerlogo--grid",
@@ -56754,7 +56748,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+            "src/shared/ui/components/ProviderLogo.jsx": "3f5c74eb069b14559f65eea5b943c0f6c8ed39a04294b4d831240679140e0333",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "ProviderLogo.stories.jsx export grid directly renders visible canvas text 'claude', 'codex'.",
@@ -56769,7 +56763,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+            "src/shared/ui/components/ProviderLogo.jsx": "3f5c74eb069b14559f65eea5b943c0f6c8ed39a04294b4d831240679140e0333",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "ProviderLogo.stories.jsx export aliases and fallback directly renders visible canvas text 'cc → claude, cx → codex, ollama → ollama-local, kilo → kilocode, unknown → letter tile'.",
@@ -56783,7 +56777,7 @@
             "size"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+            "src/shared/ui/components/ProviderLogo.jsx": "3f5c74eb069b14559f65eea5b943c0f6c8ed39a04294b4d831240679140e0333",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "src/shared/ui/components/ProviderLogo.stories.jsx meta title Durin DS/Surfaces/ProviderLogo export CaseInsensitive resolves to durin-ds-surfaces-providerlogo--case-insensitive; its actual production component parent reaches src/shared/ui/components/ProviderLogo.jsx#ProviderLogo. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56798,7 +56792,7 @@
             "fallback"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+            "src/shared/ui/components/ProviderLogo.jsx": "3f5c74eb069b14559f65eea5b943c0f6c8ed39a04294b4d831240679140e0333",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "Actual Missing passes empty/unrecognized provider IDs; production falls back to the visible single-character ? tile (and B for brand-new-tool), not image alt text.",
@@ -56812,7 +56806,7 @@
             "size"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+            "src/shared/ui/components/ProviderLogo.jsx": "3f5c74eb069b14559f65eea5b943c0f6c8ed39a04294b4d831240679140e0333",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "src/shared/ui/components/ProviderLogo.stories.jsx meta title Durin DS/Surfaces/ProviderLogo export Sizes resolves to durin-ds-surfaces-providerlogo--sizes; its actual production component parent reaches src/shared/ui/components/ProviderLogo.jsx#ProviderLogo. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56820,16 +56814,110 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Existing CSF imports actual production shared UI surface or parent state; runtime proof remains pending.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Existing CSF imports actual production shared UI surface or parent state; runtime proof remains pending.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-surfaces-providerlogo--grid",
+            "durin-ds-surfaces-providerlogo--aliases-and-fallback",
+            "durin-ds-surfaces-providerlogo--case-insensitive",
+            "durin-ds-surfaces-providerlogo--missing",
+            "durin-ds-surfaces-providerlogo--sizes"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "durin-ds-surfaces-providerlogo--grid",
+              "storyId": "durin-ds-surfaces-providerlogo--grid",
+              "runtimeArtifactId": "durin-ds-surfaces-providerlogo--grid",
+              "axes": [
+                "size",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+                "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
+              },
+              "proposedSourceEvidence": "ProviderLogo.stories.jsx export grid directly renders visible canvas text 'claude', 'codex'.",
+              "expectedVisibleText": "claude"
+            },
+            {
+              "id": "durin-ds-surfaces-providerlogo--aliases-and-fallback",
+              "storyId": "durin-ds-surfaces-providerlogo--aliases-and-fallback",
+              "runtimeArtifactId": "durin-ds-surfaces-providerlogo--aliases-and-fallback",
+              "axes": [
+                "size",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+                "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
+              },
+              "proposedSourceEvidence": "ProviderLogo.stories.jsx export aliases and fallback directly renders visible canvas text 'cc → claude, cx → codex, ollama → ollama-local, kilo → kilocode, unknown → letter tile'.",
+              "expectedVisibleText": "cc → claude, cx → codex, ollama → ollama-local, kilo → kilocode, unknown → letter tile"
+            },
+            {
+              "id": "durin-ds-surfaces-providerlogo--case-insensitive",
+              "storyId": "durin-ds-surfaces-providerlogo--case-insensitive",
+              "runtimeArtifactId": "durin-ds-surfaces-providerlogo--case-insensitive",
+              "axes": [
+                "size"
+              ],
+              "sourceHashes": {
+                "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+                "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
+              },
+              "proposedSourceEvidence": "src/shared/ui/components/ProviderLogo.stories.jsx meta title Durin DS/Surfaces/ProviderLogo export CaseInsensitive resolves to durin-ds-surfaces-providerlogo--case-insensitive; its actual production component parent reaches src/shared/ui/components/ProviderLogo.jsx#ProviderLogo. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedVisibleText": null
+            },
+            {
+              "id": "durin-ds-surfaces-providerlogo--missing",
+              "storyId": "durin-ds-surfaces-providerlogo--missing",
+              "runtimeArtifactId": "durin-ds-surfaces-providerlogo--missing",
+              "axes": [
+                "text",
+                "fallback"
+              ],
+              "sourceHashes": {
+                "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+                "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
+              },
+              "proposedSourceEvidence": "Actual Missing passes empty/unrecognized provider IDs; production falls back to the visible single-character ? tile (and B for brand-new-tool), not image alt text.",
+              "expectedVisibleText": "?"
+            },
+            {
+              "id": "durin-ds-surfaces-providerlogo--sizes",
+              "storyId": "durin-ds-surfaces-providerlogo--sizes",
+              "runtimeArtifactId": "durin-ds-surfaces-providerlogo--sizes",
+              "axes": [
+                "size"
+              ],
+              "sourceHashes": {
+                "src/shared/ui/components/ProviderLogo.jsx": "f2b10627106fe36b1488203159498e60fa7ec8ee084ce4f757ceb3250aaad189",
+                "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
+              },
+              "proposedSourceEvidence": "src/shared/ui/components/ProviderLogo.stories.jsx meta title Durin DS/Surfaces/ProviderLogo export Sizes resolves to durin-ds-surfaces-providerlogo--sizes; its actual production component parent reaches src/shared/ui/components/ProviderLogo.jsx#ProviderLogo. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedVisibleText": null
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Existing CSF imports actual production shared UI surface or parent state; runtime proof remains pending.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/ui/components/RangeSelector.jsx#RangeSelector",
@@ -81897,7 +81985,77 @@
     {
       "storyId": "production-providers-providerdetailpage--mnn-ai-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-providers-providerdetailpage--mnn-ai-connection",
+        "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+        "sourceSha256": "220f16caa47a2ffbbaa985cfad3162bf1239c86899e64032fcabd4ea4c6cf758",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--claude-web-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--gemini-web-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--deepseek-web-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--doubao-web-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--zai-web-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-providers-providerdetailpage--chatgpt-web-codex-connection",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
+      "sourceSha256": "c1f77aff5829c6b9c0d50dceb61a17a85649801d8b0cd06747907efc264c8d36",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92575,11 +92733,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "a02a814dca83b8de02bf695bc0efead1c66e9e1b33f171600fb047e3dddc4706",
-    "sourceCensusSha256": "537ab63484d11aad17bbbe0a4d2fb4a1303b9ee239d40f3d16437771a6f830e9",
-    "pendingRows": 346,
-    "retainedApprovedRows": 270,
-    "pendingReferences": 1277,
+    "builtIndexSha256": "6a0024c7f4067d455c724c9bd89df34d585d7fc515b7c7ca04c1603e3a746462",
+    "sourceCensusSha256": "dea146c21434954ca245345b174945657082352f63a1e6b59d1cdab0d9642edd",
+    "pendingRows": 347,
+    "retainedApprovedRows": 269,
+    "pendingReferences": 1283,
     "runtimeStatus": "pending"
   }
 }

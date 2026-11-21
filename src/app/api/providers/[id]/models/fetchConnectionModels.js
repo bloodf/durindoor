@@ -2,6 +2,7 @@ import { antigravityForbiddenBackoff, recordAntigravityForbidden } from "open-ss
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
+import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
@@ -73,9 +74,9 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
-  // T3 Chat and Adapta publish a curated catalog; model discovery sends no
-  // session cookie.
-  if (connection.provider === "t3-web" || connection.provider === "adapta-web") {
+  // T3 Chat, Adapta and the staged web-session providers publish a curated
+  // catalog; model discovery sends no session cookie or token.
+  if (LOCAL_CATALOG_WEB_PROVIDERS.has(connection.provider)) {
     return {
       provider: connection.provider, connectionId: connection.id,
       models: getProviderModels(connection.provider), source: "local_catalog",

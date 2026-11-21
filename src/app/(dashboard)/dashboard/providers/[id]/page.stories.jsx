@@ -199,3 +199,14 @@ export const CompatibleProxyOpen = {
 export const MnnAiConnection = {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers/mnn-ai", params: { id: "mnn-ai" }, routes: providerFixture("mnn-ai").routes } },
 };
+
+const webSessionStory = (providerId) => ({
+  parameters: { storyFixture: { scenario: "default", pathname: `/dashboard/providers/${providerId}`, params: { id: providerId }, routes: providerFixture(providerId).routes } },
+});
+
+export const ClaudeWebConnection = webSessionStory("claude-web");
+export const GeminiWebConnection = webSessionStory("gemini-web");
+export const DeepseekWebConnection = webSessionStory("deepseek-web");
+export const DoubaoWebConnection = webSessionStory("doubao-web");
+export const ZaiWebConnection = webSessionStory("zai-web");
+export const ChatgptWebCodexConnection = webSessionStory("chatgpt-web-codex");

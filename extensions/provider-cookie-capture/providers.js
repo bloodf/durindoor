@@ -18,6 +18,30 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__Secure-next-auth.session-token"],
     cookiePrefixes: ["__Secure-next-auth.session-token."],
   },
+  "chatgpt-web-codex": {
+    label: "ChatGPT Web Codex",
+    origin: "https://chatgpt.com",
+    cookieNames: ["__Secure-next-auth.session-token"],
+    cookiePrefixes: ["__Secure-next-auth.session-token."],
+  },
+  "claude-web": {
+    label: "Claude Web",
+    origin: "https://claude.ai",
+    cookieNames: ["sessionKey"],
+    cookiePrefixes: [],
+  },
+  "doubao-web": {
+    label: "Doubao Web",
+    origin: "https://www.dola.com",
+    cookieNames: ["sessionid", "s_v_web_id"],
+    cookiePrefixes: [],
+  },
+  "gemini-web": {
+    label: "Gemini Web",
+    origin: "https://gemini.google.com",
+    cookieNames: ["__Secure-1PSID", "__Secure-1PSIDTS"],
+    cookiePrefixes: [],
+  },
   "grok-web": {
     label: "Grok Web",
     origin: "https://grok.com",
@@ -28,6 +52,12 @@ export const PROVIDERS = deepFreeze({
     label: "Muse Spark Web",
     origin: "https://www.meta.ai",
     cookieNames: ["ecto_1_sess"],
+    cookiePrefixes: [],
+  },
+  "zai-web": {
+    label: "Z.ai Web",
+    origin: "https://chat.z.ai",
+    cookieNames: ["token"],
     cookiePrefixes: [],
   },
   "yuanbao-web": {

@@ -423,7 +423,7 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
   }));
   afterEach(() => vi.useRealTimers());
 
-  it.for([["cost_usd", 0.5], ["cost_in_usd_ticks", 500_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async ([field, value], context) => {
+  it.for([["cost_usd", 0.5], ["cost_in_usd_ticks", 5_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async ([field, value], context) => {
     const usage = { [field]: value, prompt_tokens: 9, total_tokens: 9 };
     const payload = raw(usage);
     fetch.mockResolvedValueOnce(json(payload));

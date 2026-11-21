@@ -685,7 +685,7 @@ export function calculateCostBreakdown(tokens, pricing) {
     return { ...ZERO_COST_BREAKDOWN, totalCost: Number(directCost) };
   }
   if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
-    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000 };
+    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(tokens.cost_in_usd_ticks) / 1e10 };
   }
   if (!pricing) return ZERO_COST_BREAKDOWN;
 

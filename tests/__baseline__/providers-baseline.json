@@ -1782,6 +1782,12 @@
     "format": "openai",
     "authType": "apikey"
   },
+  "grokified": {
+    "baseUrl": "https://api.grokified.com/v1/chat/completions",
+    "validateUrl": "https://api.grokified.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "poixe-ai": {
     "baseUrl": "https://api.poixe.com/v1/chat/completions",
     "validateUrl": "https://api.poixe.com/v1/models",

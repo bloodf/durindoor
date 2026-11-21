@@ -63,6 +63,8 @@ Reviewed 2026-11-21 against DurinDoor current head. Source PR inventory from ups
 - **Focused tests to add**:
   `tests/unit/codebuddy-intl-system-prompt.test.js` (or `tests/unit/port9r-codebuddy-system-prompt-5796.test.js`) asserting that system prompts containing agent identity preambles (e.g. `You are an AI coding agent`) have only the identity line neutralized to `NEUTRAL_PROMPT` while appended `AGENTS.md` rules (>2,000 chars) and custom instructions are preserved across both `codebuddy-cn` and `codebuddy-intl` executors.
 
+- **Ported in this unit**: Both executors sanitize matching identity lines in system and developer text while preserving other lines and typed blocks; `tests/unit/port9r-5796-codebuddy-identity-lines.test.js` covers long rules, block metadata, and untouched user prompts.
+
 ---
 
 ### [#5787](https://github.com/decolua/9router/pull/5787) — fix(antigravity): fix Gemini 4 & Claude 5.5 model IDs and thinking mappings

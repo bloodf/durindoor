@@ -10,9 +10,9 @@ async function routeView(kind, settings) {
   const { saved, candidates, models } = await describeMediaRoute(kind, { settings });
   // Endpoints that run only part of the kind (async video jobs, translations)
   // show their own effective list, so a route one endpoint cannot use is visible.
-  const endpoints = await Promise.all((MEDIA_ROUTE_ENDPOINTS[kind] || []).map(async ({ path, supports }) => ({
+  const endpoints = await Promise.all((MEDIA_ROUTE_ENDPOINTS[kind] || []).map(async ({ path }) => ({
     path,
-    effective: (await describeMediaRoute(kind, { settings, supports })).models
+    effective: (await describeMediaRoute(kind, { settings, endpoint: path })).models
   })));
   return {
     ...meta,

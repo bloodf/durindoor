@@ -28,6 +28,7 @@ export async function resolveChatgptPlanAccess({
   ownerOperatedEnabled,
   providerRegistered,
   accounts,
+  renewExpired,
   clock = Date.now,
 } = {}) {
   const connectionId = selectedConnection?.id;
@@ -49,13 +50,19 @@ export async function resolveChatgptPlanAccess({
     return null;
   }
 
-  const record = await accounts.readAccount({ id: accountId, issuer, subject, clientId });
-  if (record?.id !== accountId || record.issuer !== issuer ||
-      record.subject !== subject || record.clientId !== clientId ||
-      record.planEnabled !== true || !nonempty(record.accessToken) ||
-      record.operation != null || !Number.isSafeInteger(record.expiresAt) ||
-      !(record.expiresAt > clock())) {
-    return null;
+  const selection = { id: accountId, issuer, subject, clientId };
+  const matchesSession = (record) => record?.id === accountId && record.issuer === issuer &&
+    record.subject === subject && record.clientId === clientId && record.planEnabled === true &&
+    nonempty(record.accessToken) && record.operation == null && Number.isSafeInteger(record.expiresAt);
+
+  let record = await accounts.readAccount(selection);
+  if (!matchesSession(record)) return null;
+  if (record.expiresAt <= clock()) {
+    // The owner service chooses whether the verified, scoped account can renew.
+    // Never issue a grant until its replacement session passes every check.
+    if (!renewExpired || !await renewExpired()) return null;
+    record = await accounts.readAccount(selection);
+    if (!matchesSession(record) || record.expiresAt <= clock()) return null;
   }
 
   return {

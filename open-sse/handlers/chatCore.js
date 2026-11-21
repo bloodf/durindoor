@@ -67,6 +67,7 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { isOpenRouterAnthropicModel } from "../translator/concerns/openrouterAnthropicCache.js";
 import { gateStep } from "../services/compression/fidelityGate.js";
 import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
 import { applyResponseMasking } from "../services/responseMasking.js";
@@ -975,6 +976,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         engines: compressionEngines ?? {},
         applyOpts: { ...adaptiveBudget, rtkApplied: runRtk },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
+        protectCachedPrefix: isOpenRouterAnthropicModel(provider, cleanModel),
         adaptive: {
           ...adaptiveBudget,
           estimatedTokens: estimateTokens(translatedBody),

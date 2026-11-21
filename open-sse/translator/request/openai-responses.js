@@ -154,7 +154,22 @@ function pairHistoricalToolCalls(input) {
  */
 function lowerCustomToolHistory(items) {
   if (!Array.isArray(items)) return items;
-  return items.map((item) => {
+  // A custom call with a blank call_id can never be paired with its output, so it is skipped
+  // (with the blank-id output that answers it) instead of being re-paired later under a
+  // made-up id and an empty result (OmniRoute #20243). Valid pairs are untouched.
+  let blankCustomCalls = 0;
+  const hasCallId = (item) => isString(item.call_id) && item.call_id.trim() !== "";
+  return items.flatMap((item) => {
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL && !hasCallId(item)) {
+      blankCustomCalls += 1;
+      return [];
+    }
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT && !hasCallId(item) && blankCustomCalls > 0) {
+      blankCustomCalls -= 1;
+      return [];
+    }
+    return [item];
+  }).map((item) => {
     if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL) {
       const { input, ...rest } = item;
       const raw = isString(input) ? input : input == null ? "" : JSON.stringify(input);
@@ -639,6 +654,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     }
   }
 
+  // Upstreams reject messages:[]. Skipped replay items (blank-id custom calls and their outputs)
+  // can leave nothing, so keep the placeholder the empty-input path uses (OmniRoute #20243).
+  if (result.messages.length === 0 && Array.isArray(body.input) && body.input.length > 0) {
+    result.messages = [{ role: ROLE.USER, content: "..." }];
+  }
+
   // Convert tools format.
   // Responses API supports "hosted" tools (e.g. { type: "request_user_input" }) that carry no
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
@@ -962,6 +983,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),
       ...msg.content.map((c) => chatPartToResponses(c, RESPONSES_ITEM.INPUT_TEXT))] :
       `${errorPrefix}${coerceResponsesOutput(msg.content)}`;
+      // No tool_call_id means no call to pair with: drop the output rather than
+      // manufacture an id for it (OmniRoute #20243).
+      if (!isString(msg.tool_call_id) || msg.tool_call_id.trim() === "") continue;
       const callId = clampResponsesCallId(msg.tool_call_id);
       result.input.push({
         type: customCallIds.has(callId) ? RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT : RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,

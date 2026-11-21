@@ -15,6 +15,8 @@ const DEFAULT_QUOTA_TRACKER_STATE = {
 };
 
 const DEFAULT_SETTINGS = {
+  // Session message capture requires explicit operator opt-in and request consent.
+  enableSessionCapture: false,
   cloudEnabled: false,
   hidePaidModels: false,
   exposeComboOnly: false,

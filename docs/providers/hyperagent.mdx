@@ -1,0 +1,19 @@
+# HyperAgent
+
+The pinned OmniRoute provider is an unofficial browser-session integration for `hyperagent.com`. It sends a browser `Cookie` header to HyperAgent's thread API and uses a provider-specific SSE protocol and sticky thread/session state. It does not use a documented API key. The registry entry is staged; a provider-specific executor is required before dispatch is enabled.
+
+## Setup and limits
+
+This integration depends on a reverse-engineered web session and may break when the site changes. Session access and credits are controlled by HyperAgent. No vendor-documented API-key validation or model-discovery endpoint is identified by the pinned provider contract.
+
+## Cookie capture
+
+Capture the Cookie header from an authenticated `hyperagent.com` session using the browser extension or paste the header into the connection. HAR and cURL imports can also contain the session cookie. Treat the value as a password and remove it before sharing logs or support reports.
+
+## Sources
+
+- [HyperAgent](https://hyperagent.com/)
+- [Pinned OmniRoute registry entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/hyperagent/index.ts)
+- [Pinned OmniRoute executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/hyperagent.ts)
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

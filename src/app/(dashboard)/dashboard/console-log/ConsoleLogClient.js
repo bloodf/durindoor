@@ -113,6 +113,26 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
     return () => observer?.disconnect();
   }, [entry.id, wrap, onMeasure]);
   const [firstLine, ...moreLines] = entry.message.split("\n");
+  const structured = entry.request || entry.completion;
+  const summary = entry.request
+    ? [
+        `POST ${entry.request.model} → ${entry.request.routedModel}`,
+        entry.request.format && `FMT: ${entry.request.format}`,
+        entry.request.mode,
+        entry.request.messages !== null && `${entry.request.messages} MSG`,
+        entry.request.tools !== null && `${entry.request.tools} TOOL`,
+        entry.request.account && `ACC:${entry.request.account}`,
+      ].filter(Boolean).join(" · ")
+    : entry.completion
+      ? [
+          `DONE ${entry.completion.totalMs}ms`,
+          entry.completion.ttftMs !== null && `TTFT ${entry.completion.ttftMs}ms`,
+          `IN ${entry.completion.inputTokens ?? 0}`,
+          entry.completion.cacheRead > 0 && `CACHE ↻${entry.completion.cacheRead}${entry.completion.cacheCreate ? ` +${entry.completion.cacheCreate}` : ""}`,
+          `OUT ${entry.completion.outputTokens ?? 0}`,
+          entry.completion.routedModel,
+        ].filter(Boolean).join(" · ")
+      : null;
   return (
     <div
       data-console-row={entry.id}
@@ -129,12 +149,12 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
       <span className={`w-11 shrink-0 font-semibold uppercase ${LEVEL_TEXT[entry.level]}`}>{entry.level}</span>
       {wrap ? (
         <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-dd-text">
-          <HighlightedText text={entry.message} needle={needle} />
+          {structured ? <HighlightedText text={summary} needle={needle} /> : <HighlightedText text={entry.message} needle={needle} />}
         </span>
       ) : (
         <>
           <span className="min-w-0 flex-1 truncate whitespace-pre text-dd-text">
-            <HighlightedText text={firstLine} needle={needle} />
+            <HighlightedText text={structured ? summary : firstLine} needle={needle} />
           </span>
           {moreLines.length > 0 ? <span className="shrink-0 text-dd-subtle">+{moreLines.length} lines</span> : null}
         </>

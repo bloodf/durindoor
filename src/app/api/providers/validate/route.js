@@ -20,6 +20,7 @@ import { validateVertexSaKey, classifyVertexCredential, VERTEX_CREDENTIAL } from
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
+import { registryAllowsKeylessCredential } from "@/lib/providers/validation/registryCredentials.js";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
@@ -240,7 +241,9 @@ export async function POST(request) {
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
     // LAN compatible nodes (#2023) may run without a key; their probes then send no auth header.
     const isKeyOptionalNode = isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider) || isCustomEmbeddingProvider(provider);
-    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !hasApiKeySubstitute) {
+    // A registry entry that marks the key optional or absent accepts a keyless connection.
+    const isRegistryKeyless = registryAllowsKeylessCredential(provider);
+    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !isRegistryKeyless && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
     if (provider === "opencode-server") {
@@ -250,7 +253,7 @@ export async function POST(request) {
       const result = await fetchOpenCodeServerModels({ apiKey, providerSpecificData });
       return NextResponse.json({ valid: !result.error, error: result.error ?? null });
     }
-    if (isNoAuth && !apiKey) {
+    if ((isNoAuth || isRegistryKeyless) && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
     }
 

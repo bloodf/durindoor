@@ -11,8 +11,11 @@
 //   DB backs up as a few MB. The full-file fallback (backupFile) copies the
 //   whole data.sqlite and is used when the adapter cannot ATTACH.
 // - Only the newest KEEP_BACKUPS are kept; older ones are pruned automatically.
+//   A backup directory held by a live migration lease (acquireSnapshotLease)
+//   is never pruned, so a running upgrade keeps the restore point it took.
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   chmodQuiet,
   currentBackupsDir,
@@ -21,6 +24,7 @@ import {
   SECRET_FILE_MODE,
 } from "./paths.js";
 import { timestampSlug, getAppVersion } from "./version.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const KEEP_BACKUPS = 3;
 
@@ -105,6 +109,67 @@ export function backupDbLite(adapter, destDir, destName = "data.sqlite") {
   return dest;
 }
 
+const LEASE_PREFIX = ".migration-lease-";
+// Liveness is a pid check on this host: a reused pid looks alive, so the age
+// bound caps that case. A lease older than this is ignored and removed.
+const LEASE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === "EPERM";
+  }
+}
+
+/**
+ * Pin one backup directory while a migration that may restore from it runs.
+ * Pruning in any process skips a leased directory until the returned release
+ * runs. A lease whose owner process is gone, or that is a day old, is ignored
+ * and deleted. Best effort: a lease that cannot be written returns a no-op
+ * release, because pruning only ever follows a successful migration.
+ *
+ * @param {string} snapshotDir Backup directory (child of the backups dir).
+ * @returns {() => void} Release function; safe to call more than once.
+ */
+export function acquireSnapshotLease(snapshotDir) {
+  try {
+    const backupsDir = path.dirname(snapshotDir);
+    const file = path.join(backupsDir, `${LEASE_PREFIX}${process.pid}-${randomUUID()}.json`);
+    // Write then rename, so a reader never sees half a lease.
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify({ pid: process.pid, base: path.basename(snapshotDir) }), { mode: SECRET_FILE_MODE });
+    fs.renameSync(`${file}.tmp`, file);
+    return () => {
+      try { fs.rmSync(file, { force: true }); } catch {}
+    };
+  } catch {
+    return () => {};
+  }
+}
+
+function readLeasedBases(backupsDir) {
+  const bases = new Set();
+  let names;
+  try { names = fs.readdirSync(backupsDir); } catch { return bases; }
+  for (const name of names) {
+    if (!name.startsWith(LEASE_PREFIX) || name.endsWith(".tmp")) continue;
+    const file = path.join(backupsDir, name);
+    try {
+      const lease = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (Date.now() - fs.statSync(file).mtimeMs < LEASE_MAX_AGE_MS && isProcessAlive(lease?.pid)) {
+        if (isString(lease.base) && lease.base) bases.add(lease.base);
+        continue;
+      }
+      fs.rmSync(file, { force: true }); // the owner is gone: drop its lease
+    } catch {
+      // Unreadable or vanished lease: it neither pins nor gets deleted here.
+    }
+  }
+  return bases;
+}
+
 export function pruneOldBackups() {
   const backupsDir = currentBackupsDir();
   if (!fs.existsSync(backupsDir)) return;
@@ -113,7 +178,9 @@ export function pruneOldBackups() {
     .map((e) => ({ name: e.name, full: path.join(backupsDir, e.name), mtime: fs.statSync(path.join(backupsDir, e.name)).mtimeMs }))
     .sort((a, b) => b.mtime - a.mtime);
 
+  const leased = readLeasedBases(backupsDir);
   for (const old of entries.slice(KEEP_BACKUPS)) {
+    if (leased.has(old.name)) continue;
     try { fs.rmSync(old.full, { recursive: true, force: true }); } catch {}
   }
 }

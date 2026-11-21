@@ -262,3 +262,17 @@ lint, applicable documentation checks, commit-range/title validation, and a new
 independent review. Their outcomes are tracked in the PR and private artifacts;
 author checks do not grant independent approval. This draft changes no gate
 policy and records no passing runtime-test count.
+
+## Implemented recovery and reset
+
+Chat selection observes persisted account and bounded model locks, then claims a
+process-local single-flight lease immediately before dispatch. Successful chat
+completion confirms recovery; client rejection, cancellation and local abort
+release the lease without treating the request as a provider failure. Existing
+fallback classification and persisted cooldowns remain authoritative. Unknown
+quota observations remain eligible under the existing quota preflight policy.
+The lease expires if a request never settles, and its generation fences late
+completion after a newer cooldown or explicit reset. Activating a connection
+through provider management clears persisted health state and, after the update
+succeeds, invalidates its in-process recovery leases. Separate server processes
+each maintain their own leases.

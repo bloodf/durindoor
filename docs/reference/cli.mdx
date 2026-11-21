@@ -19,6 +19,7 @@ The engine range is a declared requirement, not a claim that every version or pl
 | Platform and artifact | Evidence | Limit |
 | --- | --- | --- |
 | Linux x64, Node 24.22.2, source CLI helper | Offline `unit/1143-runtime-compat.test.js` runs launcher-generated heap arguments in real Node child processes. | Covers heap precedence only; it does not start the server or validate a packaged artifact. |
+| Linux x64, Node 24.22.2, staged fixtures | Offline `unit/1143-artifact-compat.test.js` runs copied CLI help/version paths with a machine-ID stub, loads copied standalone sidecars, and checks artifact entry validation. | Run with a minimal Vitest configuration; the linked dependencies could not resolve `vite` from the repository configuration. No built or packed artifact, server startup, database, worker, tray, or web session was exercised. |
 | Source standalone server | `scripts/smoke-installed-artifact.mjs` provides a standalone artifact check. | Availability of a check is not evidence that it passed on a particular platform. |
 | npm package | `scripts/smoke-npm-pack.mjs` provides a packed artifact check. | No packed artifact or installation was validated by the offline test above. |
 | Docker image | The Dockerfile builds a standalone server into an image with a Node runtime. | No image, architecture, or container runtime was tested by the offline test above. |

@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import { homeMetadata, LOCALE_COOKIE, resolveHomeLocale } from "@site/i18n/home.js";
 import "lenis/dist/lenis.css";
+import "@site/styles/site/tokens.css";
 import "./home.css";
 import "./hero.css";
 import "./sections.css";
@@ -11,6 +12,7 @@ import "./demo.css";
 import "./story.css";
 import "./ledger.css";
 import "./brand.css";
+import "./light.css";
 
 const space = localFont({
   src: "../../../public/home/fonts/SpaceGrotesk.ttf",

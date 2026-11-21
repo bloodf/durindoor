@@ -157,8 +157,8 @@
   color: var(--dd-on-accent);
 }
 .dd-docs :focus-visible {
-  outline: 2px solid var(--dd-focus-ring);
-  outline-offset: 3px;
+  outline: var(--site-focus-width) solid var(--dd-focus-ring);
+  outline-offset: var(--site-focus-offset);
 }
 .dd-docs a {
   text-underline-offset: 4px;

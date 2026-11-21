@@ -146,3 +146,12 @@ Docs retain their existing parchment and forest reading themes. A mobile theme a
 The sample dashboard entry shows a recoverable error with Retry and Docs actions if the browser-local sample session cannot initialize. It does not contact a provider. Tests for these changes live in `tests/unit/visant-marketing-docs.test.js` and `website/tests/marketing.spec.mjs`. Run the browser suite against a production build with `DOCS_BASE_URL=http://127.0.0.1:3100`; `WEBSITE_CHROMIUM_EXECUTABLE` optionally selects an installed headless Chromium binary.
 
 The shared endpoint provider-health table has a named keyboard-focusable horizontal scroll region. This single semantic accessibility change is the only production component adjustment required by the marketing review; the demo still imports the production component directly.
+
+### Public design foundation
+
+Public layouts share spacing, content width and focus-ring tokens in
+`src/styles/site/tokens.css`; keep dashboard styling scoped to the application.
+The homepage and docs use the same persisted theme preference. The marketing
+Playwright suite covers keyboard interactions, 360px and desktop layouts,
+axe checks and screenshots when run against a Docker-hosted production build
+via `DOCS_BASE_URL`.

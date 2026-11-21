@@ -65,11 +65,11 @@ The field is plain text, not a password field, so the cookie is visible on scree
 | ZenMux Free | `zenmux-free` | The full Cookie header; it must include `ctoken=`. See [ZenMux Free](#zenmux-free) |
 | Kimi Web | `kimi-web` | Not a cookie: `access_token` and `refresh_token` JSON from localStorage, copied with the dialog's console snippet. See [Kimi Web](./kimi-web.mdx) |
 | ChatGPT Web | `chatgpt-web` | The whole Cookie header from a chatgpt.com request, or the `__Secure-next-auth.session-token` value. Chunked `.0`, `.1` cookies are accepted |
-| HuggingChat | `huggingchat` | The full Cookie header from huggingface.co/chat |
+| HuggingChat | `huggingchat` | The full Cookie header from huggingface.co/chat. Saved only; requests are not enabled. See [HuggingChat](#huggingchat) |
 | T3 Chat Web | `t3-web` | `convex-session-id` plus the Cookie header |
-| Muse Spark Web | `muse-spark-web` | The `ecto_1_sess` value or the full header from meta.ai |
+| Muse Spark Web | `muse-spark-web` | The `ecto_1_sess` value or the full header from meta.ai. Saved only; requests are not enabled. See [Muse Spark Web](#muse-spark-web) |
 | Adapta Web | `adapta-web` | The `__client` cookie from agent.adapta.one |
-| Tencent Yuanbao Web | `yuanbao-web` | The Yuanbao session cookie |
+| Tencent Yuanbao Web | `yuanbao-web` | A cookie that contains both `hy_user` and `hy_token`. See [Tencent Yuanbao Web](#tencent-yuanbao-web) |
 | Suno | `suno` | The Suno session cookie. See [Suno and Udio](#suno-and-udio) |
 | Udio | `udio` | The Udio session cookie. See [Suno and Udio](#suno-and-udio) |
 
@@ -139,7 +139,7 @@ To use it, create a pairing as an operator, sign in to the provider in a tab, op
 
 ## Validation
 
-**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free, Suno, Udio and Adapta Web skip network validation rather than creating a conversation or generation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks locally that both fields are present, the host is allowed and the token has not expired. Copilot Web reports an expired JWT token locally; any other paste stays skipped. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free, Suno, Udio, Adapta Web and Tencent Yuanbao Web skip network validation (so do HuggingChat and Muse Spark Web, whose requests are not enabled, so the saved cookie is never sent) rather than creating a conversation or generation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks locally that both fields are present, the host is allowed and the token has not expired. Copilot Web reports an expired JWT token locally; any other paste stays skipped. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
 A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
 
@@ -147,7 +147,7 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 - Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
 - The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
-- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, Kimi Web, Perplexity Web, ZenMux Free, Suno, Udio, Adapta Web and T3 Chat Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Music jobs show as requests with no tokens; Suno clip durations are kept in the usage ledger, not on the card. Token counts are estimates of about four characters per token.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, Kimi Web, Perplexity Web, ZenMux Free, Suno, Udio, Adapta Web and T3 Chat Web and Tencent Yuanbao Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Music jobs show as requests with no tokens; Suno clip durations are kept in the usage ledger, not on the card. Token counts are estimates of about four characters per token.
 
 ## When the session ends
 
@@ -243,6 +243,31 @@ Known limits: every registry lane maps to the same upstream auto-select model, s
 Recovery: HTTP 401 or 403 means the session was rejected (message: `T3 Chat request failed`). With more than one T3 Chat Web connection the request falls back to the next one, and only the connection that failed is put on cooldown. To recover a connection, paste the fresh cookie with **Edit** as above, which clears the cooldown and the recorded error. Signing out of t3.chat in that browser profile ends the session.
 
 Known limits: an HTTP relay route cannot carry the session cookie, so T3 Chat refuses a connection that is routed through one and answers HTTP 400 instead of sending the session. Use a direct or proxied route for this provider. Deployment-specific server functions, binary TSS framing, media and session renewal are outside the supported contract.
+
+## Tencent Yuanbao Web
+
+`yuanbao-web` (alias `ybw`) sends chat requests to `yuanbao.tencent.com` with your signed-in session. It is separate from Tencent Hunyuan (`tencent`), Tencent AI Studio and CodeBuddy; their credentials do not work here and this cookie is never sent to them.
+
+1. Sign in at yuanbao.tencent.com. In DevTools, Application, Cookies, copy `hy_user` and `hy_token`, or copy the whole `Cookie` request header.
+2. In **Providers → Tencent Yuanbao Web**, paste it and save. Both values must be present and non-empty; a paste missing either is refused by **Validate** and rejected with HTTP 401 at request time, and nothing is sent. Only `hy_user`, `hy_token` and `hy_source=web` are forwarded; other cookies in the paste are dropped.
+3. **Validate** and **Test Connection** are skipped after the shape check. Yuanbao's chat endpoint creates a conversation per probe, so a skipped result does not prove the session works. Send one short request to confirm.
+4. Models are the static registry list (`deepseek-v3`, `deepseek-r1`, `hunyuan`, `hunyuan-t1` and their `-search` variants). Chat Completions, Messages and Responses clients are served from the same session, with JSON or streaming; reasoning arrives as `reasoning_content`. Tools are not supported.
+
+Recovery: HTTP 401 or 403 means the session expired (message: `hy_user`/`hy_token` may be expired); 429 means Yuanbao is rate limiting you. With more than one Yuanbao connection the request falls back to the next one. Paste a fresh cookie over the old one with **Edit**; the new value takes effect immediately and the cooldown recorded against the old one is cleared. The **Usage** card shows only DurinDoor's own 30-day history.
+
+Known limits: Yuanbao's redirects are refused, so a login redirect from an expired session surfaces as a 502 connection error rather than 401; treat a repeated 502 on a previously working session as expiry and re-paste. No cookie rotation is written back. Model names, session lifetime and stream format can change upstream, and the offline tests cannot prove a given account is authorized.
+
+## HuggingChat
+
+`huggingchat` saves a `huggingface.co/chat` cookie, but gateway requests are deliberately not enabled. No authorized, verified non-browser contract for reusing the hosted web session exists, so every request returns HTTP 501 with `type: "provider_port_pending"` before anything is sent. The cookie is never transmitted: **Validate** and **Test Connection** report a skipped result, a 501 does not put the connection on cooldown, and the Usage card reports no usage. The model list is a static catalog; listing a model does not mean it can be called. Hugging Face inference tokens are a different provider (`huggingface`) with its own credential.
+
+Recovery: nothing to repair. Re-pasting a cookie with **Edit** replaces the stored value but does not change this behavior. Use the `huggingface` provider with an inference token instead. DurinDoor does not emulate browser attestation or work around access controls.
+
+## Muse Spark Web
+
+`muse-spark-web` (alias `ms-web`) saves an `ecto_1_sess` cookie from meta.ai, but gateway requests are deliberately not enabled; the behavior is the same as HuggingChat above. Requests return HTTP 501 with `type: "provider_port_pending"`, the cookie is never transmitted, validation is skipped, and the three model ids (`muse-spark`, `muse-spark-thinking`, `muse-spark-contemplating`) are a static catalog. The fresh-token path the parity source uses depends on browser automation, which DurinDoor does not run. The Muse Code device sign-in (`muse-code`) and the Meta API key (`meta-llama`) are separate providers with their own credentials and are unaffected.
+
+Recovery: nothing to repair; use `muse-code` or `meta-llama` for working requests.
 
 ## ZenMux Free
 

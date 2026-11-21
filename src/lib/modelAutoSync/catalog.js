@@ -92,6 +92,9 @@ export function validateModelAutoSyncSettingsPatch(body) {
     const v = body.modelAutoSyncIntervalHours;
     if (!Number.isInteger(v) || v < 0 || v > MAX_MODEL_AUTO_SYNC_INTERVAL_HOURS) return "Invalid modelAutoSyncIntervalHours";
   }
+  if (Object.prototype.hasOwnProperty.call(body, "autoPruneStaleComboSteps") && !isBoolean(body.autoPruneStaleComboSteps)) {
+    return "Invalid autoPruneStaleComboSteps";
+  }
   if (Object.prototype.hasOwnProperty.call(body, "modelAutoSyncProviders")) {
     const map = body.modelAutoSyncProviders;
     if (!isRecord(map)) return "Invalid modelAutoSyncProviders";

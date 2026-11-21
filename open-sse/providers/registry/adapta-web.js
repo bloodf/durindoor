@@ -13,6 +13,7 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the .clerk.agent.adapta.one __client cookie value from agent.adapta.one.",
+  cookieImport: { origin: "https://clerk.agent.adapta.one", cookieNames: ["__client"], extensionCapture: false },
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://agent.adapta.one/api/chat/stream/v1",

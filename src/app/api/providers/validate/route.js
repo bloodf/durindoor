@@ -10,7 +10,7 @@ import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-t
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
 import { checkCopilotWebCredential } from "open-sse/executors/copilot-web.js";
-import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
+import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/providers/conversationProbe.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
@@ -275,7 +275,7 @@ export async function POST(request) {
     }
 
     if (isConversationProbeProvider(provider)) {
-      return NextResponse.json({ valid: false, skipped: true, error: SKIPPED_WEB_SESSION_ERROR });
+      return NextResponse.json({ valid: false, skipped: true, error: skippedWebSessionError(provider) });
     }
 
     let isValid = false;

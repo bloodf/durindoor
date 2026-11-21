@@ -36,7 +36,9 @@ describe("clinepass thinking budget custom caps", () => {
     const body = { max_tokens: 512, reasoning_effort: "high" };
     // custom caps: reasoning enabled, low ceiling — budget must not exceed it
     const out = ex.ensureThinkingBudget(body, "custom-model", { reasoning: true, maxOutput: 1024 });
-    expect(out.max_tokens).toBeLessThanOrEqual(1024);
+    expect(out.max_tokens).toBe(512);
+    const omitted = ex.ensureThinkingBudget({ reasoning_effort: "high" }, "custom-model", { reasoning: true, maxOutput: 1024 });
+    expect(omitted.max_tokens).toBe(1024);
   });
 
   it("no reasoning in custom caps -> body untouched", async () => {

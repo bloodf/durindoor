@@ -80,16 +80,32 @@ async function drain(reader) {
   }
 }
 
+// Same drain, but it also reports that the stream really reached EOF, so a
+// caller can assert termination instead of inferring it from the bytes.
+async function drainToEof(reader) {
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return { text, eof: true };
+    text += decoder.decode(value);
+  }
+}
+
 // What a strict offline Chat client does: every non-empty SSE line must be a
-// `data:` JSON object or [DONE]; tool calls aggregate by index.
+// `data:` JSON object or [DONE]; tool calls aggregate by index. The frame list
+// keeps wire order, so a caller can assert *where* [DONE] and the finish frame
+// sit instead of only that they exist somewhere.
 function strictParse(text) {
   const payloads = [];
+  const frames = [];
   let sawDone = false;
   for (const entry of text.split("\n\n").filter(Boolean)) {
     expect(entry, "strict clients must not see SSE comments or events").toMatch(/^data: /);
     const data = entry.slice(6);
-    if (data === "[DONE]") { sawDone = true; continue; }
-    payloads.push(JSON.parse(data));
+    if (data === "[DONE]") { sawDone = true; frames.push({ kind: "done" }); continue; }
+    const payload = JSON.parse(data);
+    payloads.push(payload);
+    frames.push({ kind: "data", payload });
   }
   const calls = new Map();
   for (const payload of payloads) {
@@ -103,7 +119,7 @@ function strictParse(text) {
       }
     }
   }
-  return { payloads, calls: [...calls.values()], sawDone };
+  return { payloads, calls: [...calls.values()], sawDone, frames };
 }
 
 function chatRequest() {
@@ -176,14 +192,44 @@ describe("#1073 Chat Completions heartbeats and tool fragments", () => {
     }
     upstream.enqueue(FRAGMENTS[4] + DONE);
     upstream.close();
-    out += await drain(reader);
+    const tail = await drainToEof(reader);
+    out += tail.text;
 
-    const { payloads, calls, sawDone } = strictParse(out);
+    const { payloads, calls, sawDone, frames } = strictParse(out);
     expect(sawDone).toBe(true); // EOF behavior: terminal [DONE], then the stream closes.
     expect(payloads.every((p) => p.choices.length === 1)).toBe(true);
     expect(calls).toEqual([{ id: "call-real", name: "get_self", args: '{"reason":"ready"}' }]);
     expect(new Set(payloads.map((p) => p.id)).size).toBe(1);
     expect(payloads.every((p) => p.id !== "chatcmpl-keepalive")).toBe(true);
+
+    // Terminal order, not just terminal presence: exactly one finish frame, it
+    // comes after the last argument fragment, exactly one [DONE] comes after
+    // that finish frame, and no frame at all follows [DONE].
+    const dataFrames = frames.filter((frame) => frame.kind === "data");
+    const finishFrames = dataFrames.filter((frame) => frame.payload.choices?.[0]?.finish_reason != null);
+    expect(finishFrames).toHaveLength(1);
+    expect(finishFrames[0].payload.choices[0].finish_reason).toBe("tool_calls");
+    const argumentFrames = dataFrames.filter((frame) =>
+      (frame.payload.choices?.[0]?.delta?.tool_calls || []).some((call) => call.function?.arguments !== undefined));
+    expect(argumentFrames.length).toBeGreaterThan(0);
+    const lastArgumentIndex = frames.indexOf(argumentFrames[argumentFrames.length - 1]);
+    const finishIndex = frames.indexOf(finishFrames[0]);
+    expect(finishIndex).toBeGreaterThan(lastArgumentIndex);
+    const doneFrames = frames.filter((frame) => frame.kind === "done");
+    expect(doneFrames).toHaveLength(1);
+    const doneIndex = frames.indexOf(doneFrames[0]);
+    expect(doneIndex).toBeGreaterThan(finishIndex);
+    expect(frames.slice(doneIndex + 1)).toHaveLength(0);
+    // Byte level: [DONE] is the last thing on the wire, with nothing behind it.
+    expect(out.slice(out.indexOf(DONE) + DONE.length)).toBe("");
+    expect(finishIndex).toBe(dataFrames.length - 1); // the finish frame is the last data frame
+
+    // Actual EOF: the client stream ended, and a further read reports the end
+    // of the stream instead of another frame.
+    expect(tail.eof).toBe(true);
+    const afterEof = await reader.read();
+    expect(afterEof.done).toBe(true);
+    expect(afterEof.value).toBeUndefined();
   });
 
   it("transport layer: a null keepalive frame leaves tool fragments byte-identical with EOF", async () => {

@@ -26,7 +26,7 @@ export default function HomePage() {
       <ScrollProgress />
       <CursorGlow />
       <Nav />
-      <main id="main" tabIndex={-1}>
+      <main id="main" tabIndex={-1} aria-label="DurinDoor homepage">
         <Hero />
         <DemoTeaser />
         <ServiceKinds coverage={providerCoverage(REGISTRY, SERVICE_KINDS)} />

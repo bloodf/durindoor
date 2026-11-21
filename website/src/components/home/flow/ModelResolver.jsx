@@ -18,12 +18,16 @@ export default function ModelResolver() {
   const id = useId();
   const inView = useInView(ref, { margin: "-20% 0px" });
   const reduce = useReducedMotion();
+  const [hydrated, setHydrated] = useState(false);
   const [index, setIndex] = useState(0);
   const [typed, setTyped] = useState(0);
   const [shown, setShown] = useState(0);
   const [auto, setAuto] = useState(true);
   const current = RESOLUTIONS[index];
   const done = typed >= current.input.length && shown >= current.lines.length;
+
+  // The server cannot know the motion preference; keep the first render stable.
+  useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
     if (reduce) {
@@ -69,7 +73,7 @@ export default function ModelResolver() {
       <div className="terminal-bar">
         <span className="dots" aria-hidden="true"><i /><i /><i /></span>
         <span className="terminal-title">{t("model resolution")}</span>
-        {!reduce && <button type="button" className="terminal-playback" onClick={() => setAuto(!auto)}
+        {!(hydrated && reduce) && <button type="button" className="terminal-playback" onClick={() => setAuto(!auto)}
           aria-label={t(auto ? "Pause examples" : "Play examples")} aria-pressed={!auto}>
           <Icon name={auto ? "pause" : "play"} size={14} />
           <span>{t(auto ? "Pause examples" : "Play examples")}</span>

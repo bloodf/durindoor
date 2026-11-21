@@ -35,9 +35,9 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
-  workers: 1,
+  workers: 12,
   reporter: "list",
-  outputDir: "/tmp/omc-docs/playwright-docs-results",
+  outputDir: `/tmp/omc-docs/playwright-docs-results-${plan.port}`,
   globalSetup: "./tests/global-setup.mjs",
   use: useOptions,
   webServer: {

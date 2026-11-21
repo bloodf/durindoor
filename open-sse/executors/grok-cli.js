@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { PROVIDERS } from "../config/providers.js";
 import { GROK_CLI_SHELL_USER_AGENT, GROK_CLI_VERSION } from "../config/grokCli.js";
 import {
@@ -327,6 +328,7 @@ export class GrokCliExecutor extends BaseExecutor {
     let response = result.response;
     if (identityMap) response = await restoreGrokCliNamespaceIdentity(response, identityMap);
     if (converted.customTools) response = await restoreGrokBuildCustomToolCalls(response, converted.customTools);
+    transferProviderAttemptDispatch(result.response, response);
     return { ...result, response };
   }
 

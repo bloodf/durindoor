@@ -1,3 +1,4 @@
+import { MAX_PENDING_SSE_LINE_BYTES } from "../utils/pendingSseLine.js";
 import { isRecord, isString, isNumber } from "../../src/shared/utils/typeChecks.js";
 
 // Grok CLI uses the Responses wire format directly, so top-level freeform tools
@@ -213,20 +214,24 @@ function callIds(call) {
   return ids;
 }
 function findCall(calls, payload) {
-  return calls.find(
-    (call) => isString(payload.item_id) && call.itemId === payload.item_id || isNumber(payload.output_index) && call.outputIndex === payload.output_index
-  );
+  const id = isString(payload.item_id) ? payload.item_id : isString(payload.item?.id) ? payload.item.id : null;
+  if (id !== null) {
+    const exact = calls.find((call) => call.itemId === id);
+    if (exact) return exact;
+  }
+  if (!isNumber(payload.output_index)) return null;
+  return calls.find((call) => call.outputIndex === payload.output_index &&
+    (id === null || call.itemId === null || call.itemId === id));
 }
-function findOpenCall(calls, payload) {
-  const call = findCall(calls, payload);
-  return call && !call.done ? call : null;
-}
-function finishCall(block, call, args, doneSeq) {
+function finishCall(block, call, args, doneSeq, metadata = {}) {
   call.done = true;
   const input = rawCustomInput(isString(args) && args !== "" ? args : call.args);
   const ids = callIds(call);
   let out = "";
   const rest = input.startsWith(call.emitted) ? input.slice(call.emitted.length) : "";
+  call.args = "";
+  call.emitted = "";
+  call.decoder = null;
   if (rest) {
     out += renderBlock(block, {
       type: "response.custom_tool_call_input.delta",
@@ -234,7 +239,8 @@ function finishCall(block, call, args, doneSeq) {
       delta: rest
     });
   }
-  const done = { type: "response.custom_tool_call_input.done", ...ids, input };
+  const { arguments: _arguments, item: _item, ...fields } = metadata;
+  const done = { ...fields, type: "response.custom_tool_call_input.done", ...ids, input };
   if (isNumber(doneSeq)) done.sequence_number = doneSeq;
   return out + renderBlock(block, done);
 }
@@ -260,13 +266,14 @@ function trackAddedCall(calls, payload) {
 }
 function rewriteArgumentsDelta(block, call, payload) {
   const chunk = isString(payload.delta) ? payload.delta : "";
+  if (call.args.length + chunk.length > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Grok CLI custom tool arguments exceed SSE limit");
   call.args += chunk;
   const text = call.decoder.push(chunk);
   if (!text || call.decoder.failed) {
     return SSE_COMMENT_BLOCK;
   }
   call.emitted += text;
-  const delta = { type: "response.custom_tool_call_input.delta", ...callIds(call), delta: text };
+  const delta = { ...payload, type: "response.custom_tool_call_input.delta", ...callIds(call), delta: text };
   if (payload.sequence_number !== undefined) delta.sequence_number = payload.sequence_number;
   return renderBlock(block, delta);
 }
@@ -280,18 +287,18 @@ function createSseBlockRewriter(customTools) {
       trackAddedCall(calls, payload);
     }
     if (payload.type === "response.function_call_arguments.delta") {
-      const call = findOpenCall(calls, payload);
-      if (call) return rewriteArgumentsDelta(block, call, payload);
+      const call = findCall(calls, payload);
+      if (call) return call.done ? SSE_COMMENT_BLOCK : rewriteArgumentsDelta(block, call, payload);
     }
     if (payload.type === "response.function_call_arguments.done") {
-      const call = findOpenCall(calls, payload);
-      if (call) return finishCall(block, call, payload.arguments, payload.sequence_number);
+      const call = findCall(calls, payload);
+      if (call) return call.done ? SSE_COMMENT_BLOCK : finishCall(block, call, payload.arguments, payload.sequence_number, payload);
     }
     let prefix = "";
     if (payload.type === "response.output_item.done" && isCustomItem) {
-      const call = findOpenCall(calls, payload);
+      const call = findCall(calls, payload);
       const item = payload.item;
-      if (call) prefix = finishCall(block, call, item.arguments, undefined);
+      if (call && !call.done) prefix = finishCall(block, call, item.arguments, undefined);
     }
     return restorePayload(payload, customTools) ? prefix + renderBlock(block, payload) : prefix + block;
   };
@@ -312,21 +319,24 @@ async function restoreGrokBuildCustomToolCalls(response, customTools) {
           const separator = SSE_BLOCK_SEP_RE.exec(buffer);
           if (!separator) break;
           const blockEnd = separator.index + separator[0].length;
+          if (blockEnd > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Grok CLI SSE event exceeds limit");
           const block = rewrite(buffer.slice(0, blockEnd));
           buffer = buffer.slice(blockEnd);
           if (block) controller.enqueue(encoder.encode(block));
         }
+        if (buffer.length > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Grok CLI SSE event exceeds limit");
       },
       flush(controller) {
         buffer += decoder.decode();
+        if (buffer.length > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Grok CLI SSE event exceeds limit");
         const block = buffer ? rewrite(buffer) : "";
         if (block) controller.enqueue(encoder.encode(block));
       }
     });
-    return new Response(response.body.pipeThrough(transform), {
-      ...init,
-      headers: response.headers
-    });
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    headers.delete("content-encoding");
+    return new Response(response.body.pipeThrough(transform), { ...init, headers });
   }
   if (contentType.includes("application/json")) {
     const text = await response.text();

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
@@ -441,6 +442,12 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "opencode-go" && credentials) {
         credentials._openCodeGoSession = openCodeGoSessionHeader(credentials, transformed);
+      }
+      if (this.provider?.startsWith("openai-compatible-") &&
+        !this.provider.startsWith("openai-compatible-responses-") &&
+        transportFormat === FORMATS.OPENAI && credentials?.providerSpecificData?.strictChatHistory === true &&
+        Array.isArray(transformed.messages)) {
+        transformed.messages = normalizeStrictChatHistory(transformed.messages);
       }
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);

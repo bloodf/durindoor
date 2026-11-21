@@ -5,6 +5,7 @@
   "pages": [
     "index",
     "connecting-accounts",
+    "catalog",
     "api-key-providers",
     "arcee-platform",
     "cerebrium",
@@ -29,7 +30,6 @@
     "demonroute",
     "retired",
     "hetzner",
-    "megabrain",
-    "catalog"
+    "megabrain"
   ]
 }

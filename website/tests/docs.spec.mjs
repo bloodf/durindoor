@@ -194,6 +194,9 @@ test("axe serious/critical are zero; phone view has no horizontal scroll", async
     expect(response?.status(), url).toBe(200);
     await expect(page.locator("h1").first()).toBeVisible();
 
+    const desktopFile = `${url.replace(/^\//, "").replaceAll("/", "-") || "docs"}-desktop.png`;
+    await page.screenshot({ path: join(shotDir, desktopFile), fullPage: false, animations: "disabled" });
+
     const axe = await new AxeBuilder({ page })
       .exclude('a[href="https://github.com/bloodf/durindoor"] svg[role="img"]')
       .exclude("div.prose-no-margin.overflow-auto")
@@ -230,7 +233,7 @@ test("axe serious/critical are zero; phone view has no horizontal scroll", async
     });
     expect(blockers, `${url} axe serious/critical`).toEqual([]);
 
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 360, height: 844 });
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await expect(page.locator("h1").first()).toBeVisible();
     const file = `${url.replace(/^\//, "").replaceAll("/", "-") || "docs"}.png`;
@@ -242,7 +245,7 @@ test("axe serious/critical are zero; phone view has no horizontal scroll", async
     const noHorizontalScroll = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     );
-    expect(noHorizontalScroll, `${url} horizontal scroll at 390x844`).toBe(
+    expect(noHorizontalScroll, `${url} horizontal scroll at 360x844`).toBe(
       true,
     );
   }
@@ -522,5 +525,32 @@ test("article subheads keep normal tracking without changing display headings", 
     await expect(page.getByRole("heading", { name: "Native background Responses Copy Anchor Link", exact: true })).toHaveCSS("letter-spacing", "normal");
     const displayTracking = await page.locator("h1").first().evaluate((node) => Number.parseFloat(getComputedStyle(node).letterSpacing));
     expect(displayTracking).toBeLessThan(0);
+  }
+});
+
+
+test("provider discovery links lead to the relevant guides", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/docs");
+  const destinations = [
+    ["Provider catalog", /\/docs\/providers\/catalog$/, "Provider catalog"],
+    ["Ollama and LAN servers", /\/docs\/providers\/network-llm-servers$/, "Network LLM servers"],
+    ["Provider sign-in flows", /\/docs\/providers\/connecting-accounts$/, "Connecting accounts"],
+    ["Cookie capture extension", /\/docs\/providers\/web-cookie#import-from-a-browser-extension$/, "Import from a browser extension"],
+  ];
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => document.documentElement.classList.toggle("dark", value === "dark"), theme);
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact)), theme).toEqual([]);
+  }
+  for (const [label, url, heading] of destinations) {
+    await page.goto("/docs");
+    const link = page.getByRole("link", { name: new RegExp(label) });
+    await link.focus();
+    await expect(link).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(url);
+    await expect(page.getByRole("heading", { name: new RegExp(heading) }).first()).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
 });

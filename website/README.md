@@ -161,3 +161,12 @@ published. The runner removes only its uniquely named container and image,
 including on interruption; artifact directories are retained for inspection.
 Docker verification has to pass on a Docker-capable machine; a local build alone
 does not establish browser or accessibility results.
+
+### Public design foundation
+
+Public layouts share spacing, content width and focus-ring tokens in
+`src/styles/site/tokens.css`; keep dashboard styling scoped to the application.
+The homepage and docs use the same persisted theme preference. The marketing
+Playwright suite covers keyboard interactions, 360px and desktop layouts,
+axe checks and screenshots when run against a Docker-hosted production build
+via `DOCS_BASE_URL`.

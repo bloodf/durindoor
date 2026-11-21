@@ -155,7 +155,7 @@ test("marketing and docs layouts retain readable themes without serious accessib
   test.setTimeout(180_000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   mkdirSync(screenshots, { recursive: true });
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 360]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of ["/", "/docs", "/docs/getting-started/installation"]) {
       await page.goto(route, { waitUntil: "networkidle" });
@@ -166,7 +166,7 @@ test("marketing and docs layouts retain readable themes without serious accessib
         await expect(total).not.toHaveText("0");
         await expect(page.locator(".kinds-total-n [aria-hidden=true]")).toHaveText(await total.innerText());
       }
-      if (route === "/" && width === 390) {
+      if (route === "/" && width === 360) {
         const table = page.frameLocator('iframe[title="Live demo"]').getByRole("region", { name: "Provider health", exact: true });
         await table.focus();
         await expect(table).toBeFocused();
@@ -190,4 +190,42 @@ test("marketing and docs layouts retain readable themes without serious accessib
       }
     }
   }
+});
+
+
+test("home theme control persists the reading preference", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const toggle = page.locator(".site-nav").getByRole("button", { name: /Switch to (light|dark) mode/ });
+  const wasDark = await page.locator("html").evaluate((node) => node.classList.contains("dark"));
+  await toggle.click();
+  await expect(page.locator("html")).toHaveClass(wasDark ? /^(?!.*\bdark\b).*$/ : /\bdark\b/);
+  await page.reload({ waitUntil: "networkidle" });
+  expect(await page.locator("html").evaluate((node) => node.classList.contains("dark"))).toBe(!wasDark);
+});
+
+// Run against a Docker-hosted production build. The sitemap is the inventory of
+// public pages, so newly published guides receive the same review coverage.
+test("published pages have responsive, accessible layouts without console errors", async ({ page, request }) => {
+  test.setTimeout(900_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  mkdirSync(screenshots, { recursive: true });
+  const xml = await (await request.get("/sitemap.xml")).text();
+  const routes = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => new URL(match[1]).pathname);
+  expect(routes.length).toBeGreaterThan(1);
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  for (const width of [1440, 360]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const route of routes) {
+      await page.goto(route, { waitUntil: "networkidle" });
+      await expect(page.locator("h1").first(), route).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${route} ${width}`).toBe(0);
+      const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+      expect(result.violations, `${route} ${width}`).toEqual([]);
+      await page.screenshot({ path: join(screenshots, `public-${route.replaceAll("/", "-") || "home"}-${width}.png`), animations: "disabled", fullPage: true });
+    }
+  }
+  expect(errors).toEqual([]);
 });

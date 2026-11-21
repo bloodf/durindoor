@@ -2,7 +2,7 @@
 
 A small Manifest V3 extension that hands one signed-in provider session from your browser to your own DurinDoor dashboard. It implements the client side of the [provider cookie import contract](../../src/lib/providers/cookieImport/README.md). It is opt-in and one shot: nothing runs until you open its popup on a supported provider tab, paste a pairing and confirm.
 
-Supported: ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web. The list and the approved cookie names are compiled into `providers.js` and checked against the dashboard contract by a unit test.
+Supported: ChatGPT Web, Perplexity Web, Grok Web, Muse Spark Web and Tencent Yuanbao Web. The list and the approved cookie names are compiled into `providers.js` and checked against the dashboard contract by a unit test.
 
 ## What it will and will not do
 

@@ -1,9 +1,21 @@
-# PromptQL
+# PromptQL (experimental)
 
-OmniRoute's pinned PromptQL implementation targets the PromptQL web playground and labels the integration unofficial/experimental. It uses a project-scoped `enrich-token` JWT and project ID from the signed-in playground session, rather than a standalone API key. The public documentation currently requires sign-in for its API reference. The playground GraphQL endpoint is live, but the authentication, model discovery and chat flow are reverse-engineered from the web application and were not independently verified against a supported vendor API contract.
+PromptQL is staged as an unofficial, experimental integration for a user's own signed-in playground session. It calls the playground GraphQL operations with the project-scoped `enrich-token` JWT and project ID. This is reverse-engineered web application behavior and is not a documented third-party API. Use it only while it works with your account; PromptQL can change the web app, auth flow, model catalog, or limits without notice.
 
-The staged provider is not ready for registration. Before implementation, confirm with PromptQL that the playground JWT and GraphQL operations are supported for third-party API use, and obtain the official model discovery, usage/billing and error semantics. Do not paste real session cookies or tokens into issues or test fixtures.
+## Setup
 
-Sources: [PromptQL docs](https://www.promptql.io/en/docs), [OmniRoute pinned registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/promptql/index.ts), [OmniRoute pinned executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/promptql.ts).
+Sign in at [prompt.ql.app](https://prompt.ql.app), open browser developer tools, and inspect a playground GraphQL request to `data.prompt.ql.app`. Copy the `Authorization: Bearer …` value without the `Bearer` prefix. It must be the playground `enrich-token` JWT (claims include the PromptQL Hasura project ID), not a DDN/project token. Supply that JWT and the project ID in the connection's provider-specific data (`token` and `projectId`).
+
+Import the PromptQL session cookies through DurinDoor's cookie import. The integration uses those cookies only to refresh a near-expiry token through the playground's project-token endpoint; if refresh is unavailable, re-import the session and token. The cookie-import capture profile permits the PromptQL playground and its `ql.app` auth domain. You can also paste the `Cookie` header from a request, copy cookie values from browser storage, or import a HAR/cURL capture. Treat the imported session, JWT, and project ID as credentials: do not include real values in logs, issues, or test fixtures.
+
+## Models, limits, and errors
+
+Model discovery reads the signed-in project's `FetchLlmConfigs` GraphQL catalog. The staged model list is an offline fallback. Chat starts a roomless PromptQL thread, sends the latest user message, and polls thread events until it can return an OpenAI-compatible completion or stream. Follow-up requests may pass `promptql_thread_id` or `X-PromptQL-Thread-Id` to continue a thread.
+
+Usage and billing follow the PromptQL account/project. DurinDoor maps expired/unauthorized sessions to 401 and quota/rate limiting to 429. This web session flow has not been independently verified as a supported vendor API contract; model availability, billing, refresh behavior, and limits may vary. No separate usage endpoint is exposed by this staged module.
+
+Sources: [PromptQL docs](https://www.promptql.io/en/docs), [PromptQL playground](https://prompt.ql.app), [OmniRoute pinned registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/promptql/index.ts), [OmniRoute pinned executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/promptql.ts), [OmniRoute PromptQL JWT helper](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/promptql/jwt.ts), [OmniRoute model catalog](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/promptqlModels.ts).
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->
 
 <!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

@@ -42,8 +42,9 @@ describe("completed Responses terminal output", () => {
     expect(body.usage).toMatchObject({ input_tokens: 10, output_tokens: 3 });
   });
 
-  it("keeps incomplete output handling and rejects malformed terminal output", async () => {
-    expect(await convert(frame("response.incomplete", { response: { status: "incomplete", output } }))).toMatchObject({ status: "incomplete", output: [] });
+  it("preserves incomplete output and rejects malformed terminal output", async () => {
+    expect(await convert(frame("response.incomplete", { response: { status: "incomplete", output } }))).toMatchObject({ status: "incomplete", output });
+    expect(await convert(frame("response.incomplete", { response: { status: "incomplete" } }))).toMatchObject({ status: "incomplete", output: [] });
     for (const items of [{}, [null], Array(MAX_RESPONSES_OUTPUT_ITEMS + 1).fill(output[0])]) {
       expect((await convert(completed(items))).status).toBe("failed");
     }

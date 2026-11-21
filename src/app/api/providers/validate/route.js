@@ -9,6 +9,7 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
+import { checkCopilotWebCredential } from "open-sse/executors/copilot-web.js";
 import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
@@ -264,6 +265,13 @@ export async function POST(request) {
     // Skipping chat must not accept a cookie that could never authenticate.
     if (provider === "zenmux-free" && !extractZenmuxCtoken(apiKey)) {
       return NextResponse.json({ valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" });
+    }
+
+    // Local-only, no request: a JWT access token past its exp is reported as expired. Other
+    // pastes stay skipped here and are rejected at dispatch if unusable.
+    if (provider === "copilot-web") {
+      const check = checkCopilotWebCredential(apiKey || providerSpecificData?.cookie);
+      if (check.expired) return NextResponse.json({ valid: false, error: check.error });
     }
 
     if (isConversationProbeProvider(provider)) {

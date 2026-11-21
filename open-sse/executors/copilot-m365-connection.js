@@ -6,6 +6,10 @@
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { isBoolean, isString } from "../../src/shared/utils/typeChecks.js";
+import { isExpiredSessionToken } from "../utils/webSessionExpiry.js";
+
+export const M365_EXPIRED_MESSAGE =
+"Microsoft 365 Copilot access_token has expired. Copy a fresh Chathub WebSocket URL from a signed-in m365.cloud.microsoft/chat session.";
 
 export const M365_INDIVIDUAL_DEFAULTS = {
   host: "substrate.office.com",
@@ -97,8 +101,51 @@ function hasEmptyOrRedactedAccessToken(value) {
   return match && (!match[2] || isRedactedToken(match[2]));
 }
 
+const M365_CHATHUB_URL_PATH = "/m365Copilot/Chathub/";
+
+/**
+ * Pull the Chathub credential out of a DevTools HAR export. Only `wss://` entries on the exact
+ * allowed host with the Chathub path count; foreign hosts, ports, userinfo and redacted tokens
+ * are ignored, and the last (newest) matching entry wins. Ported in spirit from OmniRoute
+ * open-sse/utils/m365Credentials.ts (inspectM365ChatHubUrl) at 07a790f5c158, narrowed to
+ * DurinDoor's single-host allow-list.
+ */
+function parseHarCredential(value) {
+  let data;
+  try {
+    data = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  const entries = data?.log?.entries;
+  if (!Array.isArray(entries)) return null;
+  let found = {};
+  for (const entry of entries) {
+    const raw = entry?.request?.url;
+    if (!isString(raw)) continue;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "wss:" || !M365_ALLOWED_HOSTS.has(url.hostname) || url.port || url.username || url.password ||
+      !url.pathname.startsWith(M365_CHATHUB_URL_PATH)) continue;
+      const accessToken = url.searchParams.get("access_token") || "";
+      const chathubPath = decodeURIComponent(url.pathname.slice(M365_CHATHUB_URL_PATH.length));
+      if (!accessToken || isRedactedToken(accessToken) || !M365_CHATHUB_PATH_RE.test(chathubPath)) continue;
+      found = { accessToken, chathubPath };
+    } catch {
+      continue;
+    }
+  }
+  return found;
+}
+
+/** A HAR or JSON document is never itself an access token. */
+function isStructuredJsonCredential(value) {
+  return /^\s*[{[]/.test(String(value || ""));
+}
+
 function parsePastedCredential(raw) {
   const value = String(raw || "").trim();
+  if (isStructuredJsonCredential(value)) return parseHarCredential(value) || {};
   const parts = {};
 
   for (const segment of value.split(/[;\n]/)) {
@@ -167,6 +214,7 @@ export function resolveConnectionParams(credentials) {
   credentials.apiKey &&
   !isStructuredWsUrlCredential(credentials.apiKey) &&
   !isStructuredPathOnlyCredential(credentials.apiKey) &&
+  !isStructuredJsonCredential(credentials.apiKey) &&
   !hasEmptyOrRedactedAccessToken(credentials.apiKey) &&
   credentials.apiKey ||
   isString(psd.accessToken) && psd.accessToken ||
@@ -174,6 +222,9 @@ export function resolveConnectionParams(credentials) {
   "";
   if (!accessToken) {
     return { error: "Missing M365 Copilot access_token. Paste it as the provider credential." };
+  }
+  if (isExpiredSessionToken(accessToken)) {
+    return { error: M365_EXPIRED_MESSAGE, expired: true };
   }
 
   const chathubPath =

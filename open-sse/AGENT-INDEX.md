@@ -329,6 +329,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nimble` |  | apikey | `` |
 | `nlpcloud` | openai | apikey | `https://api.nlpcloud.io/v1/gpu` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
+| `notrack` | openai | apikey | `https://api.notrack.ai/v1/chat/completions` |
 | `nous-research` | openai | apikey | `https://inference-api.nousresearch.com/v1/chat/completions` |
 | `novita` |  | apikey | `https://api.novita.ai/openai/v1/chat/completions` |
 | `nscale` | openai | apikey | `https://inference.api.nscale.com/v1/chat/completions` |
@@ -358,7 +359,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `paraloncloud` |  | apikey | `https://paraloncloud.com/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
 | `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
-| `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
+| `perplexity-web` | openai | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
 | `piapi` |  | apikey | `https://api.piapi.ai/v1/chat/completions` |
 | `pioneer` | openai | apikey | `https://api.fastino.ai/v1/chat/completions` |
 | `plamo` | openai | apikey | `https://api.platform.preferredai.jp/v1/chat/completions` |
@@ -455,6 +456,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
 | `xkiro` |  | apikey | `https://api.xkiro.com/v1/chat/completions` |
+| `y-api` |  | apikey | `https://api.y-api.bestvirtualgoods.com/v1/chat/completions` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |
 | `yolo-auto` |  | apikey | `https://yolo-auto.com/v1/chat/completions` |
 | `youcom` |  | apikey | `` |

@@ -92,6 +92,53 @@ function buildAgentrouterRules() {
 }
 
 /**
+ * Y-API (bestvirtualgoods.com) error contract.
+ *
+ * The provider's own error reference (https://y-api.bestvirtualgoods.com/docs/errors,
+ * inspected 2026-11-20) states that the status code is the part that lies and
+ * `error.code` carries the real reason. Three cases need their own handling:
+ *
+ *  - 403 `insufficient_user_quota`  — the account balance reached zero. The terms
+ *    (https://y-api.bestvirtualgoods.com/terms §3) promise that a top-up restores
+ *    access immediately and the key stays valid, so the connection is benched for
+ *    quota, not invalidated. Distinct from 429 throttling, which is transient and
+ *    recovers on its own.
+ *  - 403 `pre_consume_token_quota_failed` — the account still has credit but this
+ *    one key hit its per-key cap. Same recovery story at key scope: the cap is
+ *    raised in the console, so the connection is benched for quota.
+ *  - 503 `model_not_found` — the model id is not in the catalog. It is reported as
+ *    a server error, but nothing is down and no amount of retrying fixes it, so the
+ *    lock is scoped to the requested model instead of the connection.
+ *
+ * A 401 (`Invalid token`, empty `error.code`) is deliberately NOT listed here: it
+ * means the key does not exist or was revoked, and the shared status rules already
+ * treat it as an authentication failure.
+ */
+function buildYApiRules() {
+  const QUOTA_CODES = new Set(["insufficient_user_quota", "pre_consume_token_quota_failed"]);
+  return [
+  {
+    id: "y-api-user-quota-exhausted",
+    match: ({ status, body }) => {
+      if (status !== 403) return null;
+      const { type, code } = inspectProviderErrorEnvelope(body);
+      if (!QUOTA_CODES.has(code) && !QUOTA_CODES.has(type)) return null;
+      return { reason: "quota_exhausted", scope: "connection" };
+    }
+  },
+  {
+    id: "y-api-model-not-found",
+    match: ({ status, body }) => {
+      if (status !== 503) return null;
+      const { type, code } = inspectProviderErrorEnvelope(body);
+      if (code !== "model_not_found" && type !== "model_not_found") return null;
+      return { scope: "model", cooldownMs: 15 * 60 * 1000 };
+    }
+  }];
+
+}
+
+/**
  * Gisoo (https://gisoo.pro) — prepaid relay, OpenAI-compatible `/api/v1`.
  *
  * The upstream documents three distinct failure classes, and they need
@@ -157,6 +204,7 @@ function buildGisooRules() {
 
 export const providerRuleRegistry = new Map([
 ["agentrouter", buildAgentrouterRules()],
+["y-api", buildYApiRules()],
 ...["opencode", "opencode-go", "opencode-zen"].map((provider) => [provider, [{
   id: "opencode-endpoint-unavailable",
   match: ({ status, body }) => {

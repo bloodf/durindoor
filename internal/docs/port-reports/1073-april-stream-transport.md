@@ -82,12 +82,12 @@ Local findings:
 
 - **The defect class does not exist here.** This fork has no `sanitizeOpenAIResponse` and no
   `sanitizeStreamingChunk`. The response path is a registry-based translator
-  ([open-sse/translator/index.js:378](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/index.js:378))
+  ([open-sse/translator/index.js:378](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/index.js:378))
   plus targeted, purpose-built field strips — Azure content-filter fields
-  ([open-sse/utils/stream.js:919](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:919)),
-  MiniMax thinking markers ([open-sse/utils/stream.js:956](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:956)),
+  ([open-sse/utils/stream.js:919](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:919)),
+  MiniMax thinking markers ([open-sse/utils/stream.js:956](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:956)),
   and per-format encrypted-content removal
-  ([open-sse/translator/formats/responsesApi.js:207](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/formats/responsesApi.js:207)).
+  ([open-sse/translator/formats/responsesApi.js:207](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/formats/responsesApi.js:207)).
   A whole-tree search of `open-sse/` and `src/` for `sanitizeOpenAIResponse|sanitizeStreamingChunk` returned zero
   hits (probe assertion, passing).
 - Nothing in the local response path is keyed on the provider's format in the way the upstream sanitizer was, so
@@ -117,8 +117,8 @@ Local findings:
   There is no `open-sse/services/claudeCodeCompatible.ts` and no `open-sse/utils/cacheControlPolicy.ts`.
 - **There is no global cache-control policy here.** The fork's `preserveCacheControl` is a per-provider registry
   quirk, not an operator setting with `auto` / `always` / `never` modes
-  ([open-sse/translator/index.js:169](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/index.js:169),
-  [open-sse/translator/index.js:283](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/index.js:283));
+  ([open-sse/translator/index.js:169](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/index.js:169),
+  [open-sse/translator/index.js:283](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/index.js:283));
   no `alwaysPreserveClientCache` key exists in the settings surface.
 - The `RoutingTab.tsx` hunk is dashboard copy for a setting that has no local counterpart.
 
@@ -141,9 +141,9 @@ Source change, exact diff `08f1f05d58` → `f7fbe3946d`:
 Local findings:
 
 - The local buffer is a hardcoded constant:
-  `const BUFFER_TOKENS = 2000;` ([open-sse/utils/usageTracking.js:27](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/usageTracking.js:27)),
+  `const BUFFER_TOKENS = 2000;` ([open-sse/utils/usageTracking.js:27](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/usageTracking.js:27)),
   applied by `addBufferToUsage`
-  ([open-sse/utils/usageTracking.js:39](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/usageTracking.js:39)).
+  ([open-sse/utils/usageTracking.js:39](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/usageTracking.js:39)).
 - A whole-tree search of `open-sse/` and `src/` for `USAGE_TOKEN_BUFFER|usageTokenBuffer` returned zero hits
   (probe assertion, passing). No env var, no setting key, no dashboard field, and no cache-invalidation hook
   exists.
@@ -168,16 +168,16 @@ Local findings:
 
 - **The fork has no empty-name tool filter.** `open-sse/handlers/chatCore.js` never filters `body.tools` by tool
   name; the only `tools` filters in the request path are the Codex additional-tools envelope strip
-  ([open-sse/handlers/chatCore.js:734](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:734)),
-  tool dedupe ([open-sse/handlers/chatCore.js:843](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:843))
-  and schema normalization ([open-sse/handlers/chatCore.js:850](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:850)).
+  ([open-sse/handlers/chatCore.js:734](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:734)),
+  tool dedupe ([open-sse/handlers/chatCore.js:843](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:843))
+  and schema normalization ([open-sse/handlers/chatCore.js:850](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:850)).
   A whole-tree search found no `Invalid 'tools` guard and no empty-name tool filter.
 - **The fork already preserves typed server tools.** The transport resolver treats a tool whose `type` is not
   `function` / `custom` / `tool` as a native server tool and keeps the request on the Responses transport
-  ([open-sse/handlers/chatCore.js:173](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:173)),
+  ([open-sse/handlers/chatCore.js:173](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:173)),
   and the Responses request builder maps tool entries through `convertChatAllowedToolEntry`
-  ([open-sse/translator/request/openai-responses.js:196](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/request/openai-responses.js:196),
-  [open-sse/translator/request/openai-responses.js:245](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/request/openai-responses.js:245)).
+  ([open-sse/translator/request/openai-responses.js:196](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/request/openai-responses.js:196),
+  [open-sse/translator/request/openai-responses.js:245](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/translator/request/openai-responses.js:245)).
 
 **Disposition:** no applicable residual. The upstream defect has no local counterpart because the discarding filter
 does not exist here, and the local transport selection and request builder already keep typed server tools.
@@ -198,12 +198,12 @@ Local findings:
 
 - The local streaming decision reads only the standard `stream` key. `resolveStreamFlag` takes an options object
   and derives the decision from `bodyStream === true`
-  ([open-sse/handlers/chatCore/streamFlag.js:22](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/streamFlag.js:22),
-  [open-sse/handlers/chatCore/streamFlag.js:29](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/streamFlag.js:29));
+  ([open-sse/handlers/chatCore/streamFlag.js:22](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/streamFlag.js:22),
+  [open-sse/handlers/chatCore/streamFlag.js:29](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/streamFlag.js:29));
   the chat core derives client streaming intent from `body.stream === true`
-  ([open-sse/handlers/chatCore.js:535](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:535));
+  ([open-sse/handlers/chatCore.js:535](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:535));
   and the Responses handler reads `convertedBody.stream === true`
-  ([open-sse/handlers/responsesHandler.js:65](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/responsesHandler.js:65)).
+  ([open-sse/handlers/responsesHandler.js:65](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/responsesHandler.js:65)).
 - A whole-tree search of `open-sse/` and `src/` for `non_stream`, `disable_stream` and `disable_streaming` returned
   zero hits (probe assertion, passing). There is no alias support and no alias-stripping step.
 - The resulting behavior difference is narrow and one-directional: a client that sends `{"streaming": true}` and
@@ -234,9 +234,9 @@ Source change, exact diff `54d908c624` → `f8045744b3`:
 Local findings, part (a) — HTML error-page detection:
 
 - The local non-streaming path returns the generic message for every unparseable body:
-  [open-sse/handlers/chatCore/nonStreamingHandler.js:590](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/nonStreamingHandler.js:590),
-  [open-sse/handlers/chatCore/nonStreamingHandler.js:595](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/nonStreamingHandler.js:595),
-  [open-sse/handlers/chatCore/nonStreamingHandler.js:609](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/nonStreamingHandler.js:609).
+  [open-sse/handlers/chatCore/nonStreamingHandler.js:590](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/nonStreamingHandler.js:590),
+  [open-sse/handlers/chatCore/nonStreamingHandler.js:595](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/nonStreamingHandler.js:595),
+  [open-sse/handlers/chatCore/nonStreamingHandler.js:609](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore/nonStreamingHandler.js:609).
 - Probe result: a provider body of `<!DOCTYPE html><html><body>502 Bad Gateway</body></html>` returns
   `{"status":502,"error":"Invalid JSON response from galadriel"}` — no HTML hint, and the caller cannot tell a
   captive-portal / proxy interception page from a genuine malformed-JSON response. There is no HTML sniffing and
@@ -250,7 +250,7 @@ Local findings, part (b) — row-count retention caps:
   `SystemStorageTab` component (all verified absent). There is no `CALL_LOGS_TABLE_MAX_ROWS`,
   `PROXY_LOGS_TABLE_MAX_ROWS` or `tableMaxRows` anywhere in the tree.
 - Local retention is **age-based only**: `runDataRetention({ days, now, trigger })`
-  ([src/lib/dataRetention/runner.js:46](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/src/lib/dataRetention/runner.js:46))
+  ([src/lib/dataRetention/runner.js:46](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/src/lib/dataRetention/runner.js:46))
   prunes usage history, request details, proxy-timeline traces and provider quota snapshots by age, driven by
   `src/lib/dataRetention/scheduler.js`. There is no row-count ceiling and no storage-health surface to extend.
 
@@ -284,23 +284,23 @@ Local findings, part (a) — recurring mid-stream heartbeat:
 
 - The local Responses handler has exactly one transform on the body and no heartbeat:
   `const transformedBody = response.body.pipeThrough(transformStream);`
-  ([open-sse/handlers/responsesHandler.js:132](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/responsesHandler.js:132)).
+  ([open-sse/handlers/responsesHandler.js:132](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/responsesHandler.js:132)).
   Probe result: the file contains exactly one `.pipeThrough(` call and no `keepalive` or `heartbeat` token at all.
 - The local fork's keepalive is **pre-first-byte only**. `withEarlyStreamKeepalive` holds the response open and
   emits `: keepalive\n\n`
-  ([open-sse/utils/earlyStreamKeepalive.js:23](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/earlyStreamKeepalive.js:23),
-  [open-sse/utils/earlyStreamKeepalive.js:166](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/earlyStreamKeepalive.js:166))
+  ([open-sse/utils/earlyStreamKeepalive.js:23](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/earlyStreamKeepalive.js:23),
+  [open-sse/utils/earlyStreamKeepalive.js:166](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/earlyStreamKeepalive.js:166))
   only while the handler promise is still pending, wired at the route level
-  ([src/app/api/v1/responses/route.js:39](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/src/app/api/v1/responses/route.js:39)).
+  ([src/app/api/v1/responses/route.js:39](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/src/app/api/v1/responses/route.js:39)).
   Once the upstream response starts flowing, no further keepalive is emitted, so a long reasoning turn can still
   leave the connection idle.
 
 Local findings, part (b) — passthrough keepalive blocks:
 
 - The passthrough path has two separate behaviors. `filterEmptyOpenAIFrames`
-  ([open-sse/utils/stream.js:182](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:182))
+  ([open-sse/utils/stream.js:182](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:182))
   holds field-only frames for the **OpenAI** target only; `responsesPassthrough`
-  ([open-sse/utils/stream.js:188](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:188))
+  ([open-sse/utils/stream.js:188](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/utils/stream.js:188))
   is the **Responses** path and has no field-only-frame filter at all.
 - **Probe result — the defect reproduces in both passthrough formats.** Feeding a source stream that contains
   `event: keepalive\ndata:\n\n` followed by a real delta produces, verbatim on the client wire:
@@ -345,20 +345,20 @@ Local findings:
   scope"; that label is too broad for this diff and is corrected here.
 - The local GitHub Copilot executor hardcodes the initiator and cannot see client headers at all:
   `buildHeaders(credentials, stream = true)`
-  ([open-sse/executors/github.js:65](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/github.js:65))
+  ([open-sse/executors/github.js:65](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/github.js:65))
   and `"X-Initiator": "user"`
-  ([open-sse/executors/github.js:78](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/github.js:78)).
+  ([open-sse/executors/github.js:78](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/github.js:78)).
   Probe result: `buildHeaders` returns `X-Initiator: "user"` for every call, and the extracted signature is
   `buildHeaders(credentials, stream = true)` — no `requestContext` parameter, so no client header can reach it.
 - **The local fork already has the exact idiom the upstream change introduces.** The fork contract is
   `buildHeaders(credentials, stream, requestContext, model)`
-  ([open-sse/executors/base.js:419](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/base.js:419),
-  [open-sse/executors/base.js:428](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/base.js:428)),
+  ([open-sse/executors/base.js:419](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/base.js:419),
+  [open-sse/executors/base.js:428](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/base.js:428)),
   `requestContext.clientHeaders` is already consumed by the Codex, OpenCode, Kiro, default and chatgpt-web
   executors, and the chat core already freezes the inbound headers
-  ([open-sse/handlers/chatCore.js:248](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:248)).
+  ([open-sse/handlers/chatCore.js:248](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/handlers/chatCore.js:248)).
   The GitHub executor already reads `requestContext?.clientHeaders` on its Claude path
-  ([open-sse/executors/github.js:340](/home/stormtrooper/.local/share/t3-stormtrooper/worktrees/durindoor-upstream/orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/github.js:340)),
+  ([open-sse/executors/github.js:340](../../../orq-tornf6-audit-omni-a-ddcf746d763fa509/open-sse/executors/github.js:340)),
   so only the header-building path is missing.
 
 **Disposition:** applicable residual — a correction to an existing runtime path, scoped to one file. It is **not**

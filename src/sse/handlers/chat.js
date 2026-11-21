@@ -1,3 +1,4 @@
+import { CAPTURE_CONSENT_HEADER, CAPTURE_SESSION_HEADER, prepareMessageCapture } from "../utils/messageCapture.js";
 import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
 import { normalizeModelReference } from "open-sse/services/model.js";
 import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
@@ -428,6 +429,13 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   } else {
     clientRawRequest = { ...clientRawRequest, originalModel: originalClientModel, requestId };
   }
+  // Capture control headers stay in the gateway, outside provider headers and request logs.
+  if (request.headers.has(CAPTURE_CONSENT_HEADER) || request.headers.has(CAPTURE_SESSION_HEADER)) {
+    const headers = { ...clientRawRequest.headers };
+    delete headers[CAPTURE_CONSENT_HEADER];
+    delete headers[CAPTURE_SESSION_HEADER];
+    clientRawRequest.headers = headers;
+  }
   cacheClaudeHeaders(clientRawRequest.headers);
 
   const sourceFormat = detectFormatByEndpoint(
@@ -576,6 +584,14 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
+  const captureResponse = prepareMessageCapture({
+    request, body, settings, auth: apiKeyAuth, credential: apiKey, format: sourceFormat,
+  });
+  const finishChat = async (pending) => {
+    const response = await pending;
+    return captureResponse ? captureResponse(response) : response;
+  };
+
   // Vision Bridge capability resolution and reroute have moved to
   // handleSingleModelChat so they run AFTER API-key policy enforcement for
   // single-model requests. Denied requests no longer trigger DB lookups.
@@ -611,7 +627,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: fusion)`);
       const capabilitiesMap = await resolveComboCapabilitiesMap([...comboModels, perCombo.judgeModel].filter(Boolean));
-      return handleFusionChat({
+      return finishChat(handleFusionChat({
         body,
         models: comboModels,
         handleSingleModel: (b, m, isPanel, panelSignal) => {
@@ -638,7 +654,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         autoSwitch: true,
         contextRequirements: perCombo.contextRequirements,
         capabilitiesMap
-      });
+      }));
     }
 
     const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
@@ -695,7 +711,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     if (tokenSaverCollector.latest) {
       try {await recordTokenSaverEvent(tokenSaverCollector.latest);} catch {/* telemetry must not break requests */}
     }
-    return comboResult;
+    return finishChat(comboResult);
   }
 
   // Single model request. Wrapped with a bounded jittered retry on transient
@@ -704,7 +720,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // direct, non-combo path. Retries only ever see a non-ok error response
   // constructed before any bytes reach the client, so re-running cannot
   // double-send a stream.
-  return runWithTransientBackendRetry(
+  return finishChat(runWithTransientBackendRetry(
     () =>
       handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
         settings,
@@ -715,7 +731,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         billingEpoch,
       }),
     { signal: request?.signal || undefined, source: "single-model" }
-  );
+  ));
 }
 
 /**

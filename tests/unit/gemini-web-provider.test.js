@@ -5,11 +5,9 @@
 // Google account, cookie, Chromium or network request is involved. The cookies
 // are synthetic placeholders and were never issued by Google.
 //
-// The staged provider module (open-sse/providers/private/gemini-web.js) and its
-// executor are composed into the registry and the executor map by isolated
-// mocks that extend the original exports, so the normal catalog, dispatch,
-// cookie-import and chat paths run. Registration into the shared files happens
-// in the registration batch (docs/providers/gemini-web.mdx).
+// The provider module (open-sse/providers/registry/gemini-web.js) and its executor
+// come from the production registry and executor map; only the browser, the
+// network and the usage database are mocked.
 //
 // Port source: OmniRoute release/v3.8.55
 // (4265bb2ad5477450a07d3a43ea33a62c6c874878),
@@ -65,11 +63,12 @@ vi.mock("playwright", () => {
                 press: vi.fn(async (key) => {
                   if (key !== "Enter") return;
                   const { status, text, body } = world.answer(header());
-                  setTimeout(() => onResponse?.({
+                  // Deliver this context's cookie-keyed response before the mock timeout can fire.
+                  await onResponse?.({
                     url: () => STREAM_URL,
                     status: () => status,
                     text: async () => body ?? frameBody(text),
-                  }), 0);
+                  });
                 }),
               },
               // The long response wait collapses to a short real delay so a missing answer finishes fast.
@@ -81,22 +80,6 @@ vi.mock("playwright", () => {
     };
   });
   return { chromium: { launch }, default: { chromium: { launch } } };
-});
-
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/gemini-web.js");
-  return { ...original, default: [...original.default, entry] };
-});
-
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { GeminiWebExecutor } = await import("../../open-sse/executors/gemini-web.js");
-  const executor = new GeminiWebExecutor();
-  return {
-    ...original,
-    getExecutor: (provider) => (provider === "gemini-web" || provider === "gweb" ? executor : original.getExecutor(provider)),
-  };
 });
 
 vi.mock("../../open-sse/utils/proxyFetch.js", async (original) => ({ ...(await original()), proxyAwareFetch: vi.fn() }));
@@ -124,7 +107,7 @@ import { getExecutor } from "../../open-sse/executors/index.js";
 import geminiWebProvider, {
   GEMINI_WEB_MODELS,
   geminiWebCookieProfile,
-} from "../../open-sse/providers/private/gemini-web.js";
+} from "../../open-sse/providers/registry/gemini-web.js";
 import {
   GeminiWebExecutor,
   buildGeminiPrompt,

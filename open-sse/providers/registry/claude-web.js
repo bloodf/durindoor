@@ -8,6 +8,7 @@ export const claudeWebCookieProfile = Object.freeze({
 
 export default {
   id: "claude-web",
+  priority: 247,
   alias: "cw",
   display: { name: "Claude Web", icon: "claude", color: "#D97757", textIcon: "CW", website: "https://claude.ai" },
   category: "webCookie",

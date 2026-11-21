@@ -9,7 +9,7 @@ import { createRoutingFixture } from "@/shared/ui/v5/preservation/routing-fixtur
 
 // Kept aligned with PROVIDER_MODELS_CONFIG by the focused redesign test.
 // This public ID list avoids importing server model-fetch handlers in the browser.
-const REVIEW_MODEL_LIST_PROVIDERS = new Set(["empiriolabs", "opencode-server", "replicate", "commandcode", "claude", "gemini", "gemini-interactions", "qwen", "kimi-web", "codex", "antigravity", "ghe-copilot", "github", "openai", "openference", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "muse-code", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "llmtr", "siliconflow", "hyperbolic", "nan", "paraloncloud", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "dothoosh", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "mlx", "typesafe", "venice", "orcarouter", "xiaomi-mimo", "xiaomi-mimo-token-plan", "xiaomi-tokenplan", "devin-cli-agentic", "gisoo"]);
+const REVIEW_MODEL_LIST_PROVIDERS = new Set(["chatplayground", "empiriolabs", "opencode-server", "replicate", "commandcode", "claude", "gemini", "gemini-interactions", "qwen", "kimi-web", "codex", "antigravity", "ghe-copilot", "github", "openai", "openference", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "muse-code", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "llmtr", "siliconflow", "hyperbolic", "nan", "paraloncloud", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "dothoosh", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "mlx", "typesafe", "venice", "orcarouter", "xiaomi-mimo", "xiaomi-mimo-token-plan", "xiaomi-tokenplan", "devin-cli-agentic", "gisoo"]);
 const REVIEW_NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor", "demonroute"]);
 
 /** Fresh isolated data when navigating from one provider's story to another. */
@@ -199,3 +199,29 @@ export const CompatibleProxyOpen = {
 export const MnnAiConnection = {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers/mnn-ai", params: { id: "mnn-ai" }, routes: providerFixture("mnn-ai").routes } },
 };
+
+const webSessionStory = (providerId) => ({
+  parameters: { storyFixture: { scenario: "default", pathname: `/dashboard/providers/${providerId}`, params: { id: providerId }, routes: providerFixture(providerId).routes } },
+});
+
+export const ClaudeWebConnection = webSessionStory("claude-web");
+export const GeminiWebConnection = webSessionStory("gemini-web");
+export const DeepseekWebConnection = webSessionStory("deepseek-web");
+export const DoubaoWebConnection = webSessionStory("doubao-web");
+export const ZaiWebConnection = webSessionStory("zai-web");
+export const ChatgptWebCodexConnection = webSessionStory("chatgpt-web-codex");
+
+// Registration batch B (#2034): API-key, web-session and free providers.
+export const HelyxaiConnection = webSessionStory("helyxai");
+export const TabitokenConnection = webSessionStory("tabitoken");
+export const TwinmindConnection = webSessionStory("twinmind");
+export const HyperagentConnection = webSessionStory("hyperagent");
+export const MaxaiConnection = webSessionStory("maxai");
+export const LmarenaConnection = webSessionStory("lmarena");
+export const ChatplaygroundConnection = webSessionStory("chatplayground");
+export const CloudflarePlaygroundConnection = webSessionStory("cloudflare-playground");
+export const PoeConnection = webSessionStory("poe");
+export const G4fGeminiConnection = webSessionStory("g4f-gemini");
+export const G4fNvidiaConnection = webSessionStory("g4f-nvidia");
+export const G4fOllamaConnection = webSessionStory("g4f-ollama");
+export const G4fPollinationsConnection = webSessionStory("g4f-pollinations");

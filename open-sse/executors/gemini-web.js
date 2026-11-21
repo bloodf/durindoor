@@ -21,8 +21,7 @@
  * utils/geminiCookies.ts and validateGeminiWebProvider in
  * src/lib/providers/validation/webProvidersB.ts. MIT.
  *
- * Staged under open-sse/providers/private/: this executor is not yet in
- * open-sse/executors/index.js. See docs/providers/gemini-web.mdx.
+ * Registered in open-sse/executors/index.js. See docs/providers/gemini-web.mdx.
  */
 import { BaseExecutor } from "./base.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";

@@ -9,6 +9,7 @@ export const DEEPSEEK_WEB_COOKIE_PROFILE = {
 
 export default {
   id: "deepseek-web",
+  priority: 249,
   alias: "ds-web",
   display: {
     name: "DeepSeek Web",
@@ -27,6 +28,8 @@ export default {
     executor: "deepseek-web",
     authType: "apikey",
     authHeader: "bearer",
+    // GET users/current is the read-only credential check; never fall back to a chat POST.
+    quirks: { validationChatFallback: false },
   },
   models: [
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", supportsTools: true },

@@ -556,3 +556,12 @@ test("provider discovery links lead to the relevant guides", async ({ page }) =>
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
 });
+
+test("network server guide covers setup, discovery, and safeguards", async ({ page }) => {
+  await page.goto("/docs/providers/network-llm-servers");
+  for (const heading of ["Network Ollama by base URL", "LAN OpenAI-compatible servers by base URL", "LAN discovery", "Outbound URL guard", "Verify"]) {
+    await expect(page.getByRole("heading", { name: new RegExp(heading) }).first()).toBeVisible();
+  }
+  await expect(page.getByText("Use Import on the node page", { exact: false })).toBeVisible();
+  await expect(page.getByText("ordinary private addresses remain allowed", { exact: false })).toBeVisible();
+});

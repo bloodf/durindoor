@@ -14,7 +14,7 @@ import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import PlaygroundCompare from "./PlaygroundCompare.jsx";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
-import { createSseParser } from "@/lib/playground/sse";
+import { readChatStream, throwIfStreamFailed } from "@/lib/playground/compare";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { buildModelIndex, getConnectionOptions, getModelReasoningOptions, getProviderLabel, groupModelsByProvider, normalizeLiveModel, normalizeReasoningEffort, normalizeStaticModel, paginateSessions, resolveSavedModel } from "./playgroundHelpers";
@@ -98,16 +98,6 @@ function buildUserContent(message) {
   }
 
   return content.length > 0 ? content : text;
-}
-
-function readAssistantText(chunk) {
-  if (!chunk || !isObject(chunk)) return "";
-  const choice = chunk.choices?.[0];
-  const delta = choice?.delta || {};
-  const pieces = [delta.content, choice?.message?.content, chunk.output_text, chunk.text].
-  map(textValue).
-  filter(Boolean);
-  return pieces[0] || "";
 }
 
 async function fileToDataUrl(file) {
@@ -659,35 +649,19 @@ export default function PlaygroundPageClient() {
         return;
       }
 
-      const decoder = new TextDecoder();
-      let assistantText = "";
-
-      const parser = createSseParser(({ data }) => {
-        let chunk;
-        try {
-          chunk = JSON.parse(data);
-        } catch {
-          return; // Ignore malformed chunks.
+      const { text: assistantText, streamError } = await readChatStream(reader, {
+        onText: (text) => {
+          setStreamingText(text);
+          updateSession(sessionId, (currentSession) => ({
+            ...currentSession,
+            messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: text, status: "streaming" } : message),
+            updatedAt: new Date().toISOString()
+          }));
         }
-        const text = readAssistantText(chunk);
-        if (!text) return;
-
-        assistantText += text;
-        setStreamingText(assistantText);
-        updateSession(sessionId, (currentSession) => ({
-          ...currentSession,
-          messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message),
-          updatedAt: new Date().toISOString()
-        }));
       });
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        parser.push(decoder.decode(value, { stream: true }));
-      }
-      parser.push(decoder.decode()); // flush any pending multibyte fragment
-      parser.flush();
+      // An error frame inside a 200 stream, or a stream that closed without
+      // content, is reported as a failed turn instead of an empty "done" bubble.
+      throwIfStreamFailed({ text: assistantText, streamError });
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,

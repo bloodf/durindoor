@@ -96,7 +96,8 @@ export const TABLES = {
       isAdmin: "INTEGER NOT NULL DEFAULT 0",
       createdAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+    // No plain index on `key`: its UNIQUE constraint already provides an identical one.
+    indexes: [],
   },
   // Opt-in API-key-to-provider-account restriction. No rows for a key means
   // unrestricted; both parent deletions cascade to preserve referential integrity.
@@ -159,7 +160,6 @@ export const TABLES = {
       updatedAt: "TEXT NOT NULL",
     },
     indexes: [
-      "CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)",
       "CREATE INDEX IF NOT EXISTS idx_combo_name_nocase ON combos(name COLLATE NOCASE)",
     ],
   },
@@ -210,7 +210,6 @@ export const TABLES = {
       createdAt: "TEXT NOT NULL",
     },
     indexes: [
-      "CREATE INDEX IF NOT EXISTS idx_mcp_inst_slug ON mcpInstances(slug)",
       "CREATE INDEX IF NOT EXISTS idx_mcp_inst_enabled ON mcpInstances(enabled)",
     ],
   },
@@ -223,7 +222,8 @@ export const TABLES = {
       isActive: "INTEGER DEFAULT 1",
       createdAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_mcp_gwkey ON mcpGatewayKeys(key)"],
+    // No plain index on `key`: its UNIQUE constraint already provides an identical one.
+    indexes: [],
   },
   mcpKeyGrants: {
     columns: {

@@ -1,0 +1,25 @@
+# NoTrack Web
+
+NoTrack Web connects to the consumer chat at [notrack.ai](https://notrack.ai) with a browser session cookie. The staged provider currently advertises the upstream's single `C` dispatch model as `notrack-c`.
+
+## Setup
+
+Sign in to notrack.ai, open a chat, and copy the complete `Cookie` request header from DevTools → Network → a `/api/dispatch` request. Paste it as the connection credential. `uid`, `si_usr_id`, and `si_ses_id` identify the session; `nt_session` is preserved when present. A raw Cookie header and a `Cookie:` prefixed header are accepted. Cookie sessions expire when the upstream invalidates them; replace the saved header after an authentication error.
+
+The provider forwards a chat envelope to `POST https://notrack.ai/api/dispatch`: `user_input`, mode `usual`, model `C`, persona `normal`, and optional chat metadata. Upstream `delta` events become OpenAI streaming chunks; full `message` events are used as a non-streaming fallback. OpenAI-compatible `/v1/chat/completions` and Anthropic-compatible `/v1/messages` requests pass through the shared gateway translation layer.
+
+## Cookie capture
+
+The cookie capture profile is `notrackWebCookieProfile` in the staged provider module. It names the `notrack.ai` domain and the four allowed cookie names above. For manual import, paste the Cookie header from DevTools. A pasted cURL command or HAR can also be used as the source: copy only its `Cookie` header value and avoid sharing the original request elsewhere.
+
+## Limits
+
+NoTrack controls anonymous and signed-in quotas, model behavior, and availability. HTTP 401/403 indicate an invalid or expired session; HTTP 429 indicates rate limiting. The upstream offers one assistant persona and dispatch model (`C`), not a selectable model catalog. Tool calls are represented in the prompt where supported by the upstream implementation and are not guaranteed to execute as native tools. Long inputs are bounded before dispatch.
+
+## Sources
+
+- [OmniRoute provider registry at the pinned release](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/notrack-web/index.ts)
+- [OmniRoute executor at the pinned release](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/notrack-web.ts)
+- [NoTrack](https://notrack.ai)
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

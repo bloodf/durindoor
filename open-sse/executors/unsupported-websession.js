@@ -1,5 +1,18 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { HuggingChatExecutor } from "./huggingchat.js";
+
+// Guarded web sessions that stay closed unless the connection opts in. The opt-in is read from the
+// connection's own providerSpecificData, so enabling one account never opens a sibling (#2034).
+const SESSION_DISPATCH_OPT_IN = {
+  huggingchat: () => new HuggingChatExecutor(),
+};
+const sessionDispatchExecutors = new Map();
+
+export function isSessionDispatchEnabled(provider, credentials) {
+  return Object.hasOwn(SESSION_DISPATCH_OPT_IN, provider) &&
+    credentials?.providerSpecificData?.enableSessionDispatch === true;
+}
 
 export const BLOCKED_OMNIROUTE_PROVIDERS = {
   // OmniRoute #6894: Devin is a cloud-agent provider with transport:null — it
@@ -95,7 +108,11 @@ export class UnsupportedOmniRouteWebSessionExecutor extends BaseExecutor {
     throw this._unsupportedError();
   }
 
-  async execute() {
+  async execute(input) {
+    if (isSessionDispatchEnabled(this.provider, input?.credentials)) {
+      if (!sessionDispatchExecutors.has(this.provider)) sessionDispatchExecutors.set(this.provider, SESSION_DISPATCH_OPT_IN[this.provider]());
+      return sessionDispatchExecutors.get(this.provider).execute(input);
+    }
     const payload = {
       error: {
         message: `${this.provider} ${this.detail}: ${this.blocker.reason}.`,

@@ -655,7 +655,7 @@ export class BaseExecutor {
 
         // A confirmed Antigravity header deadline has consumed the account's
         // full budget. Preserve the original reason for account-level failover.
-        if (isConnectTimeout && this.provider === "antigravity") {
+        if (isConnectTimeout && (this.provider === "antigravity" || this.provider === "agy")) {
           const timeout = connectCtrl.signal.reason;
           timeout.errorKind = "connect_timeout";
           timeout.antigravityPreResponseTimeout = true;

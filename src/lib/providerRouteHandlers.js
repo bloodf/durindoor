@@ -18,6 +18,7 @@ import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
+import { registryAllowsKeylessCredential } from "@/lib/providers/validation/registryCredentials.js";
 import {
   compatibleNodeConflictMessage,
   resolveCompatibleNodeIdentity
@@ -287,7 +288,7 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !hasApiKeySubstitute) {
+    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !registryAllowsKeylessCredential(provider) && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;

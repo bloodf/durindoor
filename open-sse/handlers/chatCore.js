@@ -5,6 +5,7 @@ import { supportsServiceTier } from "../config/serviceTier.js";
 import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
+import { parseTimeMs } from "../services/oauthCredentialManager.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
@@ -67,11 +68,13 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { isOpenRouterAnthropicModel } from "../translator/concerns/openrouterAnthropicCache.js";
 import { gateStep } from "../services/compression/fidelityGate.js";
 import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
 import { applyResponseMasking } from "../services/responseMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+import { formatRequestLine } from "../../src/sse/utils/logger.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { maskSensitiveUrl } from "../utils/requestLogger.js";
@@ -871,7 +874,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     const clientModel = clientRawRequest?.body?.model || requestedModel;
     const msgN = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || body.messages?.length || body.input?.length || 0;
     const toolN = translatedBody.tools?.length || body.tools?.length || 0;
-    const fmtStr = passthrough ? `FMT: ${sourceFormat} (passthrough)` : `FMT: ${sourceFormat}→${targetFormat}`;
+    const format = passthrough ? `${sourceFormat} (passthrough)` : `${sourceFormat}→${targetFormat}`;
     const think = log.fmtThink?.(extractThinking(translatedBody));
     const acc = credentials?.connectionName || credentials?.connectionId?.slice(0, 8) || "-";
     // A custom provider is addressed by the prefix the operator configured
@@ -883,16 +886,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       providerId: provider,
       providerSpecificData: credentials?.providerSpecificData
     });
-    const parts = [
-    `POST ${clientModel} → ${displayProvider}/${cleanModel}`,
-    fmtStr,
-    stream ? "STREAM" : "JSON",
-    `${msgN} MSG`];
-
-    if (toolN) parts.push(`${toolN} TOOL`);
-    if (think) parts.push(`THINK:${think}`);
-    parts.push(`ACC:${acc}`);
-    log.line(reqTag, "▶", parts.join(" · "));
+    log.line(reqTag, "▶", formatRequestLine({
+      clientModel,
+      routedModel: `${displayProvider}/${cleanModel}`,
+      format,
+      stream,
+      messages: msgN,
+      tools: toolN,
+      thinking: think,
+      account: acc,
+    }));
   }
 
   // TTS models don't support tool messages/function calling
@@ -975,6 +978,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         engines: compressionEngines ?? {},
         applyOpts: { ...adaptiveBudget, rtkApplied: runRtk },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
+        protectCachedPrefix: isOpenRouterAnthropicModel(provider, cleanModel),
         adaptive: {
           ...adaptiveBudget,
           estimatedTokens: estimateTokens(translatedBody),
@@ -1496,7 +1500,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     const transportFailure = error?.errorKind === "connect_timeout" || error?.errorKind === "network" ?
     error.errorKind :
     null;
-    const antigravityPreResponseTimeout = provider === "antigravity" && error?.antigravityPreResponseTimeout === true;
+    // The `agy` alias carries the same private marker; an unmarked 504 is never promoted.
+    const antigravityPreResponseTimeout = (provider === "antigravity" || provider === "agy") && error?.antigravityPreResponseTimeout === true;
     const failureStatus = antigravityPreResponseTimeout ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
     await settleQuota(false, terminalReason);
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : failureStatus}` }).catch(() => {});
@@ -2039,5 +2044,9 @@ export function shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifie
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {
   if (!expiresAt) return false;
-  return new Date(expiresAt).getTime() - Date.now() < bufferMs;
+  // parseTimeMs reads epoch seconds, epoch ms and numeric strings (a TEXT column hands a numeric
+  // epoch back as a string, which `new Date()` reads as an Invalid Date); a Date it does not know.
+  const expiresAtMs = expiresAt instanceof Date ? expiresAt.getTime() : parseTimeMs(expiresAt);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= 0) return false;
+  return expiresAtMs - Date.now() < bufferMs;
 }

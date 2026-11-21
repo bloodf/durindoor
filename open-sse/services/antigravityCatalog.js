@@ -37,20 +37,22 @@ export const ANTIGRAVITY_CATALOG_URL =
 export const ANTIGRAVITY_CATALOG_OUTCOME = Object.freeze({
   SUCCESS: "success",
   AUTH_ERROR: "auth_error",
+  FORBIDDEN: "forbidden",
   TRANSIENT: "transient",
 });
 
 /**
  * Classify an HTTP status from the catalog endpoint.
  *
- * 401 and 403 are auth rejections: the credential is the problem, and the same
- * token cannot succeed on a retry. Every other non-2xx answer is transient.
+ * 401 rejects the token; 403 rejects the project probe. Other non-2xx
+ * answers are transient.
  *
  * @param {number} httpStatus
- * @returns {"success"|"auth_error"|"transient"}
+ * @returns {"success"|"auth_error"|"forbidden"|"transient"}
  */
 export function classifyAntigravityCatalogStatus(httpStatus) {
-  if (httpStatus === 401 || httpStatus === 403) return ANTIGRAVITY_CATALOG_OUTCOME.AUTH_ERROR;
+  if (httpStatus === 401) return ANTIGRAVITY_CATALOG_OUTCOME.AUTH_ERROR;
+  if (httpStatus === 403) return ANTIGRAVITY_CATALOG_OUTCOME.FORBIDDEN;
   if (!Number.isInteger(httpStatus) || httpStatus < 200 || httpStatus >= 300) {
     return ANTIGRAVITY_CATALOG_OUTCOME.TRANSIENT;
   }
@@ -105,4 +107,28 @@ export function parseAntigravityCatalogModels(data) {
       supportsVision: !!info?.supportsImages,
       supportsReasoning: !!info?.supportsThinking
     }));
+}
+
+// A forbidden probe is scoped to the connection and project, not its token.
+// CLIProxyAPI f5c5681a sdk/cliproxy/antigravity_models.go uses a five-minute
+// minimum with exponential equal-jitter backoff, capped at sixty minutes.
+const forbiddenProbes = new Map();
+const FORBIDDEN_HISTORY_TTL = 24 * 60 * 60 * 1000;
+function forbiddenKey(connection) {
+  return JSON.stringify([connection.id, resolveAntigravityConnectionProject(connection)]);
+}
+export function antigravityForbiddenBackoff(connection, now = Date.now()) {
+  const key = forbiddenKey(connection);
+  const state = forbiddenProbes.get(key);
+  if (state && now - state.lastFailure > FORBIDDEN_HISTORY_TTL) forbiddenProbes.delete(key);
+  return state && now < state.nextRetry ? state.result : null;
+}
+export function recordAntigravityForbidden(connection, result, now = Date.now()) {
+  for (const [key, state] of forbiddenProbes) {
+    if (now - state.lastFailure > FORBIDDEN_HISTORY_TTL) forbiddenProbes.delete(key);
+  }
+  const key = forbiddenKey(connection);
+  const failures = Math.min((forbiddenProbes.get(key)?.failures || 0) + 1, 5);
+  const window = Math.min(10 * 60 * 1000 * 2 ** (failures - 1), 60 * 60 * 1000);
+  forbiddenProbes.set(key, { failures, lastFailure: now, nextRetry: now + window / 2 + Math.random() * window / 2, result });
 }

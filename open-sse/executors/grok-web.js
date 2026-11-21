@@ -31,17 +31,37 @@ const MODEL_MAP = {
  * `sso` value, `sso=<value>`, or a full DevTools Cookie header (optionally with a
  * `Cookie:` prefix). A full header is forwarded as pasted, in order, because other
  * first-party cookies the browser sent with it stay the operator's own; it must
- * contain an `sso` pair. Returns "" when no usable session is present.
+ * contain an `sso` pair with a value. Returns "" when no usable session is present,
+ * which the executor turns into a local 401 before any request reaches grok.com.
  */
 export function buildGrokCookieHeader(raw) {
   const value = stripCookieInputPrefix(isString(raw) ? raw : "");
   if (!value) return "";
-  // A pair is name=value with a non-empty, non-"=" first value character; a bare
-  // base64 token that merely ends in "=" padding is not one.
-  const pairPattern = /^[A-Za-z0-9_.-]+=[^=;\s]/;
-  const pairs = value.split(";").map((part) => part.trim()).filter(Boolean);
-  if (!pairs.some((part) => pairPattern.test(part))) return `sso=${value}`;
-  return pairs.some((part) => /^sso=[^;\s]+$/.test(part)) ? pairs.join("; ") : "";
+
+  const parts = value.split(";").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return "";
+
+  // A pair is name=value with a cookie-shaped name. A value that starts with "=" is
+  // base64 padding of a raw token ("tok=="), not a cookie pair.
+  const entries = parts.map((part) => {
+    const separator = part.indexOf("=");
+    if (separator <= 0) return { name: "", value: "" };
+    const name = part.slice(0, separator);
+    if (!/^[A-Za-z0-9_.-]+$/.test(name)) return { name: "", value: "" };
+    return { name, value: part.slice(separator + 1) };
+  });
+
+  // An `sso` name with an empty or blank value is an empty session, not a token:
+  // reject it instead of turning it into the meaningless "sso=sso=".
+  const ssoEntries = entries.filter((entry) => entry.name === "sso");
+  if (ssoEntries.some((entry) => !entry.value.trim() || /\s/.test(entry.value))) return "";
+
+  // A header is a paste that carries at least one name=value pair with a real
+  // value; anything else is a raw token to send as the sso value itself.
+  const isHeader = entries.some((entry) => entry.name && entry.value && !entry.value.startsWith("=") && !/^\s/.test(entry.value));
+  if (!isHeader) return `sso=${value}`;
+
+  return ssoEntries.length ? parts.join("; ") : "";
 }
 
 function randomString(length, alphanumeric = false) {
@@ -330,9 +350,10 @@ export class GrokWebExecutor extends BaseExecutor {
 
     const cookie = buildGrokCookieHeader(credentials?.apiKey);
     if (!cookie) {
-      // No usable sso session: fail locally, before any request reaches grok.com.
+      // No usable sso session: a missing sso, a blank `sso=` value, or a header
+      // without sso all fail locally, before any request reaches grok.com.
       const errResp = new Response(JSON.stringify({
-        error: { message: "Grok auth failed — no sso cookie found. Paste the sso cookie value from grok.com, or a Cookie header that contains sso=.", type: "upstream_error", code: "HTTP_401" }
+        error: { message: "Grok auth failed — no sso cookie found. An empty sso= value is rejected. Paste the sso cookie value from grok.com, or a Cookie header that contains sso=.", type: "upstream_error", code: "HTTP_401" }
       }), { status: 401, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: grokPayload };
     }

@@ -9,6 +9,11 @@ Scope is provider contracts only: registration, sign-in, dispatch and model
 discovery. This document does not propose code changes, does not call provider
 APIs, and contains no credential values.
 
+The snapshot tables below were written against the pins recorded in
+[Revisions](#revisions). [Current closure comparison](#current-closure-comparison)
+at the end of this file re-resolves upstream and DurinDoor at their current exact
+commits and records the deltas and their dispositions.
+
 [The AI Studio Build and hosted Devin follow-up](./aistudio-relay-parity-2034.md) records the verified delegation and model discovery on the merged DurinDoor base.
 
 ## Revisions
@@ -310,3 +315,149 @@ recommendation.
   repository test gate is `cd tests && npm run test:ci`, with an empty
   `tests/__baseline__/known-fails.txt`; a new failing assertion is a regression
   until the corresponding feature lands.
+
+## Current closure comparison
+
+Closure snapshot for #2034, taken against the current exact upstream commit and
+the assigned DurinDoor integration head. The tables above stay the record for
+the older pins; this section is the closure record for the current ones.
+
+No file outside this inventory was modified. No provider service was called, no
+credential was used, and no browser, Docker, end-to-end or deployment surface
+was used.
+
+### Pins
+
+| Side | Revision | Note |
+| --- | --- | --- |
+| CLIProxyAPI `main` | `f5c5681a8361c9da53e93c60b6507816eee7468b` | Current upstream head. Commit subject: `fix(auth): capture per-attempt access token on streaming failure results`. |
+| CLIProxyAPI snapshot pin | `6faa8d20b2673404cff70a2f2d9537ae0d0e684d` | The pin the snapshot tables above were written against. |
+| DurinDoor integration | `082b48d0f85e3a11579bede9c6e1e5ec5c21472c` | Branch `orq/toruzq/inventory-current-cpa-a1-l2`. |
+| DurinDoor comparison SHA | `3164ce3095774d5f7da49b3922195dd7376e6bb5` | The SHA the snapshot tables above were written against. |
+
+Resolution method: `git ls-remote https://github.com/router-for-me/CLIProxyAPI.git
+refs/heads/main` returned `f5c5681a8361c9da53e93c60b6507816eee7468b` on
+2026-11-21. The upstream tree was read from a blob-filtered, read-only clone
+outside the repository at that SHA; that checkout was not modified, and no
+upstream interface owned by another orchestrator was used. Upstream delta
+between the two pins: 28 commits, 96 files, +13900 / -357.
+
+DurinDoor facts come from the worktree at `082b48d`. The catalog was
+enumerated by importing the generated barrel `open-sse/providers/registry/index.js`:
+374 provider entries (apikey 286, oauth 31, freeTier 26, free 14, webCookie 14,
+system 1, hidden 1, and one entry without a category), against 342 at
+`3164ce3`.
+
+Upstream citations in this section are pinned to
+`https://github.com/router-for-me/CLIProxyAPI/blob/f5c5681a8361c9da53e93c60b6507816eee7468b/`
+so they stay valid as `main` moves.
+
+### Upstream delta by dimension
+
+| Dimension | Upstream change since `6faa8d20` | DurinDoor state at `082b48d` | Disposition |
+| --- | --- | --- | --- |
+| Provider registration | None. `sdk/cliproxy/service_executors.go`, `internal/registry/model_definitions.go`, `config.example.yaml`, `internal/cmd/auth_manager.go`, `cmd/server/main.go` and `internal/api/server_routes.go` are unchanged across the two pins. No executor, authenticator package or API-key group was added or removed; `internal/auth/` still holds `antigravity`, `claude`, `codex`, `devin`, `empty`, `kimi`, `meta`, `vertex`, `xai`. | Catalog 342 to 374 entries. Three CLIProxyAPI-adjacent entries were added since `3164ce3`: `gemini-interactions`, `kimi-ai`, `devin-cli-agentic`. | **Already covered.** Upstream added no provider identity, so there is no registration delta to port. The DurinDoor additions are listed under *New identities*. |
+| Sign-in | None. The login surface is unchanged: `internal/cmd/auth_manager.go`, the per-provider flags in `cmd/server/main.go` L153-L181, `internal/tui/oauth_tab.go`, and `sdk/auth/codex_device.go`. The only sign-in-adjacent change is the Antigravity OAuth refresh transport, recorded under *Refresh*. | `codex` gained the upstream Codex device-code flow (`open-sse/providers/registry/codex.js` L130-L134); `claude` gained the upstream OAuth scope set and the refresh scope (`open-sse/providers/registry/claude.js` L69-L100). | **Already covered.** No upstream sign-in method was added, removed or renamed since the snapshot pin. |
+| Refresh | (a) The Antigravity OAuth refresh now uses a dedicated HTTP/2-capable transport and no longer forces `Host: oauth2.googleapis.com` or `User-Agent: Go-http-client/2.0` (`internal/runtime/executor/antigravity_executor_auth.go`, `newAntigravityOAuthHTTPClient`); HTTP/1.1 without ALPN stays scoped to Cloud Code PA endpoints. (b) A refresh failure is credential-scoped: the credential cannot serve any model until it recovers. (c) The per-credential refresh lock honours context cancellation (`sdk/cliproxy/auth/conductor_refresh.go`, `lockRefreshContext`). (d) An unauthorized answer no longer triggers an implicit refresh when the failure is an explicit request stop, a request termination or a terms-of-service violation (`conductor_refresh.go`, `tryRefreshAfterUnauthorized`). (e) Interceptor session updates clone credential metadata before mutating it, and a 401 retry republishes the refreshed auth (`sdk/cliproxy/auth/types.go`). | Refresh runs through `open-sse/services/tokenRefresh/providers.js` (generic path L48-L106, Google-family path L258-L293, used by `antigravity`, `agy` and `gemini-cli`) behind `open-sse/services/tokenRefresh/dedup.js` and `open-sse/services/oauthCredentialManager.js` L303-L325. The reactive 401/403 refresh and its per-executor veto live in `open-sse/handlers/chatCore.js` L1572-L1619. DurinDoor pins no ALPN and forges no `Host` or `User-Agent`. | (a) **Already covered**: there is no pinned transport to undo. (b) **Still running**: a failed refresh yields no new credential and does not by itself quarantine the connection, though the durable reauth quarantine exists (`src/sse/services/auth.js` L1568). (c) **Still running**: `dedupRefresh` shares one in-flight promise per provider, token and route, and a cancelled waiter still awaits it. (d) **Already covered in shape**: the per-executor `shouldRefreshAfterAuthFailure` veto is the same seam, but the terms-of-service rule is a DurinDoor error-config entry (`open-sse/config/errorConfig.js` L176), not a refresh decision. (e) **Unsupported** as a parity obligation: it is upstream-internal credential bookkeeping with no provider-contract surface. |
+| Requests | (a) The Claude-shaped inbound routes decode `gzip` and `x-gzip` request bodies under the configured size cap and drop `Content-Encoding` after decoding (`sdk/api/handlers/request_body.go`, `sdk/api/handlers/claude/code_handlers.go`). (b) An Antigravity project-discovery failure with no upstream HTTP status is now a transient 503 rather than an invalid-request 400, and is credential-scoped (`internal/runtime/executor/antigravity_executor_auth.go`, `prepareAntigravityProjectIDError`); the Antigravity authenticator also carries the provider `Retry-After` hint out of project discovery (`internal/auth/antigravity/auth.go`). (c) The synthesized Antigravity `request.sessionId` is scoped per credential (`internal/runtime/executor/antigravity_executor_request.go`). (d) The Meta executor synthesizes unstreamed Responses messages and translates refusal parts. (e) The Codex executor synthesizes Responses output for the Claude, Gemini and OpenAI-chat target shapes. | (a) The inbound chat handler parses the body with `request.json()` (`src/sse/handlers/chat.js` L397), so a compressed body is rejected. (b) DurinDoor's Antigravity project comes from the connection, not from a per-request discovery call, so the upstream reclassification has no counterpart. (c) The Antigravity session id is already derived from the connection identity (`open-sse/executors/antigravity.js` L200-L202 and L312-L313). (d) and (e) are upstream's internal inbound-format translation, whose counterpart is DurinDoor's own translator layer (`open-sse/translator/`). | (a) **Actionable**. (b) **Already covered in effect**: there is no per-request discovery call to classify. (c) **Already covered**. (d) and (e) **Unsupported** as upstream-parity obligations: they change upstream's internal translation output, not a provider contract. |
+| Model discovery | (a) The Codex live catalog refresh now synthesizes the `gpt-5.5` baseline entry from the best visible, API-supported, priority-tier template and stamps `minimal_client_version` (`cmd/fetch_codex_models/main.go`, `internal/client/codex/models/models.go`); the catalog content itself moved to the `gpt-6.2` generation (`internal/registry/models/codex_client_models.json`). (b) The Antigravity probe returns a distinct `forbidden` status for 403, separate from the 401 auth error, with a route-scoped backoff that survives access-token rotation while 401 and transient failures stay token-scoped (`sdk/auth/antigravity_models.go`, `sdk/cliproxy/antigravity_models.go`). (c) The Antigravity probe and hint store skip credentials whose status is disabled, not only those flagged disabled. | The Codex model list is still the static registry array (`open-sse/providers/registry/codex.js` L63-L109); `transport.usage.modelsUrl` (L57) is used for quota only. The visible entries of the upstream Codex client catalog (`internal/registry/models/codex_client_models.json`) at the current pin are `gpt-6.2-sol`, `gpt-6.2-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` and `gpt-5.5`, plus three hidden entries; the per-plan static lists in `internal/registry/model_definitions.go` are unchanged across the two pins. The DurinDoor static list tracks that visible set except `gpt-5.5`, which DurinDoor retires for ChatGPT sign-in. The Antigravity probe classifier maps 401 and 403 to `auth_error` and every other non-2xx to `transient` (`open-sse/services/antigravityCatalog.js` L52-L58, wired at `src/app/api/providers/[id]/models/modelsConfig.js` L579-L585). | (a) **Still running**: a live catalog refresh is still absent (row D2). (b) **Actionable**: the 403 classification is now a contract difference, not only an upstream internal change. (c) **Already covered in effect**: the Antigravity probe is an on-demand per-connection call under `src/app/api/providers/[id]/models/`, so there is no probe queue that a disabled credential could occupy. |
+| Quota | (a) The Antigravity credits warm hint runs under a bounded timeout instead of an unbounded cancel (`internal/runtime/executor/antigravity_executor_credits.go`). (b) The Antigravity 403 probe backoff is separated from token rotation (`f8e297aa`). (c) The Antigravity credits fallback honours stop rules and retry limits (`a35e8be3`). | Antigravity quota comes from the Cloud Code quota RPCs declared in `open-sse/providers/registry/antigravity.js` L29-L40 (`retrieveUserQuotaSummary`, `loadCodeAssist`) and is parsed in `open-sse/services/usage/google.js` L133. The Antigravity catalog probe is a separate call (`open-sse/services/antigravityCatalog.js` L33-L34). | (a) and (c) **Unsupported** as parity obligations: they bound upstream's internal background work. (b) **Actionable** with the model-discovery row, because a 403 currently reads as an auth rejection in DurinDoor. |
+| New identities | None. No provider id, executor, authenticator, API-key group or inbound route was added upstream between the two pins. | Three entries were added since `3164ce3`: `gemini-interactions` (`open-sse/providers/registry/gemini-interactions.js`), `kimi-ai` (`open-sse/providers/registry/kimi-ai.js`) and `devin-cli-agentic` (`open-sse/providers/registry/devin-cli-agentic.js`). | **Already covered** on the upstream side: there is nothing new upstream to adopt. The DurinDoor additions close rows M1, M5 and D11 below. |
+
+### Snapshot rows re-dispositioned against the current pins
+
+| Row | Subject | State at the current pins | Disposition now |
+| --- | --- | --- | --- |
+| D1 | Codex API-key group | Upstream `config.example.yaml` `api-keys.codex` is unchanged; DurinDoor `codex` remains OAuth-only, now with the device flow added (`open-sse/providers/registry/codex.js` L130-L134). | **Still running.** |
+| D2 | Codex live model catalog | Static registry array (`open-sse/providers/registry/codex.js` L63-L109); upstream keeps a live catalog that has moved to the `gpt-6.2` generation. | **Still running.** The static list content now tracks the upstream visible set except `gpt-5.5`, which DurinDoor retires on purpose. |
+| D3 | Claude per-key cloak mode | Upstream `api-keys.claude` cloak block unchanged; DurinDoor keeps the `cloakToolsOnOAuth` transport quirk (`open-sse/providers/registry/claude.js` L26). | **Still running.** |
+| D4 | Gemini surface split | DurinDoor carries `gemini` (API key), `gemini-cli` (AI Studio Build OAuth), `gemini-interactions` and `vertex`; upstream is unchanged. | **Already covered.** |
+| D5 | `gemini-interactions` provider | Present: `open-sse/providers/registry/gemini-interactions.js`, with the inbound route at `src/app/api/v1beta/interactions/route.js`. | **Already covered.** |
+| D6 | Vertex sign-in contract | Both sides unchanged since the snapshot. | **Already covered.** |
+| D7 | AI Studio Build WebSocket relay | Upstream `internal/wsrelay/` unchanged; DurinDoor `gemini-cli` still speaks HTTP only. | **Still running.** |
+| D8 | Antigravity probe and transport | The upstream probe now separates 403 from 401; DurinDoor still maps both to `auth_error` (`open-sse/services/antigravityCatalog.js` L53). The HTTP/1.1-without-ALPN pinning of the Cloud Code PA probe is unchanged upstream, and the upstream OAuth refresh moved off that pinning while DurinDoor never pinned it. | **Actionable** on the 403 classification; the transport observations stay open as recorded under *Antigravity observations*. |
+| D9 | Kimi OAuth aliases | `kimi-ai` with alias `kimi.ai` (`open-sse/providers/registry/kimi-ai.js` L6-L8) and `kimi-coding` with alias `kimi.com` (`open-sse/providers/registry/kimi-coding.js` L8) now exist; the plain `kimi` id stays API-key only. | **Already covered** in the sense that every upstream alias id resolves; the OAuth surface still spans two provider ids. |
+| D10 | xAI transports | Both sides unchanged. | **Already covered.** |
+| D11 | Devin service kinds | `devin` remains credential-and-catalog only with `transport: null` and `serviceKinds: ["agent"]` (`open-sse/providers/registry/devin.js` L34-L36); `devin-cli-agentic` was added, which is the ACP surface, not the upstream chat executor. | **Still running** for the chat delta; the agent-kind routing half stays covered. |
+| D12 | Meta vendor id | `muse-code` still reaches `api.meta.ai`; upstream `meta` unchanged. | **Already covered.** |
+| D13 | OpenAI-compatible upstreams | The provider-node system is unchanged; upstream `openai-compatibility` unchanged. | **Already covered.** |
+| D14 | Inbound compatibility | `/v1beta/interactions` (`src/app/api/v1beta/interactions/route.js`) and `/v1/alpha/search` (`src/app/api/v1/alpha/search/route.js`) now exist. There is still no `/backend-api/codex` alias group and no `/muse-code/*` group. | **Already covered** for the two routes that were missing; **still running** for the two alias groups. |
+| D15 | Client setup | Upstream CLI flags and TUI OAuth tab unchanged; DurinDoor signs in through the dashboard and `/api/oauth/[provider]/[action]`. | **Still running.** |
+| D16 | LAN discovery | Both sides unchanged. | **Already covered.** |
+| M1 | `gemini-interactions` provider | Provider id, executor path and API-key surface exist (`open-sse/providers/registry/gemini-interactions.js` L17-L25). | **Already covered.** |
+| M2 | AI Studio Build WebSocket relay | Unchanged on both sides. | **Still running.** |
+| M3 | Devin chat-capable provider | Unchanged upstream; DurinDoor still refuses chat for `devin`. | **Still running.** |
+| M4 | Meta as a first-party id | Unchanged; `muse-code` remains the single `api.meta.ai` entry. | **Already covered.** |
+| M5 | Kimi OAuth provider ids | The upstream alias ids now exist in DurinDoor, split across `kimi-ai` (international endpoint `api.kimi.ai`) and `kimi-coding` (alias `kimi.com`); upstream keeps one executor and one model set behind all of them. | **Already covered** by the alias ids; the shared-executor shape stays a deliberate DurinDoor difference. |
+| M6 | Config-declared OpenAI-compatible groups | The provider-node system remains the equivalent lifecycle. | **Already covered.** |
+| M7 | `/v1beta/interactions` inbound route | Present: `src/app/api/v1beta/interactions/route.js`. | **Already covered.** |
+| M8 | `/v1/alpha/search` inbound route | Present: `src/app/api/v1/alpha/search/route.js`. | **Already covered.** |
+
+### Actionable candidate work
+
+Bounded and testable. Every candidate uses synthetic inputs and a closed
+outbound mock; none calls a provider service, and none is written or run here.
+
+1. **Antigravity 403 probe classification (C1).** Upstream separates `forbidden`
+   (403) from the 401 auth error and backs 403 off on a route-scoped key that
+   survives access-token rotation; DurinDoor maps 403 to `auth_error`
+   (`open-sse/services/antigravityCatalog.js` L53). Candidate: add a third
+   outcome to `ANTIGRAVITY_CATALOG_OUTCOME`, return it for 403, and keep the
+   last known catalog in place on a 403 exactly as on a transient failure.
+   Test: extend `tests/unit/antigravity-project-catalog.test.js` with a
+   synthetic 403 asserting the new classification, the preserved catalog, and
+   the unchanged 401 to `auth_error` mapping.
+2. **Gzip request bodies on the inbound routes (C2).** Upstream decodes `gzip`
+   and `x-gzip` under the configured size cap and drops `Content-Encoding` after
+   decoding; DurinDoor parses the body with `request.json()`
+   (`src/sse/handlers/chat.js` L397), so a compressed body fails. Candidate:
+   decode a gzip body in the inbound reader before parsing, reject an over-cap
+   body with 413, and strip `Content-Encoding` after a successful decode.
+   Test: new `tests/unit/inbound-gzip-body.test.js` posting a synthetic gzip
+   body to the messages route, asserting the request reaches the mock provider
+   as plain JSON, plus an over-cap case.
+3. **Antigravity refresh-failure scope (C3).** Upstream makes a refresh failure
+   credential-scoped; DurinDoor's generic refresh returns no credential and
+   leaves the connection selectable. Candidate, characterization only: new
+   `tests/unit/antigravity-refresh-failure-scope.test.js` pinning that a failed
+   OAuth refresh publishes no credential, that the original upstream status
+   surfaces to the caller, and that the connection remains selectable; the
+   test names the upstream difference so a later change is deliberate.
+4. **Codex live model catalog (C4, row D2).** Unchanged from the snapshot row.
+   Candidate: `tests/unit/codex-model-catalog-refresh.test.js` mocking the
+   Codex models endpoint, asserting that a refreshed catalog replaces stale
+   entries and that a failed refresh keeps the last known good list.
+
+### Closure limits
+
+- Every upstream statement above comes from reading the pinned upstream tree at
+  `f5c5681a8361c9da53e93c60b6507816eee7468b`. No provider API was called and no
+  credential was used, so a disposition describes a code contract, not a
+  verified runtime behavior.
+- Every DurinDoor statement above comes from the worktree at
+  `082b48d0f85e3a11579bede9c6e1e5ec5c21472c`. No DurinDoor behavior was
+  exercised; the citations are source reads.
+- The dispositions use four values: **already covered** (the upstream contract
+  has a DurinDoor counterpart), **still running** (the delta persists and needs
+  a product decision or a port), **actionable** (a bounded upstream-parity gap
+  with a candidate above), and **unsupported** (the upstream change has no
+  DurinDoor contract counterpart and needs no work).
+- Upstream `main` is a moving target. The pin must be re-resolved before any
+  port decision, and the candidate work above is scoped to the current pin.
+
+
+### Antigravity probe and refresh follow-up (#2034)
+
+The on-demand catalog probe classifies 401 as `auth_error` and 403 as
+`forbidden`. A forbidden result backs off in process per connection and project,
+including across access-token rotation; changing projects or accounts does not
+share that backoff. Failed probes leave the last synced catalog intact. The
+backoff follows CLIProxyAPI `f5c5681a` `sdk/cliproxy/antigravity_models.go`'s
+five-minute minimum and exponential equal-jitter window. Process restart clears
+the in-memory history.
+
+A rejected Antigravity OAuth refresh currently returns no replacement credential.
+The request retains its original upstream error, and the refresh coordinator does
+not itself quarantine the connection. OAuth failures may be transient, and this
+path discards their cause, so applying durable credential-wide quarantine would
+not be justified by the available failure signal.

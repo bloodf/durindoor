@@ -641,7 +641,21 @@ export function dropClaudeCodeIdentitySystem(body) {
     const rest = body.system.split("\n").filter((line) => !isIdentity(line)).join("\n").trim();
     if (rest) body.system = rest; else delete body.system;
   } else if (Array.isArray(body.system)) {
-    body.system = body.system.filter((b) => !isIdentity(b?.text));
+    const blocks = [];
+    for (const block of body.system) {
+      if (!isIdentity(block?.text)) {
+        blocks.push(block);
+        continue;
+      }
+      // A client may send the identity line and its own instructions in one block: drop only the
+      // leading identity line(s) and keep the rest.
+      const lines = block.text.split("\n");
+      let start = 0;
+      while (start < lines.length && (isIdentity(lines[start]) || lines[start].trim() === "")) start += 1;
+      const rest = lines.slice(start).join("\n").trim();
+      if (rest) blocks.push({ ...block, text: rest });
+    }
+    body.system = blocks;
     if (body.system.length === 0) delete body.system;
   }
   return body;
@@ -663,9 +677,12 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   }
 
   // 2. Strip effort param for models that don't support it (keep other output_config fields)
+  // Copy-on-write: output_config is shared with the other targets of a combo (the per-target body
+  // copy is shallow), so deleting in place would also remove the client's effort from the next one.
   if (isLegacyHaikuModel(model) && body.output_config?.effort != null) {
-    delete body.output_config.effort;
-    if (Object.keys(body.output_config).length === 0) delete body.output_config;
+    const { effort: _effort, ...rest } = body.output_config;
+    if (Object.keys(rest).length === 0) delete body.output_config;
+    else body.output_config = rest;
   }
 
   // 2b. Forced tool choice conflicts with thinking — either the body's, or a

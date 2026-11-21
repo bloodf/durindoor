@@ -56,6 +56,19 @@ function processSSEMessage(msg, state) {
   } else if (["response.completed", "response.done", "response.incomplete"].includes(eventType)) {
     if (state.terminal.outcome === "success") {
       state.status = eventType === "response.incomplete" ? "incomplete" : "completed";
+      // Completed snapshots can contain items that never had an item.done frame.
+      // Keep observed items authoritative and apply the same bounds and shape checks.
+      const output = parsed.response?.output;
+      if (eventType !== "response.incomplete" && output !== undefined) {
+        if (!Array.isArray(output) || output.length > MAX_RESPONSES_OUTPUT_ITEMS ||
+            output.some((item) => !item || !isObject(item) || Array.isArray(item))) {
+          state.terminal.fail();
+          return;
+        }
+        output.forEach((item, index) => {
+          if (!state.items.has(index)) state.items.set(index, item);
+        });
+      }
     }
     if (parsed.response?.usage) {
       // Normalize aliases and flat provider fields without discarding any

@@ -1,17 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
-vi.mock("../../open-sse/providers/registry/index.js", async (original) => {
-  const actual = await original();
-  const { default: entry } = await import("../../open-sse/providers/private/blackbox-web.js");
-  return { ...actual, default: [...actual.default, entry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (original) => {
-  const actual = await original();
-  const { BlackboxWebExecutor } = await import("../../open-sse/executors/blackbox-web.js");
-  const executor = new BlackboxWebExecutor();
-  return { ...actual, getExecutor: (id) => id === "blackbox-web" || id === "bb-web" ? executor : actual.getExecutor(id) };
-});
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
@@ -21,7 +10,7 @@ import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { blackboxWebCookieProfile } from "../../open-sse/providers/private/blackbox-web.js";
+import { blackboxWebCookieProfile } from "../../open-sse/providers/registry/blackbox-web.js";
 import { BlackboxWebExecutor } from "../../open-sse/executors/blackbox-web.js";
 import { getCookieImportContract, buildImportedCookieHeader } from "../../src/lib/providers/cookieImport/contract.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";

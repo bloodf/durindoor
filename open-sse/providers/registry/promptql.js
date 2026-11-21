@@ -22,7 +22,7 @@ export const PROMPTQL_MODELS = Object.freeze([
 ]);
 
 export default {
-  id: "promptql", alias: "pql", priority: 249,
+  id: "promptql", alias: "pql", priority: 254,
   display: { name: "PromptQL (Experimental)", icon: "hub", color: "#635BFF", textIcon: "PQ", website: "https://prompt.ql.app", notice: { apiKeyUrl: "https://prompt.ql.app", text: "Unofficial experimental playground session integration." } },
   category: "webCookie", authType: "cookie", authHint: "Import your PromptQL playground session, then provide its enrich-token JWT and project ID in connection details.",
   cookieImport: promptqlCookieProfile,

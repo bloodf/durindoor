@@ -1,17 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
-vi.mock("../../open-sse/providers/registry/index.js", async (original) => {
-  const actual = await original();
-  const { default: entry } = await import("../../open-sse/providers/private/promptql.js");
-  return { ...actual, default: [...actual.default, entry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (original) => {
-  const actual = await original();
-  const { PromptQlExecutor } = await import("../../open-sse/executors/promptql.js");
-  const executor = new PromptQlExecutor();
-  return { ...actual, getExecutor: (id) => id === "promptql" || id === "pql" ? executor : actual.getExecutor(id) };
-});
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
@@ -22,7 +11,7 @@ import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { promptqlCookieProfile, PROMPTQL_MODELS } from "../../open-sse/providers/private/promptql.js";
+import { promptqlCookieProfile, PROMPTQL_MODELS } from "../../open-sse/providers/registry/promptql.js";
 import { PromptQlExecutor } from "../../open-sse/executors/promptql.js";
 import { getCookieImportContract } from "../../src/lib/providers/cookieImport/contract.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";

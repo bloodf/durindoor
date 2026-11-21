@@ -110,7 +110,8 @@ describe("manifest and sources", () => {
   it("is MV3 with no permanent host access, no background and no storage", () => {
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.permissions).toEqual(["activeTab"]);
-    expect(manifest.optional_permissions).toEqual(["cookies"]);
+    // `scripting` only reads TinyCMS's localStorage item; it is requested for that provider alone.
+    expect(manifest.optional_permissions).toEqual(["cookies", "scripting"]);
     for (const key of ["host_permissions", "background", "content_scripts", "externally_connectable", "web_accessible_resources", "commands", "omnibox"]) {
       expect(manifest, key).not.toHaveProperty(key);
     }
@@ -136,9 +137,15 @@ describe("manifest and sources", () => {
 
   it("contains no telemetry, persistence, logging or dynamic code", () => {
     const sources = PACKAGE_FILES.filter((f) => f.endsWith(".js") || f.endsWith(".html")).map((f) => [f, fs.readFileSync(path.join(EXTENSION_DIR, f), "utf8")]);
-    const forbidden = [/console\./, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /XMLHttpRequest/, /sendBeacon/, /WebSocket/, /\beval\(/, /new Function/, /innerHTML/, /document\.cookie/, /https?:\/\/(?!\*)[\w.-]+\.\w+/];
+    const forbidden = [/console\./, /\blocalStorage\s*[.[]/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /XMLHttpRequest/, /sendBeacon/, /WebSocket/, /\beval\(/, /new Function/, /innerHTML/, /document\.cookie/, /https?:\/\/(?!\*)[\w.-]+\.\w+/];
+    // The one injected reader may touch localStorage, and only to read: it is cut out of capture.js
+    // before the forbidden-pattern scan and checked on its own.
+    const reader = /export function readLocalStorageItems\(keys\) \{[\s\S]*?\n\}\n/;
+    const readerSource = fs.readFileSync(path.join(EXTENSION_DIR, "capture.js"), "utf8").match(reader)?.[0] ?? "";
+    expect(readerSource.match(/localStorage\.\w+/g)).toEqual(["localStorage.getItem"]);
     for (const [file, text] of sources) {
-      const code = file.endsWith(".js") ? text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "") : text;
+      const unscanned = file === "capture.js" ? text.replace(reader, "") : text;
+      const code = file.endsWith(".js") ? unscanned.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "") : unscanned;
       for (const pattern of forbidden) {
         if (pattern.source.startsWith("https?")) continue; // hosts live in providers.js only; checked below
         expect(code, `${file} ${pattern}`).not.toMatch(pattern);

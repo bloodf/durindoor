@@ -6,17 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Closed mocks only: every upstream call below is answered by a synthetic fetch.
 // The WASM signer and proof-of-work solver are the real vendored modules, run
 // against a synthetic challenge fixture.
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const provider = (await import("../../open-sse/providers/private/tinycms-web.js")).default;
-  return { ...actual, default: [...actual.default, provider] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const { TinyCmsExecutor } = await import("../../open-sse/executors/tinycms-web.js");
-  const executor = new TinyCmsExecutor();
-  return { ...actual, getExecutor: (id) => (id === "tinycms-web" ? executor : actual.getExecutor(id)) };
-});
 vi.mock("@/lib/usageDb.js", async (importOriginal) => ({ ...(await importOriginal()), appendRequestLog: vi.fn(() => Promise.resolve()), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), saveRequestDetail: vi.fn(() => Promise.resolve()), saveRequestUsage: vi.fn(() => Promise.resolve()) }));
 
 const CHAT_URL = "https://gov.freegpt.win/api/openai/oneapi/v1/chat/completions";
@@ -67,7 +56,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(syntheticUpstream(new Set([UUID_A, UUID_B]))));
   routes = { providers: await import("../../src/app/api/providers/route.js"), models: await import("../../src/app/api/v1/models/route.js"), messages: await import("../../src/app/api/v1/messages/route.js") };
   ({ TinyCmsExecutor, validateTinyCmsSession } = await import("../../open-sse/executors/tinycms-web.js"));
-  ({ default: provider, TINYCMS_WEB_CREDENTIAL_PROFILE } = await import("../../open-sse/providers/private/tinycms-web.js"));
+  ({ default: provider, TINYCMS_WEB_CREDENTIAL_PROFILE } = await import("../../open-sse/providers/registry/tinycms-web.js"));
   ({ handleChat } = await import("../../src/sse/handlers/chat.js"));
 }, 60000);
 

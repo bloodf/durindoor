@@ -2,21 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({ ...(await importOriginal()), proxyAwareFetch: fetchMock }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const notion = (await import("../../open-sse/providers/private/notion-web.js")).default;
-  return { ...original, default: [...original.default, notion] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { NotionWebExecutor } = await import("../../open-sse/executors/notion-web.js");
-  const executor = new NotionWebExecutor();
-  return { ...original, getExecutor: (provider) => provider === "notion-web" || provider === "nw" ? executor : original.getExecutor(provider) };
-});
 
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
-import { cookieCaptureProfile } from "../../open-sse/providers/private/notion-web.js";
+import { cookieCaptureProfile } from "../../open-sse/providers/registry/notion-web.js";
 import { discoverNotionModels } from "../../open-sse/executors/notion-web.js";
 
 const tokenA = "token_v2=synthetic-a; space_id=space-a; notion_user_id=user-a";

@@ -1,4 +1,5 @@
 // Provider definitions
+import { cookieImportConfig, resolveCookieImportContract } from "../utils/cookieImportContract.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { SYSTEMONE_COMPATIBLE_PREFIX } from "open-sse/config/systemone.js";
 import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
@@ -20,6 +21,7 @@ function buildProviderEntry(r) {
   }
   const display = { ...(r.display || {}) };
   if (display.deprecationNotice === "RISK_NOTICE") display.deprecationNotice = RISK_NOTICE;
+  const cookieImport = resolveCookieImportContract(cookieImportConfig(r));
   return {
     ...display,
     id: r.id,
@@ -42,6 +44,7 @@ function buildProviderEntry(r) {
     ...(r.authHint ? { authHint: r.authHint } : null),
     ...(r.authSnippet ? { authSnippet: r.authSnippet } : null),
     ...(r.webLogin ? { webLogin: r.webLogin } : null),
+    ...(cookieImport ? { cookieImport } : null),
     ...(r.apiKeyOptionalWith ? { apiKeyOptionalWith: r.apiKeyOptionalWith } : null),
     ...(r.credentialForm ? { credentialForm: r.credentialForm } : null),
     ...(r.aliases ? { aliases: r.aliases } : null),

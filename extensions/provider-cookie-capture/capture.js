@@ -92,13 +92,13 @@ export function parsePairing(text, now = Date.now()) {
   if (!destination) return fail("invalid_destination");
 
   const contract = pairing.contract;
-  if (!isRecord(contract) || !Array.isArray(contract.cookieNames)) return fail("invalid_pairing");
+  if (!isRecord(contract) || contract.extensionCapture === false || !Array.isArray(contract.cookieNames)) return fail("invalid_pairing");
   if (contract.origin !== def.origin) return fail("origin_mismatch");
   // A pairing may only narrow the built-in allowlist.
   const cookieNames = def.cookieNames.filter((name) => contract.cookieNames.includes(name));
   const prefixes = Array.isArray(contract.cookiePrefixes) ? contract.cookiePrefixes : [];
   const cookiePrefixes = def.cookiePrefixes.filter((prefix) => prefixes.includes(prefix));
-  if (cookieNames.length === 0) return fail("invalid_pairing");
+  if (cookieNames.length !== def.cookieNames.length) return fail("invalid_pairing");
 
   const expiresAt = isString(pairing.expiresAt) ? Date.parse(pairing.expiresAt) : NaN;
   if (!Number.isFinite(expiresAt) || expiresAt - now > MAX_PAIRING_LIFETIME_MS) return fail("invalid_pairing");
@@ -257,13 +257,30 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     if (cancelled()) return fail("cancelled");
     if (!tab || originOf(tab.url) !== plan.providerOrigin) return fail("wrong_tab", { expectedOrigin: plan.providerOrigin });
 
+    // Grants can change after Review; refresh the snapshot for a subsequent Send.
+    const permissionsAvailable = async () => {
+      try {
+        await preflightPermissions(chrome, plan);
+        const current = permissionPlans.get(plan);
+        return !current.permissions.length && !current.origins.length;
+      } catch { return false; }
+    };
+    if (!(await permissionsAvailable())) return cancelled() ? fail("cancelled") : fail("permission_denied");
+    if (cancelled()) return fail("cancelled");
+
     // The session is the cookie store that owns this tab (normal, incognito, container).
-    const stores = await chrome.cookies.getAllCookieStores();
+    let stores;
+    try { stores = await chrome.cookies.getAllCookieStores(); }
+    catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
     const store = Array.isArray(stores) ? stores.find((s) => Array.isArray(s.tabIds) && s.tabIds.includes(plan.tabId)) : null;
     if (cancelled()) return fail("cancelled");
     if (!store) return fail("no_cookie_store");
 
-    const cookies = await readApprovedCookies(chrome, plan, store.id, cancelled);
+    let cookies;
+    try { cookies = await readApprovedCookies(chrome, plan, store.id, cancelled); }
+    catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
+    if (cancelled()) return fail("cancelled");
+    if (!(await permissionsAvailable())) return cancelled() ? fail("cancelled") : fail("permission_denied");
     if (cancelled()) return fail("cancelled");
     if (cookies.length === 0) return fail("no_cookies");
 
@@ -307,7 +324,15 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
   } finally {
     // Give back what this run was granted. Failures here are not actionable.
     if (granted.permissions.length || granted.origins.length) {
-      try { await chrome.permissions.remove(granted); } catch { /* nothing to do */ }
+      try {
+        if (await chrome.permissions.remove(granted)) {
+          const current = permissionPlans.get(plan);
+          permissionPlans.set(plan, {
+            permissions: [...new Set([...current.permissions, ...granted.permissions])],
+            origins: [...new Set([...current.origins, ...granted.origins])],
+          });
+        }
+      } catch { /* nothing to do */ }
     }
   }
 }

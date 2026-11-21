@@ -24,7 +24,7 @@ function modelRows(effective) {
   }));
 }
 
-/** Status of one connection of a connection-scoped provider (mlx, opencode-server). */
+/** Status of one connection of a connection-scoped provider (including MLX, OpenCode Server and Grokified). */
 function connectionStatus(providerId, catalogs, connection, enabled, sharedMetadata) {
   const entry = catalogEntryForConnection(catalogs, providerId, connection);
   const effective = enabled ? effectiveSyncedModels(entry, getModelsByProviderId(providerId), providerId, sharedMetadata) : null;

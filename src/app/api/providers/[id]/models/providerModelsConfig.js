@@ -41,7 +41,7 @@ const parseGeminiCliModels = (data) => {
 };
 
 const parseCodexModels = (data) => withCodexReviewModels(
-  parseOpenAIStyleModels(data).filter((model) => meetsMinimalCodexClientVersion(model?.minimal_client_version)).flatMap((model) => {
+  parseOpenAIStyleModels(data).filter((model) => model?.supported_in_api !== false && model?.visibility !== "hide" && meetsMinimalCodexClientVersion(model?.minimal_client_version)).flatMap((model) => {
     const id = model?.id || model?.slug || model?.model || model?.name;
     if (!id) return [];
     const name = model?.display_name || model?.displayName || model?.name || id;

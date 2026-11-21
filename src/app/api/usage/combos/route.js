@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const BOUNDARY = "Combo and connection attribution starts with migration 014. Earlier history was never recorded with combo identity and remains separately unattributed.";
+const BOUNDARY = "Combo and connection attribution starts with migration 017. Earlier history was never recorded with combo identity and remains separately unattributed.";
 
 function parseDateKey(value) {
   if (!value) return null;
@@ -76,6 +76,20 @@ export async function GET(request) {
        WHERE (comboId IS NULL OR comboName IS NULL) ${boundsSql}`,
       params,
     );
+    const models = db.all(
+      `SELECT comboId, comboName, connectionId, provider, model, COUNT(*) AS requests
+       FROM usageHistory
+       WHERE comboId IS NOT NULL AND comboName IS NOT NULL
+         AND provider IS NOT NULL AND provider <> '' AND model IS NOT NULL AND model <> '' ${boundsSql}
+       GROUP BY comboId, comboName, connectionId, provider, model
+       ORDER BY comboName COLLATE NOCASE, connectionId, provider, model`,
+      params,
+    );
+    const comboTotals = new Map();
+    for (const row of rows) {
+      const key = JSON.stringify([row.comboId, row.comboName]);
+      comboTotals.set(key, (comboTotals.get(key) || 0) + Number(row.requests));
+    }
     return NextResponse.json({
       mode: "future-only",
       boundary: BOUNDARY,
@@ -87,6 +101,15 @@ export async function GET(request) {
         promptTokens: Number(row.promptTokens || 0),
         completionTokens: Number(row.completionTokens || 0),
         cost: Number(row.cost || 0),
+      })),
+      modelBreakdown: models.map((row) => ({
+        comboId: row.comboId,
+        comboName: row.comboName,
+        connectionId: row.connectionId,
+        provider: row.provider,
+        model: row.model,
+        requests: Number(row.requests),
+        share: Math.round(Number(row.requests) / comboTotals.get(JSON.stringify([row.comboId, row.comboName])) * 100),
       })),
       unattributed: {
         requests: Number(unattributed?.requests || 0),

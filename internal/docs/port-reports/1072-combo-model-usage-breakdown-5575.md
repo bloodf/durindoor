@@ -1,0 +1,7 @@
+# #1072 — combo served-model usage
+
+Adapted from [9router #5575](https://github.com/decolua/9router/pull/5575), open head `341c8dc267452f373debfa623e1e0bf8dd054e92`, compared against upstream merge-base `1339107e624d1ab150c6a0c2c2ee22caa7e9db2f` and the scoped review in [1072-combo-usage-metadata-5575.md](1072-combo-usage-metadata-5575.md).
+
+The existing combo connection rows, filters, totals, pagination and unattributed bucket remain intact. The read-only report adds `modelBreakdown`: one entry per recorded combo identity, connection, provider and model, with request count and rounded integer `share`. The share denominator is all attributed usage rows for that combo identity in the selected window, across connections, including rows missing a provider or model. Such incomplete rows contribute to existing totals but do not produce an invented model entry. Percentages can therefore sum to less than 100, and rounding can change their sum. The table shows each connection's recorded models and their share of the combo.
+
+All recognized history rows count, including failed and cancelled events; existing token and cost aggregation remains unchanged, including its treatment of unknown amounts. Rows lacking combo identity remain unattributed and do not appear in the breakdown. Nested combo ownership remains the stored outer identity. The query uses the existing adapter and date bounds; it adds no writes, migration, router statistics, receipt or quota changes. The boundary label now names migration 017.

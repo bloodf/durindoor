@@ -61,6 +61,12 @@ stale writes, including writes after sign-out or reauthorization.
 
 ## Owner enrollment into a gateway connection
 
+Model discovery requires the same owner opt-in, normal provider registration,
+an active gateway API key explicitly scoped to the saved OAuth connection, and
+its matching private account selection. `/v1/models` and model lookup fetch the
+account's current catalog without sharing or retaining it in catalog caches.
+Missing credentials or a failed upstream catalog produce no private models.
+
 This is an explicitly enabled private local operation. Set
 `DURINDOOR_CHATGPT_PLAN_ENROLLMENT=1` on the owner-controlled runtime and
 restart it. The endpoint accepts only loopback peers proven by the local server,

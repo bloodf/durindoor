@@ -218,7 +218,12 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const thinkingIntent = translationContext?.thinkingIntent ??
   parsedModel.override ??
   claudeGeminiBudgetIntent ??
-  captureThinking(directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result);
+  captureThinking(
+    directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result,
+    translationContext?.capabilityModel || translationModel,
+    provider,
+    translationContext?.modelCapabilities
+  );
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);

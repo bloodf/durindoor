@@ -326,9 +326,20 @@ function isBillingBlock(body) {
   try {
     const parsed = JSON.parse(body);
     if (isQoderQuotaExhaustedBody(parsed)) return true;
-    if (!(parsed && isObject(parsed) && !Array.isArray(parsed))) return false;
-    const code = String(parsed.code ?? "");
-    return code === "110" || Object.hasOwn(parsed, "pricingUrl");
+    if (parsed && isObject(parsed) && !Array.isArray(parsed) && Object.hasOwn(parsed, "pricingUrl")) return true;
+    const visit = (value, depth = 0) => {
+      if (depth > 5 || value == null) return false;
+      if (isString(value)) {
+        try { return visit(JSON.parse(value), depth + 1); } catch { return false; }
+      }
+      if (!isObject(value) || Array.isArray(value)) return false;
+      const code = String(value.code ?? "");
+      if (code === "110" || code === "112") return true;
+      return Object.values(value).some((child) => isObject(child) || isString(child) && child.trim().startsWith("{"))
+        ? visit(child, depth + 1)
+        : false);
+    };
+    return visit(parsed);
   } catch {
     return false;
   }

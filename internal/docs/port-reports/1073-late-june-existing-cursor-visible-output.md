@@ -12,19 +12,19 @@ Each row records the requested PR head and enclosing merge. For #4554, the head 
 
 ## Local behavior and ordinary fixtures
 
-The local translator has ordinary provider-neutral reasoning/content stream fixtures. `tests/translator/golden-response-stream.test.js` covers separate visible `content` and `reasoning_content` deltas, including a Claude stream with both; `tests/translator/bugs-claude-thinking-tags.test.js` asserts thinking arrives as `reasoning_content` and answer text as `content`. These fixtures do not model Cursor Composer's proprietary executor frames, model-family detection, `</think>` delimiter, or `<final>` sentinel syntax. No local Cursor Composer executor or exact Composer symptom is present in the inspected translator surface.
+The local Cursor executor already includes AgentService and buffered protobuf adapters. `visibleComposerContentFromThinking` extracts the visible suffix after `</think>`, and `tests/unit/cursor-composer-thinking.test.js` and `tests/unit/cursor-agent-exec-request.test.js` exercise these paths directly. The earlier report incorrectly overlooked this executor and its fixtures.
 
 For request history, `open-sse/translator/formats/openai.js` returns assistant messages with non-empty `tool_calls` before filtering message fields. That preserves `reasoning_content` on such messages as they pass through `filterToOpenAIFormat`. `tests/translator/port-3254-empty-tool-calls.test.js` records the local tool-call preservation boundary; `tests/translator/port-2401-reasoning-history-bridge.test.js` covers ordinary reasoning history round-trips. Neither shows a local replay failure for a reasoning-replay target. This evidence is limited to the helper behavior and ordinary offline fixtures; it does not claim live provider validation.
 
 ## Dispositions
 
-### #4554 — do not port
+### #4554 — already covered
 
-The actual merge patch decodes Composer `thinking` as user-visible text after the final `</think>` and keeps the prefix out of reasoning output. That logic is in OmniRoute's Cursor executor pipeline, which is source-only app behavior excluded by this review. Existing local fixtures establish the ordinary distinction between reasoning and answer fields, but do not demonstrate a corresponding runtime gap on a local Cursor route. No runtime adaptation is proposed.
+The installed Cursor executor extracts Composer's visible suffix after the last `</think>` while keeping the preceding reasoning private. Direct offline tests cover AgentService and buffered responses, so no separate #4554 port is needed.
 
-### #4842 — do not port
+### #4842 — adapted
 
-This is the follow-up cleanup for Composer executor output, removing `<｜final｜>` / `<|final|>` framing and holding partial opening-marker fragments until complete. Those marker spellings are not represented in local ordinary offline translator fixtures, and the changed source path is the excluded Cursor executor. The evidence does not establish that these markers occur in a local translator input or leak from a local route. No runtime adaptation is proposed.
+The previous report incorrectly concluded there was no local Cursor path or demonstrated gap. The existing helper returned literal final framing markers in the visible suffix. The narrow adaptation and its offline evidence are recorded in [the #4842 report](1073-cursor-composer-final-markers-4842.md).
 
 ### #5122 — no demonstrated gap; do not port
 
@@ -32,4 +32,4 @@ The PR-specific change is about replaying client-supplied `reasoning_content` al
 
 ## Offline acceptance
 
-No narrow runtime gap was demonstrated, so no test change or new acceptance case is warranted. Existing offline coverage remains the acceptance evidence: separate visible/reasoning response deltas and Composer-independent reasoning tags in `golden-response-stream.test.js` and `bugs-claude-thinking-tags.test.js`, plus assistant tool-call/reasoning-history preservation in `port-3254-empty-tool-calls.test.js` and `port-2401-reasoning-history-bridge.test.js`. Any future Cursor-specific adaptation would first need an exact local failing symptom and an ordinary offline fixture asserting hidden reasoning, visible answer text, marker handling, and replay behavior.
+Composer acceptance uses the two direct Cursor unit files named above. The independent #5122 disposition remains supported by the request-history fixtures described above; no live provider validation is claimed.

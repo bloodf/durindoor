@@ -1,0 +1,5 @@
+# #1073 Cursor Composer final markers
+
+Reviewed OmniRoute #4842 head `66aa394b53a6b4b34ac57f7ba453f968aff310f4` and enclosing merge `7d2501b2862cf58cce5a2fad9e1f692f5c35edcd`. The installed Composer executor already extracts the visible suffix after `</think>` (#4554), but previously returned the literal ASCII and full-width final markers in that suffix.
+
+The existing AgentService and buffered protobuf paths now remove the four literal opening and closing markers. Streaming holds only a bounded suffix that could become a marker, including closing markers after emitted content; at terminal an incomplete prefix is returned as ordinary text. Existing leading whitespace handling remains in place and other visible whitespace and markup are preserved. Unlike the upstream regex, this adaptation does not strip surrounding whitespace or recognize whitespace variations inside tokens, keeping the change confined to the verified literal framing. Offline fixtures exercise both paths and streaming and non-streaming responses; they do not establish live provider behavior.

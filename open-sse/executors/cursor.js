@@ -288,12 +288,27 @@ function isComposerModel(model) {
   return /^composer(?:-|$)/i.test(modelId);
 }
 
-function visibleComposerContentFromThinking(thinking) {
+// Only these literal Composer protocol tokens are framing; preserve other markup.
+const COMPOSER_FINAL_MARKERS = ["<|final|>", "<｜final｜>", "<|/final|>", "<｜/final｜>"];
+
+function visibleComposerContentFromThinking(thinking, terminal = true) {
   if (!thinking) return "";
   const endTag = "</think>";
   const endIdx = thinking.lastIndexOf(endTag);
   if (endIdx < 0) return "";
-  return thinking.slice(endIdx + endTag.length).trimStart();
+  let visible = thinking.slice(endIdx + endTag.length).trimStart();
+  if (!terminal) {
+    // Retain only a bounded suffix that could still become a marker.
+    let held = 0;
+    for (const marker of COMPOSER_FINAL_MARKERS) {
+      for (let length = 1; length < marker.length; length++) {
+        if (visible.endsWith(marker.slice(0, length))) held = Math.max(held, length);
+      }
+    }
+    if (held) visible = visible.slice(0, -held);
+  }
+  for (const marker of COMPOSER_FINAL_MARKERS) visible = visible.split(marker).join("");
+  return visible;
 }
 
 function decompressPayload(payload, flags, maxOutputLength = MAX_PROVIDER_BODY_BYTES) {
@@ -911,10 +926,10 @@ export class CursorExecutor extends BaseExecutor {
     let emittedText = false;
 
     const flushThinkingFallback = (onEvent) => {
-      if (emittedText || !thinkingAcc) return;
+      if (!thinkingAcc) return;
       const fallback = composerModel
-        ? visibleComposerContentFromThinking(thinkingAcc)
-        : thinkingAcc.trim();
+        ? visibleComposerContentFromThinking(thinkingAcc).slice(emittedVisible)
+        : emittedText ? "" : thinkingAcc.trim();
       if (fallback) {
         emittedText = true;
         onEvent({ type: "text", value: fallback });
@@ -956,7 +971,7 @@ export class CursorExecutor extends BaseExecutor {
                 if (thinkingDelta) {
                   thinkingAcc += thinkingDelta;
                   if (composerModel) {
-                    const visible = visibleComposerContentFromThinking(thinkingAcc);
+                    const visible = visibleComposerContentFromThinking(thinkingAcc, false);
                     if (visible.length > emittedVisible) {
                       const deltaContent = visible.slice(emittedVisible);
                       emittedVisible = visible.length;
@@ -1593,7 +1608,7 @@ export class CursorExecutor extends BaseExecutor {
 
       if (isComposerModel(model) && result.thinking) {
         totalThinking += result.thinking;
-        const visibleContent = visibleComposerContentFromThinking(totalThinking);
+        const visibleContent = visibleComposerContentFromThinking(totalThinking, false);
         if (visibleContent.length > emittedComposerThinkingContentLength) {
           const deltaContent = visibleContent.slice(emittedComposerThinkingContentLength);
           emittedComposerThinkingContentLength = visibleContent.length;
@@ -1610,6 +1625,16 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     if (frameCount === 0) return createCursorStreamErrorResponse("Cursor returned an empty protobuf stream");
+
+    // Flush a terminal incomplete marker prefix as ordinary visible text.
+    if (isComposerModel(model)) {
+      const tail = visibleComposerContentFromThinking(totalThinking).slice(emittedComposerThinkingContentLength);
+      if (tail) {
+        totalContent += tail;
+        chunks.push(chatChunkSse({ id: responseId, created, model,
+          delta: chunks.length === 0 && toolCalls.length === 0 ? { role: "assistant", content: tail } : { content: tail } }));
+      }
+    }
 
     debugLog(
       `[CURSOR BUFFER SSE] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, toolCalls array: ${toolCalls.length}`

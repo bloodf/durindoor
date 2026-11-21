@@ -3,6 +3,8 @@ title: MNN AI
 description: Connect an MNN AI API key and discover models for chat completions.
 ---
 
+Production registration is pending a separate provider batch. The setup below applies once that batch is shipped.
+
 Create an API key in the [MNN AI dashboard](https://mnnai.ru/dashboard), select **MNN AI** in DurinDoor's provider settings, and save the key. The model list is read from MNN AI for that key, so the models you see are the ones your plan can reach. Use `mnn-ai/<model-id>` with the model id exactly as MNN AI publishes it, for example `mnn-ai/gpt-5.4`.
 
 This integration covers the documented chat API only. It uses Bearer authentication, OpenAI Chat Completions at `https://api.mnnai.ru/v1/chat/completions`, and reads the model list from `https://api.mnnai.ru/v1/models`. No models are seeded. The Anthropic-compatible `/v1/messages` route, the Responses API, and the image, video, audio, speech, transcription, embedding, moderation and web-search surfaces that MNN AI also documents are outside this integration: DurinDoor does not route them.

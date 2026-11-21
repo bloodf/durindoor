@@ -9,6 +9,13 @@
 // open-sse/config/providers/registry/mnn-ai/index.ts.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Compose the provider only in this test; production registration is a separate batch.
+vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
+  const original = await importOriginal();
+  const { default: mnnAi } = await import("../../open-sse/providers/registry/mnn-ai.js");
+  return { ...original, default: [...original.default, mnnAi] };
+});
+
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDERS, PROVIDER_MEDIA, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";

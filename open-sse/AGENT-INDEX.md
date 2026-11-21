@@ -314,7 +314,6 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mixlayer` |  | apikey | `https://models.mixlayer.ai/v1/chat/completions` |
 | `mlx` | openai | apikey | `http://127.0.0.1:8080/v1` |
 | `mmf` |  | apikey | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
-| `mnn-ai` |  | apikey | `https://api.mnnai.ru/v1/chat/completions` |
 | `modal` | openai | apikey | `https://api.modal.ai/v1/chat/completions` |
 | `modelscope` | openai | apikey | `https://api-inference.modelscope.cn/v1/chat/completions` |
 | `morph` |  | apikey | `https://api.morphllm.com/v1/chat/completions` |

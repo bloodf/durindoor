@@ -478,8 +478,13 @@ export class AntigravityExecutor extends BaseExecutor {
     const { generationConfig: finalGenerationConfig, contents: finalContents } =
     applyGemini4RequestRules({ generationConfig, contents }, model);
 
+    // Claude Cloud Code accepts a bounded request shape; retain local route metadata.
+    const claudeRequestFields = ["systemInstruction", "generationConfig", "cachedContent", "labels", "sessionMetadata"];
+    const supportedRequest = signatureFamily(model) === "claude"
+      ? Object.fromEntries(claudeRequestFields.filter((key) => key in requestWithoutTools).map((key) => [key, requestWithoutTools[key]]))
+      : requestWithoutTools;
     const transformedRequest = {
-      ...requestWithoutTools,
+      ...supportedRequest,
       generationConfig: finalGenerationConfig,
       ...(finalContents.length > 0 && { contents: finalContents }),
       ...(tools && { tools }),

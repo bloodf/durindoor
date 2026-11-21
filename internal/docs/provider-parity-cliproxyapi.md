@@ -444,3 +444,13 @@ outbound mock; none calls a provider service, and none is written or run here.
   DurinDoor contract counterpart and needs no work).
 - Upstream `main` is a moving target. The pin must be re-resolved before any
   port decision, and the candidate work above is scoped to the current pin.
+
+C2 implementation (#2034): Messages and count tokens decode bounded gzip and
+x-gzip before their existing parsers. The compressed and expanded limits use the
+existing admission defaults and environment overrides. At CLIProxyAPI
+[f5c5681](https://github.com/router-for-me/CLIProxyAPI/blob/f5c5681a8361c9da53e93c60b6507816eee7468b/sdk/api/handlers/request_body.go),
+its shared reader also supports zstd, encoding chains and a valid-JSON fallback;
+these are deliberately outside this contract. Its
+[Claude handlers](https://github.com/router-for-me/CLIProxyAPI/blob/f5c5681a8361c9da53e93c60b6507816eee7468b/sdk/api/handlers/claude/code_handlers.go)
+use that reader for both Messages and count tokens. Closed fixtures exercise the
+route boundary; they do not establish live-provider or deployment behavior.

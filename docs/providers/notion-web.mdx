@@ -1,0 +1,21 @@
+# Notion AI Web
+
+Notion AI Web uses Notion's undocumented, cookie-authenticated inference endpoint. This provider is experimental and depends on Notion's private web protocol.
+
+## Setup
+
+Sign in to [Notion](https://app.notion.com), open DevTools → Application → Cookies, and copy the `token_v2` value. Paste either that value or a complete `Cookie` header into the connection. If automatic workspace lookup is unavailable, include the `space_id` cookie copied from a Notion API request. The provider also accepts a cookie captured by the browser extension, pasted cURL `Cookie` header, or a HAR request header.
+
+Model discovery calls `getSpaces` when `space_id` is absent, then calls `getAvailableModels`. Inference creates a Notion thread and reuses it for matching follow-up conversations. Notion's transcript endpoint returns NDJSON; the provider converts extracted assistant text to OpenAI-compatible JSON or SSE chunks.
+
+## Limits
+
+This is an unofficial integration with no public inference API guarantee. Notion can change its cookie, workspace, transcript, model, or edge requirements without notice. Account plan limits and Notion rate limits apply. Expired sessions return 401/403; rate or plan limits return 429. Streaming currently buffers the Notion response before emitting chunks.
+
+## Sources
+
+- [OmniRoute registry at release/v3.8.55](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/notion-web/index.ts)
+- [OmniRoute executor at release/v3.8.55](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/notion-web.ts)
+- [OmniRoute model/session helpers](https://github.com/cheaper-inference/OmniRoute/tree/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services)
+
+<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

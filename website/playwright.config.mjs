@@ -8,7 +8,7 @@ if (process.env.WEBSITE_CHROMIUM_EXECUTABLE) useOptions.launchOptions = { execut
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["docs.spec.mjs", "marketing.spec.mjs"],
+  testMatch: ["docs.spec.mjs", "marketing.spec.mjs", "public-verification.spec.mjs"],
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

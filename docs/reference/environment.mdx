@@ -38,7 +38,7 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | `NEXT_PUBLIC_BASE_URL` | unset | Browser-visible origin. Same fallback chain as `BASE_URL` for cookies and the manifest. Also the OAuth `redirect_uri` for a non-loopback install, so the consent flow lands on the public origin instead of `window.location.origin` behind a proxy that rewrites `Host`. |
 | `CLOUD_URL` | unset | Optional server-side origin for a separately configured remote endpoint. No hosted default. |
 | `NEXT_PUBLIC_CLOUD_URL` | unset | Browser-visible remote endpoint used by selected CLI-tool helpers. |
-| `TRUST_PROXY` | unset (`false`) | `true` plus the custom-server peer token lets login rate limiting read `X-Forwarded-For`. |
+| `TRUST_PROXY` | unused | Not read by the code. Login rate limiting uses the rightmost `X-Forwarded-For` entry only when the socket peer is loopback (a local reverse proxy), via `custom-server.js`. |
 | `SHUTDOWN_SECRET` | unset | Bearer secret for `/api/shutdown`. Production always 403s that route. |
 
 `next.config.mjs` rewrites `/v1/:path*` to `/api/v1/:path*`.

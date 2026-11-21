@@ -155,13 +155,13 @@ describe("peer header trust", () => {
     expect(checkLock("unknown").locked).toBe(true);
   });
 
-  it("accepts XFF from a wrapper-proved trusted proxy", () => {
+  it("ignores TRUST_PROXY: raw XFF never selects the limiter bucket (#2175)", () => {
     process.env.TRUST_PROXY = "true";
 
     expect(getClientIp(request("/api/auth/login", {
       "x-forwarded-for": "198.51.100.10, 203.0.113.5",
       "x-9r-peer-token": PEER_TOKEN,
-    }))).toBe("198.51.100.10");
+    }))).toBe("unknown");
   });
 
   it("keeps wrapper-stamped loopback IP precedence over XFF", () => {

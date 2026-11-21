@@ -67,19 +67,18 @@ export async function PUT(request) {
     const modelAliases = await getModelAliases();
 
     // Check if alias already exists for different model
-    const existingModel = Object.entries(modelAliases).find(
-      ([key, val]) => val === alias && key !== model
-    );
+    const existingModel = Object.hasOwn(modelAliases, alias) && modelAliases[alias] !== model;
 
     if (existingModel) {
       return NextResponse.json({ error: "Alias already in use" }, { status: 400 });
     }
 
     // Update alias
-    await setModelAlias(model, alias);
+    await setModelAlias(alias, model);
 
     return NextResponse.json({ success: true, model, alias });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.log("Error updating alias:", error);
     return NextResponse.json({ error: "Failed to update alias" }, { status: 500 });
   }

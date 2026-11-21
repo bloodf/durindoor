@@ -1,4 +1,4 @@
-import { getApiKeyByKey, getProviderNodes } from "@/lib/localDb";
+import { getApiKeyByKey, getApiKeyProviderConnectionIds, getProviderNodes } from "@/lib/localDb";
 import { extractApiKey } from "./auth.js";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers.js";
 import { isString } from "@/shared/utils/typeChecks.js";
@@ -74,4 +74,19 @@ export async function filterModelsForRequest(request, models) {
   const key = await getApiKeyByKey(apiKey);
   if (!key?.isActive) return models;
   return filterModelsByAccess(key.policy?.modelAccess, models);
+}
+
+/**
+ * Provider-connection ids the caller's API key is scoped to, or null when the
+ * request is unrestricted (no key, unknown or inactive key, or a key without
+ * relation rows). `/v1/models` passes this to `buildModelsList` so providers
+ * whose catalogs are bound to one endpoint list only the caller's own.
+ */
+export async function getRequestConnectionScope(request) {
+  const apiKey = extractApiKey(request);
+  if (!apiKey) return null;
+  const key = await getApiKeyByKey(apiKey);
+  if (!key?.isActive) return null;
+  const ids = await getApiKeyProviderConnectionIds(key.id);
+  return ids.length > 0 ? ids : null;
 }

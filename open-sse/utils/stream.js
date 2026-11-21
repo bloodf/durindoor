@@ -1283,7 +1283,10 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
 
-          if (keepsOpenAIResponsesFormat && !streamDoneSent) {
+          // A same-format OpenAI stream only enters this path for DeepSeek-family model ids
+          // (DSML tool-call recovery). Forward the wire terminator it would otherwise swallow.
+          const keepsOpenAIChatFormat = targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI;
+          if ((keepsOpenAIResponsesFormat || keepsOpenAIChatFormat) && !streamDoneSent) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));

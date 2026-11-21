@@ -99,8 +99,17 @@ export async function getPrunedModelReferences(settings = null) {
  * failure so callers can record it and keep the previous catalog.
  */
 async function fetchCatalogEntry(providerId, connection, previous, { now, fetchModels, timeoutMs, endpoint = null }) {
-  const prepared = await prepareConnection(providerId, connection);
-  const result = await withTimeout(fetchModels(prepared), timeoutMs);
+  const controller = new AbortController();
+  let result;
+  try {
+    result = await withTimeout((async () => {
+      const prepared = await prepareConnection(providerId, connection);
+      if (controller.signal.aborted) throw new Error("Catalog refresh timed out");
+      return fetchModels(prepared, { signal: controller.signal });
+    })(), timeoutMs);
+  } finally {
+    controller.abort();
+  }
   if (result?.error) throw new Error(`${result.status || ""} ${result.error}`.trim());
 
   const staticModels = getModelsByProviderId(providerId);

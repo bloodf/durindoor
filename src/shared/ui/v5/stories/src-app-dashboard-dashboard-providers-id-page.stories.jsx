@@ -9,3 +9,4 @@ export const OpenAIDetail = { ...reviewStory(original.OpenAIDetail, {"source":"s
 export const SettingsControls = { ...reviewStory(original.SettingsControls, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const CompatibleBranch = { ...reviewStory(original.CompatibleBranch, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const CompatibleProxyOpen = { ...reviewStory(original.CompatibleProxyOpen, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const MnnAiConnection = { ...reviewStory(original.MnnAiConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };

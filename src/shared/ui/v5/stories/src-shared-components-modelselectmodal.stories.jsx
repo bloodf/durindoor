@@ -10,3 +10,4 @@ export const WithSelection = { ...reviewStory(original.WithSelection, {"source":
 export const WithCombosAndSelection = { ...reviewStory(original.WithCombosAndSelection, {"source":"src/shared/components/ModelSelectModal.stories.jsx","standalone":false}) };
 export const EmbeddingKind = { ...reviewStory(original.EmbeddingKind, {"source":"src/shared/components/ModelSelectModal.stories.jsx","standalone":false}) };
 export const Closed = { ...reviewStory(original.Closed, {"source":"src/shared/components/ModelSelectModal.stories.jsx","standalone":false}) };
+export const OwnerPlanCatalog = { ...reviewStory(original.OwnerPlanCatalog, {"source":"src/shared/components/ModelSelectModal.stories.jsx","standalone":false}) };

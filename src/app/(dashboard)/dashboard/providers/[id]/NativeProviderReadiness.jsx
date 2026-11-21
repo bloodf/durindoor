@@ -1,3 +1,4 @@
+import ReadinessEvidence from "./ReadinessEvidence.jsx";
 import { nativeProviderReadiness } from "@/shared/utils/nativeProviderReadiness.js";
 
 export default function NativeProviderReadiness({ providerId, connections }) {
@@ -14,6 +15,7 @@ export default function NativeProviderReadiness({ providerId, connections }) {
       <p className="mt-3 text-dd-muted">Saved successful credential validations: {readiness.savedValidation}. These records have no validation timestamp and do not prove current authentication or inference.</p>
       <p className="mt-2 text-dd-muted">Configured native kinds: {readiness.kinds.join(", ") || "none"}. Other gateway routes may exist. Model, modality and tool support depend on the selected route and model; unlisted native operations are unsupported on the native route.</p>
       <p className="mt-2 text-dd-muted">No fresh inference evidence is available here. Missing or stale evidence remains UNKNOWN. Catalog entries and configured routes do not prove a live request works. This summary makes no requests and does not disable credentials after transient errors.</p>
+      <ReadinessEvidence providerId={providerId} />
     </section>
   );
 }

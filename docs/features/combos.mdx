@@ -107,6 +107,11 @@ circuit breaker; after the cooldown one request probes the service again. It fai
 unknown tier, or a confidence below 0.5 all leave the local heuristic level in
 place, and the combo dispatches exactly as it would without the classifier.
 
+When every combo target is locally blocked by a connection recovery probe, the
+combo returns a generic retryable 503 diagnostic. It does not expose account
+identifiers, model text, provider response bodies, or fabricated quota reset
+times. Other target failures keep their existing fallback classification.
+
 ### Local Laya instead of Jev
 
 [Laya](https://github.com/NandhaKishorM/laya) is an open decision engine you can

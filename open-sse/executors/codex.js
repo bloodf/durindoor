@@ -415,9 +415,12 @@ function normalizeCodexTools(body) {
     // Preserve an explicit strict flag (flat or nested under .function) across the
     // in-place rewrite below; leave it unset when the caller never set one.
     const strict = isBoolean(tool.strict) || tool.strict === null ? tool.strict : fn?.strict;
+    // Responses function declarations preserve only explicit boolean deferred-loading metadata.
+    const deferLoading = isBoolean(tool.defer_loading) ? tool.defer_loading : fn?.defer_loading;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     if (isBoolean(strict) || strict === null) tool.strict = strict;
+    if (isBoolean(deferLoading)) tool.defer_loading = deferLoading;
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = stripCodexUnsupportedPatterns(parameters);

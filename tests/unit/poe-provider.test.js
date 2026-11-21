@@ -2,11 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
 const routedFetch = vi.hoisted(() => vi.fn());
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/poe.js");
-  return { ...original, default: [...original.default.filter((row) => row.id !== entry.id), entry] };
-});
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const { PoeExecutor } = await import("../../open-sse/executors/poe.js");
@@ -27,7 +22,7 @@ import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/f
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import provider from "../../open-sse/providers/private/poe.js";
+import provider from "../../open-sse/providers/registry/poe.js";
 
 const KEY_A = "poe_synthetic_alpha";
 const KEY_B = "poe_synthetic_beta";
@@ -111,5 +106,20 @@ describe("staged Poe provider", () => {
     routedFetch.mockResolvedValueOnce(json({ error: "payment required" }, 402));
     expect((await executor.execute({ model: MODEL, body: {}, stream: false, credentials: { apiKey: KEY_A } })).response.status).toBe(402);
     expect((await new PoeExecutor(routedFetch).execute({ model: "claude-opus-4.8", body: {}, stream: false, credentials: {} })).response.status).toBe(401);
+  });
+
+  it("defers proxyAwareFetch resolution until execute() when constructed without a custom fetcher", async () => {
+    const executor = new PoeExecutor();
+    expect(executor.fetcher).toBeNull();
+    routedFetch.mockResolvedValueOnce(json(claudeMessage));
+    const result = await executor.execute({
+      model: "claude-opus-4.8",
+      body: { model: "claude-opus-4.8", max_tokens: 32, messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: KEY_A },
+    });
+    expect(result.response.status).toBe(200);
+    expect(routedFetch).toHaveBeenCalledTimes(1);
+    expect(routedFetch.mock.calls[0][0]).toBe("https://api.poe.com/v1/messages");
   });
 });

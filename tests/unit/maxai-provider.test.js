@@ -8,12 +8,6 @@ vi.mock("../../open-sse/services/lmarenaTlsClient.js", () => ({ tlsFetchLMArena:
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
 vi.mock("../../open-sse/utils/requestLogger.js", async (original) => ({ ...(await original()), createRequestLogger: vi.fn(async () => ({ logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(), logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn() })) }));
-// Compose staged entries/executors only in this test; production registration stays untouched.
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const maxai = await import("../../open-sse/providers/private/maxai.js");
-  return { ...original, default: [...original.default, maxai.default] };
-});
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const [{ MaxaiExecutor }, { LmarenaExecutor }] = await Promise.all([import("../../open-sse/executors/maxai.js"), import("../../open-sse/executors/lmarena.js")]);
@@ -21,7 +15,7 @@ vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   return { ...original, getExecutor: (id) => id === "maxai" ? maxai : original.getExecutor(id), hasSpecializedExecutor: (id) => id === "maxai" || original.hasSpecializedExecutor(id) };
 });
 
-import maxaiEntry, { cookieCaptureProfile } from "../../open-sse/providers/private/maxai.js";
+import maxaiEntry, { cookieCaptureProfile } from "../../open-sse/providers/registry/maxai.js";
 import { MaxaiExecutor, validateMaxaiSession } from "../../open-sse/executors/maxai.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";

@@ -4,6 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { PROVIDERS } from "../config/providers.js";
 import { buildErrorBody } from "../utils/error.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 
 const BASE = "https://claude.ai/api";
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
@@ -53,6 +54,31 @@ async function readSse(response, model, stream) {
   chunks.push(`data: ${JSON.stringify({ id: "chatcmpl-claude-web", object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model, choices: [{ index: 0, delta: {}, finish_reason: finished ? "stop" : "stop" }] })}\n\ndata: [DONE]\n\n`);
   if (stream) return new Response(encoder.encode(chunks.join("")), { headers: { "content-type": "text/event-stream" } });
   return new Response(JSON.stringify({ id: "chatcmpl-claude-web", object: "chat.completion", created: Math.floor(Date.now()/1000), model, choices: [{ index: 0, message: { role: "assistant", content: output }, finish_reason: "stop" }] }), { headers: { "content-type": "application/json" } });
+}
+
+/**
+ * Read-only session check for the dashboard Validate and Test buttons: GET
+ * claude.ai/api/organizations with the pasted sessionKey. It creates no
+ * conversation, and the cookie never reaches a chat endpoint.
+ */
+export async function validateClaudeWebSession({ apiKey, fetcher = fetch }) {
+  const cookie = normalizeClaudeWebCookie(apiKey);
+  if (!cookie) return { valid: false, status: null, error: "No sessionKey cookie found - paste it from claude.ai" };
+  let response;
+  try {
+    response = await guardedProbeFetch(`${BASE}/organizations`, { method: "GET", headers: headers(cookie), redirect: "manual", signal: AbortSignal.timeout(8000) }, getProviderValidationGuard(), fetcher);
+  } catch (error) {
+    if (error instanceof OutboundUrlGuardError) return { valid: false, status: null, blocked: true, error: error.message };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
+  }
+  const { status } = response;
+  if (status === 401 || status === 403) return { valid: false, status, error: "Invalid or expired sessionKey - re-capture it from claude.ai" };
+  if (status === 429) return { valid: false, status, unavailable: true, error: "Claude is rate limiting this session - try again later" };
+  if (status >= 500) return { valid: false, status, unavailable: true, error: "Provider unavailable - try again later" };
+  if (status !== 200) return { valid: false, status, error: `Claude Web validation failed (HTTP ${status})` };
+  const organizations = await response.json().catch(() => null);
+  if (Array.isArray(organizations) && organizations.length > 0) return { valid: true, status };
+  return { valid: false, status, error: "Session accepted but no Claude organization was returned - sign in again at claude.ai" };
 }
 
 export class ClaudeWebExecutor extends BaseExecutor {

@@ -204,6 +204,21 @@ function hasForeignRequestOrigin(request) {
   return !hasExactRequestOrigin(request);
 }
 
+// DNS rebinding keeps the loopback socket (and trusted peer headers) while the
+// attacker controls Host and Origin. The credential-free loopback gates therefore
+// also require a loopback Host, and a loopback Origin whenever one is sent.
+// No Origin (curl, CLI, MCP stdio) stays allowed.
+function hasLoopbackHostAndOrigin(request) {
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    return isLoopbackHostname(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
 // Wrapper proof plus the wrapper-stamped loopback identity distinguish local peers.
 // Browser-origin checks belong at each mutation boundary, not this transport classifier.
 export function isLocalRequest(request) {
@@ -526,7 +541,7 @@ export async function canAccessManagementApi(request) {
   if (!isSecretRevealRequest(request) && (await hasValidApiKey(request))) {
     return await canUseApiKeyForManagement(request);
   }
-  if (isLocalRequest(request)) {
+  if (isLocalRequest(request) && hasLoopbackHostAndOrigin(request)) {
     const settings = await loadSettings();
     if (settings && settings.requireLogin === false) return true;
   }
@@ -625,7 +640,7 @@ export async function proxy(request) {
     // cross-origin POST, so this closes the CSRF path; curl, an MCP client, and
     // the CLI send none at all, so the plan's credential-free local agent keeps
     // working. Remote callers always need a credential.
-    if (isLocalRequest(request) && !hasForeignRequestOrigin(request)) {
+    if (isLocalRequest(request) && hasLoopbackHostAndOrigin(request) && !hasForeignRequestOrigin(request)) {
       const settings = await loadSettings();
       if (settings && settings.requireApiKey !== true) return NextResponse.next();
     }

@@ -47,11 +47,10 @@ export async function smokeNpmPack(tarball) {
     fs.mkdirSync(home);
     const cache = path.join(temp, "npm-cache");
     if (process.env.npm_config_offline === "true" && process.env.npm_config_cache) {
-      const seed = path.resolve(process.env.npm_config_cache);
-      for (let dir = seed; ; dir = path.dirname(dir)) {
-        if (fs.lstatSync(dir).isSymbolicLink()) throw new Error(`Cache symlink rejected: ${dir}`);
-        if (dir === path.dirname(dir)) break;
-      }
+      const seedPath = path.resolve(process.env.npm_config_cache);
+      if (fs.lstatSync(seedPath).isSymbolicLink()) throw new Error(`Cache symlink rejected: ${seedPath}`);
+      // Resolve system symlink ancestors while rejecting a symlinked seed itself.
+      const seed = fs.realpathSync(seedPath);
       copyCacheData(path.join(seed, "_cacache"), path.join(cache, "_cacache"));
     }
     const install = spawnSync("npm", [

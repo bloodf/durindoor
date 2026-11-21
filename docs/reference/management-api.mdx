@@ -212,11 +212,11 @@ Database routes require a dashboard session or CLI token plus the dashboard pass
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, POST | `/api/proxy-pools` | List or create proxy pools | session, CLI, key, loop |
+| GET, POST | `/api/proxy-pools` | List or create proxy pools (relay pools require a public HTTPS URL) | session, CLI, key, loop |
 | POST | `/api/proxy-pools/cloudflare-deploy` | Deploy a Cloudflare relay worker | session, CLI, key, loop |
 | POST | `/api/proxy-pools/vercel-deploy` | Deploy a Vercel relay function | session, CLI, key, loop |
-| GET, PUT, DELETE | `/api/proxy-pools/{id}` | Read, update, or delete a pool | session, CLI, key, loop |
-| POST | `/api/proxy-pools/{id}/test` | Test one pool entry | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/proxy-pools/{id}` | Read, update, or delete a pool (relay URLs require public HTTPS) | session, CLI, key, loop |
+| POST | `/api/proxy-pools/{id}/test` | Test one pool entry (SSRF-guarded; redirects not followed for relays) | session, CLI, key, loop |
 
 ### Tunnel
 
@@ -337,10 +337,10 @@ includes [proxy response handling](../../tests/unit/headroom-proxy-route.test.js
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, HEAD, OPTIONS | `/api/livez` | Process-alive response; protected by the generic dashboard gate | session, CLI, loop |
-| GET, OPTIONS | `/api/readyz` | Alias of health response; protected by the generic dashboard gate | session, CLI, loop |
-| GET, OPTIONS | `/api/health` | Liveness `{ ok: true }` with CORS | none |
-| GET, DELETE, OPTIONS | `/api/health/providers` | Cached provider health; DELETE invalidates; ?force=1 | none |
+| GET, HEAD, OPTIONS | `/api/livez` | Process-alive `{ ok: true }` probe (exact path) | none |
+| GET, OPTIONS | `/api/readyz` | Readiness alias of `/api/health` (exact path) | none |
+| GET, OPTIONS | `/api/health` | Liveness `{ ok: true }` with CORS (exact path) | none |
+| GET, DELETE, OPTIONS | `/api/health/providers` | Cached provider health; DELETE invalidates; ?force=1 | session, CLI, key, loop |
 
 ### Version
 

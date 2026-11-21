@@ -1,3 +1,4 @@
+import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { BaseExecutor } from "./base.js";
 import { CODEX_DEFAULT_INSTRUCTIONS } from "../config/codexInstructions.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -694,6 +695,7 @@ export class CodexExecutor extends BaseExecutor {
    */
   async prefetchImages(body) {
     if (!Array.isArray(body?.input)) return;
+    body.input = body.input.map((item) => item?.role === "assistant" ? normalizeResponsesImageReplay([item])[0] : item);
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
       const pending = item.content.map(async (c) => {
@@ -956,7 +958,7 @@ export class CodexExecutor extends BaseExecutor {
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)
     const normalized = normalizeResponsesInput(body.input);
-    if (normalized) body.input = normalized;
+    if (normalized) body.input = normalizeResponsesImageReplay(normalized);
 
     // A translated Chat system prompt belongs in the cacheable input prefix.
     // Native Responses instructions keep their original semantics.

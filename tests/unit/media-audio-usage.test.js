@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ key: "audio-client-key", combo: null, denied: false, ledgerFailure: false }));
 vi.mock("@/lib/localDb", async () => {
@@ -53,9 +53,34 @@ let previousDataDir;
 let previousEngine;
 let listeners;
 let adapter;
+const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+// Load the invariant handler graph once, under a private directory: dataDir and
+// databaseEnvFile capture DATA_DIR at import time. The driver retains its state
+// object, but resolves the SQLite file and engine when getAdapter() is called.
+const originalAdapterState = global._dbAdapter;
+const originalDataDir = process.env.DATA_DIR;
+const originalEnvSource = process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON;
+const importListeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+const importDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "audio-import-"));
+let getAdapter;
 let handleStt;
 let handleTts;
-const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+try {
+  process.env.DATA_DIR = importDirectory;
+  delete global._dbAdapter;
+  ({ getAdapter } = await import("@/lib/db/driver.js"));
+  ({ handleStt } = await import("@/sse/handlers/stt.js"));
+  ({ handleTts } = await import("@/sse/handlers/tts.js"));
+} finally {
+  if (originalDataDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = originalDataDir;
+  if (originalEnvSource === undefined) delete process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON; else process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON = originalEnvSource;
+  for (const signal of signals) for (const listener of process.listeners(signal)) if (!importListeners.get(signal).has(listener)) process.removeListener(signal, listener);
+  fs.rmSync(importDirectory, { recursive: true, force: true });
+}
+const driverState = global._dbAdapter;
+afterAll(() => {
+  if (originalAdapterState === undefined) delete global._dbAdapter; else global._dbAdapter = originalAdapterState;
+});
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 function sttRequest(model = "openai/whisper-1", kind = "transcriptions") {
   const body = new FormData();
@@ -74,19 +99,15 @@ beforeEach(async () => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "audio-usage-"));
   process.env.DATA_DIR = directory;
   process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
-  delete global._dbAdapter;
-  vi.resetModules();
   vi.clearAllMocks();
   state.key = "audio-client-key"; state.combo = null; state.denied = false; state.ledgerFailure = false;
   vi.stubGlobal("fetch", vi.fn());
-  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+  adapter = await getAdapter();
   adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)", ["audio-key-id", state.key, "Audio test", new Date().toISOString()]);
-  ({ handleStt } = await import("@/sse/handlers/stt.js"));
-  ({ handleTts } = await import("@/sse/handlers/tts.js"));
-}, 60_000);
+});
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();
-  delete global._dbAdapter;
+  Object.assign(driverState, { instance: null, initPromise: null, logged: false, file: null, cacheKey: null });
   vi.unstubAllGlobals();
   vi.useRealTimers();
   for (const signal of signals) for (const listener of process.listeners(signal)) if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);

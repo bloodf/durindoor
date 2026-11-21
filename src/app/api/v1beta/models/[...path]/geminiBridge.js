@@ -139,8 +139,11 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
     }
   }
 
+  // Model thought text uses the same reasoning field as the native translator.
+  const isThought = (part) => content.role === "model" && part.thought === true && isString(part.text);
+  const reasoningContent = remainingParts.filter(isThought).map((part) => part.text).join("");
   const text = remainingParts.
-  filter((part) => isString(part.text)).
+  filter((part) => isString(part.text) && !isThought(part)).
   map((part) => part.text).
   join("\n");
   // Inline images, PDFs and audio become data-URL image_url parts, the same
@@ -179,12 +182,19 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
   if (toolCalls.length > 0) {
     const assistantMessage = { role: "assistant", tool_calls: toolCalls };
     if (text) assistantMessage.content = text;
+    if (reasoningContent) assistantMessage.reasoning_content = reasoningContent;
     messages.push(assistantMessage);
   } else if (inlineParts.length > 0) {
     const textParts = text ? [{ type: "text", text }] : [];
-    messages.push({ role: content.role === "model" ? "assistant" : "user", content: [...textParts, ...inlineParts] });
+    const message = { role: content.role === "model" ? "assistant" : "user", content: [...textParts, ...inlineParts] };
+    if (reasoningContent) message.reasoning_content = reasoningContent;
+    messages.push(message);
   } else if (text) {
-    messages.push({ role: content.role === "model" ? "assistant" : "user", content: text });
+    const message = { role: content.role === "model" ? "assistant" : "user", content: text };
+    if (reasoningContent) message.reasoning_content = reasoningContent;
+    messages.push(message);
+  } else if (reasoningContent) {
+    messages.push({ role: "assistant", reasoning_content: reasoningContent });
   }
 
   return messages.length === 1 ? messages[0] : messages;

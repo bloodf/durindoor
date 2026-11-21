@@ -1,3 +1,4 @@
+import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
 import { supportsServiceTier } from "../config/serviceTier.js";
@@ -795,6 +796,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     TOP_LEVEL_STREAM_FORMATS.has(targetFormat) &&
     translatedBody.stream !== stream)
     translatedBody.stream = stream;
+  }
+
+  // Codex handles this after its existing image prefetch. Other native Responses
+  // transports normalize replay here, including the same-format passthrough.
+  if (targetFormat === FORMATS.OPENAI_RESPONSES && provider !== "codex" && Array.isArray(translatedBody.input)) {
+    translatedBody.input = normalizeResponsesImageReplay(translatedBody.input);
   }
 
   // Adaptive reasoning effort (port of OmniRoute #13448): `X-DurinDoor-Effort: auto`

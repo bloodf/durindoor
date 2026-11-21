@@ -419,14 +419,20 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const stripPlaceholderArgs = createGeminiPlaceholderStripper({ clientTools: options.requestBody?.tools, providerBody: options.providerBody, toolNameMap: options.toolNameMap });
 
     if (content?.parts) {
+      let pendingThoughtSignature = null;
       for (const part of content.parts) {
         if (part.thought === true && part.text) reasoningContent += part.text;else
         if (part.text !== undefined) textContent += part.text;
+        if (part.thought === true && !part.functionCall) {
+          const signature = part.thoughtSignature || part.thought_signature;
+          if (signature) pendingThoughtSignature = signature;
+        }
         if (part.functionCall) {
           // Mirror the streaming translator (#676): prefer the upstream call id
           // and carry any provider-issued thought signature in the transport id
           // so the next-turn request translator can replay it.
-          const partSignature = part.thoughtSignature || part.thought_signature || null;
+          const partSignature = part.thoughtSignature || part.thought_signature || pendingThoughtSignature;
+          pendingThoughtSignature = null;
           const rawId = part.functionCall.id || `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`;
           toolCalls.push({
             id: encodeToolCallIdWithSignature(rawId, partSignature),

@@ -67,6 +67,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         apiKey: "",
         baseUrl: connection.providerSpecificData?.baseUrl || "",
         openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
+        strictChatHistory: connection.providerSpecificData?.strictChatHistory === true,
         rpd: connection.providerSpecificData?.rateLimitOverrides?.rpd?.toString() ?? "",
         timeoutMs: connection.providerSpecificData?.timeoutMs?.toString() ?? ""
       });
@@ -133,6 +134,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isCompatible = connection ?
   isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider) :
   false;
+  const isStrictHistoryConnection = connection?.provider?.startsWith("openai-compatible-") && !connection.provider.startsWith("openai-compatible-responses-");
   const isResponsesConnection = connection?.provider === "openai" ||
   connection?.provider?.startsWith("openai-compatible-responses-");
 
@@ -191,6 +193,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     }
     if (providerRegions) {
       return { ...(buildRegionSpecificData() || {}), ...generic };
+    }
+    if (isStrictHistoryConnection) {
+      return { ...(connection?.providerSpecificData || {}), strictChatHistory: formData.strictChatHistory === true, ...generic };
     }
     if (isResponsesConnection) {
       return {
@@ -352,6 +357,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {isCodexOAuth ? <Field label="OAuth fingerprint mode"><Select value={codexFingerprintMode} onChange={setCodexFingerprintMode} options={[{ value: "off", label: "Off — preserve client identity" }, { value: "device", label: "Device — stable installation" }, { value: "session", label: "Session — stable account session (recommended)" }, { value: "full", label: "Full — stable account thread" }]} aria-label="OAuth fingerprint mode" /></Field> : null}
         {providerRegions ? <Field label="Region"><Select value={region} onChange={setRegion} options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} aria-label="Region" /></Field> : null}
         {usesAwsCredentialForm ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">AWS Credentials</h3><div className="flex flex-col gap-3"><Input label="AWS Profile (SSO)" value={awsData.profile} onChange={(e) => editAwsData({ profile: e.target.value })} placeholder="my-sso-profile" hint={formData.apiKey && awsData.profile.trim() ? "Saving with a new API key clears this profile." : "Takes precedence over any key. Clear it to use static keys or a Bedrock API key."} /><Input label="Access Key ID (static AWS keys only)" value={awsData.accessKeyId} onChange={(e) => editAwsData({ accessKeyId: e.target.value })} placeholder="AKIA..." hint="Put the secret access key in the API Key field. Clear this to use a Bedrock API key." /><Input label="Session Token (temporary ASIA... keys only)" type="password" autoComplete="off" value={awsData.sessionToken} onChange={(e) => editAwsData({ sessionToken: e.target.value })} placeholder="Enter new session token" hint="Leave blank to keep the current token. Changing the access key id replaces it." /></div></section> : null}
+        {isStrictHistoryConnection ? <Toggle checked={formData.strictChatHistory === true} onChange={(strictChatHistory) => setFormData({ ...formData, strictChatHistory })} label="Strict chat history" description="Merge consecutive simple text turns for strict OpenAI-compatible chat providers." /> : null}
         {isResponsesConnection ? <Toggle checked={formData.openaiStoreEnabled === true} onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })} label="OpenAI Responses store" description="Allow this connection to retain Responses API state for continuation." /> : null}
         {requiresAccountId ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">{accountIdProviderLabel}</h3><Input label="Account ID" value={cloudflareData.accountId} onChange={(e) => setCloudflareData({ accountId: e.target.value })} placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."} hint={connection?.provider === "snowflake" ? "Snowflake account identifier, for example org-account" : "Find Account ID in right sidebar of dash.cloudflare.com"} /></section> : null}
         <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4">

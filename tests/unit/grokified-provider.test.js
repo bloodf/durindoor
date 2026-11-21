@@ -193,6 +193,28 @@ describe("Grokified registry contract", () => {
 });
 
 describe("Grokified closed mock acceptance", () => {
+  it("isolates synced catalogs and ignores legacy provider-wide model IDs", async () => {
+    const { syncProviderModels } = await import("@/lib/modelAutoSync/runner.js");
+    await db.updateSettings({ modelAutoSyncProviders: { grokified: true } });
+    await db.saveSyncedModelCatalog(provider, {
+      syncedAt: new Date().toISOString(), lastAttemptAt: new Date().toISOString(),
+      models: [{ id: "legacy-private-id", name: "legacy-private-id", kind: "llm" }]
+    });
+    const fetchModels = vi.fn(async (connection) => ({ models: [{ id: connection.id === owned.id ? "owned-private-id" : "other-private-id" }] }));
+    expect((await syncProviderModels(provider, { fetchModels })).status).toBe("synced");
+    const list = async (key) => (await (await gatewayModels(new Request("http://localhost/v1/models", {
+      headers: { authorization: `Bearer ${key}` }
+    }))).json()).data.map((model) => model.id);
+    const ownIds = await list(caller.key);
+    const otherIds = await list(otherCaller.key);
+    expect(ownIds).toContain("grokified/owned-private-id");
+    expect(ownIds).not.toContain("grokified/other-private-id");
+    expect(otherIds).toContain("grokified/other-private-id");
+    expect(otherIds).not.toContain("grokified/owned-private-id");
+    expect(JSON.stringify([ownIds, otherIds, await db.getSyncedModelCatalog(provider)])).not.toContain("legacy-private-id");
+    await db.updateSettings({ modelAutoSyncProviders: {} });
+  });
+
   it("sends only the scoped connection's key and rejects a foreign connection pin", async () => {
     const response = await post(chatRequest());
     expect(response.status).toBe(200);

@@ -213,6 +213,27 @@ describe("connection-scoped MLX and OpenCode Server catalogs", { timeout: SETUP_
     expect(Object.keys(await ctx.db.getSyncedModelCatalogs()).sort()).toEqual(["openai"]);
   });
 
+  it("schedules missing and changed catalogs despite recent legacy summaries, respecting Off and retry intervals", async () => {
+    const now = Date.parse("2026-06-01T12:00:00Z");
+    for (const provider of ["mlx", "opencode-server"]) {
+      await ctx.db.saveSyncedModelCatalog(provider, {
+        syncedAt: new Date(now).toISOString(), lastAttemptAt: new Date(now).toISOString(), models: []
+      });
+    }
+    const fetchModels = vi.fn(async (connection) => ({ models: [{ id: `fixture-${connection.name}` }] }));
+    await ctx.db.updateSettings({ modelAutoSyncIntervalHours: 0 });
+    expect(await ctx.runner.runModelAutoSync({ now, fetchModels })).toEqual([]);
+    expect(fetchModels).not.toHaveBeenCalled();
+    await ctx.db.updateSettings({ modelAutoSyncIntervalHours: 24 });
+    expect((await ctx.runner.runModelAutoSync({ now, fetchModels })).map((r) => r.status)).toEqual(["synced", "synced"]);
+    expect(fetchModels).toHaveBeenCalledTimes(4);
+    expect(await ctx.runner.runModelAutoSync({ now: now + 1000, fetchModels })).toEqual([]);
+    await ctx.db.createProviderConnection({ provider: "mlx", authType: "apikey", name: "mlx-c", providerSpecificData: { baseUrl: "http://mlx-c.invalid/v1" } });
+    expect((await ctx.runner.runModelAutoSync({ now: now + 2000, fetchModels })).map((r) => r.providerId)).toEqual(["mlx"]);
+    await ctx.db.updateProviderConnection(ctx.conns.ocsB.id, { providerSpecificData: { baseUrl: "http://ocs-new.invalid" } });
+    expect((await ctx.runner.runModelAutoSync({ now: now + 3000, fetchModels })).map((r) => r.providerId)).toEqual(["opencode-server"]);
+  });
+
   it("reports per-connection status on the dashboard route", async () => {
     await syncBoth();
     const { GET } = await import("../../src/app/api/models/auto-sync/route.js");

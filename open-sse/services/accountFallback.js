@@ -83,7 +83,10 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.
-  if (lowerError.includes("provider_port_pending")) {
+  // chatCore flattens the guard body to "[501]: <provider> ... runtime execution is not ported yet",
+  // which drops the provider_port_pending type, so the guard's own wording is matched for 501 too (#2034).
+  if (lowerError.includes("provider_port_pending") ||
+    Number(status) === 501 && /runtime execution is not (?:ported yet|available)/.test(lowerError)) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 

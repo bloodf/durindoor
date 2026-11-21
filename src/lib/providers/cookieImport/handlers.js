@@ -163,7 +163,7 @@ export async function handleCookieImport(request) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ provider: pairing.provider, name: target.name, apiKey: built.header }),
-      }));
+      }), { requireNewCookieName: true });
       if (response.status === 409) return json({ error: "A connection with this name already exists" }, 409);
       if (!response.ok) return json({ error: "Could not save the connection" }, 500);
       const { connection } = await response.json();

@@ -36,7 +36,7 @@ export function resolveAuggieModel(model) {
 }
 
 function buildAuggieArgs(model) {
-  return ["--print", "--quiet", "--model", model, "--"];
+  return ["--print", "--model", model, "--"];
 }
 
 // Node's CVE-2024-27980 fix makes spawn() on a .cmd/.bat shim throw

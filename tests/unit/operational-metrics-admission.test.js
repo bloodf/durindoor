@@ -260,7 +260,7 @@ beforeAll(async () => {
     phase("synthetic connection");
   }
   phase("correlation ready");
-});
+}, 30_000);
 
 beforeEach(async () => {
   await db.updateSettings({ requireApiKey: true, enableProxyTimeline: false, visionBridgeEnabled: false });

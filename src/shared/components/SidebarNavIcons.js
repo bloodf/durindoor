@@ -29,6 +29,8 @@
 //           from MEDIA_PROVIDER_KINDS + COMBINED_WEB_ITEM.
 
 import { createElement } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 import { cn } from "@/shared/utils/cn";
 import { DOCS_URL } from "@/shared/constants/docs";
 
@@ -152,6 +154,8 @@ export const PROFILE_NAV_ITEM = { href: "/dashboard/profile", label: "Settings",
  * helper can branch on `item.icon` to render an SVG component instead.
  */
 export function NavIcon({ icon, isActive, size = "18" }) {
+  const v5 = useUiV5();
+  if (v5) return createElement(MotionIcon, { name: icon, size: Number(size), className: isActive ? "text-dd-accent" : "" });
   return createElement(
     "span",
     {

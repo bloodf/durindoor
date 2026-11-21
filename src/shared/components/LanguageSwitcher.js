@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { LOCALES, LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { reloadTranslations } from "@/i18n/runtime";
 import { isBoolean, isUndefined } from "../utils/typeChecks.js";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion";
 import Modal from "@/shared/ui/components/Modal.jsx";
 
 function getLocaleFromCookie() {
@@ -57,6 +58,7 @@ const getLocaleInfo = (locale) => {
 };
 
 export default function LanguageSwitcher({ className = "", isOpen: controlledOpen, onClose, hideTrigger = false }) {
+  const v5 = useUiV5();
   const [locale, setLocale] = useState("en");
   const [isPending, setIsPending] = useState(false);
   const [internalOpen, setInternalOpen] = useState(false);
@@ -115,7 +117,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
         >
           <span aria-hidden="true" className="material-symbols-outlined text-[20px]">language</span>
           <span className="text-sm font-medium">{getLocaleInfo(locale).name}</span>
-          <span className="text-lg">{getLocaleInfo(locale).flag}</span>
+          <span aria-hidden={v5 ? "true" : undefined} className="text-lg">{getLocaleInfo(locale).flag}</span>
         </button>
       )}
 

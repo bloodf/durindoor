@@ -9,6 +9,7 @@ import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import UpdatePanel from "./UpdatePanel";
 import useSettingsStore from "@/store/settingsStore";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Tooltip from "@/shared/ui/components/Tooltip.jsx";
 import {
@@ -55,6 +56,7 @@ function groupClasses(collapsed, active) {
 
 export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCollapse }) {
   const pathname = usePathname();
+  const v5 = useUiV5();
   const groupIdBase = useId();
   const collapsed = collapsedProp ?? false;
   const handleToggleCollapse = onToggleCollapse ?? (() => undefined);
@@ -94,7 +96,9 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
     return () => { cancelled = true; clearTimeout(timer); };
   }, [showUpdateNotifications]);
 
-  const renderItem = (item, indent = false) => {
+  const renderItem = (original, indent = false) => {
+    const icons = { "/dashboard/console-log": "console_log", "/dashboard/cli-tools": "cli_tools", "/dashboard/token-saver": "token_saver_stats", "/dashboard/token-saver/settings": "token_saver_settings", "/dashboard/mcp-gateway": "mcp_instances", "/dashboard/mcp-gateway/keys": "mcp_keys" };
+    const item = v5 ? { ...original, icon: icons[original.href] || original.icon, label: original.href === "/dashboard/token-saver" ? "Dashboard" : original.label } : original;
     if (item.requiresTranslator && !enableTranslator) return null;
     if (item.external) {
       return (

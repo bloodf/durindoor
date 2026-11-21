@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { errorResponse, unavailableResponse, getClientStatusFromError } from "../utils/error.js";
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
+import { hasTokenLimitCompletion } from "../utils/streamTerminal.js";
 import { peekStreamForContent } from "../utils/streamContentPeek.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
@@ -1374,6 +1375,8 @@ async function isBodyEmpty(response) {
   if (!payload || Array.isArray(payload) && payload.length === 0) return true;
   if (!isObject(payload) || Object.keys(payload).length === 0) return true;
 
+  if (hasTokenLimitCompletion(payload)) return false;
+
   // Policy refusals and paused provider turns are valid responses even without text.
   if ((Array.isArray(payload.choices) && payload.choices.some((choice) => choice?.finish_reason === OPENAI_FINISH.CONTENT_FILTER || nonEmptyString(choice?.message?.refusal))) ||
       payload.stop_reason === CLAUDE_STOP.REFUSAL || payload.stop_reason === CLAUDE_STOP.PAUSE_TURN ||
@@ -1790,22 +1793,21 @@ export async function handleComboChat({
       // upstream content and never a locally generated lifecycle event.
       let plainProviderBody = false;
       try {
-        errorBody = await result.clone().json();
-        errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
-        retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
-      } catch {
-        // The provider body is not JSON. Keep a bounded, useful message for the
-        // fallback classifier, read from a second clone so the original
-        // response body stays readable for the direct-return paths below.
+        // Read one clone so direct-return paths retain the original body.
+        const rawText = await result.clone().text();
         try {
-          const rawText = await result.clone().text();
+          errorBody = JSON.parse(rawText);
+          errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
+          retryAfter = errorBody?.retryAfter ?? errorBody?.error?.retry_after ?? null;
+        } catch {
+          // Preserve a bounded provider message for the fallback classifier.
           if (rawText && rawText.trim()) {
             plainProviderBody = true;
             errorText = rawText.substring(0, PLAIN_ERROR_TEXT_LIMIT);
           }
-        } catch {
-          // Body unreadable — keep the status text
         }
+      } catch {
+        // Body unreadable — keep the status text
       }
       // Normalize error text to string (Worker-safe)
       if (!isString(errorText)) {

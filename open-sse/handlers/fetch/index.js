@@ -1,4 +1,5 @@
 import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
+import { parseContext7LibraryId } from "../../shared/context7LibraryId.js";
 // Returns normalized shape across all providers
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import {
@@ -8,6 +9,10 @@ import {
 } from "../../utils/outboundUrlGuard.js";
 import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { mediaAccounting } from "../mediaAccounting.js";
+
+// Re-exported so the offline Context7 parser tests can assert that the fetch
+// path and the search path share one library-id grammar.
+export { parseContext7LibraryId };
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -501,17 +506,8 @@ async function runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
 // Context7's `url` is a library reference, not a generic web URL. Accepted
 // forms: "https://context7.com/owner/repo", "context7.com/owner/repo",
 // "/owner/repo", "owner/repo" — each segment path-safe, no traversal.
-const CONTEXT7_LIBRARY_RE = /^\/([\w.-]+)\/([\w.-]+)\/?$/;
-function parseContext7LibraryId(input) {
-  if (!isString(input)) return null;
-  let path = input.trim();
-  const hostMatch = path.match(/^(?:https?:\/\/)?(?:www\.)?context7\.com(\/.*)?$/i);
-  if (hostMatch) path = hostMatch[1] || "";
-  else if (/^https?:\/\//i.test(path)) return null;
-  if (!path.startsWith("/")) path = `/${path}`;
-  const m = CONTEXT7_LIBRARY_RE.exec(path);
-  return m ? `/${m[1]}/${m[2]}` : null;
-}
+// The grammar lives in open-sse/shared/context7LibraryId.js so the fetch
+// executor and the search normalizer accept exactly the same library ids.
 
 async function runContext7({ url, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {
   const libraryId = parseContext7LibraryId(url);

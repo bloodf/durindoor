@@ -303,9 +303,16 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
     }
   }
 
-  // Grab tools from the first history user turn before cleanup strips them.
-  const firstHistoryTools =
-  history[0]?.userInputMessage?.userInputMessageContext?.tools;
+  // Grab the tools schema from whichever history turn received it before
+  // cleanup strips it. The schema is attached to the first *emitted user
+  // turn*, which is not necessarily history[0]: a transcript that opens with
+  // an assistant turn puts the schema on a later turn, and a transcript with
+  // no user turn at all leaves it on none. Reading history[0] alone dropped
+  // the schema in both shapes.
+  const toolsCarrier = history.find((item) =>
+  item?.userInputMessage?.userInputMessageContext?.tools?.length
+  );
+  const carriedTools = toolsCarrier?.userInputMessage?.userInputMessageContext?.tools;
 
   history.forEach((item) => {
     if (item.userInputMessage?.userInputMessageContext?.tools) {
@@ -354,16 +361,33 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
     currentMessage = { userInputMessage: { content: "", modelId: model } };
   }
 
-  // Inject tools into currentMessage after cleanup if not already present.
+  // Inject the declared schema into currentMessage after cleanup, so the turn
+  // Kiro validates against tool use always carries it.
+  //
+  // Two sources, in order:
+  //   1. the history turn that already received the schema, carried over as
+  //      the same caller-declared specifications;
+  //   2. the caller's own `tools` array, for a transcript with no user turn
+  //      (the schema was attached to no turn at all) or one whose only user
+  //      turn became currentMessage without it.
+  //
+  // Only caller-declared specifications are ever carried. When the client
+  // declared no tools, flattenClaudeToolInteractions already collapsed every
+  // tool_use / tool_result block to text, so nothing structured remains to
+  // validate and nothing is injected.
+  const resolvedTools = carriedTools?.length > 0
+  ? carriedTools
+  : (clientProvidedTools && Array.isArray(tools) ? buildToolSpecs() : null);
+
   if (
-  firstHistoryTools?.length > 0 &&
+  resolvedTools?.length > 0 &&
   !currentMessage.userInputMessage.userInputMessageContext?.tools)
   {
     if (!currentMessage.userInputMessage.userInputMessageContext) {
       currentMessage.userInputMessage.userInputMessageContext = {};
     }
     currentMessage.userInputMessage.userInputMessageContext.tools =
-    firstHistoryTools;
+    resolvedTools;
   }
 
   return { history: mergedHistory, currentMessage };

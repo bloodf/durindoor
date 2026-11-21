@@ -6082,20 +6082,17 @@
       "id": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx#ComboUsageReport",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx",
       "symbol": "ComboUsageReport",
-      "sourceSha256": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
+      "sourceSha256": "fb756ed06b42788cfb0e169e9e95d570e0446d9e88ae90551e7ee9291f4d5499",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-combos-connection-usage--combo-report-loaded",
         "production-combos-connection-usage--combo-report-error"
       ],
-      "approvedScenarioIds": [
-        "production-combos-connection-usage--combo-report-loaded",
-        "production-combos-connection-usage--combo-report-error"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-connection-usage--combo-report-loaded",
@@ -6106,7 +6103,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
+            "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "fb756ed06b42788cfb0e169e9e95d570e0446d9e88ae90551e7ee9291f4d5499",
             "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.stories.jsx": "ef9e9c6b4b4c168f8d40c710f56d12468bab418ac5a1755b8280fc42c3dd1fd8"
           },
           "proposedSourceEvidence": "ComboUsageReport.stories.jsx ComboReportLoaded",
@@ -6123,7 +6120,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
+            "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "fb756ed06b42788cfb0e169e9e95d570e0446d9e88ae90551e7ee9291f4d5499",
             "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.stories.jsx": "ef9e9c6b4b4c168f8d40c710f56d12468bab418ac5a1755b8280fc42c3dd1fd8"
           },
           "proposedSourceEvidence": "ComboUsageReport error branch exposes fetch error in alert after fixture 500; current play proves alert role.",
@@ -6135,16 +6132,70 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Direct reusable component.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-connection-usage--combo-report-loaded",
+            "production-combos-connection-usage--combo-report-error"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-combos-connection-usage--combo-report-loaded",
+              "storyId": "production-combos-connection-usage--combo-report-loaded",
+              "runtimeArtifactId": "production-combos-connection-usage--combo-report-loaded",
+              "axes": [
+                "loaded",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
+                "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.stories.jsx": "ef9e9c6b4b4c168f8d40c710f56d12468bab418ac5a1755b8280fc42c3dd1fd8"
+              },
+              "proposedSourceEvidence": "ComboUsageReport.stories.jsx ComboReportLoaded",
+              "expectedVisibleText": "default-combo",
+              "proposedVisibleTexts": [
+                "default-combo"
+              ]
+            },
+            {
+              "id": "production-combos-connection-usage--combo-report-error",
+              "storyId": "production-combos-connection-usage--combo-report-error",
+              "runtimeArtifactId": "production-combos-connection-usage--combo-report-error",
+              "axes": [
+                "error"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
+                "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.stories.jsx": "ef9e9c6b4b4c168f8d40c710f56d12468bab418ac5a1755b8280fc42c3dd1fd8"
+              },
+              "proposedSourceEvidence": "ComboUsageReport error branch exposes fetch error in alert after fixture 500; current play proves alert role.",
+              "expectedVisibleText": "Combo usage request failed: 500",
+              "expectedConsoleErrors": [
+                "Failed to fetch combo usage report:"
+              ],
+              "proposedConsoleErrorEvidence": "ComboReportError fixture returns HTTP 500; ComboUsageReport catches its non-abort fetch failure and logs this exact prefix."
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/combos/error.js#CombosError",
@@ -92465,9 +92516,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "69a0588e8a7656e8d9d35c280d84e67589a69a09231203c3e4f82a2e1ad92927",
-    "sourceCensusSha256": "2e55718248b3f3d79b04410116f4cccff63df611c150c960079c1b651f2a10f3",
-    "pendingRows": 343,
-    "retainedApprovedRows": 271,
+    "sourceCensusSha256": "51f68895488a52fa92776a336fbe1ddb07f78efc4082ef78048919aa73d94df7",
+    "pendingRows": 344,
+    "retainedApprovedRows": 270,
     "pendingReferences": 1275,
     "runtimeStatus": "pending"
   }

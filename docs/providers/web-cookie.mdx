@@ -61,7 +61,7 @@ The field is plain text, not a password field, so the cookie is visible on scree
 | Grok Web | `grok-web` | The `sso` cookie value, `sso=<value>`, or a full Cookie header that contains `sso=`. See [Grok Web](#grok-web) |
 | Perplexity Web | `perplexity-web` | The `__Secure-next-auth.session-token` value; chunked `.0`, `.1` cookies are accepted |
 | Copilot Web | `copilot-web` | An `access_token`, or a HAR from a signed-in browser |
-| Microsoft 365 Copilot Web | `copilot-m365-web` | The chathub WebSocket path and `access_token` |
+| Microsoft 365 Copilot Web | `copilot-m365-web` | `access_token=<jwt>; chathubPath=<oid>@<tenant>`, the Chathub WebSocket URL, or a HAR |
 | ZenMux Free | `zenmux-free` | The full Cookie header; it must include `ctoken=` |
 | Kimi Web | `kimi-web` | Not a cookie: `access_token` and `refresh_token` JSON from localStorage, copied with the dialog's console snippet. See [Kimi Web](./kimi-web.mdx) |
 | ChatGPT Web | `chatgpt-web` | The whole Cookie header from a chatgpt.com request, or the `__Secure-next-auth.session-token` value. Chunked `.0`, `.1` cookies are accepted |
@@ -139,7 +139,7 @@ To use it, create a pairing as an operator, sign in to the provider in a tab, op
 
 ## Validation
 
-**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free and Adapta Web skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free and Adapta Web skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks locally that both fields are present, the host is allowed and the token has not expired. Copilot Web reports an expired JWT token locally; any other paste stays skipped. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
 A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
 
@@ -147,7 +147,7 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 - Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
 - The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
-- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, Adapta Web and T3 Chat Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Token counts are estimates of about four characters per token.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, Kimi Web, Perplexity Web, Adapta Web and T3 Chat Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Token counts are estimates of about four characters per token.
 
 ## When the session ends
 
@@ -161,9 +161,36 @@ After saving a supported session, send one short request and check **Usage**. A 
 
 ### Copilot Web sessions
 
-Copilot Web accepts a pasted access token, a bearer header, a cookie containing `access_token`, a JSON object containing `access_token` (and optionally the exact `https://copilot.microsoft.com` origin), or a HAR. HAR credentials are taken only from requests to that exact HTTPS origin; other origins are ignored. An invalid supplied credential is rejected locally. Each request starts a fresh personal conversation. An expired or revoked session must be replaced; no refresh token is retained for this manual flow.
+Copilot Web (`copilot-web`, alias `copilot`) and Microsoft 365 Copilot Web (`copilot-m365-web`, alias `m365copilot`) are separate providers. Their credentials, accounts and transports never mix: a personal token is only sent to `copilot.microsoft.com`, a Microsoft 365 token only to the `substrate.office.com` Chathub socket, and a model such as `m365/copilot-m365` is never served from a personal connection. Neither provider can read or emulate browser attestation; DurinDoor only replays the session you paste.
 
-Microsoft 365 Copilot Web uses a separate Chathub path and access token. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` and `included` select the education profile. Individual accounts retain their existing defaults. If a Microsoft 365 stream rewrites text already sent to the client, the stream reports an error; retry without streaming to receive the final snapshot. Manually supplied Microsoft 365 tokens are not refreshed automatically.
+#### Copilot Web (personal)
+
+1. Sign in at `copilot.microsoft.com` and send one message.
+2. In developer tools, Network, pick a request to `copilot.microsoft.com` and copy the `access_token` (from the `Authorization: Bearer` header or the cookie). A HAR export of that session also works; only requests to the exact `https://copilot.microsoft.com` origin are read.
+3. Add **Copilot Web** under Providers and paste. Accepted forms: the bare token, `Bearer <token>`, a cookie string containing `access_token=`, a JSON object with `access_token` (and optionally the exact origin), or a HAR. The pasted text is saved unchanged.
+4. Send one short request. Validate and Test Connection do not start a conversation and report **Skipped**. The one exception is a token that is a JWT whose `exp` has passed: that is reported as expired without any request.
+
+Each request starts a fresh conversation. Responses stream as SSE or return as one JSON body; token counts are estimated by the gateway, not reported by Copilot. Model discovery is the static catalog (`copilot-pro`, `gpt-4-turbo`, `gpt-4`); there is no per-connection model fetch. Quota and usage are not reported by the provider.
+
+#### Microsoft 365 Copilot Web
+
+1. Sign in at `m365.cloud.microsoft/chat` and send one message.
+2. In developer tools, Network, filter by WS and open the Chathub connection (`wss://substrate.office.com/m365Copilot/Chathub/<oid>@<tenant>?...`).
+3. Paste one of: `access_token=<jwt>; chathubPath=<oid>@<tenant>` (alias `userTenant=` is accepted), the full WebSocket URL, or a HAR export. From a HAR, the newest `wss://substrate.office.com` Chathub entry is used; other hosts and redacted tokens are skipped. The credential is not a cookie. Other hosts are rejected.
+4. Validate checks locally that both fields are present, the host is allowed and the JWT has not expired. It opens no socket. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` or `included` select the education profile. Individual accounts keep the defaults.
+
+If a Microsoft 365 stream rewrites text already sent, the stream reports an error. Retry without streaming to receive the final snapshot. Token counts are estimated by the gateway.
+
+#### Known limits
+
+- Neither provider refreshes. Manual tokens are short lived (Microsoft 365 tokens last roughly an hour); native work/school sign-in, refresh tokens, conversation continuation, images and tools for Microsoft 365 are not implemented here.
+- Personal Copilot may send a proof-of-work `challenge` frame. DurinDoor answers only the bounded hashcash form and fails the request otherwise; it does not attempt any other attestation.
+- Copilot does not report quota, so these providers have no preflight or usage gauge.
+- Opaque tokens that are not JWTs are not judged locally; expiry shows up as a provider 401.
+
+#### Recovery
+
+A 401 or 403 (including a rejected WebSocket upgrade) puts that connection on the normal two minute cooldown and the request moves to the next account, never reusing the rejected token. A locally detected expired JWT returns 401 without contacting Microsoft. To recover, capture a fresh credential as above and paste it over the old one with **Edit** on the connection (or add a new connection). Saving a replacement credential on a web-cookie connection clears its error status, cooldown and model locks, so the next request uses the new token immediately.
 
 ## Grok Web
 
@@ -177,6 +204,19 @@ Microsoft 365 Copilot Web uses a separate Chathub path and access token. Set `pr
 Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `sso` cookie); 429 means grok.com is rate limiting you. With more than one Grok Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above. Signing out of grok.com in that browser profile ends the session.
 
 Known limits: no cookie rotation is written back (unlike ChatGPT Web), so a renewed `sso` must be pasted by hand. Paired `sso-rw` handling beyond forwarding it from a pasted header is untested. DurinDoor does not emulate browser attestation or work around access controls; if grok.com challenges a session, use a different session or provider.
+
+## Perplexity Web
+
+`perplexity-web` (alias `pw`) sends chat requests to `www.perplexity.ai` with your signed-in session. It is separate from the `perplexity` API-key provider.
+
+1. Sign in at perplexity.ai. In DevTools, Application, Cookies, copy `__Secure-next-auth.session-token`. If the value is split into `.0`, `.1` chunks, copy every chunk, or copy the whole `Cookie` request header.
+2. In **Providers → Perplexity Web**, paste it and save. Chunks may be in any order; DurinDoor sends them back in index order.
+3. **Validate** and **Test Connection** call `https://www.perplexity.ai/api/auth/session` only and create no conversation. A live session answers with a `user`; `{}` means expired or incomplete.
+4. Models are the `pplx-*` registry list (for example `pw/pplx-auto`). The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming.
+
+Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `__Secure-next-auth.session-token`); 429 means Perplexity is rate limiting you and is not treated as an expired session. With more than one Perplexity Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above; other connections are untouched.
+
+Known limits: no cookie rotation is written back, so a renewed session must be pasted by hand. Conversation continuation is kept only for the same saved session. The model list follows the registry and may drift from the site. DurinDoor does not emulate browser attestation or work around access controls.
 
 ## Adapta Web
 

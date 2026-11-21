@@ -16,6 +16,8 @@ import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "grok-web": "Grok Web",
   "chatgpt-web": "ChatGPT Web",
+  "kimi-web": "Kimi Web",
+  "perplexity-web": "Perplexity Web",
   "adapta-web": "Adapta Web",
   "t3-web": "T3 Chat Web",
 };

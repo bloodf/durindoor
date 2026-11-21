@@ -25,7 +25,11 @@ export default {
   },
   transport: {
     baseUrl: "https://www.perplexity.ai/rest/sse/perplexity_ask",
-    format: "perplexity-web",
+    // The executor returns OpenAI Chat Completions JSON and SSE. A bespoke format
+    // name sent chat streams down the translate path, which drops the upstream
+    // [DONE] sentinel. Dispatch stays on the perplexity-web executor by id.
+    format: "openai",
+    executor: "perplexity-web",
     authType: "cookie",
   },
   models: [

@@ -22,6 +22,7 @@ import {
   splitFrames } from
 "./copilot-m365-frames.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { webSocketAuthStatus } from "../utils/webSessionExpiry.js";
 
 let WebSocketCtor = WebSocket;
 
@@ -52,7 +53,8 @@ function jsonError(message, status = 502) {
 
 function sseErrorResponse(error, status = 502) {
   const message = error?.message || error || "Microsoft 365 Copilot stream error";
-  return jsonError(sanitizeErrorMessage(message), status);
+  const upstreamStatus = error?.status === 401 || error?.status === 403 ? error.status : status;
+  return jsonError(sanitizeErrorMessage(message), upstreamStatus);
 }
 
 export class CopilotM365WebExecutor extends BaseExecutor {
@@ -91,13 +93,13 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         };
-        const abort = (reason) => {
+        const abort = (reason, status) => {
           if (settled) return;
           settled = true;
           cleanup();
-          controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({ error: { message: sanitizeErrorMessage(reason) } })}\n\n`
-          ));
+          const envelope = { message: sanitizeErrorMessage(reason) };
+          if (status) envelope.status = status;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: envelope })}\n\n`));
           controller.close();
         };
 
@@ -184,7 +186,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           });
           ws.on("error", (err) => {
             clearTimeout(timeout);
-            abort(err instanceof Error ? err.message : "Microsoft 365 Copilot WebSocket error");
+            abort(err instanceof Error ? err.message : "Microsoft 365 Copilot WebSocket error", webSocketAuthStatus(err));
           });
           ws.on("close", () => {
             clearTimeout(timeout);
@@ -220,7 +222,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     const connectionParams = resolveConnectionParams(input.credentials);
     if ("error" in connectionParams) {
       return {
-        response: jsonError(connectionParams.error, 400),
+        response: jsonError(connectionParams.error, connectionParams.expired ? 401 : 400),
         url: "wss://substrate.office.com/m365Copilot/Chathub",
         headers: {},
         transformedBody: { model, prompt: prompt.slice(0, 100) }

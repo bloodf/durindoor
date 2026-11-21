@@ -233,21 +233,23 @@ test("axe serious/critical are zero; phone view has no horizontal scroll", async
     });
     expect(blockers, `${url} axe serious/critical`).toEqual([]);
 
-    await page.setViewportSize({ width: 360, height: 844 });
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1").first()).toBeVisible();
-    const file = `${url.replace(/^\//, "").replaceAll("/", "-") || "docs"}.png`;
-    await page.screenshot({
-      path: join(shotDir, file),
-      fullPage: false,
-      animations: "disabled",
-    });
-    const noHorizontalScroll = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    );
-    expect(noHorizontalScroll, `${url} horizontal scroll at 360x844`).toBe(
-      true,
-    );
+    for (const width of [390, 360]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await expect(page.locator("h1").first()).toBeVisible();
+      const file = `${url.replace(/^\//, "").replaceAll("/", "-") || "docs"}-${width}.png`;
+      await page.screenshot({
+        path: join(shotDir, file),
+        fullPage: false,
+        animations: "disabled",
+      });
+      const noHorizontalScroll = await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      );
+      expect(noHorizontalScroll, `${url} horizontal scroll at ${width}x844`).toBe(
+        true,
+      );
+    }
   }
 
   writeFileSync(

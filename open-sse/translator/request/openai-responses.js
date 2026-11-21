@@ -18,6 +18,7 @@ import {
   responsesImageUrl,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
+import { normalizeResponsesImageReplay } from "../concerns/responsesImageReplay.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
@@ -778,6 +779,10 @@ function chatPartToResponses(c, contentType) {
     const { file_data, file_id, file_url, filename } = c.file;
     return { type: RESPONSES_ITEM.INPUT_FILE, ...Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
   }
+  if (contentType === RESPONSES_ITEM.OUTPUT_TEXT && (c.type === OPENAI_BLOCK.IMAGE_URL || c.type === RESPONSES_ITEM.INPUT_IMAGE)) {
+    const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
+    return { type: contentType, text: isString(url) && url ? `[Image: ${url}]` : "[Image]" };
+  }
   if (c.type === OPENAI_BLOCK.IMAGE_URL) {
     const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
     // No usable URL: fall through to the text serialization below.
@@ -853,7 +858,7 @@ function ensureResponsesInputOrContinuity(result) {
  */
 export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
   if (body.input) {
-    const cleanInput = stripOrphanedToolOutputs(body.input);
+    const cleanInput = stripOrphanedToolOutputs(normalizeResponsesImageReplay(body.input));
     const result = cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
     return ensureResponsesInputOrContinuity(normalizeResponsesOutputLimit(body, result));
   }

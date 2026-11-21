@@ -25,6 +25,7 @@ import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { claudeToOpenAIResponse } from "../../translator/response/claude-to-openai.js";
 import { claudeMessageDocumentToEventStream, parseJsonDocumentBehindEventStream } from "./nonStreamingJsonDocument.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP } from "../../translator/schema/index.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
@@ -495,7 +496,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
           await markSuccess();
-          return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+          return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
         }
 
         const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model, {
@@ -524,7 +525,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
         await markSuccess();
-        return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+        return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
       } catch (err) {
         console.error(`[ChatCore] Responses API SSE→JSON failed: ${err?.name || "Error"}`);
         return {
@@ -687,7 +688,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         try {Promise.resolve(onEmptyStream()).catch(() => console.error("[ChatCore] empty-stream cooldown failed"));}
         catch {console.error("[ChatCore] empty-stream cooldown failed");}
       }
-      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
     } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);
       const status = err?.name === "AbortError" ?

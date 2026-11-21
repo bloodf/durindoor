@@ -5,7 +5,7 @@ import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
-import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, estimateNonStreamingUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
@@ -23,6 +23,7 @@ import { createResponsesToolNameResolver } from "../../translator/response/opena
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
@@ -724,9 +725,17 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(translatedResponse, toolNameMap);
     if (sourceFormat === FORMATS.CLAUDE) restoreClaudeToolNames(translatedResponse, toolNameMap);
 
-    const usage = extractUsageFromResponse(responseBody);
-    appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    let usage = extractUsageFromResponse(responseBody);
+    // Reported usage always wins and is persisted immediately, as before. When
+    // the provider sent none, persistence waits until the response has passed
+    // the empty-content and fake-success checks below so a failed reply never
+    // records an estimate.
+    const usageReported = Boolean(usage);
+    const persistUsage = () => {
+      appendLog({ tokens: usage, status: "200 OK" });
+      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    };
+    if (usageReported) persistUsage();
 
     // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
     // its only content is an optional, possibly null/blank explanation string.
@@ -768,6 +777,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
           Date.now() + EMPTY_CONTENT_COOLDOWN_MS
         );
       }
+    }
+
+    // Successful reply without a provider usage object: persist an estimated
+    // input/output usage, marked `estimated`, from the request actually sent
+    // and the content generated. Client-facing usage is left untouched.
+    if (!usageReported) {
+      usage = estimateNonStreamingUsage(finalBody || translatedBody || body, translatedResponse);
+      persistUsage();
     }
 
     /**
@@ -858,7 +875,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
           response: new Response(formatSSE(translatedResponse, sourceFormat), {
             headers: {
               "Content-Type": "text/event-stream",
-              ...SSE_HEADERS_CORS
+              ...SSE_HEADERS_CORS,
+              ...resolvedModelHeaders(provider, model)
             }
           })
         };
@@ -887,7 +905,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         response: new Response(sseText, {
           headers: {
             "Content-Type": "text/event-stream",
-            ...SSE_HEADERS_CORS
+            ...SSE_HEADERS_CORS,
+            ...resolvedModelHeaders(provider, model)
           }
         })
       };
@@ -897,7 +916,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     return {
       success: true,
       response: new Response(JSON.stringify(translatedResponse), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          ...resolvedModelHeaders(provider, model)
+        }
       })
     };
   } finally {

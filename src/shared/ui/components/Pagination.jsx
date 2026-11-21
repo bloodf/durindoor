@@ -1,3 +1,5 @@
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 /**
  * @param {object} props
  * @param {number} props.page Current page (1-based).
@@ -54,6 +56,7 @@ export default function Pagination({
   rowsPerPageOptions = DEFAULT_ROWS_PER_PAGE_OPTIONS,
   onRowsPerPageChange,
 }) {
+  const v5 = useUiV5();
   const safePage = toSafePage(page);
   const safePageCount = toSafePageCount(pageCount);
   const clampedPage = Math.min(safePage, safePageCount);
@@ -70,7 +73,7 @@ export default function Pagination({
                 so axe resolves the select's effective background rather than
                 reporting an indeterminate "bgOverlap" stack. */}
             <select aria-label="Rows per page" value={rowsPerPage} onChange={(event) => onRowsPerPageChange?.(event.target.value === "all" ? "all" : Number(event.target.value))} className="h-11 rounded-dd border border-dd-border bg-dd-surface pe-4 ps-3 text-xs text-dd-text outline-none hover:border-dd-border-subtle focus-visible:border-dd-accent focus-visible:shadow-dd-focus">
-              {rowsPerPageOptions.map((option) => <option key={String(option)} value={option}>{option === "all" ? "All" : option}</option>)}
+              {(v5 && !rowsPerPageOptions.includes(rowsPerPage) ? [...rowsPerPageOptions, rowsPerPage] : rowsPerPageOptions).map((option) => <option key={String(option)} value={option}>{option === "all" ? "All" : option}</option>)}
             </select>
           </span>
         </label>

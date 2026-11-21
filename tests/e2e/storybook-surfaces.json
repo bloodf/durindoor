@@ -45310,7 +45310,7 @@
       "id": "src/shared/components/EditConnectionModal.js#EditConnectionModal",
       "sourcePath": "src/shared/components/EditConnectionModal.js",
       "symbol": "EditConnectionModal",
-      "sourceSha256": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+      "sourceSha256": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45340,7 +45340,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "ApiKeyOpenAI opens the actual API-key form and invokes Check; no OAuth-email expectation.",
@@ -45354,7 +45354,7 @@
             "oauth-account"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "OAuthAccount shows its configured generic account identity and no API-key input.",
@@ -45368,7 +45368,7 @@
             "azure-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "AzurePanel displays its actual provider-specific configuration.",
@@ -45382,7 +45382,7 @@
             "search-engine-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "GooglePsePanel displays its own configuration and edits the engine ID.",
@@ -45396,7 +45396,7 @@
             "fingerprint-control"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "CodexFingerprintPanel opens and closes the actual OAuth fingerprint selector.",
@@ -45410,7 +45410,7 @@
             "cloudflare-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "CloudflareAccountIdPanel renders its own provider panel.",
@@ -45424,7 +45424,7 @@
             "snowflake-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "SnowflakeAccountIdPanel renders its own provider panel.",
@@ -45439,7 +45439,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "OpenAIResponsesStore toggles the actual store switch and leaves it checked.",
@@ -45454,7 +45454,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "RegionPickerXiaomi renders the actual Region combobox, not account email.",
@@ -45468,7 +45468,7 @@
             "test-error"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "TestFailureBadge invokes a failed production connection test and shows the Failed outcome.",
@@ -45483,7 +45483,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "e23321863aa2ff144baa17e579cc66f1bd0bf1b1dd110c9742b89f48d25ebe1e",
+            "src/shared/components/EditConnectionModal.js": "c00216dc2b2a84990f785619f8dbdb041ea0b8d17843e0dcf193adf90f5e5bb9",
             "src/shared/components/EditConnectionModal.stories.jsx": "01ddb50fa0c60c87f7bfc8140bb470d79354577f564436b579c53b55ba467fc4"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false and play asserts no Edit Connection dialog.",
@@ -92465,7 +92465,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "69a0588e8a7656e8d9d35c280d84e67589a69a09231203c3e4f82a2e1ad92927",
-    "sourceCensusSha256": "3e4ada2310f2cb631e31373163cbacaaeb9e98a4dd2a76f168bca763c38fe4da",
+    "sourceCensusSha256": "2e55718248b3f3d79b04410116f4cccff63df611c150c960079c1b651f2a10f3",
     "pendingRows": 343,
     "retainedApprovedRows": 271,
     "pendingReferences": 1275,

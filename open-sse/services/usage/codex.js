@@ -1,3 +1,4 @@
+import { meetsMinimalCodexClientVersion } from "../../config/codexClientVersion.js";
 /**
  * Codex (OpenAI) usage handler
  */
@@ -244,6 +245,7 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
+      redirect: "error",
       headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
       signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS)
     }, proxyOptions);
@@ -293,6 +295,7 @@ export async function getCodexModels(accessToken, proxyOptions = null, providerS
 
     const response = await proxyAwareFetch(url, {
       method: "GET",
+      redirect: "error",
       headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken)
     }, proxyOptions);
     if (!response.ok) return [];
@@ -300,7 +303,7 @@ export async function getCodexModels(accessToken, proxyOptions = null, providerS
     const data = await response.json();
     const models = Array.isArray(data?.models) ? data.models : [];
     return models.
-    filter((model) => model?.supported_in_api !== false && isString(model?.slug) && model.slug).
+    filter((model) => model?.supported_in_api !== false && model?.visibility !== "hide" && meetsMinimalCodexClientVersion(model?.minimal_client_version) && isString(model?.slug) && model.slug).
     sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
   } catch {
     return [];

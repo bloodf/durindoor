@@ -704,7 +704,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   const storedAllowlist = (providerId, alias) =>
     [getProviderAlias(providerId), alias, providerId].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
 
-  // Providers whose catalogs belong to one endpoint (mlx, opencode-server) are
+  // Providers whose catalogs belong to one endpoint (including MLX, OpenCode Server and Grokified) are
   // listed from the connection the caller may use: for a key scoped to provider
   // accounts, the first active connection in that scope, and none when the
   // scope holds no connection of the provider. Other providers are unaffected.
@@ -1400,7 +1400,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
  *   `exposeComboOnly` is an internal override for callers that require the full
  *   direct-model catalog. `allowedConnectionIds` is the caller's API-key scope
  *   (empty or absent means unrestricted); it selects the connection whose
- *   models connection-scoped providers (mlx, opencode-server) list.
+ *   models connection-scoped providers (including MLX, OpenCode Server and Grokified) list.
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
 export function buildModelsList(kindFilter, guard = getProviderValidationGuard(), options = {}) {

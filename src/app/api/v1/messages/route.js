@@ -3,6 +3,7 @@ import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { SSE_KEEPALIVE_MS } from "open-sse/config/runtimeConfig.js";
+import { decodeAnthropicRequest } from "@/sse/utils/inboundGzip.js";
 import { ANTHROPIC_PING_FRAME, withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
 
 let initialized = false;
@@ -38,6 +39,10 @@ async function POSTHandler(request) {
   // #6414: reject non-JSON Content-Type with 415 before touching the body.
   const ctRejection = requireJsonContentType(request);
   if (ctRejection) return ctRejection;
+
+  const decoded = await decodeAnthropicRequest(request, { abortedStatus: 499 });
+  if (decoded.response) return decoded.response;
+  request = decoded.request;
 
   await ensureInitialized();
   const body = await request.clone().json().catch(() => null);

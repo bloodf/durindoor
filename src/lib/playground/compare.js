@@ -29,6 +29,71 @@ export function readAssistantText(chunk) {
   return [delta.content, choice?.message?.content, chunk.output_text, chunk.text].map(textValue).find(Boolean) || "";
 }
 
+export const EMPTY_STREAM_MESSAGE = "The stream ended without any content.";
+export const STREAM_FAILED_MESSAGE = "The stream reported an error.";
+
+/**
+ * Reads a failure carried INSIDE a streamed response. A turn that fails after
+ * the route has committed to `200 text/event-stream` cannot change its HTTP
+ * status, so the gateway sends the error body as an ordinary `data:` frame.
+ * Shapes: Chat Completions `{ error: { message } | "text" }`, Responses
+ * `{ type: "error", message, error }` and `{ type: "response.failed",
+ * response: { error } }`. Returns null for every ordinary frame, and
+ * `{ message: null }` for a failure that carries no usable text.
+ * @returns {{ message: string|null }|null}
+ */
+export function readStreamError(chunk) {
+  if (!chunk || !isObject(chunk) || Array.isArray(chunk)) return null;
+  const text = (value) => (isString(value) && value.trim() ? value : null);
+  const messageOf = (value) => (value && isObject(value) ? text(value.message) : text(value));
+  if (chunk.type === "response.failed") return { message: messageOf(chunk.response?.error) };
+  if (chunk.type === "error") return { message: messageOf(chunk.error) ?? text(chunk.message) };
+  if (chunk.error !== undefined && chunk.error !== null && chunk.error !== "") return { message: messageOf(chunk.error) };
+  return null;
+}
+
+/**
+ * Drains a Chat Completions SSE reader. Keeps the first in-band error frame
+ * instead of dropping it, so callers can report it once the stream ends.
+ * @returns {Promise<{text: string, usage: object|null, ttftMs: number|null, streamError: {message: string|null}|null}>}
+ */
+export async function readChatStream(reader, { onText, now = () => performance.now(), started = now() } = {}) {
+  let text = "";
+  let usage = null;
+  let ttftMs = null;
+  let streamError = null;
+  const parser = createSseParser(({ data }) => {
+    let chunk;
+    try {
+      chunk = JSON.parse(data);
+    } catch {
+      return;
+    }
+    streamError ??= readStreamError(chunk);
+    if (chunk?.usage && isObject(chunk.usage)) usage = chunk.usage;
+    const piece = readAssistantText(chunk);
+    if (!piece) return;
+    if (ttftMs === null) ttftMs = now() - started;
+    text += piece;
+    onText?.(text);
+  });
+  const decoder = new TextDecoder();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    parser.push(decoder.decode(value, { stream: true }));
+  }
+  parser.push(decoder.decode());
+  parser.flush();
+  return { text, usage, ttftMs, streamError };
+}
+
+/** Never end a turn silently: an in-band error or a contentless stream becomes an Error. */
+export function throwIfStreamFailed({ text, streamError }) {
+  if (streamError) throw new Error(sanitizeErrorText(streamError.message) || STREAM_FAILED_MESSAGE);
+  if (!text) throw new Error(EMPTY_STREAM_MESSAGE);
+}
+
 function abortError() {
   const error = new Error("Aborted");
   error.name = "AbortError";
@@ -78,36 +143,13 @@ export async function streamCompletion({ fetchImpl = globalThis.fetch, body, hea
     throw new Error(sanitizeErrorText(data.error || data.message) || `Request failed (${response.status})`);
   }
 
-  let text = "";
-  let usage = null;
-  let ttftMs = null;
   const reader = response.body?.getReader();
   if (!reader) {
     const data = await response.json().catch(() => ({}));
     return { text: readAssistantText(data), usage: data.usage ?? null, latencyMs: now() - started, ttftMs: null };
   }
-  const parser = createSseParser(({ data }) => {
-    let chunk;
-    try {
-      chunk = JSON.parse(data);
-    } catch {
-      return;
-    }
-    if (chunk?.usage && isObject(chunk.usage)) usage = chunk.usage;
-    const piece = readAssistantText(chunk);
-    if (!piece) return;
-    if (ttftMs === null) ttftMs = now() - started;
-    text += piece;
-    onText?.(text);
-  });
-  const decoder = new TextDecoder();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    parser.push(decoder.decode(value, { stream: true }));
-  }
-  parser.push(decoder.decode());
-  parser.flush();
+  const { text, usage, ttftMs, streamError } = await readChatStream(reader, { onText, now, started });
+  throwIfStreamFailed({ text, streamError });
   return { text, usage, latencyMs: now() - started, ttftMs };
 }
 

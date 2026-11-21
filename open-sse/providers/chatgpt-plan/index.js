@@ -1,6 +1,6 @@
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
-// Private provider descriptor. Deliberately absent from the shared registry.
+// Private transport contract; the registry exposes only the guarded owner-operated identity.
 // Source: OmniRoute b748429cf5b3aeb142a708fd3e8751b6918b9dc8,
 // open-sse/config/providers/registry/chatgpt/index.ts.
 export const chatgptPlan = Object.freeze({

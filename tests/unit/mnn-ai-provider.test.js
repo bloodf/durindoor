@@ -9,10 +9,10 @@
 // open-sse/config/providers/registry/mnn-ai/index.ts.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Compose the provider only in this test; production registration is a separate batch.
+// This private descriptor is composed only in the fixture; a later batch owns production registration.
 vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
   const original = await importOriginal();
-  const { default: mnnAi } = await import("../../open-sse/providers/registry/mnn-ai.js");
+  const { default: mnnAi } = await import("../../open-sse/providers/private/mnn-ai.js");
   return { ...original, default: [...original.default, mnnAi] };
 });
 

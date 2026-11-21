@@ -25,3 +25,7 @@ labels never select the scope. Key rotation preserves the stable key association
 
 This feature does not capture or expose message contents. Existing request-detail
 observability has separate settings and is not enabled by these headers.
+
+Migration 031 adds nullable attribution columns and key-scoped indexes without
+rewriting existing usage or API key secrets. Its version is recorded only after
+the migration succeeds; a failed upgrade is retried on the next open.

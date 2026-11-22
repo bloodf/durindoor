@@ -7,6 +7,20 @@ const { getAppDataDir } = require("../appDataDir");
 const APP_NAME = "9router";
 const APP_LABEL = "com.9router.autostart";
 const AUTOSTART_DECIDED_FILE = "autostart-decided";
+const DEFAULT_HOST = "0.0.0.0";
+const DEFAULT_PORT = 20128;
+
+function xmlEscape(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+function windowsQuote(value) {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function desktopQuote(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/`/g, "\\`").replace(/\$/g, "\\$")}"`;
+}
 
 function getAutoStartDecisionFile() {
   return path.join(getAppDataDir(), AUTOSTART_DECIDED_FILE);
@@ -69,7 +83,7 @@ function getCliJsPath(cliPath) {
  * @param {string} cliPath - Optional path to cli.js (defaults to auto-detect)
  * @returns {boolean} success
  */
-function enableAutoStart(cliPath) {
+function enableAutoStart(cliPath, options = {}) {
   const platform = process.platform;
 
   if (!["darwin", "win32", "linux"].includes(platform)) return false;
@@ -77,9 +91,10 @@ function enableAutoStart(cliPath) {
 
   try {
     let enabled = false;
-    if (platform === "darwin") enabled = enableMacOS(cliPath);
-    if (platform === "win32") enabled = enableWindows(cliPath);
-    if (platform === "linux") enabled = enableLinux(cliPath);
+    const launchOptions = { host: options.host || DEFAULT_HOST, port: options.port || DEFAULT_PORT };
+    if (platform === "darwin") enabled = enableMacOS(cliPath, launchOptions);
+    if (platform === "win32") enabled = enableWindows(cliPath, launchOptions);
+    if (platform === "linux") enabled = enableLinux(cliPath, launchOptions);
     if (enabled) rememberAutoStartDecision();
     return enabled;
   } catch (err) {
@@ -92,9 +107,9 @@ function enableAutoStart(cliPath) {
  * Enable autostart only before the user has made or inherited a decision.
  * @returns {boolean} whether this call wrote an autostart entry
  */
-function ensureAutoStart(cliPath) {
+function ensureAutoStart(cliPath, options) {
   if (hasAutoStartDecision()) return false;
-  return enableAutoStart(cliPath);
+  return enableAutoStart(cliPath, options);
 }
 
 /**
@@ -177,7 +192,7 @@ function isAgentSelfMacOS() {
   }
 }
 
-function enableMacOS(cliPath) {
+function enableMacOS(cliPath, options) {
   const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
   const plistPath = path.join(launchAgentsDir, `${APP_LABEL}.plist`);
 
@@ -206,10 +221,14 @@ function enableMacOS(cliPath) {
     <string>${APP_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${nodePath}</string>
-        <string>${routerScript}</string>
+        <string>${xmlEscape(nodePath)}</string>
+        <string>${xmlEscape(routerScript)}</string>
         <string>--tray</string>
         <string>--skip-update</string>
+        <string>--host</string>
+        <string>${xmlEscape(options.host)}</string>
+        <string>--port</string>
+        <string>${options.port}</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -275,7 +294,7 @@ function disableMacOS() {
 
 // ============ Windows ============
 
-function enableWindows(cliPath) {
+function enableWindows(cliPath, options) {
   const startupDir = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
   const vbsPath = path.join(startupDir, `${APP_NAME}.vbs`);
 
@@ -288,7 +307,7 @@ function enableWindows(cliPath) {
   // Run node + cli.js directly, hidden window. Avoids the fragile
   // `9router.cmd` lookup that depended on the npm prefix path.
   const vbsContent = `Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """${nodePath}"" ""${routerScript}"" --tray --skip-update", 0, False
+WshShell.Run ${windowsQuote(`${windowsQuote(nodePath)} ${windowsQuote(routerScript)} --tray --skip-update --host ${windowsQuote(options.host)} --port ${options.port}`)}, 0, False
 `;
   fs.writeFileSync(vbsPath, vbsContent);
   return true;
@@ -304,7 +323,7 @@ function disableWindows() {
 
 // ============ Linux ============
 
-function enableLinux(cliPath) {
+function enableLinux(cliPath, options) {
   const autostartDir = path.join(os.homedir(), ".config", "autostart");
   const desktopPath = path.join(autostartDir, `${APP_NAME}.desktop`);
 
@@ -321,7 +340,7 @@ function enableLinux(cliPath) {
 Type=Application
 Name=DurinDoor
 Comment=DurinDoor API Proxy
-Exec=${nodePath} ${routerScript} --tray --skip-update
+Exec=${desktopQuote(nodePath)} ${desktopQuote(routerScript)} --tray --skip-update --host ${desktopQuote(options.host)} --port ${options.port}
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

@@ -16,6 +16,32 @@
  * `buildModelsList.js`'s "#6495 / F-4" comments).
  */
 import { isString } from "./typeChecks.js";
+import { PROVIDER_ID_TO_ALIAS } from "../../../open-sse/config/providerModels.js";
+
+const ALIAS_TO_PROVIDER_ID = Object.fromEntries(
+  Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
+);
+
+/**
+ * A catalog row is prefixed with the provider alias (`cx/...`) while operators
+ * may write the registry id (`codex/...`) in the lists (OmniRoute #20977). Each
+ * spelling of the same provider is checked, with deny precedence unchanged.
+ * @param {string} provider alias or id as it appears in the model string
+ * @param {(provider: string) => unknown} [extraForms] caller-known spellings (custom prefixes)
+ * @returns {string[]}
+ */
+function providerForms(provider, extraForms) {
+  const forms = new Set([provider]);
+  const add = (value) => { if (isString(value) && value) forms.add(value); };
+  add(PROVIDER_ID_TO_ALIAS[provider]);
+  add(ALIAS_TO_PROVIDER_ID[provider]);
+  const extra = extraForms?.(provider);
+  for (const value of Array.isArray(extra) ? extra : [extra]) {
+    add(value);
+    add(PROVIDER_ID_TO_ALIAS[value]);
+  }
+  return [...forms];
+}
 
 function normalizeList(value) {
   return Array.isArray(value) ? value.filter((v) => isString(v) && v.trim() !== "") : [];
@@ -50,14 +76,15 @@ function listMatchesAny(list, candidates) {
  * @param {string} provider
  * @param {string} modelId
  * @param {{modelVisibilityAllowlist?: unknown, modelVisibilityDenylist?: unknown}|null|undefined} settings
+ * @param {(provider: string) => unknown} [extraForms]
  * @returns {boolean}
  */
-export function isModelExposureAllowed(provider, modelId, settings) {
+export function isModelExposureAllowed(provider, modelId, settings, extraForms) {
   const denylist = normalizeList(settings?.modelVisibilityDenylist);
   const allowlist = normalizeList(settings?.modelVisibilityAllowlist);
   if (denylist.length === 0 && allowlist.length === 0) return true;
 
-  const candidates = [modelId, `${provider}/${modelId}`];
+  const candidates = [modelId, ...providerForms(provider, extraForms).map((p) => `${p}/${modelId}`)];
   if (listMatchesAny(denylist, candidates)) return false;
   if (allowlist.length === 0) return true;
   return listMatchesAny(allowlist, candidates);
@@ -72,7 +99,7 @@ export function isModelExposureAllowed(provider, modelId, settings) {
  * @param {object|null|undefined} settings
  * @returns {string[]}
  */
-export function filterExposedModels(modelStrs, settings) {
+export function filterExposedModels(modelStrs, settings, extraForms) {
   const denylist = normalizeList(settings?.modelVisibilityDenylist);
   const allowlist = normalizeList(settings?.modelVisibilityAllowlist);
   if (denylist.length === 0 && allowlist.length === 0) return modelStrs;
@@ -82,6 +109,6 @@ export function filterExposedModels(modelStrs, settings) {
     if (slash === -1) return true;
     const provider = modelStr.slice(0, slash);
     const modelId = modelStr.slice(slash + 1);
-    return isModelExposureAllowed(provider, modelId, settings);
+    return isModelExposureAllowed(provider, modelId, settings, extraForms);
   });
 }

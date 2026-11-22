@@ -18,7 +18,7 @@ describe("CLIProxyAPI Gemini 4 Neon catalog port", () => {
       ["gemini-4-neon-low", "gemini-4-neon-low(low)"],
       ["gemini-4-neon-medium", "gemini-4-neon-medium(medium)"],
       ["gemini-4-neon-high", "gemini-4-neon-high(high)"],
-      ["gemini-4-neon-xhigh", "gemini-4-neon-xhigh(xhigh)"],
+      ["gemini-4-neon-xhigh", "gemini-4-neon(xhigh)"],
     ]) {
       const model = models.find((entry) => entry.id === id);
       expect(model).toBeDefined();
@@ -26,6 +26,15 @@ describe("CLIProxyAPI Gemini 4 Neon catalog port", () => {
       expect(getCapabilitiesForModel("antigravity", id)).toMatchObject({
         vision: true, reasoning: true, search: true, contextWindow: 1048576, maxOutput: 65536,
       });
+    }
+  });
+
+  it("resolves the Neon xhigh preset in both Antigravity catalogs", () => {
+    for (const provider of ["agy", "antigravity"]) {
+      const models = getModelsByProviderId(provider);
+      const model = models.find(({ id }) => id === "gemini-4-neon-xhigh");
+      expect(model.upstreamModelId).toBe("gemini-4-neon(xhigh)");
+      expect(models.some(({ id }) => id === model.upstreamModelId.replace(/\(xhigh\)$/, ""))).toBe(true);
     }
   });
 });

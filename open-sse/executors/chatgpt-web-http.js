@@ -1961,13 +1961,8 @@ async function fetchDownloadUrl(endpoint, ctx) {
 const IMAGE_DOWNLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 async function imageUrlToCachedImageUrl(signedUrl, ctx, imageContext) {
-  const headers = {
-    ...browserHeaders(),
-    Accept: "image/*,*/*;q=0.8",
-    Authorization: `Bearer ${ctx.accessToken}`,
-    Cookie: buildNextAuthSessionCookie(ctx.cookie),
-  };
-  if (ctx.accountId) headers["chatgpt-account-id"] = ctx.accountId;
+  const headers = buildImageDownloadHeaders(signedUrl, ctx);
+  if (!headers) return null;
 
   let response;
   try {
@@ -1976,9 +1971,7 @@ async function imageUrlToCachedImageUrl(signedUrl, ctx, imageContext) {
       headers,
       timeoutMs: 60_000,
       signal: ctx.signal,
-      // Required for binary payloads — the underlying tls-client returns
-      // bytes as a `data:<mime>;base64,...` string when this is true.
-      // Without it, raw image bytes get mangled by UTF-8 decoding.
+      // Required for binary payloads; otherwise raw image bytes get mangled by UTF-8 decoding.
       byteResponse: true,
     });
   } catch (err) {
@@ -2035,6 +2028,29 @@ async function imageUrlToCachedImageUrl(signedUrl, ctx, imageContext) {
   const id = storeChatGptImage(bytes, mime, undefined, imageContext);
   return `${ctx.publicBaseUrl}/v1/chatgpt-web/image/${id}`;
 }
+
+function buildImageDownloadHeaders(signedUrl, ctx) {
+  let url;
+  try {
+    url = new URL(signedUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  const isChatGptHost = url.hostname === "chatgpt.com" || url.hostname.endsWith(".chatgpt.com");
+  const headers = {
+    ...browserHeaders(),
+    Accept: "image/*,*/*;q=0.8",
+  };
+  if (isChatGptHost) {
+    headers.Authorization = `Bearer ${ctx.accessToken}`;
+    headers.Cookie = buildNextAuthSessionCookie(ctx.cookie);
+    if (ctx.accountId) headers["chatgpt-account-id"] = ctx.accountId;
+  }
+  return headers;
+}
+
+export const __buildImageDownloadHeadersForTesting = buildImageDownloadHeaders;
 
 /**
  * Resolve the async image_gen result by registering a WebSocket with

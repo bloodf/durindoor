@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), mkdir: vi.fn() }));
+const io = vi.hoisted(() => ({ access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), copyFile: vi.fn(), rename: vi.fn(), unlink: vi.fn(), mkdir: vi.fn() }));
 const db = vi.hoisted(() => ({
   getCombos: vi.fn(),
   getCustomModels: vi.fn(),
@@ -38,6 +38,9 @@ beforeEach(() => {
   io.access.mockRejectedValue(new Error("missing"));
   io.readFile.mockResolvedValue("{}");
   io.writeFile.mockResolvedValue(undefined);
+  io.copyFile.mockRejectedValue({ code: "ENOENT" });
+  io.rename.mockResolvedValue();
+  io.unlink.mockResolvedValue();
   io.mkdir.mockResolvedValue(undefined);
   db.getCombos.mockResolvedValue([]);
   db.getCustomModels.mockResolvedValue([]);

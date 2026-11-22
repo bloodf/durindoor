@@ -1121,7 +1121,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           });
         } :
         null;
-        const liveResolver = syncedModels ? null : providerLiveResolver || openAIStyleLiveResolver;
+        // A curated custom-model list on a compatible node is the operator's
+        // selection: it must not be unioned with the provider's full upstream
+        // catalog (upstream decolua/9router #3880 / #3115).
+        const hasCuratedCompatibleModels = isCompatibleProvider && customModelIds.length > 0;
+        const liveResolver = syncedModels || hasCuratedCompatibleModels ? null : providerLiveResolver || openAIStyleLiveResolver;
         if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || openAIStyleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);

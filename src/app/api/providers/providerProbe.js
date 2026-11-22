@@ -16,6 +16,7 @@ import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
 import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
 import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
+import { deepSeekUserToken } from "open-sse/executors/deepseek-web.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 import { isPromptQlSessionError, promptQlSessionRequest, readPromptQlCredentials, readPromptQlExchange } from "open-sse/executors/promptql.js";
 import { CursorApiExecutor, isCursorApiKey } from "open-sse/executors/cursor-api.js";
@@ -440,6 +441,8 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
 }
 
 export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, providerSpecificData = {}, { sessionToken } = {}) {
+  // The token may be an imported localStorage value or the site's JSON wrapper; the probe sends the bare token.
+  if (provider === "deepseek-web") apiKey = deepSeekUserToken({ apiKey, providerSpecificData }) || apiKey;
   const specialty = SPECIALTY_VALIDATORS[provider];
   // A specialty validator returning null hands the connection back to the generic probe.
   const specialtyResult = specialty ? await specialty({ apiKey, fetcher, providerSpecificData, sessionToken }) : null;

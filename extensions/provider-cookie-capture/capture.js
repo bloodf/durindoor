@@ -8,7 +8,7 @@
  *  - asks for optional permissions on exactly two origins (provider, paired
  *    dashboard) plus `cookies`, and gives back what it was granted afterwards;
  *  - reads only cookie names that are in both the built-in table and the pairing;
- *  - for a provider whose credential is a localStorage item (TinyCMS), reads only the
+ *  - for a provider whose credential is a localStorage item (TinyCMS, DeepSeek Web), reads only the
  *    built-in item names, once, from the confirmed tab, through `chrome.scripting`, and only
  *    while that tab and its page are still on the provider origin;
  *  - sends one request, to the dashboard URL named by the pairing, and never retries;

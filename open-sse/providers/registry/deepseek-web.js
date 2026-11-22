@@ -7,6 +7,22 @@ export const DEEPSEEK_WEB_COOKIE_PROFILE = {
   validationProbe: "https://chat.deepseek.com/api/v0/users/current",
 };
 
+/**
+ * Capture/import profile for the extension and the dashboard import. The credential is the
+ * `userToken` localStorage item of chat.deepseek.com, not a cookie, so `cookieNames` stays empty:
+ * a Cookie header, cURL or HAR carries nothing to import and the executor needs no cookie. The
+ * item holds either the bare token or the site's `{"value":"...","__version":"0"}` wrapper; the
+ * executor accepts both. The import API stores it in `providerSpecificData.userToken`
+ * (see `apiKeyOptionalWith`), and a token pasted as the API key still wins.
+ */
+export const DEEPSEEK_WEB_CREDENTIAL_PROFILE = Object.freeze({
+  origin: "https://chat.deepseek.com",
+  domains: ["chat.deepseek.com"],
+  cookieNames: [],
+  localStorageKeys: ["userToken"],
+  credentialPattern: "^[\\x21-\\x7e]{8,}$",
+});
+
 export default {
   id: "deepseek-web",
   priority: 249,
@@ -20,7 +36,10 @@ export default {
   },
   category: "apikey",
   authType: "apikey",
-  authHint: "Paste your DeepSeek web userToken from chat.deepseek.com local storage. Browser cookies alone are not accepted by the upstream API.",
+  authHint: "Paste your DeepSeek web userToken from chat.deepseek.com local storage, or send it with the cookie-capture extension. Browser cookies alone are not accepted by the upstream API.",
+  // An imported userToken is stored here instead of in the API-key field.
+  apiKeyOptionalWith: "userToken",
+  cookieImport: { ...DEEPSEEK_WEB_CREDENTIAL_PROFILE, extensionCapture: true },
   transport: {
     baseUrl: "https://chat.deepseek.com/api/v0/chat/completion",
     validateUrl: "https://chat.deepseek.com/api/v0/users/current",

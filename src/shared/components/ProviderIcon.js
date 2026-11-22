@@ -113,6 +113,8 @@ export default function ProviderIcon({
   }, [src, fallbackSrc]);
 
   const candidates = [src];
+  if (src === "/providers/cursor-api.png") candidates.unshift("/providers/cursor.svg");
+  if (src === "/providers/zed-hosted.png") candidates.unshift("/providers/zed-hosted.svg");
   const pngMatch = isString(src) && src.match(/^\/providers\/([^/]+)\.png$/i);
   if (pngMatch && KNOWN_SVGS.has(pngMatch[1])) {
     candidates.unshift(`/providers/${pngMatch[1]}.svg`);

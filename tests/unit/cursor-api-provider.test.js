@@ -20,27 +20,12 @@ vi.mock("../../open-sse/services/cursorModels.js", async (importOriginal) => ({
   resolveCursorModels: vi.fn(),
 }));
 
-// The staging rule: the entry and executor are composed here, never registered.
+// The production registry and executor map provide the entry and the shared executor. The
+// exchange fetch and the clock are injected on that registered instance in beforeEach.
 const clock = vi.hoisted(() => ({ now: 1_800_000_000_000 }));
 const exchangeFetch = vi.hoisted(() => vi.fn());
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/cursor-api.js");
-  return { ...original, default: [...original.default.filter((row) => row.id !== entry.id), entry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { CursorApiExecutor } = await import("../../open-sse/executors/cursor-api.js");
-  const executor = new CursorApiExecutor({ fetchImpl: exchangeFetch, now: () => clock.now });
-  const isCursorApi = (provider) => provider === "cursor-api" || provider === "cua";
-  return {
-    ...original,
-    getExecutor: (provider) => (isCursorApi(provider) ? executor : original.getExecutor(provider)),
-    hasSpecializedExecutor: (provider) => isCursorApi(provider) || original.hasSpecializedExecutor(provider),
-  };
-});
 
-import entry, { cursorApiCookieProfile } from "../../open-sse/providers/private/cursor-api.js";
+import entry, { cursorApiCookieProfile } from "../../open-sse/providers/registry/cursor-api.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { CursorApiExecutor, discoverCursorApiModels, deriveCursorApiMachineId } from "../../open-sse/executors/cursor-api.js";
@@ -121,6 +106,8 @@ describe("staged Cursor API provider", () => {
   beforeEach(() => {
     clock.now = 1_800_000_000_000;
     const executor = getExecutor("cursor-api");
+    executor.fetchImpl = exchangeFetch;
+    executor.now = () => clock.now;
     executor.sessions.clear();
     executor.inflight.clear();
   });

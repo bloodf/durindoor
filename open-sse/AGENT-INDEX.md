@@ -34,6 +34,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
 | `devin-cli-agentic` | DevinCliAgenticExecutor | `./devin-cli-agentic.js` |
+| `devin-desktop` | DevinDesktopExecutor | `./devin-desktop.js` |
 | `dify` | DifyExecutor | `./dify.js` |
 | `doubao-web` | DoubaoWebExecutor | `./doubao-web.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
@@ -189,6 +190,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `coze` | openai | apikey | `https://api.coze.com/v1/chat/completions` |
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
+| `cursor-api` | cursor | apikey | `https://api2.cursor.sh` |
 | `dahl` |  | apikey | `https://inference.dahl.global/v1/chat/completions` |
 | `daoxe` |  | apikey | `https://api.daoxe.com/v1/chat/completions` |
 | `databricks` |  | apikey | `https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints` |
@@ -202,6 +204,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
 | `devin-cli-agentic` | claude | free | `devin://acp/stdio` |
+| `devin-desktop` | openai | oauth | `https://server.codeium.com` |
 | `dgrid` |  | apikey | `https://api.dgrid.ai/v1/chat/completions` |
 | `dify` |  | apikey | `` |
 | `digitalocean` |  | apikey | `https://inference.do-ai.run/v1/chat/completions` |
@@ -230,6 +233,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `fish-audio` |  | apikey | `` |
 | `free-ai` | openai | apikey | `https://api.free.ai/v1/chat/` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
+| `freebuff` | openai | oauth | `https://www.codebuff.com/api/v1` |
 | `freeinference` |  | apikey | `https://freeinference.org/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |
 | `freetheai` |  | apikey | `https://api.freetheai.org/v1/chat/completions` |
@@ -330,6 +334,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mimocode` | openai | free | `https://api.xiaomimimo.com` |
 | `minimax` | claude | apikey | `https://api.minimax.io/anthropic/v1/messages` |
 | `minimax-cn` | claude | apikey | `https://api.minimax.cn/anthropic/v1/messages` |
+| `minimax-code` | claude | oauth | `https://agent.minimax.io/mavis/api/v1/llm/v1/messages` |
 | `mistral` |  | apikey | `https://api.mistral.ai/v1/chat/completions` |
 | `mixlayer` |  | apikey | `https://models.mixlayer.ai/v1/chat/completions` |
 | `mlx` | openai | apikey | `http://127.0.0.1:8080/v1` |
@@ -476,6 +481,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `wandb` |  | apikey | `https://api.inference.wandb.ai/v1/chat/completions` |
 | `watsonx` |  | apikey | `https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/chat/completions` |
 | `windsurf` | grpc-web-proto | oauth | `https://server.self-serve.windsurf.com` |
+| `workbuddy` | openai | oauth | `https://www.workbuddy.ai/v2/chat/completions` |
 | `writer` | openai | apikey | `https://api.writer.com/v1/chat/completions` |
 | `x5lab` |  | apikey | `https://api.x5lab.dev/v1/chat/completions` |
 | `xai` |  | oauth | `https://api.x.ai/v1/chat/completions` |
@@ -492,6 +498,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `zai` | claude | apikey | `https://api.z.ai/api/anthropic/v1/messages` |
 | `zai-web` | openai | webCookie | `https://chat.z.ai/api/v2/chat/completions` |
 | `zed` |  | oauth | `` |
+| `zed-hosted` | openai | oauth | `https://cloud.zed.dev/completions` |
 | `zenmux` |  | freeTier | `https://zenmux.ai/api/v1/chat/completions` |
 | `zenmux-free` | openai | webCookie | `https://zenmux.ai/api/anthropic/v1/messages` |
 | `zerolimitai` |  | apikey | `https://www.zerolimitai.com/api/v1/chat/completions` |

@@ -86,6 +86,8 @@ export function canDiscoverModels(connection) {
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (LOCAL_CATALOG_WEB_PROVIDERS.has(provider)) return true; // Curated local catalog.
   if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
+  // Zed-hosted discovery exchanges an LLM token per connection, and only after the opt-in.
+  if (provider === "zed-hosted") return connection.providerSpecificData?.enableSessionDispatch === true && Boolean(connection.accessToken || connection.apiKey);
   // PromptQL lists models through its GraphQL API with the playground JWT, not the session cookie.
   if (provider === "promptql") return Boolean(connection.providerSpecificData?.token || connection.providerSpecificData?.jwt);
 
@@ -135,6 +137,10 @@ export function canDiscoverModels(connection) {
       case "mlx":
       case "devin-cli-agentic":
         return true;
+      case "cursor-api":
+        return connection.providerSpecificData?.enableSessionDispatch === true && Boolean(connection.apiKey);
+      case "devin-desktop":
+        return connection.providerSpecificData?.enableSessionDispatch === true && Boolean(connection.accessToken || connection.apiKey);
       default:
         return false;
     }

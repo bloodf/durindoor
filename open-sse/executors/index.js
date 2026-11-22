@@ -22,6 +22,12 @@ import { KimiWebExecutor } from "./kimi-web.js";
 import { CodexExecutor } from "./codex.js";
 import { CodexAppServerExecutor } from "./codex-app-server.js";
 import { CursorExecutor } from "./cursor.js";
+import { CursorApiExecutor } from "./cursor-api.js";
+import { DevinDesktopExecutor } from "./devin-desktop.js";
+import { FreebuffExecutor } from "./freebuff.js";
+import { MinimaxCodeExecutor } from "./minimax-code.js";
+import { WorkbuddyExecutor } from "./workbuddy.js";
+import { ZedHostedExecutor } from "./zed-hosted.js";
 import { VertexExecutor } from "./vertex.js";
 import { QwenExecutor } from "./qwen.js";
 import { OpenCodeExecutor } from "./opencode.js";
@@ -103,6 +109,13 @@ const tencentAIStudioWebExecutor = new TencentAIStudioWebExecutor();
 const tinyCmsExecutor = new TinyCmsExecutor();
 const blackboxWebExecutor = new BlackboxWebExecutor();
 const conolWebExecutor = new ConolWebExecutor();
+// One instance per identity: the per-key session cache (cursor-api) and the
+// per-connection state (minimax-code, zed-hosted, freebuff) live on the instance.
+const cursorApiExecutor = new CursorApiExecutor();
+const minimaxCodeExecutor = new MinimaxCodeExecutor();
+const zedHostedExecutor = new ZedHostedExecutor();
+const freebuffExecutor = new FreebuffExecutor();
+const workbuddyExecutor = new WorkbuddyExecutor();
 
 const executors = {
   "adapta-web": new AdaptaWebExecutor(),
@@ -139,6 +152,17 @@ const executors = {
   codex: new CodexExecutor(),
   cursor: new CursorExecutor(),
   cu: new CursorExecutor(), // Alias for cursor
+  "cursor-api": cursorApiExecutor,
+  cua: cursorApiExecutor,
+  "devin-desktop": new DevinDesktopExecutor(),
+  workbuddy: workbuddyExecutor,
+  wb: workbuddyExecutor,
+  "minimax-code": minimaxCodeExecutor,
+  mmcode: minimaxCodeExecutor,
+  "zed-hosted": zedHostedExecutor,
+  zdh: zedHostedExecutor,
+  freebuff: freebuffExecutor,
+  fb: freebuffExecutor,
   vertex: new VertexExecutor("vertex"),
   "vertex-partner": new VertexExecutor("vertex-partner"),
   qwen: new QwenExecutor(),
@@ -293,6 +317,12 @@ export { KimchiExecutor } from "./kimchi.js";
 export { KimiWebExecutor } from "./kimi-web.js";
 export { CodexExecutor } from "./codex.js";
 export { CursorExecutor } from "./cursor.js";
+export { CursorApiExecutor } from "./cursor-api.js";
+export { DevinDesktopExecutor } from "./devin-desktop.js";
+export { FreebuffExecutor } from "./freebuff.js";
+export { MinimaxCodeExecutor } from "./minimax-code.js";
+export { WorkbuddyExecutor } from "./workbuddy.js";
+export { ZedHostedExecutor } from "./zed-hosted.js";
 export { VertexExecutor } from "./vertex.js";
 export { DefaultExecutor } from "./default.js";
 export { QwenExecutor } from "./qwen.js";

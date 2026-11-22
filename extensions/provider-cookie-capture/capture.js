@@ -104,6 +104,9 @@ export function parsePairing(text, now = Date.now()) {
   const prefixes = Array.isArray(contract.cookiePrefixes) ? contract.cookiePrefixes : [];
   const cookiePrefixes = def.cookiePrefixes.filter((prefix) => prefixes.includes(prefix));
   if (cookieNames.length !== def.cookieNames.length) return fail("invalid_pairing");
+  // Optional cookies are never required: a pairing that omits them (an older dashboard) simply narrows them away.
+  const pairedOptional = Array.isArray(contract.optionalCookies) ? contract.optionalCookies : [];
+  const optionalCookies = (def.optionalCookies ?? []).filter((name) => pairedOptional.includes(name));
   const builtInKeys = def.localStorageKeys ?? [];
   const pairedKeys = Array.isArray(contract.localStorageKeys) ? contract.localStorageKeys : [];
   const localStorageKeys = builtInKeys.filter((key) => pairedKeys.includes(key));
@@ -123,6 +126,7 @@ export function parsePairing(text, now = Date.now()) {
       importUrl: destination.url,
       cookieNames,
       cookiePrefixes,
+      optionalCookies,
       localStorageKeys,
       expiresAt,
       token: pairing.token,
@@ -141,6 +145,7 @@ export function describePlan(plan) {
     action: plan.action,
     target: plan.action === "create" ? plan.name : plan.connectionId,
     cookieNames: [...plan.cookieNames, ...plan.cookiePrefixes.map((prefix) => `${prefix}<n>`)],
+    optionalCookies: [...(plan.optionalCookies ?? [])],
     localStorageKeys: [...(plan.localStorageKeys ?? [])],
   };
 }
@@ -210,6 +215,11 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     return out;
   };
   for (const name of plan.cookieNames) {
+    await take(name);
+    if (cancelled()) return found;
+  }
+  // Optional cookies are read the same way but their absence is not an error.
+  for (const name of plan.optionalCookies ?? []) {
     await take(name);
     if (cancelled()) return found;
   }

@@ -126,7 +126,7 @@ export async function handleCookieImportPairing(request) {
       provider,
       ...target,
       importUrl: `${reachedOrigin(request).origin}/api/providers/cookie-import`,
-      contract: describeCookieImportContract(contract),
+      contract: { ...describeCookieImportContract(contract), ...(contract.optionalCookies?.length ? { optionalCookies: [...contract.optionalCookies] } : null) },
     },
   }, 201);
 }

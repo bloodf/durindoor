@@ -391,7 +391,9 @@ export const PROVIDER_PRICING = {
   },
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
-    "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
+    "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
+    // Copilot uses a dotted ID for the canonical Sonnet 5.5 model.
+    "claude-sonnet-5.5": MODEL_PRICING["claude-sonnet-5-5"]
   },
   // Expose the current canonical tier to pricing management, without alias rows.
   xai: {

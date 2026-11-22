@@ -29923,10 +29923,10 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/token-saver/page.js": "97977b052619d97b0274e7a8d0e6eadba66f91c42b20781bc236661fd3e99209",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
             "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js": "3510e843c6cdc7d6406ee4aab923bc96917ca625237da8f506dddc9f1417016b",
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "88b94eea71bb363eec9b9d7c5ddc35d288dd9e9df100b64203184ddba5ece445",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -33724,10 +33724,242 @@
       ]
     },
     {
+      "id": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx#IncumbentTokenSaverClient",
+      "sourcePath": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx",
+      "symbol": "IncumbentTokenSaverClient",
+      "sourceSha256": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "production-savers-tokensaverclient--overview",
+        "production-savers-tokensaverclient--settings",
+        "production-savers-tokensaverclient--unavailable-services",
+        "production-savers-tokensaverclient--rejected-compression-settings",
+        "production-savers-tokensaverclient--retry-compression-save",
+        "production-savers-tokensaverclient--dashboard-overview",
+        "production-savers-tokensaverclient--empty",
+        "production-savers-tokensaverclient--service-unavailable",
+        "production-savers-tokensaverclient--loading-metrics",
+        "production-savers-tokensaverclient--pxpipe-initial-loading",
+        "production-savers-tokensaverclient--pxpipe-stats-unavailable",
+        "production-savers-tokensaverclient--pxpipe-events-retry",
+        "production-savers-tokensaverclient--v-5-settings",
+        "production-savers-tokensaverclient--v-5-rejected-compression-settings",
+        "production-savers-tokensaverclient--v-5-retry-compression-save"
+      ],
+      "storyScenarios": [
+        {
+          "id": "production-savers-tokensaverclient--overview",
+          "storyId": "production-savers-tokensaverclient--overview",
+          "runtimeArtifactId": "production-savers-tokensaverclient--overview",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--settings",
+          "storyId": "production-savers-tokensaverclient--settings",
+          "runtimeArtifactId": "production-savers-tokensaverclient--settings",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--unavailable-services",
+          "storyId": "production-savers-tokensaverclient--unavailable-services",
+          "runtimeArtifactId": "production-savers-tokensaverclient--unavailable-services",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--rejected-compression-settings",
+          "storyId": "production-savers-tokensaverclient--rejected-compression-settings",
+          "runtimeArtifactId": "production-savers-tokensaverclient--rejected-compression-settings",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--retry-compression-save",
+          "storyId": "production-savers-tokensaverclient--retry-compression-save",
+          "runtimeArtifactId": "production-savers-tokensaverclient--retry-compression-save",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--dashboard-overview",
+          "storyId": "production-savers-tokensaverclient--dashboard-overview",
+          "runtimeArtifactId": "production-savers-tokensaverclient--dashboard-overview",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--empty",
+          "storyId": "production-savers-tokensaverclient--empty",
+          "runtimeArtifactId": "production-savers-tokensaverclient--empty",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--service-unavailable",
+          "storyId": "production-savers-tokensaverclient--service-unavailable",
+          "runtimeArtifactId": "production-savers-tokensaverclient--service-unavailable",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--loading-metrics",
+          "storyId": "production-savers-tokensaverclient--loading-metrics",
+          "runtimeArtifactId": "production-savers-tokensaverclient--loading-metrics",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--pxpipe-initial-loading",
+          "storyId": "production-savers-tokensaverclient--pxpipe-initial-loading",
+          "runtimeArtifactId": "production-savers-tokensaverclient--pxpipe-initial-loading",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--pxpipe-stats-unavailable",
+          "storyId": "production-savers-tokensaverclient--pxpipe-stats-unavailable",
+          "runtimeArtifactId": "production-savers-tokensaverclient--pxpipe-stats-unavailable",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--pxpipe-events-retry",
+          "storyId": "production-savers-tokensaverclient--pxpipe-events-retry",
+          "runtimeArtifactId": "production-savers-tokensaverclient--pxpipe-events-retry",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--v-5-settings",
+          "storyId": "production-savers-tokensaverclient--v-5-settings",
+          "runtimeArtifactId": "production-savers-tokensaverclient--v-5-settings",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--v-5-rejected-compression-settings",
+          "storyId": "production-savers-tokensaverclient--v-5-rejected-compression-settings",
+          "runtimeArtifactId": "production-savers-tokensaverclient--v-5-rejected-compression-settings",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-savers-tokensaverclient--v-5-retry-compression-save",
+          "storyId": "production-savers-tokensaverclient--v-5-retry-compression-save",
+          "runtimeArtifactId": "production-savers-tokensaverclient--v-5-retry-compression-save",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx#TokenSaverClient",
       "sourcePath": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx",
       "symbol": "TokenSaverClient",
-      "sourceSha256": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
+      "sourceSha256": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -33750,8 +33982,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -33774,8 +34006,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -33800,10 +34032,10 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/token-saver/page.js": "97977b052619d97b0274e7a8d0e6eadba66f91c42b20781bc236661fd3e99209",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
             "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js": "3510e843c6cdc7d6406ee4aab923bc96917ca625237da8f506dddc9f1417016b",
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "88b94eea71bb363eec9b9d7c5ddc35d288dd9e9df100b64203184ddba5ece445",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -34062,7 +34294,7 @@
       "id": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx#settingFeedback",
       "sourcePath": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx",
       "symbol": "settingFeedback",
-      "sourceSha256": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
+      "sourceSha256": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -34086,8 +34318,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00"
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -34099,8 +34331,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00"
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -34112,8 +34344,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00"
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -34125,8 +34357,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00"
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -34138,8 +34370,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00"
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -34348,10 +34580,10 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/token-saver/page.js": "97977b052619d97b0274e7a8d0e6eadba66f91c42b20781bc236661fd3e99209",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "3ab8d7ee2f2621c98e9a6b4ec4e4a1f97e57d070f6b68bab5459e27d1dbf2e13",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b5b03183b496c19cb64478639e0a45dace4e16772391de660c4663050b121673",
             "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js": "3510e843c6cdc7d6406ee4aab923bc96917ca625237da8f506dddc9f1417016b",
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "88b94eea71bb363eec9b9d7c5ddc35d288dd9e9df100b64203184ddba5ece445",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "9eb4c2bd2416f5b9b7cf3b082dc95c25c3fea6611a62b38dddf5b84262f42b00",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "f39c343f472bc0b979f0de63155158acd9c3a95d4eebfa479b3fa398626c566a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -68280,7 +68512,7 @@
       "id": "src/shared/ui/v5/dashboards/DashboardCanvas.jsx#DashboardCanvas",
       "sourcePath": "src/shared/ui/v5/dashboards/DashboardCanvas.jsx",
       "symbol": "DashboardCanvas",
-      "sourceSha256": "e82b7afd86dcc2be1a4e134a3c7ec7a7ee51728729a5b2de88ca7e8bc3f4ccc5",
+      "sourceSha256": "383efc6b0ea1257c45d2d2f3f131a15944e06f6cfd640b5c001bedffd4311424",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -68300,7 +68532,7 @@
       "id": "src/shared/ui/v5/dashboards/DashboardCanvas.jsx#DashboardIconButton",
       "sourcePath": "src/shared/ui/v5/dashboards/DashboardCanvas.jsx",
       "symbol": "DashboardIconButton",
-      "sourceSha256": "e82b7afd86dcc2be1a4e134a3c7ec7a7ee51728729a5b2de88ca7e8bc3f4ccc5",
+      "sourceSha256": "383efc6b0ea1257c45d2d2f3f131a15944e06f6cfd640b5c001bedffd4311424",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -68320,7 +68552,7 @@
       "id": "src/shared/ui/v5/dashboards/DashboardCanvas.jsx#UsageWidget",
       "sourcePath": "src/shared/ui/v5/dashboards/DashboardCanvas.jsx",
       "symbol": "UsageWidget",
-      "sourceSha256": "e82b7afd86dcc2be1a4e134a3c7ec7a7ee51728729a5b2de88ca7e8bc3f4ccc5",
+      "sourceSha256": "383efc6b0ea1257c45d2d2f3f131a15944e06f6cfd640b5c001bedffd4311424",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -68480,7 +68712,7 @@
       "id": "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx#TokenSaverDashboard",
       "sourcePath": "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx",
       "symbol": "TokenSaverDashboard",
-      "sourceSha256": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+      "sourceSha256": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -68509,7 +68741,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68522,7 +68754,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68535,7 +68767,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68548,7 +68780,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68561,7 +68793,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68574,7 +68806,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68587,7 +68819,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68600,7 +68832,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68613,7 +68845,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -68626,7 +68858,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "b1e72f044ee9f9683fdf6c85e628a68fbb6797b8ec77c968c879f74eddc8bb50",
+            "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx": "65f1019017d86271522d89a5437564ca9880d263a25a9f345be4e3095767187f",
             "src/shared/ui/v5/routes/SaverOverview.stories.jsx": "ee267c23607c99db0e4729618a43d9e765b0ec4635d1d16c5e1b72c9336d6b41"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -76759,37 +76991,107 @@
     {
       "storyId": "v5-review-pages-savers-tokensaverclient--overview",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
-      "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-savers-tokensaverclient--overview",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+        "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-savers-tokensaverclient--settings",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
-      "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-savers-tokensaverclient--settings",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+        "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-savers-tokensaverclient--unavailable-services",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
-      "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-savers-tokensaverclient--unavailable-services",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+        "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-savers-tokensaverclient--rejected-compression-settings",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
-      "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-savers-tokensaverclient--rejected-compression-settings",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+        "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--retry-compression-save",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-savers-tokensaverclient--retry-compression-save",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+        "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--dashboard-overview",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -76797,9 +77099,89 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-pages-savers-tokensaverclient--retry-compression-save",
+      "storyId": "v5-review-pages-savers-tokensaverclient--empty",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
-      "sourceSha256": "91fbc21853456e6ec50ed5de36253887e6fcba2d806582c435d35e94c01ecf46",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--service-unavailable",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--loading-metrics",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--pxpipe-initial-loading",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--pxpipe-stats-unavailable",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--pxpipe-events-retry",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--v-5-settings",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--v-5-rejected-compression-settings",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-savers-tokensaverclient--v-5-retry-compression-save",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-token-saver-tokensaverclient.stories.jsx",
+      "sourceSha256": "a714dcb6373ef5b7f805d40229afab4a9c372fa948778805cb6f76b977e6883c",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -95749,11 +96131,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "996445f339a84dbbb948fb3fa6ddafbd526066f44df7e786a4ff8323abe37e2b",
-    "sourceCensusSha256": "88a3117cff110fbc0b94f8c6ef36cb102ba78b67fbea682f0eedcd8a9b1db3ef",
-    "pendingRows": 366,
+    "builtIndexSha256": "176bf107edc5d7c62c7326adbfdb32546114b60019e413b7b81c15da7a17db7a",
+    "sourceCensusSha256": "29e04b9bd1a88ca77166b1997662c47760aecf8f08c64ea58ed0680cd0d378f7",
+    "pendingRows": 367,
     "retainedApprovedRows": 258,
-    "pendingReferences": 1354,
+    "pendingReferences": 1364,
     "runtimeStatus": "pending"
   }
 }

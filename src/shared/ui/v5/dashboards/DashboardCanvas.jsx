@@ -43,7 +43,7 @@ function UsageWidget({ widget, editing, index, visible, onMove, onEdit, onHide, 
 }
 
 /** Draft preferences alter presentation only. Cancel restores saved order, names, widths and visibility. */
-export default function DashboardCanvas({ sections, catalog, initialLayout, storageKey, persistLayout = false, onSave, initialSession, onSessionChange }) {
+export default function DashboardCanvas({ sections, catalog, initialLayout, storageKey, persistLayout = false, savedNotice = "Dashboard layout saved for this review.", onSave, initialSession, onSessionChange }) {
   const normalize = (value) => normalizeDashboardLayout(value, catalog);
   const [saved, setSaved] = useState(() => {
     if (initialSession?.saved) return normalize(initialSession.saved);
@@ -78,7 +78,7 @@ export default function DashboardCanvas({ sections, catalog, initialLayout, stor
     setEditing(false);
     setLibrary(false);
     setConfig(null);
-    let message = "Dashboard layout saved for this review.";
+    let message = savedNotice;
     if (persistLayout) {
       try { window.localStorage.setItem(storageKey, JSON.stringify(next)); }
       catch { message = "Layout saved for this view. Browser storage is unavailable."; }

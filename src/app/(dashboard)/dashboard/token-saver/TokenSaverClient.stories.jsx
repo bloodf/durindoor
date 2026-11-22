@@ -1,6 +1,7 @@
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
 import TokenSaverClient from "./TokenSaverClient";
+import pxpipeMeta, { Empty as PxpipeEmpty, Unavailable as PxpipeUnavailable } from "../pxpipe/PxpipeClient.stories.jsx";
 
 const routes = {
   "GET /api/settings": { body: { rtkEnabled: true, headroomEnabled: true, headroomUrl: "http://localhost:8787", headroomTimeoutMs: 15000, cavemanEnabled: true, cavemanLevel: "full", ponytailEnabled: true, ponytailLevel: "full", pxpipeEnabled: false, pxpipeMinChars: 25000, pxpipeTimeoutMs: 15000, pxpipeAllowedModels: ["claude-fable-5"] } },
@@ -68,7 +69,7 @@ export const Overview = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("RTK bytes saved")).toBeVisible();
-    const review = document.documentElement.dataset.v5Review === "true";
+    const review = document.documentElement.dataset.ui === "v5";
     await expect(await canvas.findByRole(review ? "region" : "heading", { name: review ? "PXPIPE status" : "PXPIPE Dashboard", exact: true })).toBeVisible();
     await expect(await canvas.findByText("150.0K")).toBeVisible();
     const usagePeriod = within(canvas.getByRole("radiogroup", { name: review ? "Token Saver period" : "Usage period" }));
@@ -126,3 +127,58 @@ export const RetryCompressionSave = {
     await expect(toggle).toHaveAttribute("aria-checked", "false");
   },
 };
+
+// V5 monitoring dashboard states. Each story switches the production V5 attribute on through the Storybook `ui` global.
+const emptyStats = { requestsObserved: 0, rtk: { bytesSaved: 0, requestsWithHits: 0, hits: 0 }, headroom: { tokensSaved: 0, compressed: 0, skipped: 0, phantomSavings: 0, bodyBytesBefore: 0, bodyBytesAfter: 0, skipReasons: {} }, pxpipe: { tokensSavedEst: 0, applied: 0, imageCount: 0 }, totals: { actualBytesSaved: 0 }, dailyPoints: [] };
+const dashboardRoutes = {
+  ...pxpipeMeta.parameters.storyFixture.routes,
+  "GET /api/headroom/status": { body: { installed: true, running: true, localUrl: true, source: "managed" } },
+  "GET /api/token-saver/stream": { body: overviewStats, events: [overviewStats] },
+};
+const v5Dashboard = (extra = {}, scenario = "default") => ({ args: { view: "overview" }, globals: { ui: "v5" }, parameters: { storyFixture: { scenario, pathname: "/dashboard/token-saver", params: {}, routes: { ...dashboardRoutes, ...extra } } } });
+
+/** V5 monitoring dashboard: nine widgets from the aggregate stream and PXPIPE endpoints. */
+export const DashboardOverview = {
+  ...v5Dashboard(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("1.7 MB")).toBeVisible();
+    await expect(await canvas.findByRole("region", { name: "PXPIPE status" })).toBeVisible();
+    await expect(canvas.getByRole("link", { name: /Compression settings/ })).toHaveAttribute("href", "/dashboard/token-saver/settings");
+  },
+};
+export const Empty = {
+  ...v5Dashboard({ ...PxpipeEmpty.parameters.storyFixture.routes, "GET /api/token-saver/stream": { body: emptyStats, events: [emptyStats] } }, "empty"),
+  play: async ({ canvasElement }) => { await expect(await within(within(canvasElement).getByRole("region", { name: "Compression overview" })).findByText("No Token Saver events yet")).toBeVisible(); },
+};
+export const ServiceUnavailable = {
+  ...v5Dashboard({
+    ...PxpipeUnavailable.parameters.storyFixture.routes,
+    "GET /api/token-saver/stream": { body: emptyStats, events: [emptyStats] },
+    "GET /api/headroom/status": { body: { ok: false, diagnostic: { code: "NOT_INSTALLED", summary: "Headroom setup needed", fixes: [] } } },
+  }, "error"),
+  play: async ({ canvasElement }) => { await expect(await within(canvasElement).findByText("Headroom setup needed")).toBeVisible(); },
+};
+export const LoadingMetrics = {
+  ...v5Dashboard({ "GET /api/token-saver/stream": { body: {}, events: [] } }),
+  play: async ({ canvasElement }) => { await expect(within(canvasElement).getAllByText("Loading Token Saver metrics")[0]).toBeVisible(); },
+};
+export const PxpipeInitialLoading = {
+  ...v5Dashboard(Object.fromEntries(["GET /api/pxpipe/status", "GET /api/pxpipe/stats", "GET /api/pxpipe/logs?limit=50", "POST /api/pxpipe/health"].map((key) => [key, async () => new Promise(() => {})]))),
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(canvas.queryByText("No transform events yet.")).not.toBeInTheDocument(); await expect(await canvas.findByText("Loading PXPIPE events")).toBeVisible(); },
+};
+export const PxpipeStatsUnavailable = {
+  ...v5Dashboard({ "GET /api/pxpipe/stats": { status: 503, body: { error: "Metrics unavailable" } } }, "error"),
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect((await canvas.findAllByText(/PXPIPE stats could not be refreshed/))[0]).toBeVisible(); await expect(canvas.queryByText("No estimated savings recorded in this period.")).not.toBeInTheDocument(); },
+};
+let eventReads = 0;
+export const PxpipeEventsRetry = {
+  ...v5Dashboard({ "GET /api/pxpipe/logs?limit=50": () => ++eventReads === 1 ? { status: 503, body: { error: "Events unavailable" } } : dashboardRoutes["GET /api/pxpipe/logs?limit=50"] }, "error"),
+  beforeEach: () => { eventReads = 0; },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText(/PXPIPE events could not be refreshed/)).toBeVisible(); await userEvent.click(canvas.getByRole("button", { name: "Retry PXPIPE events" })); await expect(await canvas.findByRole("region", { name: "PXPIPE raw event log" })).toBeVisible(); },
+};
+
+/** V5 settings view keeps the incumbent compression settings with V5 tokens, pending state and rollback. */
+export const V5Settings = { ...Settings, globals: { ui: "v5" } };
+export const V5RejectedCompressionSettings = { ...RejectedCompressionSettings, globals: { ui: "v5" } };
+export const V5RetryCompressionSave = { ...RetryCompressionSave, globals: { ui: "v5" } };

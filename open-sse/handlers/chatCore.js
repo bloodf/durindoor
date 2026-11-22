@@ -1172,6 +1172,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // frozen dispatch context, including the resolved limits.
   requestContext = Object.freeze({
     ...requestContext,
+    sourceFormat,
     modelCapabilities: preflightCaps,
     translatedToCodex: provider === "codex" && !passthrough && sourceFormat !== targetFormat,
   });

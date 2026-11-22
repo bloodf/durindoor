@@ -508,6 +508,12 @@ export class DefaultExecutor extends BaseExecutor {
         applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       }
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
+      // Luna Chat Completions rejects function tools with reasoning enabled.
+      if (this.provider === "openai" && model === "gpt-5.6-luna" &&
+        transportFormat === FORMATS.OPENAI && ![FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(requestContext?.sourceFormat) &&
+        Array.isArray(transformed.tools) && transformed.tools.some((tool) => tool?.type === "function")) {
+        transformed.reasoning_effort = "none";
+      }
       // Native DeepSeek V4 rejects forced tool calls while thinking is enabled.
       const deepseekModel = String(model || "").split("/").pop();
       const thinking = transformed.thinking;

@@ -53,6 +53,12 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | `DURINDOOR_PG_SSLMODE` | unset (`prefer` in Compose) | Appended to the URL when it has no `sslmode=` already. |
 | `DURINDOOR_PG_PREFERRED_VERSION` | `18` in Compose | Operator cap on the target major version (`16`, `17`, `18`). Compose only. |
 
+## Dashboard interface
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DURINDOOR_UI_V5` | on | The V5 interface is the default. Set `DURINDOOR_UI_V5=0` (or `false` or `off`) to opt out and restore the previous interface. `1`, `true` and `on` keep V5 on, and any other value is treated as unset. The value is read at request time, so restart the process after changing it. |
+
 ## Rate-limit backoff
 
 Positive decimal integers only. A resolved maximum below the base resets the whole schedule to defaults. Maximum delay is capped at 7 days.

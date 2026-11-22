@@ -1,11 +1,11 @@
 ---
 title: Devin Desktop
-description: Staged provider that re-serves a Devin account through the Devin Desktop Connect-protobuf transport. Browser sign-in or pasted session token, off until each connection opts in.
+description: Opt-in provider that re-serves a Devin account through the Devin Desktop Connect-protobuf transport. Browser sign-in or pasted session token, off until each connection opts in.
 ---
 
 Devin Desktop (`devin-desktop`) sends chat to Devin's desktop API at `https://server.codeium.com` using the Connect-protobuf `GetChatMessage` stream, and translates it to and from OpenAI chat. It reuses the Devin CLI sign-in. It is separate from `devin-cli` and `devin-cli-agentic`, which drive a local Devin CLI process over ACP stdio and need no network credential.
 
-This provider is **staged**. Tests answer every call from a closed mock of the pinned contract. No live Devin account, token or model list has been run against it, and the upstream transport is undocumented: it still identifies itself as Windsurf, and the wire schema comes from the pinned OmniRoute port, not from a published API. Treat this page as the documented contract, not tested behavior.
+This provider is **unverified**. Tests answer every call from a closed mock of the pinned contract. No live Devin account, token or model list has been run against it, and the upstream transport is undocumented: it still identifies itself as Windsurf, and the wire schema comes from the pinned OmniRoute port, not from a published API. Treat this page as the documented contract, not tested behavior.
 
 ## Read this first
 
@@ -17,12 +17,12 @@ This provider is **staged**. Tests answer every call from a closed mock of the p
 
 Two ways to create the connection. Both store the same credential, a Devin session token (`devin-session-token$...`) or an API key, as the connection's access token.
 
-1. **Browser sign-in.** The dashboard opens `https://app.devin.ai/auth/cli/continue` with PKCE (S256, 96-byte verifier) and a loopback redirect to `http://127.0.0.1:59653/callback`. The port is fixed because Devin registers that exact redirect, so nothing else may listen on it. DurinDoor then posts `{code, code_verifier}` as JSON to `https://api.devin.ai/auth/cli/token` and stores the returned token. If the browser cannot reach the loopback port, paste the full callback URL; its `state` must match the login in progress.
-2. **Import.** Paste an existing Devin session token or API key from an authenticated Devin session. Whether and how a key can be exported varies by Devin version and account.
+1. **Browser sign-in.** The OAuth routes (`/api/oauth/devin-desktop/authorize` and `exchange`) open `https://app.devin.ai/auth/cli/continue` with PKCE (S256, 96-byte verifier) and a loopback redirect to `http://127.0.0.1:59653/callback`. The port is fixed because Devin registers that exact redirect, so nothing else may listen on it. DurinDoor then posts `{code, code_verifier}` as JSON to `https://api.devin.ai/auth/cli/token` and stores the returned token. If the browser cannot reach the loopback port, paste the full callback URL; its `state` must match the login in progress.
+2. **Import.** In the dashboard, add **Devin Desktop** under **Providers** and paste an existing Devin session token or API key from an authenticated Devin session. The dashboard has no browser sign-in button yet; the browser flow runs through the OAuth routes. Whether and how a key can be exported varies by Devin version and account.
 
-Then set `providerSpecificData.enableSessionDispatch` to `true` on the connection.
+Then turn on **Allow session dispatch** in the connection's edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`). It is off for every new connection.
 
-Models are addressed as `devin-desktop/<model>`, for example `devin-desktop/swe-1-7`. The staged catalog is the curated upstream list, with effort variants as separate ids (`claude-opus-5-max`, `gpt-5-6-sol-high`, ...). Live discovery posts `GetCliModelConfigs` and keeps the account's enabled models; if it fails, the curated catalog is served.
+Models are addressed as `devin-desktop/<model>`, for example `devin-desktop/swe-1-7`. The catalog is the curated upstream list, with effort variants as separate ids (`claude-opus-5-max`, `gpt-5-6-sol-high`, ...). Live discovery posts `GetCliModelConfigs` and keeps the account's enabled models; if it fails, the curated catalog is served.
 
 ## How a request runs
 
@@ -64,16 +64,3 @@ The import profile (domains `app.devin.ai`, `api.devin.ai`, `server.codeium.com`
 - [Pinned OmniRoute token-refresh note (Devin is not refreshable)](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/tokenRefresh.ts)
 
 Ported from OmniRoute (MIT).
-
-<!-- Registration steps (for the registration batch; this unit edits none of these files):
-1. Registry promotion: move open-sse/providers/private/devin-desktop.js to open-sse/providers/registry/devin-desktop.js. Keep the default export; move or re-export the named exports (DEVIN_MODEL_CATALOG, DEVIN_DESKTOP_CREDENTIAL_PROFILE, devinDesktopConnectionOptIn) where the registry allows them. Its relative import of src/lib/oauth/services/devin-desktop.js keeps working, since private/ and registry/ sit at the same depth. Then run pnpm run gen:registry-index and pnpm run gen:agent-index. Do not hand-edit registry/index.js or open-sse/AGENT-INDEX.md.
-2. open-sse/executors/index.js: import DevinDesktopExecutor from ./devin-desktop.js and map "devin-desktop" to one instance. Keep refreshCredentials/needsRefresh/shouldRefreshAfterAuthFailure as written: session tokens must not be refreshed or retried.
-3. Sign-in: in src/lib/oauth/providers.js import devinDesktopOAuth from ./services/devin-desktop.js and register it as "devin-desktop" (replacing nothing; devin-cli keeps its import_token entry). Fixed loopback port 59653, 96-byte PKCE verifier. Add DEVIN_DESKTOP_CONFIG to the constants file only if a shared consumer needs it; the service module already exports it. The oauth route's generateAuthData currently blocks import_token providers: it must honor supportsBrowserPkce for devin-desktop and keep the "use import-token" error for devin-cli. The oauth modal needs a paste-token tab with the paste copy for devin-desktop.
-4. Extension providers.js and manifest host permissions: none for cookies (cookieNames is empty). Do not add Devin Desktop to the cookie capture extension or its manifest.
-5. Dashboard import: the add-connection flow stores the pasted token as accessToken (authType oauth). The connection row must store providerSpecificData.enableSessionDispatch (a boolean toggle that defaults to false) and that value must reach executor credentials. Wire validateDevinDesktopSession (open-sse/executors/devin-desktop.js) into src/app/api/providers/validate/route.js and providerProbe.js.
-6. ProviderIcon / ProviderLogo: add "devin-desktop" (display.icon "terminal", textIcon "DD", color #6366F1).
-7. Catalog: add the row to docs/providers/catalog.mdx and the page to docs/providers/index.mdx and docs/providers/meta.json.
-8. modelsConfig: src/app/api/providers/[id]/models/modelsConfig.js needs a devin-desktop branch that calls discoverDevinDesktopModels(token, { fetchImpl: guarded outbound fetch }) and falls back to the registry catalog on error or when no models are returned (upstream: src/app/api/providers/[id]/models/devinDesktopDiscovery.ts). Discovery is protobuf POST, so the generic modelsFetcher cannot serve it.
-9. Stories: add the provider to page.stories.jsx and tests/e2e/storybook-surfaces.json if the surface list requires it.
-10. Tests: after registration, tests/unit/devin-desktop-provider.test.js drops its registry and executors/index.js vi.mock composition and imports the real modules; the 403 opt-in expectations stay.
--->

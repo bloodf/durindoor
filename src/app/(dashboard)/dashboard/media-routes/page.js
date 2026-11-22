@@ -5,6 +5,8 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
@@ -53,10 +55,13 @@ function RouteRow({ uid, index, model, name, unavailable, onRemove }) {
 
 /** Endpoint compatibility comes from the server snapshot, not the unsaved draft or a live provider check. */
 function RouteCard({ route, onSaved }) {
+  const v5 = useUiV5();
   const [draft, setDraft] = useState(route.saved);
   const [adding, setAdding] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const addSelectName = `media-route-${route.id}-add`;
+  const addSelectLabel = translate("Add a fallback model…");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -155,7 +160,14 @@ function RouteCard({ route, onSaved }) {
             {addOptions.length > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <Select options={addOptions} value={adding} onChange={setAdding} placeholder={translate("Add a fallback model…")} />
+                  {v5 ? (
+                    <V5NativeSelect name={addSelectName} aria-label={addSelectLabel} value={adding} onChange={(event) => setAdding(event.target.value)}>
+                      <option value="">{addSelectLabel}</option>
+                      {addOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </V5NativeSelect>
+                  ) : (
+                    <Select options={addOptions} value={adding} onChange={setAdding} placeholder={addSelectLabel} />
+                  )}
                 </div>
                 <Button icon="add" disabled={!adding} onClick={() => { setDraft([...draft, adding]); setAdding(""); }}>{translate("Add")}</Button>
               </div>
@@ -198,8 +210,21 @@ function RouteCard({ route, onSaved }) {
 }
 
 export default function MediaRoutesPage() {
+  const v5 = useUiV5();
   const [routes, setRoutes] = useState(null);
   const [error, setError] = useState("");
+
+  const loadRoutes = () => {
+    setError("");
+    setRoutes(null);
+    return fetch("/api/media-providers/routes", { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Load failed (${res.status})`);
+        setRoutes(data.routes || []);
+      })
+      .catch((e) => { setError(e.message); });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -216,17 +241,26 @@ export default function MediaRoutesPage() {
   const replaceRoute = (next) => setRoutes((prev) => prev.map((r) => (r.id === next.id ? next : r)));
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className={`mx-auto flex w-full max-w-7xl flex-col gap-6${v5 ? " min-w-0 text-dd-text" : ""}`}>
       <PageHeader
         icon="alt_route"
         title={translate("Media Routes")}
         subtitle={translate("Pick the default model and fallbacks each media endpoint uses when a request has no model.")}
       />
       <p className="text-[13px] text-dd-muted">{translate("Catalog entries and local transport support do not verify live provider availability.")}</p>
-      {error ? <p role="alert" className="text-[13px] text-dd-danger">{error}</p> : null}
+      {error ? (
+        v5 ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">
+            <p>{error}</p>
+            <Button icon="refresh" onClick={loadRoutes}>{translate("Retry")}</Button>
+          </div>
+        ) : (
+          <p role="alert" className="text-[13px] text-dd-danger">{error}</p>
+        )
+      ) : null}
       {!routes && !error ? <CardSkeleton /> : null}
       {routes ? (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className={`grid grid-cols-1 gap-4 xl:grid-cols-2${v5 ? " min-w-0" : ""}`}>
           {/* Keyed on the saved order so a save remounts the card with a fresh draft. */}
           {routes.map((route) => <RouteCard key={`${route.id}:${route.saved.join(",")}`} route={route} onSaved={replaceRoute} />)}
         </div>

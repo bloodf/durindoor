@@ -79,15 +79,18 @@ export class DeepSeekWebExecutor extends BaseExecutor {
     const prompt = promptFrom(body?.messages);
     if (!prompt) return { response: json({ error: { message: "A non-empty user message is required", type: "invalid_request_error" } }, 400), url: `${BASE}/v0/chat/completion`, headers: {}, transformedBody: body };
     const common = { ...HEADERS, Authorization: `Bearer ${token}` };
-    const post = (url, payload, headers = common) => fetch(url, { method: "POST", headers, body: JSON.stringify(payload), signal });
+    const sessionRejected = (url, headers) => ({ response: json({ error: { message: "DeepSeek web session was rejected", type: "authentication_error", code: "HTTP_401" } }, 401), url, headers, transformedBody: body });
+    const post = (url, payload, headers = common) => fetch(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal });
     try {
-      const current = await fetch(`${BASE}/v0/users/current`, { headers: common, signal });
+      const current = await fetch(`${BASE}/v0/users/current`, { headers: common, redirect: "manual", signal });
+      if (current.status >= 300 && current.status < 400) return sessionRejected(`${BASE}/v0/users/current`, common);
       if (!current.ok) return { response: json({ error: { message: current.status === 401 || current.status === 403 ? "DeepSeek web userToken is invalid or expired" : `DeepSeek users/current returned HTTP ${current.status}`, type: "upstream_error", code: `HTTP_${current.status}` } }, current.status), url: `${BASE}/v0/users/current`, headers: common, transformedBody: body };
       const currentData = await current.json();
       const accessToken = currentData?.data?.biz_data?.token || currentData?.biz_data?.token;
       if (!accessToken) return { response: json({ error: { message: "DeepSeek did not return an access token for this userToken", type: "upstream_error", code: "HTTP_401" } }, 401), url: `${BASE}/v0/users/current`, headers: common, transformedBody: body };
       const authHeaders = { ...HEADERS, Authorization: `Bearer ${accessToken}` };
-      const sessionResponse = await fetch(`${BASE}/v0/chat_session/create`, { method: "POST", headers: { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" }, body: "{}", signal });
+      const sessionResponse = await fetch(`${BASE}/v0/chat_session/create`, { method: "POST", headers: { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" }, body: "{}", redirect: "manual", signal });
+      if (sessionResponse.status >= 300 && sessionResponse.status < 400) return sessionRejected(`${BASE}/v0/chat_session/create`, authHeaders);
       if (!sessionResponse.ok) return { response: json({ error: { message: `DeepSeek session creation returned HTTP ${sessionResponse.status}`, type: "upstream_error", code: `HTTP_${sessionResponse.status}` } }, sessionResponse.status), url: `${BASE}/v0/chat_session/create`, headers: authHeaders, transformedBody: body };
       const sessionData = await sessionResponse.json();
       const sessionId = sessionData?.data?.biz_data?.chat_session?.id || sessionData?.biz_data?.chat_session?.id;
@@ -105,6 +108,7 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         preempt: false,
       };
       const completion = await post(`${BASE}/v0/chat/completion`, payload, { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" });
+      if (completion.status >= 300 && completion.status < 400) return sessionRejected(`${BASE}/v0/chat/completion`, authHeaders);
       if (!completion.ok) {
         const status = completion.status === 401 || completion.status === 403 ? 401 : completion.status === 429 ? 429 : completion.status;
         const message = status === 401 ? "DeepSeek web session expired or is unauthorized" : status === 429 ? "DeepSeek web quota or rate limit reached" : `DeepSeek completion returned HTTP ${completion.status}`;

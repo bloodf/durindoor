@@ -15,6 +15,7 @@
 // `vision`/`audioInput`/`videoInput` describe native input; hosted search and
 // image-generation tools belong in `search`/`supportedTools`, not modalities.
 
+import { isCursorProvider } from "./cursorProviders.js";
 import { matchPattern } from "./pricing.js";
 import {
   KIRO_GPT_5_6_FAMILY,
@@ -1313,7 +1314,7 @@ function isCommandCodeTextOnly(model) {
 
 /** Apply Cursor's hard transport limit to an owned, fully overlaid capability object. */
 export function enforceCursorCapabilities(provider, capabilities) {
-  if (capabilities && (provider === "cursor" || provider === "cu")) capabilities.vision = false;
+  if (capabilities && isCursorProvider(provider)) capabilities.vision = false;
   return capabilities;
 }
 

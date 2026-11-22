@@ -825,6 +825,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   };
 
   const addNoAuthProviderModels = async (providerId, alias) => {
+    if (!providerMatchesKinds(providerId, kindFilter)) return;
     const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
     const transport = PROVIDERS[providerId];
     if (!registryFetcher || !OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type)) {
@@ -868,7 +869,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
-        if (!kindFilter.includes(kind)) continue;
+        // A model name can suggest a kind the provider cannot serve.
+        if (!kindFilter.includes(kind) || !providerMatchesKinds(providerId, [kind])) continue;
         const caps = isRecord(liveModel.capabilities) ? liveModel.capabilities : getCapabilitiesForModel(providerId, modelId, kind);
         models.push({
           id: `${alias}/${modelId}`,

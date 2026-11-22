@@ -19,25 +19,7 @@ vi.mock("@/lib/usageDb.js", () => ({
 }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
 
-// The staging rule: the entry and executor are composed here, never registered.
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/zed-hosted.js");
-  return { ...original, default: [...original.default, entry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { ZedHostedExecutor } = await import("../../open-sse/executors/zed-hosted.js");
-  const executor = new ZedHostedExecutor();
-  const isZed = (provider) => provider === "zed-hosted" || provider === "zdh";
-  return {
-    ...original,
-    getExecutor: (provider) => (isZed(provider) ? executor : original.getExecutor(provider)),
-    hasSpecializedExecutor: (provider) => isZed(provider) || original.hasSpecializedExecutor(provider),
-  };
-});
-
-import entry, { zedHostedCookieProfile } from "../../open-sse/providers/private/zed-hosted.js";
+import entry, { zedHostedCookieProfile } from "../../open-sse/providers/registry/zed-hosted.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import zedIde from "../../open-sse/providers/registry/zed.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";

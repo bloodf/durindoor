@@ -375,10 +375,17 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    let response;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
+    const abortedResult = {};
+    let resolveAbort;
+    const aborted = new Promise((resolve) => { resolveAbort = resolve; });
+    const onRequestAbort = () => resolveAbort(abortedResult);
+    controller.signal.addEventListener("abort", onRequestAbort, { once: true });
     try {
-      response = await fetch(plan.importUrl, {
+      let response;
+      try {
+        response = await fetch(plan.importUrl, {
         method: "POST",
         headers: { "content-type": "application/json", [PAIRING_HEADER]: plan.token },
         body: JSON.stringify(body),
@@ -387,24 +394,35 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
         redirect: "error",
         referrerPolicy: "no-referrer",
         signal: controller.signal,
-      });
-    } catch {
-      return cancelled() ? fail("cancelled") : fail("network_error");
+        });
+      } catch {
+        return timedOut ? fail("network_error") : cancelled() ? fail("cancelled") : fail("network_error");
+      }
+      if (response.status !== 200 && response.status !== 201) return fail(statusCode(response.status));
+      let connection = null;
+      try {
+        const bodyResult = await Promise.race([response.json(), aborted]);
+        if (bodyResult === abortedResult) return timedOut ? fail("network_error") : fail("cancelled");
+        connection = bodyResult?.connection ?? null;
+      }
+      catch {
+        if (timedOut) return fail("network_error");
+        if (cancelled()) return fail("cancelled");
+        // The import itself succeeded; unreadable response bodies are still success.
+      }
+      return {
+        ok: true,
+        action: plan.action,
+        cookieCount: cookies.length,
+        ...(localStorage ? { localStorageCount: Object.keys(localStorage).length } : null),
+        connection: isRecord(connection) ? { id: String(connection.id ?? ""), name: String(connection.name ?? "") } : null,
+      };
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
+      controller.signal.removeEventListener("abort", onRequestAbort);
       plan.token = "";
     }
-    if (response.status !== 200 && response.status !== 201) return fail(statusCode(response.status));
-    let connection = null;
-    try { connection = (await response.json())?.connection ?? null; } catch { /* the import itself succeeded */ }
-    return {
-      ok: true,
-      action: plan.action,
-      cookieCount: cookies.length,
-      ...(localStorage ? { localStorageCount: Object.keys(localStorage).length } : null),
-      connection: isRecord(connection) ? { id: String(connection.id ?? ""), name: String(connection.name ?? "") } : null,
-    };
   } finally {
     // Give back what this run was granted. Failures here are not actionable.
     if (granted.permissions.length || granted.origins.length) {

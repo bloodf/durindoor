@@ -156,7 +156,11 @@ export const WRONG_MODEL_TEXT = [
   "model not supported",
   "model not found",
   "model does not exist",
-  "unknown model"];
+  "unknown model",
+  // OpenRouter (and similar routers) echo the requested id: "<id> is not a valid model ID".
+  // Keep this ahead of billing/capacity text rules so a client-chosen id containing
+  // those phrases cannot bench the shared account (#2315).
+  "not a valid model"];
 
 export const WRONG_MODEL_PATTERNS = [
   /\bmodel\s+\S+\s+is\s+not\s+supported\b/,

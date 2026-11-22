@@ -72,7 +72,7 @@ export async function validateClaudeWebSession({ apiKey, fetcher = fetch }) {
     return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   const { status } = response;
-  if (status === 401 || status === 403) return { valid: false, status, error: "Invalid or expired sessionKey - re-capture it from claude.ai" };
+  if ((status >= 300 && status < 400) || status === 401 || status === 403) return { valid: false, status, error: "Invalid or expired sessionKey - re-capture it from claude.ai" };
   if (status === 429) return { valid: false, status, unavailable: true, error: "Claude is rate limiting this session - try again later" };
   if (status >= 500) return { valid: false, status, unavailable: true, error: "Provider unavailable - try again later" };
   if (status !== 200) return { valid: false, status, error: `Claude Web validation failed (HTTP ${status})` };
@@ -97,8 +97,8 @@ export class ClaudeWebExecutor extends BaseExecutor {
     const common = headers(cookie);
     const fetcher = input.fetcher || proxyAwareFetch;
     try {
-      const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, signal: input.signal });
-      if (organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
+      const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, redirect: "manual", signal: input.signal });
+      if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       if (!organizations.ok) return { response: responseError(organizations.status, "Claude Web organization lookup failed"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       const orgs = await organizations.json();
       const org = Array.isArray(orgs) ? orgs[0] : null;
@@ -122,8 +122,8 @@ export class ClaudeWebExecutor extends BaseExecutor {
       if (!conversationId) payload.create_conversation_params = { name: "", model, include_conversation_preferences: true, paprika_mode: null, compass_mode: null, is_temporary: false, enabled_imagine: false, tool_search_mode: "auto" };
       if (!conversationId) conversationId = randomUUID();
       const url = `${BASE}/organizations/${encodeURIComponent(orgId)}/chat_conversations/${encodeURIComponent(conversationId)}/completion`;
-      const upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), signal: input.signal });
-      if (upstream.status === 401 || upstream.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body };
+      const upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), redirect: "manual", signal: input.signal });
+      if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body };
       if (upstream.status === 429) return { response: responseError(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body };
       if (!upstream.ok || !upstream.body) return { response: responseError(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body };
       const response = await readSse(upstream, model, input.stream === true || input.body?.stream === true);

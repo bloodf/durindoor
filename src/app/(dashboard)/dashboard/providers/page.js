@@ -758,6 +758,9 @@ function ProviderCard({
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
   const freeClass = classifyFreeProvider(providerId);
+  // V5 dims only the icon: whole-card opacity pushes the name and badges under WCAG AA contrast.
+  const v5 = useUiV5();
+  const dimmed = allDisabled || (isNoAuth && !noAuthEnabled);
 
   const dotColors = {
     free: "bg-dd-success",
@@ -777,10 +780,10 @@ function ProviderCard({
       <Link href={`/dashboard/providers/${providerId}`} className="block min-w-0">
         <Card
           padding="xs"
-          className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled || isNoAuth && !noAuthEnabled ? "opacity-50" : ""}`}>
+          className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${dimmed && !v5 ? "opacity-50" : ""}`}>
           
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2">
+            <div className={`flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2${dimmed && v5 ? " opacity-50" : ""}`}>
               {provider.iconUrl ? (
                 <ProviderIcon
                   src={provider.iconUrl}
@@ -903,6 +906,7 @@ function ApiKeyProviderCard({
     ANTHROPIC_COMPATIBLE_PREFIX
   );
   const freeClass = classifyFreeProvider(providerId);
+  const v5 = useUiV5();
 
   const dotColors = {
     free: "bg-dd-success",
@@ -925,11 +929,11 @@ function ApiKeyProviderCard({
     <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
       <Card
         padding="xs"
-        className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}>
+        className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled && !v5 ? "opacity-50" : ""}`}>
         
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2">
+            <div className={`flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2${allDisabled && v5 ? " opacity-50" : ""}`}>
               {provider.iconUrl ? (
                 <ProviderIcon
                   src={getIconPath()}

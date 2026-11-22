@@ -1,4 +1,4 @@
-// Devin Desktop sign-in (staged; not registered in src/lib/oauth/providers.js yet).
+// Devin Desktop sign-in, registered as "devin-desktop" in src/lib/oauth/providers.js.
 //
 // Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // src/lib/oauth/providers/devin-desktop.ts and DEVIN_DESKTOP_CONFIG in
@@ -15,6 +15,7 @@
 // What *is* refreshed is the short-lived user JWT, which the executor mints from the
 // session token on every request (GetUserJwt).
 import { isString } from "../../../shared/utils/typeChecks.js";
+import { credentialFetch } from "../../../../open-sse/utils/credentialFetch.js";
 
 export const DEVIN_DESKTOP_CONFIG = Object.freeze({
   apiServerUrl: "https://server.codeium.com",
@@ -61,6 +62,13 @@ export function validateImportToken(token) {
 }
 
 export function mapTokens(tokens) {
+  // The dashboard import path hands over the pasted credential itself, a session token
+  // or an API key; the browser sign-in hands over the exchange result object.
+  if (isString(tokens)) {
+    const verdict = validateImportToken(tokens);
+    if (!verdict.valid) throw new Error(verdict.reason);
+    return { accessToken: tokens.trim(), refreshToken: null, expiresIn: null };
+  }
   const mapped = { accessToken: tokens.accessToken, refreshToken: null, expiresIn: null };
   // Only the browser sign-in tags the connection; an imported key stays verbatim and untagged.
   if (tokens.authMethod) mapped.providerSpecificData = { authMethod: tokens.authMethod };
@@ -99,7 +107,7 @@ export const devinDesktopOAuth = {
       body: JSON.stringify({ code: authorizationCode, code_verifier: codeVerifier }),
     };
     if (proxyOptions) init.proxyOptions = proxyOptions;
-    const response = await fetcher(config.tokenUrl, init);
+    const response = await credentialFetch(fetcher, config.tokenUrl, init);
     // Status only: the body can echo the code, and the route surfaces this message.
     if (!response.ok) throw new Error(`Devin token exchange failed: ${response.status}`);
     const data = await response.json().catch(() => null);

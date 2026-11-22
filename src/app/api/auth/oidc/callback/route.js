@@ -4,6 +4,7 @@ import {
   exchangeOidcCode,
   fetchOidcDiscovery,
   getOidcRuntimeConfig,
+  checkOidcIdentityAllowed,
   getPublicOrigin,
   pickOidcDisplayName,
   pickOidcEmail,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/auth/oidc";
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
+import { getSettings } from "@/lib/localDb";
 
 function clearOidcCookies(cookieStore) {
   cookieStore.delete("oidc_state");
@@ -73,6 +75,12 @@ export async function GET(request) {
     });
 
     clearOidcCookies(cookieStore);
+    // Authorization: only allowlisted identities become operators (#2195).
+    const settings = await getSettings();
+    const access = checkOidcIdentityAllowed(payload, settings);
+    if (!access.allowed) {
+      return NextResponse.redirect(new URL(`/login?error=${access.reason}`, getPublicOrigin(request)));
+    }
     await setDashboardAuthCookie(cookieStore, request, {
       oidc: true,
       oidcSub: payload.sub || null,

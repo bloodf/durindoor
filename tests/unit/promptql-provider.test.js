@@ -50,7 +50,9 @@ describe("PromptQL staged provider", () => {
   });
 
   it("validates accepted and rejected session probes", async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(json({ token: "synthetic-project-jwt" })).mockResolvedValueOnce(json({ error: "expired" }, 401));
+    const claims = { iss: "enrich-token", projectId: PROJECT };
+    const enrichToken = `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.synthetic`;
+    const fetcher = vi.fn().mockResolvedValueOnce(json({ token: enrichToken })).mockResolvedValueOnce(json({ error: "expired" }, 401));
     expect(await probeRegistryProvider("promptql", COOKIE_A, fetcher)).toMatchObject({ valid: true, status: 200 });
     expect(await probeRegistryProvider("promptql", COOKIE_A, fetcher)).toMatchObject({ valid: false, status: 401 });
     expect(fetcher.mock.calls[0][0]).toBe(promptqlCookieProfile.validationProbe.url);

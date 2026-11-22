@@ -12,3 +12,4 @@ export const Loading = { ...reviewStory(original.Loading, {"source":"src/app/(da
 export const KeyboardPagingAndRange = { ...reviewStory(original.KeyboardPagingAndRange, {"source":"src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.stories.jsx","standalone":false}) };
 export const RTL = { ...reviewStory(original.RTL, {"source":"src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.stories.jsx","standalone":false}) };
 export const MobileViewport = { ...reviewStory(original.MobileViewport, {"source":"src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.stories.jsx","standalone":false}) };
+export const EventsFailure = { ...reviewStory(original.EventsFailure, {"source":"src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.stories.jsx","standalone":false}) };

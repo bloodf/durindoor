@@ -1,6 +1,7 @@
 "use client";
 
 import DSModal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/useUiV5.js";
 
 /**
  * Legacy modal API composed over authoritative Durin DS Modal. The foundation
@@ -31,6 +32,11 @@ export default function Modal({
   pending = false,
   initialFocus,
 }) {
+  const isV5 = useUiV5();
+  const v5SurfaceClass = isV5
+    ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none"
+    : "";
+
   return (
     <DSModal
       open={isOpen}
@@ -42,7 +48,7 @@ export default function Modal({
       closeOnEscape={closeOnEscape}
       pending={pending}
       initialFocus={initialFocus}
-      surfaceClassName={className}
+      surfaceClassName={[className, v5SurfaceClass].filter(Boolean).join(" ")}
     >
       {children}
     </DSModal>

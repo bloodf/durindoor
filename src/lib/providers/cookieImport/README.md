@@ -62,7 +62,7 @@ through the normal connection path.
 | Arena | Extension and dashboard | `arena.ai` profile requires `arena-auth-prod-v1`; numbered `arena-auth-prod-v1.N` chunks must be contiguous. |
 | ChatPlayground | Extension and dashboard | `app.chatplayground.ai` profile requires `__client` and `__session`. |
 | DeepSeek Web | Manual token | The credential is the `userToken` from local storage, saved as an API-key credential; there is no cookie to capture. |
-| PromptQL | Extension and dashboard | `prompt.ql.app` profile requires `__Host-next-auth.csrf-token` and `next-auth.session-token`. The playground JWT and project ID stay manual provider-specific data. |
+| PromptQL | Extension and dashboard | `prompt.ql.app` profile requires `__Host-next-auth.csrf-token` and `next-auth.session-token`. Chat resolves the playground JWT and project ID through the imported session and saves them on that connection. |
 | Notion AI Web | Extension and dashboard | `app.notion.com` profile requires `token_v2`. |
 | NoTrack Web | Extension and dashboard | `notrack.ai` profile requires `uid`, `si_usr_id` and `si_ses_id`; the optional `nt_session` needs a manual full-header paste. |
 | Tencent AI Studio Web | Extension and dashboard, unverified | `aistudio.tencent.ai` profile requires `sessionid`. The pinned source forwards the whole header and names no cookie, so this allowlist was not confirmed against a live capture. |

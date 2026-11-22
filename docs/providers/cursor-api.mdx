@@ -1,11 +1,11 @@
 ---
 title: Cursor API
-description: Staged provider that exchanges a Cursor user API key for a session token and reuses the existing Cursor request path. Off by default and unverified against a live account.
+description: Opt-in provider that exchanges a Cursor user API key for a session token and reuses the existing Cursor request path. Off by default and unverified against a live account.
 ---
 
 Cursor API (`cursor-api`, alias `cua`) is a second Cursor identity next to the Cursor IDE provider (`cursor`, alias `cu`). The connection holds a Cursor user API key (`crsr_...`) instead of an IDE session, so no IDE install or `state.vscdb` import is needed on the gateway host. Chat, streaming, tool handling and the model catalog are the existing Cursor request path, unchanged.
 
-This provider is **staged and unverified**. Tests use an injected fetch for the key exchange, an in-memory fake of the AgentService stream and a stubbed model catalog. No Cursor account, API key, session token or plan has been run against it. Treat every statement here as the contract read from the pinned upstream source, not as tested behavior.
+This provider is **unverified**. Tests use an injected fetch for the key exchange, an in-memory fake of the AgentService stream and a stubbed model catalog. No Cursor account, API key, session token or plan has been run against it. Treat every statement here as the contract read from the pinned upstream source, not as tested behavior.
 
 ## Read this first
 
@@ -18,11 +18,11 @@ The Cursor IDE provider is separate and unchanged. API-key and IDE-session conne
 ## Set up
 
 1. Create a user API key at [cursor.com/dashboard/api](https://cursor.com/dashboard/api). It starts with `crsr_`. (`grok_` keys are accepted by the same exchange upstream.)
-2. After registration, add **Cursor API** under **Providers** and paste the key. A key with any other prefix is refused before any network call.
-3. Opt the connection in by setting `providerSpecificData.enableSessionDispatch` to `true` on that row. Until then it refuses to dispatch.
+2. Add **Cursor API** under **Providers** and paste the key. A key with any other prefix is refused before any network call.
+3. Opt the connection in with **Allow session dispatch** in its edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`). Until then it refuses to dispatch.
 4. Call it as `cursor-api/<model>` or `cua/<model>`.
 
-Cookie capture: **not applicable.** The credential is an API key, not a browser session, so the cookie capture extension, pasted `Cookie:` header, cURL and HAR import flows do not apply. The staged module exports an intentionally empty `cursorApiCookieProfile` so the registration batch can see that.
+Cookie capture: **not applicable.** The credential is an API key, not a browser session, so the cookie capture extension, pasted `Cookie:` header, cURL and HAR import flows do not apply.
 
 ## How sign-in and refresh work
 
@@ -66,17 +66,3 @@ The gateway's chat route rewrites the machine-readable `code` on these bodies to
 - [OmniRoute key exchange service](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/cursorApiKeyAuth.ts)
 - [OmniRoute Cursor executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/cursor.ts)
 - [OmniRoute Cursor API key and CLI guide](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/docs/providers/CURSOR-API-KEY-AND-CLI.md)
-
-<!-- Registration steps (for the registration batch; this unit edits none of these files):
-1. Registry promotion: move open-sse/providers/private/cursor-api.js to open-sse/providers/registry/cursor-api.js (default export unchanged; it imports ../registry/cursor.js for transport and models, so keep that path valid), then run pnpm run gen:registry-index and pnpm run gen:agent-index. Do not hand-edit registry/index.js or open-sse/AGENT-INDEX.md.
-2. open-sse/executors/index.js: import CursorApiExecutor from ./cursor-api.js and map both "cursor-api" and "cua" to ONE shared instance (the per-key session cache lives on the instance). Add hasSpecializedExecutor coverage.
-3. extension providers.js and manifest host permissions: none. cursorApiCookieProfile is notApplicable (API key, no cookies); do not add Cursor API to the cookie capture extension or its manifest.
-4. Dashboard import: none for cookies. Add Cursor API as an API-key provider card (src/shared/constants/providers/apikey/...) so a key can be pasted, and make sure a connection row can store providerSpecificData.enableSessionDispatch (a boolean toggle that defaults to false) and that its value reaches executor credentials. Key validation should use the exchange (POST https://api2.cursor.sh/auth/exchange_user_api_key) via CursorApiExecutor.resolveSession; there is no GET validateUrl.
-5. ProviderIcon / ProviderLogo: add the "cursor-api" icon (entry display.icon is "edit_note", textIcon "CA", color #00D4AA; reuse the Cursor svg if preferred).
-6. Catalog: add the row to docs/providers/catalog.mdx and the new page to docs/providers/index.mdx and docs/providers/meta.json.
-7. modelsConfig: in src/app/api/providers/[id]/models/modelsConfig.js add "cursor-api": { customResolver: (connection, proxyOptions) => discoverCursorApiModels(connection, { proxyOptions, executor: getExecutor("cursor-api"), staticModels: getStaticProviderModels("cursor-api") }) } using discoverCursorApiModels from open-sse/executors/cursor-api.js.
-8. Cursor special cases keyed on provider "cursor"/"cu": open-sse/handlers/chatCore.js (validateCursorImages at ~line 342 and preTranslateRtk at ~line 703), open-sse/handlers/responsesHandler.js (~line 45) and open-sse/providers/capabilities.js (~line 1310, vision=false) must also match "cursor-api"/"cua"; without that the key connection skips the pre-translate RTK pass and the early image validation (images are still rejected later by the translator).
-9. Stories: add the provider to the provider detail page stories and tests/e2e/storybook-surfaces.json if the surface list requires it.
-10. Tests: after registration, tests/unit/cursor-api-provider.test.js drops its registry/executor vi.mock composition and imports the real modules (keep the injected exchange fetch).
-11. Revisit the Limits section once a live key confirms the exchange shape and which headers the chat path needs.
--->

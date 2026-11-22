@@ -55,6 +55,11 @@ import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import museCode from "./museCodeProvider.js";
 import openference from "./openferenceProvider.js";
+import freebuff from "./freebuffProvider.js";
+import workbuddy from "./workbuddyProvider.js";
+import zedHosted from "./zedHostedProvider.js";
+import { devinDesktopOAuth } from "./services/devin-desktop.js";
+import { minimaxCodeOAuthProvider } from "./services/minimax-code.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -2019,7 +2024,14 @@ const PROVIDERS = {
   orcarouter,
   "ghe-copilot": gheCopilot,
   "muse-code": museCode,
-  openference
+  openference,
+  // Opt-in session providers (dispatch stays off per connection until
+  // providerSpecificData.enableSessionDispatch is true).
+  "devin-desktop": devinDesktopOAuth,
+  "minimax-code": minimaxCodeOAuthProvider,
+  "zed-hosted": zedHosted,
+  freebuff,
+  workbuddy
 };
 
 // Amazon Q Developer signs in exactly like Kiro (AWS Builder ID / IAM Identity
@@ -2057,16 +2069,40 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
   const config = provider.prepareConfig ?
   await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
   provider.config;
-  const { codeVerifier, codeChallenge, state } = generatePKCE(provider.pkceVerifierBytes);
+  const generated = generatePKCE(provider.pkceVerifierBytes);
+  const { codeChallenge, state } = generated;
+  let { codeVerifier } = generated;
+  let effectiveRedirectUri = redirectUri;
+  let authMeta = null;
 
+  // A token-import provider that also offers a browser PKCE sign-in (Devin
+  // Desktop) declares supportsBrowserPkce; every other import provider
+  // (devin-cli) has no authorize URL and keeps the import-token path.
+  const usesPkce = provider.flowType === "authorization_code_pkce" || provider.supportsBrowserPkce === true;
   let authUrl;
   if (provider.flowType === "device_code") {
     // Device code flow doesn't have auth URL upfront
     authUrl = null;
-  } else if (provider.flowType === "authorization_code_pkce") {
-    authUrl = provider.buildAuthUrl(config, redirectUri, state, codeChallenge, meta || {});
+  } else if (usesPkce) {
+    // The Devin CLI client only accepts its fixed loopback callback.
+    if (provider.supportsBrowserPkce && provider.fixedPort && provider.callbackHost) {
+      effectiveRedirectUri = `http://${provider.callbackHost}:${provider.fixedPort}${provider.callbackPath || "/callback"}`;
+    }
+    authUrl = provider.buildAuthUrl(config, effectiveRedirectUri, state, codeChallenge, meta || {});
   } else {
-    authUrl = provider.buildAuthUrl(config, redirectUri, state, undefined, meta || {});
+    authUrl = provider.buildAuthUrl(config, effectiveRedirectUri, state, undefined, meta || {});
+  }
+
+  // A provider may return a record instead of a bare URL when its flow carries
+  // more than PKCE: Zed Hosted binds an RSA private key where the verifier
+  // would go, reports the loopback redirect it expects, and needs its system id
+  // at exchange time.
+  if (authUrl && isObject(authUrl) && !Array.isArray(authUrl)) {
+    const { authUrl: url, codeVerifier: verifier, redirectUri: reported, ...rest } = authUrl;
+    authUrl = url || null;
+    if (verifier) codeVerifier = verifier;
+    if (reported) effectiveRedirectUri = reported;
+    if (Object.keys(rest).length) authMeta = rest;
   }
 
   return {
@@ -2074,7 +2110,8 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
     state,
     codeVerifier,
     codeChallenge,
-    redirectUri,
+    redirectUri: effectiveRedirectUri,
+    ...(authMeta ? { meta: authMeta } : null),
     flowType: provider.flowType,
     fixedPort: provider.fixedPort,
     callbackPath: provider.callbackPath || "/callback"

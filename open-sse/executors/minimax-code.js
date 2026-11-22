@@ -16,7 +16,7 @@
 //    the same connection, so two connections never share or overwrite each other's tokens.
 import { DefaultExecutor } from "./default.js";
 import { buildErrorBody } from "../utils/error.js";
-import { MINIMAX_CODE_GATEWAY_URL, MINIMAX_CODE_MODELS } from "../providers/private/minimax-code.js";
+import { MINIMAX_CODE_GATEWAY_URL, MINIMAX_CODE_MODELS } from "../providers/registry/minimax-code.js";
 import { normalizeMinimaxCodeRegion, refreshMinimaxCodeToken } from "../services/minimaxCodeAuth.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 

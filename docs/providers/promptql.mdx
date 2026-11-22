@@ -1,9 +1,20 @@
-# PromptQL
+---
+title: PromptQL (experimental)
+description: Use your own signed-in PromptQL playground session and enrich-token JWT, with its limits and errors.
+---
 
-OmniRoute's pinned PromptQL implementation targets the PromptQL web playground and labels the integration unofficial/experimental. It uses a project-scoped `enrich-token` JWT and project ID from the signed-in playground session, rather than a standalone API key. The public documentation currently requires sign-in for its API reference. The playground GraphQL endpoint is live, but the authentication, model discovery and chat flow are reverse-engineered from the web application and were not independently verified against a supported vendor API contract.
+PromptQL is an unofficial, experimental integration for a user's own signed-in playground session. It calls the playground GraphQL operations with the project-scoped `enrich-token` JWT and project ID. This is reverse-engineered web application behavior and is not a documented third-party API. Use it only while it works with your account; PromptQL can change the web app, auth flow, model catalog, or limits without notice.
 
-The staged provider is not ready for registration. Before implementation, confirm with PromptQL that the playground JWT and GraphQL operations are supported for third-party API use, and obtain the official model discovery, usage/billing and error semantics. Do not paste real session cookies or tokens into issues or test fixtures.
+## Setup
 
-Sources: [PromptQL docs](https://www.promptql.io/en/docs), [OmniRoute pinned registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/promptql/index.ts), [OmniRoute pinned executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/promptql.ts).
+Sign in at [prompt.ql.app](https://prompt.ql.app) and import the playground cookies with **Import cookies** or the cookie capture extension. The first chat exchanges the session for a playground enrich-token and uses the project ID from the connection, session, or token claims. DurinDoor saves the token and resolved project on that connection after a successful turn and uses the imported session to refresh the token near expiry.
 
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->
+Cookie exchange depends on the experimental playground endpoint returning a chat-capable token. If exchange fails, re-import the session. You can also supply the playground `enrich-token` JWT and project ID as `token` and `projectId` in the connection's provider-specific data. Obtain the JWT from the Authorization header of a playground GraphQL request to `data.prompt.ql.app`. A DDN project token is for project credits. Keep session cookies and JWTs out of logs, issues, and test fixtures.
+
+## Models, limits, and errors
+
+Model discovery reads the signed-in project's `FetchLlmConfigs` GraphQL catalog. The registry model list is an offline fallback; the connection lists live models when its provider-specific data carries a manually supplied JWT. Chat starts a roomless PromptQL thread, sends the latest user message, and polls thread events until it can return an OpenAI-compatible completion or stream. Follow-up requests may pass `promptql_thread_id` or `X-PromptQL-Thread-Id` to continue a thread.
+
+Usage and billing follow the PromptQL account/project. DurinDoor maps expired/unauthorized sessions to 401 and quota/rate limiting to 429. This web session flow has not been independently verified as a supported vendor API contract; model availability, billing, refresh behavior, and limits may vary. No separate usage endpoint is exposed; the **Usage** card shows only what DurinDoor recorded for the connection.
+
+Sources: [PromptQL docs](https://www.promptql.io/en/docs), [PromptQL playground](https://prompt.ql.app).

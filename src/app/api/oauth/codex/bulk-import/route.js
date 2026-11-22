@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
 import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
+import { normalizeCodexImportRecord } from "@/lib/oauth/codexImportRecord.js";
 
 /**
  * POST /api/oauth/codex/bulk-import
@@ -11,6 +12,9 @@ import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
  *   - Array:    [{...}, {...}]
  *   - Single:   {...}
  *   - Wrapped:  { accounts: [{...}, ...] }
+ *
+ * Items may also be Codex CLI `auth.json` files (snake_case fields nested
+ * under `tokens`); those are normalized to camelCase first.
  *
  * Each item must contain at least `accessToken`. Missing email / chatgpt
  * account info is best-effort backfilled from the JWT (idToken or accessToken).
@@ -73,7 +77,7 @@ export async function POST(request) {
         createdAt: _createdAt,
         updatedAt: _updatedAt,
         ...item
-      } = raw;
+      } = normalizeCodexImportRecord(raw);
 
       if (!item.accessToken || !isString(item.accessToken)) {
         throw new Error("Missing accessToken");

@@ -19,9 +19,10 @@ spec:
       labels:
         app.kubernetes.io/name: durindoor
     spec:
-      # The image entrypoint starts as root only to chown DATA_DIR on mounted
-      # volumes, then drops to the `node` user (uid 1000) with su-exec.
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
@@ -30,16 +31,16 @@ spec:
       containers:
         - name: durindoor
           image: ghcr.io/bloodf/durindoor
-          # Always: the example tag is a moving `latest`; with a pinned
-          # version or digest, IfNotPresent is fine.
-          imagePullPolicy: Always
+          # Bump this tag to the current verified DurinDoor release.
+          imagePullPolicy: IfNotPresent
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             allowPrivilegeEscalation: false
-            # Only what the entrypoint needs: chown DATA_DIR, then su-exec to
-            # the node user.
             capabilities:
               drop: ["ALL"]
-              add: ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE"]
+            readOnlyRootFilesystem: true
           ports:
             - name: http
               containerPort: 20128
@@ -58,6 +59,8 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
           # Migrations run forward on startup; allow up to 5 minutes before
           # liveness takes over.
           startupProbe:
@@ -98,3 +101,5 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: durindoor-data
+        - name: tmp
+          emptyDir: {}

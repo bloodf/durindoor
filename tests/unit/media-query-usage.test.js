@@ -56,7 +56,10 @@ vi.mock("../../src/sse/services/mediaRoutes.js", () => ({
   resolveMediaRoute: async () => ({ models: ["paid"] }),
   defaultRouteComboOptions: (kind) => ({ comboName: `media-route:${kind}` })
 }));
-vi.mock("@/shared/utils/ssrfGuard.js", () => ({ assertPublicUrlResolved: vi.fn() }));
+vi.mock("@/shared/utils/ssrfGuard.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  assertPublicUrlResolved: vi.fn(),
+}));
 
 import { handleSearch } from "../../src/sse/handlers/search.js";
 import { handleFetch } from "../../src/sse/handlers/fetch.js";

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { isString } from "../../../../shared/utils/typeChecks.js";
@@ -176,7 +177,7 @@ export async function POST(request) {
     // Update config.yaml — replace/insert model: block, keep everything else
     const existingYaml = await readConfigYaml();
     const newYaml = upsertModelBlock(existingYaml, buildModelBlock(model, normalizedBaseUrl));
-    await fs.writeFile(getHermesConfigPath(), newYaml);
+    await writeConfigAtomic(getHermesConfigPath(), newYaml);
 
     // Update .env — upsert OPENAI_API_KEY only when caller provides one
     if (apiKey) {
@@ -209,7 +210,7 @@ export async function DELETE() {
       throw error;
     }
     const newYaml = removeModelBlock(yaml);
-    await fs.writeFile(configPath, newYaml);
+    await writeConfigAtomic(configPath, newYaml);
     return NextResponse.json({ success: true, message: `${PROVIDER_NAME} model block removed` });
   } catch {
     console.log("Hermes settings reset failed");

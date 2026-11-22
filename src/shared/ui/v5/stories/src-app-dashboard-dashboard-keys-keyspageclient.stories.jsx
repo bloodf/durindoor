@@ -11,3 +11,4 @@ export const KeyLimits = { ...reviewStory(original.KeyLimits, {"source":"src/app
 export const RevocationRejectedAndRetry = { ...reviewStory(original.RevocationRejectedAndRetry, {"source":"src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx","standalone":false}) };
 export const RevocationPending = { ...reviewStory(original.RevocationPending, {"source":"src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx","standalone":false}) };
 export const Rotation = { ...reviewStory(original.Rotation, {"source":"src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx","standalone":false}) };
+export const V5LoadFailureAndRetry = { ...reviewStory(original.V5LoadFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx","standalone":false}) };

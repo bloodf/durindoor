@@ -44,12 +44,21 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "oidcClientSecret",
   "oidcScopes",
   "oidcLoginLabel",
+  /** Who may become an operator through OIDC login (#2195). */
+  "oidcAllowedSubjects",
+  "oidcAllowedEmails",
+  "oidcAllowedDomains",
   "tunnelDashboardAccess",
   "enableObservability",
   "enableSessionCapture",
   "outboundProxyEnabled",
   "outboundProxyUrl",
   "outboundNoProxy",
+  /** Request-routing endpoints that can receive user prompts or traffic. */
+  "headroomEnabled",
+  "headroomUrl",
+  "headroomCompressUserMessages",
+  "mitmRouterBaseUrl",
   /**
    * Gates a default-allow short-circuit for Claude Code's auto-permission
    * classifier (see open-sse/handlers/chatCore.js). An unproved caller must

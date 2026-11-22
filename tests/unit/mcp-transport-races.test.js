@@ -31,6 +31,11 @@ vi.mock("node:child_process", () => ({
   }),
 }));
 
+vi.mock("@/lib/localDb", async (importOriginal) => ({
+  ...await importOriginal(),
+  validateGatewayKey: vi.fn(async (key) => key === "test-key" ? { id: "test-key-id" } : null),
+}));
+
 const stdio = await import("../../src/lib/mcp/gateway/stdioClient");
 const { StdioEntry, getStore } = stdio.__test__;
 
@@ -272,7 +277,11 @@ describe("sseSessions — TTL sweep + abort cleanup", () => {
 
   it("aborting the SSE request unregisters the session", async () => {
     const controller = new AbortController();
-    const request = { signal: controller.signal };
+    const request = {
+      signal: controller.signal,
+      url: "http://localhost/api/mcp-gateway/sse",
+      headers: new Headers({ Authorization: "Bearer test-key" }),
+    };
     const res = await sseGet(request);
     // start() runs synchronously during Response construction: session exists.
     expect(sseTest.getStore().size).toBe(1);
@@ -287,7 +296,11 @@ describe("sseSessions — TTL sweep + abort cleanup", () => {
     const spy = vi.spyOn(sseSessions, "unregisterSession");
 
     const controller = new AbortController();
-    const request = { signal: controller.signal };
+    const request = {
+      signal: controller.signal,
+      url: "http://localhost/api/mcp-gateway/sse",
+      headers: new Headers({ Authorization: "Bearer test-key" }),
+    };
     const res = await sseGet(request);
     expect(sseTest.getStore().size).toBe(1);
 

@@ -14,8 +14,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { crc32 } from "node:zlib";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const EXTENSION_DIR = path.join(ROOT, "extensions", "provider-cookie-capture");
@@ -112,7 +113,7 @@ async function main(argv) {
   process.stdout.write(`${target}\nsha256 ${first.sha256}\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exit(1);

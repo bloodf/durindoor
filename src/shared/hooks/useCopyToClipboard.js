@@ -2,6 +2,29 @@
 
 import { useState, useCallback, useRef } from "react";
 
+/** Copy text, falling back to the document command if clipboard access fails. */
+export async function writeClipboard(text) {
+  if (navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Clipboard access can be denied even when the API exists.
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  try {
+    textarea.select();
+    document.execCommand("copy");
+  } finally {
+    textarea.remove();
+  }
+}
+
 /**
  * Hook for copy to clipboard with feedback
  * @param {number} resetDelay - Time in ms before resetting copied state (default: 2000)
@@ -12,21 +35,7 @@ export function useCopyToClipboard(resetDelay = 2000) {
   const timeoutRef = useRef(null);
 
   const copy = useCallback((text, id = "default") => {
-    const write = async () => {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      }
-    };
-    write();
+    void writeClipboard(text);
     setCopied(id);
 
     if (timeoutRef.current) {

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
@@ -136,7 +137,7 @@ export async function POST(request) {
         const existing = parseToml(await readConfigToml());
         const existingKey = existing["providers.openai"]?.api_key;
         const newConfig = build9RouterConfig(baseUrl, apiKey || existingKey || "sk_durindoor", model);
-        await fs.writeFile(getDeepSeekConfigPath(), newConfig);
+        await writeConfigAtomic(getDeepSeekConfigPath(), newConfig);
 
         return NextResponse.json({
             success: true,
@@ -158,7 +159,7 @@ export async function DELETE() {
             return NextResponse.json({ success: true, message: "No config file to reset" });
         }
 
-        await fs.writeFile(configPath, DEFAULT_CONFIG);
+        await writeConfigAtomic(configPath, DEFAULT_CONFIG);
         return NextResponse.json({ success: true, message: `${PROVIDER_NAME} config reset to DeepSeek defaults` });
     } catch (error) {
         console.log("Error resetting deepseek-tui settings:", error);

@@ -71,7 +71,7 @@ Ten single-use backup codes are generated at enrollment and shown once, bcrypt-h
 
 Dashboard login: five failures from one IP, then a lock of 30s, 2m, 10m, 30m. A quiet hour since the last fail resets the bucket. At most 5000 IPs are tracked. HTTP 429 includes `Retry-After`.
 
-Client IP for that limiter comes from `custom-server.js` peer proof (`x-9r-real-ip`). Without the wrapper, every caller shares the `unknown` bucket so spoofed `X-Forwarded-For` cannot rotate out of lockout. `TRUST_PROXY=true` is honoured only when that proof is present.
+Client IP for that limiter comes from `custom-server.js` peer proof (`x-9r-real-ip`). When the TCP peer is loopback (a local reverse proxy), `custom-server.js` takes the rightmost `X-Forwarded-For` entry, the hop the proxy appended; otherwise it uses the socket address. Without the wrapper, every caller shares the `unknown` bucket so spoofed `X-Forwarded-For` cannot rotate out of lockout. No `TRUST_PROXY` setting is read: the limiter has no such switch.
 
 Provider 429 backoff (account/model lock after fallback) reads `BACKOFF_BASE_MS` (default 2000), `BACKOFF_MAX_MS` (default 300000, cap 7 days), and `BACKOFF_MAX_LEVEL` (default 15). A max below the base restores the whole default schedule.
 
@@ -90,7 +90,9 @@ Before anything other than loopback can reach `/dashboard`:
 7. Leave `ENABLE_REQUEST_LOGS=false` except for a short debug window.
 8. Back up `DATA_DIR` and the protected environment. For PostgreSQL, also back up the database.
 
-`AUTH_COOKIE_SECURE=true` forces the `Secure` flag. `TRUST_PROXY=true` only when the reverse proxy overwrites forwarding headers and traffic goes through `custom-server.js`. Cross-origin login is rejected (`hasExactRequestOrigin`). Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
+`AUTH_COOKIE_SECURE=true` forces the `Secure` flag. Run the reverse proxy on the same host (loopback peer) and make it append the real client IP to `X-Forwarded-For`; traffic must go through `custom-server.js`. Cross-origin login is rejected (`hasExactRequestOrigin`). Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
+
+An authenticated dashboard session can enable or disable the tunnel from the same origin. Other local-only controls still require local access or the CLI token.
 
 If the proxy rewrites `Host` to an internal name, set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public origin so Origin checks match.
 
@@ -109,6 +111,8 @@ Bootstrap grants are short-lived and single-use. The login cookie is host-only a
 `GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT, a machine-bound CLI token, or a DurinDoor application API key, including when `requireLogin` is false. Direct loopback requests keep open-dashboard access when login is disabled.
 
 Only the exact OIDC `/api/auth/oidc/start` and `/api/auth/oidc/callback` login endpoints are public. `POST /api/auth/oidc/test` is operator-only because its probe can use the stored client secret; both middleware and the handler reject foreign-Origin cookie requests before discovery or probing. Explicit machine-bound CLI credentials remain supported.
+
+OIDC login only admits identities on an allowlist. Set one or more of `oidcAllowedSubjects` (exact `sub` claims), `oidcAllowedEmails` and `oidcAllowedDomains` in the dashboard profile. Email and domain entries match only when the id_token carries `email_verified: true`. While all three lists are empty, every OIDC login is refused with a login-page error and the server logs one warning; sign in with a password, from loopback, or with the CLI token to set them. OIDC sessions share the server-side session epoch, so changing or resetting the password ends every OIDC session. The connection test uses the stored client secret only when the tested issuer equals the saved issuer, and every OIDC discovery, token and JWKS fetch re-checks DNS resolution and redirect targets against internal hosts.
 
 The management control endpoint `POST /api/mcp/control` is exempt from the loopback-only MCP plugin branch. It requires a CLI token, API key, or dashboard JWT, including from a remote host. A credential-free loopback caller is accepted only while `requireApiKey` is off and only when the request carries no foreign `Origin`, so a browser page cannot drive it cross-origin. The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not that local-only policy.
 

@@ -26,7 +26,13 @@ const nextConfig = {
     "/*": ["./src/lib/db/adapters/pgSyncWorker.cjs"],
   },
   images: {
-    unoptimized: true
+    unoptimized: true,
+    // OmniRoute #20818: Next builds an ImageOptimizerCache for every /_next/image request
+    // before it checks `unoptimized`, and that constructor starts a disk LRU that mkdirs
+    // <distDir>/cache/images. On a global npm install served by an account that cannot write
+    // the install tree (systemd ProtectSystem=full) that mkdir fails. With unoptimized images
+    // the disk cache is never read or written, so 0 turns it off.
+    maximumDiskCacheSize: 0
   },
   env: {},
   experimental: {
@@ -74,6 +80,24 @@ const nextConfig = {
       ignored: /[\\/](node_modules|\.git|logs|\.next|\.next-cli-build|cli|open-sse\.old|tests|docs)[\\/]/,
     };
     return config;
+  },
+  // #2251: baseline clickjacking / MIME / referrer / embedding CSP on every response.
+  // Omits script-src/style-src — Next inline runtime scripts would break; nonce CSP is out of scope.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "same-origin" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+          },
+        ],
+      },
+    ];
   },
   async rewrites() {
     return [

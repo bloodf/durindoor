@@ -21,8 +21,7 @@
  * utils/geminiCookies.ts and validateGeminiWebProvider in
  * src/lib/providers/validation/webProvidersB.ts. MIT.
  *
- * Staged under open-sse/providers/private/: this executor is not yet in
- * open-sse/executors/index.js. See docs/providers/gemini-web.mdx.
+ * Registered in open-sse/executors/index.js. See docs/providers/gemini-web.mdx.
  */
 import { BaseExecutor } from "./base.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
@@ -37,6 +36,19 @@ const isObject = isRecord;
 
 export const GEMINI_WEB_URL = "https://gemini.google.com/app";
 export const GEMINI_WEB_ORIGIN = "https://gemini.google.com";
+/**
+ * Playwright proxy for the browser context, from the account's proxy options (OmniRoute #20739).
+ * An assigned proxy that cannot be turned into a Playwright proxy fails closed instead of letting
+ * the browser egress directly from the host IP.
+ */
+export function resolveGeminiWebBrowserProxy(proxyOptions) {
+  const proxyUrl = resolveProxyForRequest(GEMINI_WEB_URL, proxyOptions).proxyUrl;
+  if (!proxyUrl) return undefined;
+  const proxy = resolvePlaywrightProxy(proxyUrl);
+  if (!proxy) throw new Error("Gemini Web proxy is invalid; refusing a direct connection");
+  return proxy;
+}
+
 /** Response-label fallback when the request names no model. */
 const DEFAULT_MODEL_ID = "gemini-2.5-pro";
 const GEMINI_USER_AGENT =
@@ -458,6 +470,17 @@ export async function resetGeminiBrowserLeaseForTests() {
   if (previous) await previous.close().catch(() => {});
 }
 
+// Playwright is imported once per process and shared: concurrent first requests never race two
+// module loads (a test runner's module mock could otherwise answer only one of them).
+let playwrightModule = null;
+function loadPlaywright() {
+  playwrightModule ??= import("playwright").catch((error) => {
+    playwrightModule = null;
+    throw error;
+  });
+  return playwrightModule;
+}
+
 // One launcher per Playwright launch function, so repeated requests share lease identity.
 const launchers = new WeakMap();
 function stableLauncher(chromium) {
@@ -573,14 +596,13 @@ export class GeminiWebExecutor extends BaseExecutor {
     let abortBrowser = null;
     try {
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
-      const { chromium } = await import("playwright");
+      const { chromium } = await loadPlaywright();
       browser = await acquireBrowser(stableLauncher(chromium));
       abortBrowser = () => void context?.close().catch(() => {});
       signal?.addEventListener("abort", abortBrowser, { once: true });
 
-      const proxyUrl = resolveProxyForRequest(GEMINI_WEB_URL, input.proxyOptions).proxyUrl;
-      const proxy = resolvePlaywrightProxy(proxyUrl);
-      const contextOptions = { userAgent: GEMINI_USER_AGENT };
+      const proxy = resolveGeminiWebBrowserProxy(input.proxyOptions);
+      const contextOptions = { userAgent: GEMINI_USER_AGENT, serviceWorkers: "block" };
       if (proxy) contextOptions.proxy = proxy;
       context = await browser.newContext(contextOptions);
       await context.addCookies(parseCookies(cookie).map(({ name, value }) => ({
@@ -588,6 +610,21 @@ export class GeminiWebExecutor extends BaseExecutor {
       })));
 
       const page = await context.newPage();
+      // Chromium follows redirects before Playwright can act on response events.
+      const redirectSession = await context.newCDPSession?.(page);
+      if (redirectSession) {
+        redirectSession.on("Fetch.requestPaused", async ({ request, requestId, responseStatusCode, responseHeaders }) => {
+          const location = responseHeaders?.find(({ name }) => name.toLowerCase() === "location");
+          const destination = location && URL.parse(location.value, request.url);
+          if (responseStatusCode >= 300 && responseStatusCode < 400 && responseStatusCode !== 304 &&
+              (!destination || destination.origin !== URL.parse(request.url)?.origin)) {
+            await redirectSession.send("Fetch.fulfillRequest", { requestId, responseCode: 401, responseHeaders: [], body: "" }).catch(() => {});
+          } else {
+            await redirectSession.send("Fetch.continueResponse", { requestId }).catch(() => {});
+          }
+        });
+        await redirectSession.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Response" }] });
+      }
       let responseText = "";
       let captured = false;
       let upstreamStatus = null;
@@ -618,10 +655,10 @@ export class GeminiWebExecutor extends BaseExecutor {
         });
       });
 
-      await page.goto(GEMINI_WEB_URL, { waitUntil: "domcontentloaded", timeout: 20_000 });
+      const navigation = await page.goto(GEMINI_WEB_URL, { waitUntil: "domcontentloaded", timeout: 20_000 });
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
       // A redirect to the Google sign-in page is an expired or missing session.
-      if (SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
+      if (AUTH_FAILURE_STATUSES.has(navigation?.status?.()) || SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
       await page.waitForSelector(COMPOSER_SELECTOR, { timeout: 10_000 });
 
       if (model) {
@@ -719,7 +756,7 @@ const AUTH_FAILURE_STATUSES = new Set([401, 403]);
  * Read-only session check: GET gemini.google.com/app with the pasted cookies. A
  * signed-in page carries the `SNlM0e` token; a signed-out landing page answers
  * 200 to any junk cookie, so a bare 200 is not enough. Redirects are not
- * followed: a ServiceLogin redirect is a dead session. No conversation is
+ * followed: a cross-origin redirect is a dead session. No conversation is
  * created. Same shape as the specialty validators in providerProbe.js.
  */
 export async function validateGeminiWebSession({ apiKey, fetcher = fetch }) {
@@ -755,14 +792,9 @@ export async function validateGeminiWebSession({ apiKey, fetcher = fetch }) {
   if (status === 429) return { valid: false, status, unavailable: true, error: "Gemini is rate limiting this session - try again later" };
   if (status >= 300 && status < 400) {
     const location = response.headers.get("location") ?? "";
-    if (/accounts\.google\.com\/.*ServiceLogin/i.test(location)) {
-      return { valid: false, status, error: "Session expired - re-capture __Secure-1PSID from gemini.google.com" };
-    }
-    if (/accounts\.google\.com/i.test(location)) {
-      return { valid: true, status, warning: "Cookie accepted. Full verification happens on the first chat." };
-    }
-    if (/^https:\/\/([a-z0-9-]+\.)*google\.com(\/|$)/i.test(location)) return { valid: true, status };
-    return { valid: false, status, error: "Unexpected redirect from gemini.google.com - cookie not verified" };
+    const destination = location && URL.parse(location, GEMINI_WEB_URL);
+    if (destination?.origin === GEMINI_WEB_ORIGIN) return { valid: true, status };
+    return { valid: false, status, error: "Gemini session redirected - re-capture __Secure-1PSID from gemini.google.com" };
   }
   if (status === 200) {
     const html = await response.text().catch(() => "");

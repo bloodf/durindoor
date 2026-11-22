@@ -1,12 +1,44 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { NextResponse } from "next/server";
 import { getInstanceById, updateInstance, deleteInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
-import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import {
+  assertOutboundUrlAllowed,
+  assertResolvedAddressAllowed,
+  getProviderValidationGuard,
+  OutboundUrlGuardError
+} from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
+import { closeInstance } from "@/lib/mcp/gateway/stdioClient";
 import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Persist-time SSRF check (#2237) — see matching helper on the create route.
+ */
+async function assertInstanceUrlAllowed(rawUrl) {
+  const guard = getProviderValidationGuard();
+  const url = assertOutboundUrlAllowed(rawUrl, guard);
+  if (guard === "none") return url;
+  const host = url.hostname;
+  if (isIP(host)) {
+    assertResolvedAddressAllowed(host, guard);
+    return url;
+  }
+  let addresses;
+  try {
+    addresses = await dnsLookup(host, { all: true, verbatim: true });
+  } catch {
+    return url;
+  }
+  for (const { address } of addresses) {
+    assertResolvedAddressAllowed(address, guard);
+  }
+  return url;
+}
 
 function stripSecrets(inst) {
   if (!inst) return inst;
@@ -50,7 +82,7 @@ export async function PUT(request, context) {
     // SSRF guard on URL update — see the matching block on POST.
     if (body.url !== undefined && body.url !== null && body.url !== "") {
       try {
-        assertOutboundUrlAllowed(body.url);
+        await assertInstanceUrlAllowed(body.url);
       } catch (err) {
         if (err instanceof OutboundUrlGuardError) {
           console.log("MCP instance URL blocked by SSRF guard (update):", err?.message, "url=", err?.url);
@@ -72,6 +104,8 @@ export async function PUT(request, context) {
     if (oauthTokens) body.oauthTokens = oauthTokens;
     const inst = await updateInstance(id, body);
     if (!inst) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // Drop any cached stdio child so the next request picks up the edit.
+    try { closeInstance(id); } catch { /* best effort */ }
     return NextResponse.json({ instance: stripSecrets(inst) });
   } catch (e) {
     const err = e && isObject(e) ? e : {};
@@ -87,6 +121,7 @@ export async function DELETE(_request, context) {
     const { id } = await context.params;
     const ok = await deleteInstance(id);
     if (!ok) return NextResponse.json({ error: "not found" }, { status: 404 });
+    try { closeInstance(id); } catch { /* best effort */ }
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

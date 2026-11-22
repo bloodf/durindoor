@@ -2,6 +2,8 @@ export default {
   id: "bedrock",
   priority: 95,
   alias: "bedrock",
+  // Upstream 9router #1694 short prefix: `br/<model>` routes to Bedrock.
+  aliases: ["br"],
   uiAlias: "bedrock",
   display: {
     name: "Amazon Bedrock",

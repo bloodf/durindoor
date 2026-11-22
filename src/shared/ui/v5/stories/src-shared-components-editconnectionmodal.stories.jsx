@@ -16,3 +16,5 @@ export const OpenAIResponsesStore = { ...reviewStory(original.OpenAIResponsesSto
 export const RegionPickerXiaomi = { ...reviewStory(original.RegionPickerXiaomi, {"source":"src/shared/components/EditConnectionModal.stories.jsx","standalone":false}) };
 export const TestFailureBadge = { ...reviewStory(original.TestFailureBadge, {"source":"src/shared/components/EditConnectionModal.stories.jsx","standalone":false}) };
 export const Closed = { ...reviewStory(original.Closed, {"source":"src/shared/components/EditConnectionModal.stories.jsx","standalone":false}) };
+export const SavePending = { ...reviewStory(original.SavePending, {"source":"src/shared/components/EditConnectionModal.stories.jsx","standalone":false}) };
+export const SaveError = { ...reviewStory(original.SaveError, {"source":"src/shared/components/EditConnectionModal.stories.jsx","standalone":false}) };

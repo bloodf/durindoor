@@ -9,7 +9,7 @@
  *  - tool_result blocks (role=user): {type:"tool-result", toolCallId, toolName, output}
  *  - tools[*]: Anthropic plain {name, description, input_schema}
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { DEFAULT_MAX_TOKENS, HTTP_STATUS } from "../../config/runtimeConfig.js";

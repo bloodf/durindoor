@@ -1,6 +1,9 @@
-# NoTrack Web
+---
+title: NoTrack Web
+description: Use a signed-in notrack.ai chat session cookie, the single dispatch model, limits and errors.
+---
 
-NoTrack Web connects to the consumer chat at [notrack.ai](https://notrack.ai) with a browser session cookie. The staged provider currently advertises the upstream's single `C` dispatch model as `notrack-c`.
+NoTrack Web connects to the consumer chat at [notrack.ai](https://notrack.ai) with a browser session cookie. The provider advertises the upstream's single `C` dispatch model as `notrack-c`.
 
 ## Setup
 
@@ -10,7 +13,9 @@ The provider forwards a chat envelope to `POST https://notrack.ai/api/dispatch`:
 
 ## Cookie capture
 
-The cookie capture profile is `notrackWebCookieProfile` in the staged provider module. It names the `notrack.ai` domain and the four allowed cookie names above. For manual import, paste the Cookie header from DevTools. A pasted cURL command or HAR can also be used as the source: copy only its `Cookie` header value and avoid sharing the original request elsewhere.
+**Import cookies** and the cookie capture extension take `uid`, `si_usr_id` and `si_ses_id` from `https://notrack.ai`; all three are required. `nt_session` is optional: it is stored with the session when the browser or the pasted header has it, and the import works without it. A pasted cURL command or HAR also works as an import source; avoid sharing the original request elsewhere.
+
+NoTrack has no read-only session endpoint: its only request is the chat dispatch. **Validate** and **Test connection** therefore skip the network check rather than start a conversation, so a saved cookie is proven only by the first chat request.
 
 ## Limits
 
@@ -18,8 +23,4 @@ NoTrack controls anonymous and signed-in quotas, model behavior, and availabilit
 
 ## Sources
 
-- [OmniRoute provider registry at the pinned release](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/notrack-web/index.ts)
-- [OmniRoute executor at the pinned release](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/notrack-web.ts)
 - [NoTrack](https://notrack.ai)
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

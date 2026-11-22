@@ -1,5 +1,5 @@
 import Input from "@/shared/ui/components/Input.jsx";
-import Select from "@/shared/ui/components/Select.jsx";
+import CliOptionSelect from "./CliOptionSelect.js";
 import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { REASONING_OPTIONS } from "@/shared/constants/reasoningEffortOptions";
@@ -51,7 +51,7 @@ export default function MitmModelMappingRow({
             ) : null}
           </div>
         {showReasoning ? (
-          <Select
+          <CliOptionSelect
             value={entry.reasoningEffort || ""}
             onChange={onReasoningChange}
             options={reasoningOptions}

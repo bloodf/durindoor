@@ -17,7 +17,7 @@ import { promisify } from "util";
 import { parseTOML, stringifyTOML } from "confbox";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject } from "@/shared/utils/typeChecks";
-import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 
 const execAsync = promisify(exec);
 
@@ -98,7 +98,7 @@ export async function POST(request) {
     };
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, MANAGED_HEADER + stringifyTOML(updated), "utf-8");
+    await writeConfigAtomic(configPath, MANAGED_HEADER + stringifyTOML(updated), "utf-8");
 
     return NextResponse.json({ success: true, message: "CodeWhale settings applied successfully!", configPath });
   } catch (error) {
@@ -125,7 +125,7 @@ export async function DELETE() {
     if (Object.keys(rest).length === 0) {
       await fs.rm(configPath, { force: true });
     } else {
-      await fs.writeFile(configPath, stringifyTOML(rest), "utf-8");
+      await writeConfigAtomic(configPath, stringifyTOML(rest), "utf-8");
     }
 
     return NextResponse.json({ success: true, message: "DurinDoor removed from CodeWhale" });

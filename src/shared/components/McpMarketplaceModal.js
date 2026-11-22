@@ -9,6 +9,8 @@ import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import { Chip } from "@/shared/ui/components/Chip.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 
 const REGISTRY_ENDPOINT = "/api/cli-tools/cowork-mcp-registry";
 const TOOLS_ENDPOINT = "/api/cli-tools/cowork-mcp-tools";
@@ -19,11 +21,13 @@ const FILTER_OPTIONS = [
 ];
 
 export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames = [] }) {
+  const v5 = useUiV5();
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [expandedUrl, setExpandedUrl] = useState(null);
   const [toolsCache, setToolsCache] = useState({});
   const [toolsLoading, setToolsLoading] = useState({});
@@ -42,7 +46,13 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
       })
       .catch((loadError) => setError(loadError.message))
       .finally(() => setLoading(false));
-  }, [isOpen, servers.length]);
+  }, [isOpen, servers.length, reloadToken]);
+
+  const retryRegistry = () => {
+    setServers([]);
+    setError(null);
+    setReloadToken((token) => token + 1);
+  };
 
   const addedSet = useMemo(() => new Set(addedNames), [addedNames]);
 
@@ -120,14 +130,41 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
       <span className="text-xs text-dd-muted dd-tnum">{filtered.length} of {servers.length} servers</span>
       <Button variant="ghost" onClick={onClose} className="ml-auto">Close</Button>
     </>}>
-      <div className="flex flex-col gap-3">
+      <div className={v5 ? "flex min-w-0 flex-col gap-3" : "flex flex-col gap-3"}>
         <div className="flex flex-wrap items-center gap-2">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name or description" size="sm" icon="search" className="min-w-0 flex-1" aria-label="Search marketplace" />
           <Select value={filter} onChange={(value) => setFilter(value)} options={FILTER_OPTIONS} size="sm" className="w-40" aria-label="Filter by auth" />
         </div>
-        {error ? <div role="alert" className="flex items-start gap-2 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger"><span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">error</span><span>{error}</span></div> : null}
+        {error ? (
+          v5 ? (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">
+              <span className="flex items-start gap-2">
+                <MotionIcon name="error" size={16} className="mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </span>
+              <Button variant="secondary" size="sm" icon="refresh" onClick={retryRegistry} disabled={loading}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div role="alert" className="flex items-start gap-2 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger">
+              <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">error</span>
+              <span>{error}</span>
+            </div>
+          )
+        ) : null}
         {loading ? (
-          <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-6 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span><span>Loading registry…</span></div>
+          v5 ? (
+            <div role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 px-3 py-6 text-xs text-dd-muted">
+              <MotionIcon name="progress_activity" size={18} className="animate-spin text-dd-muted" />
+              <span>Loading registry…</span>
+            </div>
+          ) : (
+            <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-6 text-xs text-dd-muted">
+              <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span>
+              <span>Loading registry…</span>
+            </div>
+          )
         ) : filtered.length === 0 ? (
           <EmptyState icon="extension_off" title="No servers match filter" message="Try a different search or clear the auth filter to see all entries." />
         ) : (
@@ -163,7 +200,17 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                   {expanded ? (
                     <div className="flex flex-col gap-2 border-t border-dd-border-subtle bg-dd-surface-2 px-3 py-2">
                       {isLoadingTools ? (
-                        <div className="flex items-center gap-2 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin text-[14px] leading-none">progress_activity</span><span>Probing server for tools…</span></div>
+                        v5 ? (
+                          <div className="flex items-center gap-2 text-xs text-dd-muted">
+                            <MotionIcon name="progress_activity" size={14} className="animate-spin text-dd-muted" />
+                            <span>Probing server for tools…</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-xs text-dd-muted">
+                            <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[14px] leading-none">progress_activity</span>
+                            <span>Probing server for tools…</span>
+                          </div>
+                        )
                       ) : null}
                       {!isLoadingTools && cache?.requiresAuth ? (
                         <p role="status" className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-2 py-1 text-xs text-dd-warning"><span aria-hidden="true" className="material-symbols-outlined mr-1 align-middle text-[14px] leading-none">lock</span>OAuth required. Add now and authenticate after Apply; tool list will be discovered after first connect.</p>

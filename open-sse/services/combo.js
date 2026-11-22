@@ -753,16 +753,26 @@ function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyL
   }
 }
 
-function pruneConversationAffinity(now = Date.now()) {
+// Each caller has its own LRU budget; local callers share the legacy scope.
+function affinityKeyFor(rotationKey, conversationKey, apiKeyId) {
+  return apiKeyId ? `${rotationKey}:${conversationKey}:key:${JSON.stringify(apiKeyId)}` : `${rotationKey}:${conversationKey}`;
+}
+
+function pruneConversationAffinity(scope, now = Date.now()) {
+  let count = 0;
   for (const [key, value] of comboConversationAffinity) {
     if (!value || now - value.lastUsed > CONVERSATION_AFFINITY_TTL_MS) {
       comboConversationAffinity.delete(key);
+    } else if ((value.scope || null) === scope) {
+      count++;
     }
   }
-
-  while (comboConversationAffinity.size > MAX_CONVERSATION_AFFINITY_ENTRIES) {
-    const oldestKey = comboConversationAffinity.keys().next().value;
-    comboConversationAffinity.delete(oldestKey);
+  for (const [key, value] of comboConversationAffinity) {
+    if (count < MAX_CONVERSATION_AFFINITY_ENTRIES) break;
+    if ((value.scope || null) === scope) {
+      comboConversationAffinity.delete(key);
+      count--;
+    }
   }
 }
 
@@ -1167,13 +1177,18 @@ export function getConversationCacheKey(body) {
 // Efraimidis-Spirakis weighted random permutation. Every member remains in the
 // fallback list, so a terminal 400 still returns immediately through the normal
 // `checkFallbackError` branch; weight changes selection only, never eligibility.
+// Weight-0 members keep fallback eligibility but always sort after positive-weight
+// members so they are never picked first when a positive-weight member exists.
 export function getWeightedModels(models, members = [], random = Math.random) {
   if (!Array.isArray(models) || models.length < 2) return models;
-  const weights = new Map((Array.isArray(members) ? members : []).map((member) => [member?.id, member?.weight]));
+  const remaining = Array.isArray(members) ? [...members] : [];
   return models.map((model, index) => {
-    const weight = weights.get(model);
-    return { model, index, key: Math.pow(random(), 1 / (Number.isFinite(weight) && weight > 0 ? weight : 1)) };
-  }).sort((a, b) => b.key - a.key || a.index - b.index).map(({ model }) => model);
+    const memberIndex = remaining.findIndex((member) => member?.id === model);
+    const value = memberIndex < 0 ? 1 : remaining.splice(memberIndex, 1)[0]?.weight;
+    const weight = Number.isFinite(value) && value >= 0 ? value : 1;
+    const key = weight > 0 ? Math.pow(random(), 1 / weight) : -1;
+    return { model, index, weight, key };
+  }).sort((a, b) => (b.weight > 0) - (a.weight > 0) || b.key - a.key || a.index - b.index).map(({ model }) => model);
 }
 
 /**
@@ -1184,9 +1199,10 @@ export function getWeightedModels(models, members = [], random = Math.random) {
  * @param {number|string} [stickyLimit=1] - Requests per combo model before switching
  * @param {string|null} [conversationCacheKey=null] - Stable key used to keep a conversation on one model
  * @param {{id: string, weight: number}[]} [members=[]] - Persisted weights for weighted selection
+ * @param {string|null} [apiKeyId=null] - Isolates conversation pins and their LRU budget
  * @returns {string[]} Rotated models array
  */
-export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null, members = []) {
+export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null, members = [], apiKeyId = null) {
   if (strategy === "weighted") return getWeightedModels(models, members);
   if (!models || models.length <= 1 || strategy !== "round-robin") {
     return models;
@@ -1229,18 +1245,17 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
   // only active when sticky rotation is explicitly configured above 1.
   if (normalizedStickyLimit > 1 && conversationCacheKey) {
     const now = Date.now();
-    pruneConversationAffinity(now);
-
-    const affinityKey = `${rotationKey}:${conversationCacheKey}`;
+    const affinityKey = affinityKeyFor(rotationKey, conversationCacheKey, apiKeyId);
     const affinity = comboConversationAffinity.get(affinityKey);
-    if (affinity) {
+    if (affinity && now - affinity.lastUsed <= CONVERSATION_AFFINITY_TTL_MS) {
       const pinnedIndex = affinity.index % models.length;
       comboConversationAffinity.delete(affinityKey);
-      comboConversationAffinity.set(affinityKey, { index: pinnedIndex, lastUsed: now });
+      comboConversationAffinity.set(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
       return rotateModelsFromIndex(models, pinnedIndex);
     }
 
-    comboConversationAffinity.set(affinityKey, { index: currentIndex, lastUsed: now });
+    pruneConversationAffinity(apiKeyId, now);
+    comboConversationAffinity.set(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
   }
 
   const rotatedModels = rotateModelsFromIndex(models, currentIndex);
@@ -1457,6 +1472,7 @@ export async function handleComboChat({
   comboName,
   comboStrategy,
   comboStickyLimit = 1,
+  apiKeyId = null,
   autoSwitch = true,
   // Chat-only: retry once, then fall through, on a 200 whose chat payload is
   // empty. Media routes turn it off; an empty transcript or fetch is a result.
@@ -1479,20 +1495,6 @@ export async function handleComboChat({
     JSON.stringify({ error: { message: "Request aborted" } }),
     { status: 499, headers: { "Content-Type": "application/json" } }
   );
-  const waitForCooldown = (milliseconds) => {
-    if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(finish, milliseconds);
-      const onAbort = () => finish(new DOMException("Request aborted", "AbortError"));
-      function finish(error = null) {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        if (error) reject(error);else
-        resolve();
-      }
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
-  };
   if (signal?.aborted) return abortedResponse();
   // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
   // leaking a generic "all models failed" after the fact.
@@ -1537,7 +1539,7 @@ export async function handleComboChat({
   if (comboStrategy === "smart-scoring") {
     rotatedModels = getSmartScoredModels(activeModels, comboName);
   } else {
-    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey, comboMembers);
+    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey, comboMembers, apiKeyId);
   }
 
   // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
@@ -1624,21 +1626,31 @@ export async function handleComboChat({
   let earliestRetryStatus = null;
   let earliestRetryError = null;
   let lastStatus = null;
+  // Status and message always come from the SAME failure (upstream 9router
+  // #3873). Pinning the status to the first failure while the message tracked
+  // the last paired one model's status with another's text. An authentication
+  // failure stays the reported cause: a later member's rate limit must not
+  // hide a credential problem the operator has to fix.
+  const recordFailure = (status, message) => {
+    if (lastStatus === 401 || lastStatus === 403) return;
+    lastStatus = status;
+    lastError = message;
+  };
   let requestScopedResult = null;
   let localPolicyRejections = 0;
 
   // #6733: release the round-robin conversation-affinity pin when the
   // affinity-pinned FIRST member fails. Affinity only exists when the sticky
   // limit keeps >1 request on the same model, and the key is exactly
-  // `${comboName || "__default__"}:${conversationCacheKey}` (mirrors
-  // getRotatedModels). Release only when i===0 (the pinned first member) AND
+  // the caller-scoped key from getRotatedModels. Release only when i===0
+  // (the pinned first member) AND
   // the stored index still maps to the failed model — guards against a race
   // that re-pointed the entry to a different member. Idempotent per request.
   const stickyLimit = normalizeStickyLimit(comboStickyLimit);
   const rrRotationKey = comboName || "__default__";
   const rrAffinityKey =
   comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey ?
-  `${rrRotationKey}:${conversationCacheKey}` :
+  affinityKeyFor(rrRotationKey, conversationCacheKey, apiKeyId) :
   null;
   let affinityReleased = false;
   const releaseFailedAffinity = (failedModelStr, idx) => {
@@ -1675,33 +1687,35 @@ export async function handleComboChat({
       // the streaming stall/first-chunk timeouts.
       let attemptSignal = null;
       let attemptController = null;
-      let timeoutTimer = null;
       if (comboTimeoutMs > 0) {
         attemptController = new AbortController();
         attemptSignal = attemptController.signal;
       }
 
-      let result;
-      try {
-        if (comboTimeoutMs > 0) {
-          result = await Promise.race([
-          dispatch(attemptBody, modelStr, attemptSignal),
-          new Promise((_, reject) => {
-            timeoutTimer = setTimeout(() => {
-              const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
-              err.name = "AbortError";
-              err.isComboTimeout = true;
-              reject(err);
-              attemptController.abort();
-            }, comboTimeoutMs);
-          })]
-          );
-        } else {
-          result = await dispatch(attemptBody, modelStr, attemptSignal);
+      const runAttempt = async () => {
+        if (comboTimeoutMs <= 0) {
+          return dispatch(attemptBody, modelStr, attemptSignal);
         }
-      } finally {
-        if (timeoutTimer) clearTimeout(timeoutTimer);
-      }
+        let timeoutTimer = null;
+        try {
+          return await Promise.race([
+            dispatch(attemptBody, modelStr, attemptSignal),
+            new Promise((_, reject) => {
+              timeoutTimer = setTimeout(() => {
+                const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
+                err.name = "AbortError";
+                err.isComboTimeout = true;
+                reject(err);
+                attemptController.abort();
+              }, comboTimeoutMs);
+            })
+          ]);
+        } finally {
+          if (timeoutTimer) clearTimeout(timeoutTimer);
+        }
+      };
+
+      const result = await runAttempt();
 
       // A timed-out attempt may return a 499 Response; treat it as a deadline miss
       // rather than a genuine failure and fall back to the next model.
@@ -1749,8 +1763,7 @@ export async function handleComboChat({
               _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
             }
             releaseFailedAffinity(modelStr, i);
-            lastError = "Provider returned an empty stream";
-            if (!lastStatus) lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+            recordFailure(HTTP_STATUS.SERVICE_UNAVAILABLE, "Provider returned an empty stream");
             log.warn("COMBO", `Model ${modelStr} returned an empty stream, trying next`);
             continue;
           }
@@ -1763,12 +1776,18 @@ export async function handleComboChat({
           }
         } else if (checkEmptyBody && !body?.stream && await isBodyEmpty(result)) {
           log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
-          const retryResult = await dispatch(body, modelStr);
+          // Reuse runAttempt so the retry keeps the buffered attemptBody,
+          // attemptSignal, and comboTimeoutMs deadline from the first attempt.
+          const retryResult = await runAttempt();
+          if (retryResult?.status === 499 && attemptSignal?.aborted) {
+            releaseFailedAffinity(modelStr, i);
+            log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
+            continue;
+          }
           if (!retryResult.ok || await isBodyEmpty(retryResult)) {
             if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
             releaseFailedAffinity(modelStr, i);
-            lastError = "Provider returned empty content";
-            if (!lastStatus) lastStatus = HTTP_STATUS.BAD_GATEWAY;
+            recordFailure(HTTP_STATUS.BAD_GATEWAY, "Provider returned empty content");
             log.warn("COMBO", `Model ${modelStr} still empty after retry, falling to next`);
             continue;
           }
@@ -1849,7 +1868,7 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs, requestScoped, terminal } = checkFallbackError(
+      const { shouldFallback, requestScoped, terminal } = checkFallbackError(
         result.status,
         errorText,
         0,
@@ -1866,8 +1885,7 @@ export async function handleComboChat({
       if (!shouldFallback && requestScoped) {
         releaseFailedAffinity(modelStr, i);
         requestScopedResult ??= result;
-        lastError = errorText || String(result.status);
-        if (!lastStatus) lastStatus = result.status;
+        recordFailure(result.status, errorText || String(result.status));
         log.warn("COMBO", `Model ${modelStr} rejected the request (${result.status}), trying next`, { status: result.status });
         continue;
       }
@@ -1890,24 +1908,10 @@ export async function handleComboChat({
 
       if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
 
-      // For transient errors (503/502/504), wait for cooldown before falling through
-      // so a briefly-overloaded provider gets a chance to recover rather than being
-      // skipped immediately (fixes: combo falls through on transient 503)
-      if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 && (
-      result.status === 503 || result.status === 502 || result.status === 504)) {
-        log.info("COMBO", `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`);
-        try {
-          await waitForCooldown(cooldownMs);
-        } catch (error) {
-          if (error?.name === "AbortError") return abortedResponse();
-          throw error;
-        }
-      }
-
+      // Transient failures fall through immediately; the next member may be healthy.
       // Fallback to next model
       releaseFailedAffinity(modelStr, i);
-      lastError = errorText || String(result.status);
-      if (!lastStatus) lastStatus = result.status;
+      recordFailure(result.status, errorText || String(result.status));
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
       // The provider already completed billable work. A ledger failure must not
@@ -1930,8 +1934,7 @@ export async function handleComboChat({
       }
       // Catch unexpected exceptions to ensure fallback continues
       releaseFailedAffinity(modelStr, i);
-      lastError = error.message || String(error);
-      if (!lastStatus) lastStatus = 500;
+      recordFailure(500, error.message || String(error));
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
   }

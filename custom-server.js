@@ -53,12 +53,30 @@ const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 const REALTIME_DISPATCHER = Symbol.for("durindoor.realtimeDispatcher");
 const SINGLE_PROCESS_RUNTIME_ENV = "DURINDOOR_SINGLE_PROCESS_RUNTIME";
 
+/** Baseline security headers (#2251). Mirrored in next.config.mjs headers(). */
+const BASELINE_SECURITY_HEADERS = Object.freeze([
+  ["X-Frame-Options", "DENY"],
+  ["X-Content-Type-Options", "nosniff"],
+  ["Referrer-Policy", "same-origin"],
+  ["Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"],
+]);
+
+function applyBaselineSecurityHeaders(res) {
+  if (!res || !isFunction(res.setHeader)) return;
+  for (const [key, value] of BASELINE_SECURITY_HEADERS) {
+    res.setHeader(key, value);
+  }
+}
+
 // One WS server shared across every http server we wrap (noServer so we own the
 // upgrade handshake). `handleProtocols` selects a safe subprotocol and never
 // echoes the key-bearing `openai-insecure-api-key.<key>` token back to the
 // client. `verifyClient` is deliberately NOT used — auth is enforced after the
 // upgrade via probeApiKey so a 401 maps cleanly to ws close code 4001.
 const realtimeWss = new WebSocketServer({ noServer: true, maxPayload: MAX_REALTIME_FRAME_BYTES, handleProtocols: selectProtocol });
+
+const INBOUND_KEEP_ALIVE_TIMEOUT_MS = 72_000;
+const INBOUND_HEADERS_TIMEOUT_MS = 76_000;
 
 function canonicalizeRuntimePaths() {
   // Resolve before Next's generated server can change cwd. Every bundled
@@ -78,7 +96,12 @@ function canonicalizeRuntimePaths() {
 }
 
 function isMitmMutation(req) {
-  const pathname = new URL(req.url || "/", "http://localhost").pathname;
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url || "/", "http://localhost").pathname);
+  } catch {
+    return false;
+  }
   const method = String(req.method || "GET").toUpperCase();
   return ((pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) && method !== "GET") ||
   (pathname === REALTIME_NATIVE_CONTROL_PATH && method === "POST");
@@ -103,6 +126,9 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
     const rest = args.filter((a) => !isFunction(a));
     if (!handler) return origCreate(...args);
     const wrapped = (req, res) => {
+      // Stamp before any early return (login-host deny, handler errors) so
+      // responses that never reach Next still carry the #2251 baseline.
+      applyBaselineSecurityHeaders(res);
       if (denyIsolatedHttpRequest(req, res)) return;
       const socketIp = req.socket?.remoteAddress || "";
       const xff = req.headers["x-forwarded-for"];
@@ -183,7 +209,13 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
     const server = origCreate(...rest, wrapped);
     // createOwnerAwareHandler's shim only returns the wrapped handler function;
     // gate on real Server API so we never schedule .listeners() on a function.
-    if (isHttpServer(server)) installRealtimeUpgradeDispatcher(server, { dashboardPort });
+    if (isHttpServer(server)) {
+      // Node's 5s keep-alive default closes idle pooled client sockets; a client
+      // racing onto one gets ECONNRESET. headersTimeout must exceed keepAliveTimeout.
+      server.keepAliveTimeout = INBOUND_KEEP_ALIVE_TIMEOUT_MS;
+      server.headersTimeout = INBOUND_HEADERS_TIMEOUT_MS;
+      installRealtimeUpgradeDispatcher(server, { dashboardPort });
+    }
     return server;
   };
 }
@@ -375,11 +407,17 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
     });
 
     try {
+      // Upgrades bypass the HTTP peer wrapper. Carry remote classification over
+      // every loopback hop using the wrapper's existing proxy convention.
+      const peerIp = socket.remoteAddress || "";
+      const remotePeer = !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(peerIp) ||
+        Boolean(req.headers?.["x-forwarded-for"] || req.headers?.["x-real-ip"]);
+      const peerHeaders = remotePeer ? { "x-forwarded-for": "0.0.0.0" } : {};
       const { key } = extractRealtimeKey(req);
       const cliToken = isString(req.headers?.["x-9r-cli-token"]) ?
       req.headers["x-9r-cli-token"] :
       null;
-      const auth = await probeApiKey({ key, cliToken, authUrl: loopbackAuthUrl(port) });
+      const auth = await probeApiKey({ key, cliToken, remotePeer, authUrl: loopbackAuthUrl(port) });
       if (closed) return;
       if (!auth.ok) {
         queue.length = 0; // discard anything the optimistic client already sent
@@ -422,7 +460,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
       const nativeRequest = await fetch(loopbackNativeRealtimeUrl(port), {
         method: "POST",
         signal: AbortSignal.any([setupAbort.signal, AbortSignal.timeout(10_000)]),
-        headers: { "content-type": "application/json", ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt: operatorExpiresAt }) } : null) },
+        headers: { "content-type": "application/json", ...peerHeaders, ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt: operatorExpiresAt }) } : null) },
         body: JSON.stringify({ model: nativeModel, path: nativePath, operatorExpiresAt, query: [...nativeUrl.searchParams], ...(connectionId ? { connectionId } : null) })
       });
       if (nativeRequest.status === 200) {
@@ -433,7 +471,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
           const expiresAt = Date.now() + 5000;
           const checked = await fetch(loopbackNativeRealtimeUrl(port), {
             method: "POST", signal: AbortSignal.timeout(5000),
-            headers: { "content-type": "application/json", ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt }) } : null) },
+            headers: { "content-type": "application/json", ...peerHeaders, ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt }) } : null) },
             body: JSON.stringify({ model: nativeModel, path: nativePath, operatorExpiresAt: expiresAt, authorizeModel: value, ...(connectionId ? { connectionId } : null) })
           });
           if (checked.status !== 204) throw new Error("Native realtime model access denied");
@@ -470,7 +508,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
         return;
       }
       const session = { id: `sess_${crypto.randomUUID()}`, model: nativeModel, instructions: "", modalities: ["text"], temperature: undefined, maxOutputTokens: undefined, items: [] };
-      const headers = { ...(key ? { Authorization: `Bearer ${key}` } : null), ...(cliToken ? { "x-9r-cli-token": cliToken } : null) };
+      const headers = { ...peerHeaders, ...(key ? { Authorization: `Bearer ${key}` } : null), ...(cliToken ? { "x-9r-cli-token": cliToken } : null) };
       const chat = async ({ body, headers: h, signal }) => fetch(loopbackChatUrl(port), { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body), signal });
       rt = createRealtimeSession({ ws, session, chat, headers });
       ws.send(JSON.stringify({ type: "session.created", event_id: `evt_${crypto.randomUUID()}`, session: publicRealtimeSession(session) }));
@@ -517,7 +555,9 @@ function run() {
 if (require.main === module) run();
 
 module.exports = {
+  BASELINE_SECURITY_HEADERS,
   REALTIME_DISPATCHER,
+  applyBaselineSecurityHeaders,
   canonicalizeRuntimePaths,
   createOwnerAwareHandler,
   handleRealtimeUpgrade,

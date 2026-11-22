@@ -126,6 +126,15 @@ function headerValue(headers, key) {
   return normalizeSessionId(headers[key] ?? headers[key.toLowerCase()]);
 }
 
+// Reserve the agent delimiter in both segments so distinct header sessions cannot collide.
+function headerSessionId(id, headers, body) {
+  const escape = (value) => value.replaceAll(":agent~", ":agent~~").replaceAll(":agent:", ":agent~;");
+  const agent = [normalizeSessionId(body?.metadata?.agent_id), normalizeSessionId(body?.metadata?.subagent_id),
+    headerValue(headers, "x-claude-code-agent-id"), headerValue(headers, "x-agent-id"),
+    normalizeSessionId(body?.request?.metadata?.agent_id), normalizeSessionId(body?.request?.metadata?.subagent_id)].find((value) => value && value !== "main");
+  return agent ? `${escape(id)}:agent:${escape(agent)}` : escape(id);
+}
+
 // Read client-provided session id from headers/body (no generation)
 // Antigravity envelope carries session in request.sessionId; requestId embeds conversation uuid
 const ANTIGRAVITY_CONV_RE = /^[a-z]+\/([0-9a-f-]{36})\//i;
@@ -141,13 +150,16 @@ export function extractClientSessionId(headers, body, scope = "") {
   // formats that drop metadata (e.g. Responses API). Header fallback is Claude-scope only.
   const claude = extractClaudeCodeSession(body?.metadata?.user_id) || (
   scope === "claude" ? headerValue(headers, CLAUDE_CODE_SESSION_HEADER) : null);
-  if (claude) return scope === "claude" ? claude : `claude:${claude}`;
+  if (claude) {
+    const id = scope === "claude" ? claude : `claude:${claude}`;
+    return headerSessionId(id, headers, body);
+  }
   const antigravity = extractAntigravitySession(body);
   if (antigravity) return `antigravity:${antigravity}`;
   for (const key of SESSION_HEADER_KEYS) {
     if (scope === "kiro" && key === "x-client-request-id") continue;
     const v = headerValue(headers, key);
-    if (v) return v;
+    if (v) return headerSessionId(v, headers, body);
   }
   const fromBody =
   normalizeSessionId(body?.prompt_cache_key) ||

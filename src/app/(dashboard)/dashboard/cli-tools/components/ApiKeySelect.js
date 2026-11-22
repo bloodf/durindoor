@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Input from "@/shared/ui/components/Input.jsx";
-import Select from "@/shared/ui/components/Select.jsx";
+import CliOptionSelect from "./CliOptionSelect.js";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
@@ -88,7 +88,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
       <div className="flex items-center gap-2">
-        <Select value={mode} onChange={handleSelect} options={selectOptions} size="sm" aria-label="API key preset" className="flex-1" />
+        <CliOptionSelect value={mode} onChange={handleSelect} options={selectOptions} size="sm" aria-label="API key preset" className="flex-1" />
         {isSaved ? <IconButton icon="delete" label="Delete saved key" size="sm" onClick={() => setConfirmDelete(true)} /> : null}
       </div>
       {!isSaved ? (

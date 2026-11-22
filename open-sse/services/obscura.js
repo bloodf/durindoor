@@ -21,6 +21,15 @@ import { isObject } from "../../src/shared/utils/typeChecks.js";
 
 let shared = null;
 let starting = null;
+let processExitHookInstalled = false;
+
+function installProcessExitHook() {
+  if (processExitHookInstalled) return;
+  processExitHookInstalled = true;
+  process.on("exit", () => {
+    killSharedObscuraServer();
+  });
+}
 
 export function isObscuraUsable() {
   const flag = process.env.DURINDOOR_BROWSER_POOL;
@@ -114,6 +123,12 @@ export async function ensureObscuraServer() {
       child.kill("SIGKILL");
       return null;
     }
+    // Recover when the child dies after a successful start: clear `shared` so
+    // the next ensureObscuraServer() can respawn instead of returning a dead endpoint.
+    child.once("exit", () => {
+      if (shared?.child === child) shared = null;
+    });
+    installProcessExitHook();
     shared = { child, endpoint: endpointForServer };
     return shared;
   })();

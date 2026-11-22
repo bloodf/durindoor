@@ -3,6 +3,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting } from "./mediaAccounting.js";
 
@@ -25,7 +26,8 @@ export function deriveModerationsUrl(baseUrl) {
 /**
  * Core moderations handler — generic OpenAI-compatible passthrough.
  * Resolves the provider's /moderations URL, applies provider auth via the
- * executor's buildHeaders, and forwards { input, model } verbatim.
+ * executor's buildHeaders, routes through the credential's proxy options with
+ * the caller's abort signal, and forwards { input, model } verbatim.
  * Raw receipt accounting is returned separately from the unchanged response body.
  *
  * @param {object} options
@@ -34,6 +36,7 @@ export function deriveModerationsUrl(baseUrl) {
  * @param {object} [options.credentials]
  * @param {object} [options.log]
  * @param {function} [options.onRequestSuccess]
+ * @param {AbortSignal} [options.signal] - Client abort signal forwarded to upstream fetch
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
 export async function handleModerationsCore({
@@ -41,13 +44,18 @@ export async function handleModerationsCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null
+  onRequestSuccess = null,
+  signal = null
 }) {
   const { provider, model } = modelInfo;
   const cfg = PROVIDERS[provider];
   const baseUrl = isRecord(cfg) && isString(cfg.baseUrl) ? cfg.baseUrl : undefined;
   if (!baseUrl) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' has no base URL for moderation`);
+  }
+
+  if (signal?.aborted) {
+    return createErrorResult(499, "Moderation request aborted");
   }
 
   const executor = getExecutor(provider);
@@ -61,9 +69,13 @@ export async function handleModerationsCore({
     res = await proxyAwareFetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ ...body, model })
-    });
+      body: JSON.stringify({ ...body, model }),
+      signal
+    }, resolveCredentialProxyOptions(credentials));
   } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError") {
+      return createErrorResult(499, "Moderation request aborted");
+    }
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Moderation request failed");
   }
 

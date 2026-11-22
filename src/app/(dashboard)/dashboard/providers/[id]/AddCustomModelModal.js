@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Select from "@/shared/ui/components/Select.jsx";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import CapacityBadges from "@/shared/components/CapacityBadges";
 import { buildCustomCapabilities } from "./customModelCapabilities";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
@@ -39,6 +41,7 @@ const THINKING_FORMATS = [
 ];
 
 export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, initialModel, onSave, onClose, connections = [] }) {
+  const v5 = useUiV5();
   const isEdit = Boolean(initialModel);
   const [modelId, setModelId] = useState("");
   const [modelType, setModelType] = useState("llm");
@@ -162,12 +165,12 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title={isEdit ? "Edit Custom Model" : "Add Custom Model"}>
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen} onClose={onClose} title={isEdit ? "Edit Custom Model" : "Add Custom Model"}>
       <div className="flex flex-col gap-4">
         {!isEdit ? (
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-dd-muted">Model type</span>
-            <Select
+            {v5 ? <V5NativeSelect aria-label="Model type" value={modelType} disabled={saving || testStatus === "testing"} onChange={(event) => { const id = modelId; reset(); setModelId(id); setModelType(event.target.value); }}><option value="llm">Chat / LLM</option><option value="stt">Speech to text</option></V5NativeSelect> : <Select
               aria-label="Model type"
               value={modelType}
               options={[
@@ -181,7 +184,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
                 setModelId(id);
                 setModelType(value);
               }}
-            />
+            />}
           </div>
         ) : null}
         <div className="flex flex-col gap-1.5">
@@ -240,7 +243,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Max output
               <input type="number" min={1} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             </label>
-            <div className="col-span-2 flex flex-col gap-1"><span className="text-xs font-medium text-dd-muted">Thinking format</span><Select options={THINKING_FORMATS} value={thinkingFormat} onChange={(value) => setThinkingFormat(value)} aria-label="Thinking format" size="sm" /></div>
+            <div className="col-span-2 flex flex-col gap-1"><span className="text-xs font-medium text-dd-muted">Thinking format</span>{v5 ? <V5NativeSelect value={thinkingFormat} onChange={(event) => setThinkingFormat(event.target.value)} aria-label="Thinking format" size="sm">{THINKING_FORMATS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</V5NativeSelect> : <Select options={THINKING_FORMATS} value={thinkingFormat} onChange={(value) => setThinkingFormat(value)} aria-label="Thinking format" size="sm" />}</div>
             <label className="col-span-2 flex min-h-11 items-center gap-2 text-xs text-dd-text"><input id="thinkingCanDisable" type="checkbox" checked={thinkingCanDisable} onChange={(e) => { setThinkingCanDisable(e.target.checked); setThinkingCanDisableTouched(true); }} className="size-4 rounded border-dd-border accent-[var(--dd-accent)]" />Thinking can be disabled</label>
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Thinking budget min
               <input type="number" min={0} value={thinkingRangeMin} onChange={(e) => setThinkingRangeMin(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />

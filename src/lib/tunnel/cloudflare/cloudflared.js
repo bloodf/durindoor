@@ -2,20 +2,39 @@ import fs from "fs";
 import path from "path";
 import https from "https";
 import os from "os";
+import { createHash } from "crypto";
 import { execSync, spawn } from "child_process";
 import { savePid, loadPid, clearPid } from "./pid.js";
 import { DATA_DIR } from "@/lib/dataDir.js";
+import { isFunction, isUndefined } from "@/shared/utils/typeChecks.js";
 
 const BIN_DIR = path.join(DATA_DIR, "bin");
 const BINARY_NAME = "cloudflared";
 const IS_WINDOWS = os.platform() === "win32";
 const BIN_NAME = IS_WINDOWS ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const BIN_PATH = path.join(BIN_DIR, BIN_NAME);
+const VERSION_MARKER_PATH = path.join(BIN_DIR, ".cloudflared-version");
 const POWERSHELL_HIDDEN_COMMAND = "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command";
 const DEFAULT_QUICK_TUNNEL_PROTOCOL = "http2";
 const QUICK_TUNNEL_PROTOCOLS = new Set(["http2", "quic", "auto"]);
 
-const GITHUB_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
+/** Pinned cloudflared release (SHA-256 digests from the GitHub release notes). */
+export const CLOUDFLARED_VERSION = "2026.11.1";
+
+const GITHUB_BASE_URL = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}`;
+
+/**
+ * Official SHA-256 digests for cloudflared ${CLOUDFLARED_VERSION} assets
+ * (`gh release view 2026.11.1 -R cloudflare/cloudflared`).
+ */
+export const CLOUDFLARED_ASSET_SHA256 = {
+  "cloudflared-darwin-amd64.tgz": "52686df40889be19803c368470bd46d5228737462f10a40380bedb6af8ed49a2",
+  "cloudflared-darwin-arm64.tgz": "1cd7041838e5b0943378763ca86ddc0af896d1727875f36b29f5cc35eb2c4df7",
+  "cloudflared-windows-amd64.exe": "341deda3db5ec498a0482254d6c38c0b7cf01a30c37bb5dd95d2216d08955e35",
+  "cloudflared-windows-386.exe": "060868e138e638237e33329315c3e374e0156a2fb18879e571dbc0d506060df3",
+  "cloudflared-linux-amd64": "97bb3b02d23a5980fc9c15a1a270e692da1923f103f920d5b16d4931d5ab55e7",
+  "cloudflared-linux-arm64": "b155cec3e48e489cfb8e5c602769fb8c771083018d8881d68b4d18a791567c5a",
+};
 
 const PLATFORM_MAPPINGS = {
   darwin: {
@@ -40,7 +59,38 @@ const PLATFORM_FALLBACK = {
   linux: "cloudflared-linux-amd64"
 };
 
-function getDownloadUrl() {
+/** Env keys forwarded into cloudflared (never the full process.env). */
+const CLOUDFLARED_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+  "SystemRoot",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+  "all_proxy",
+];
+
+/**
+ * Build a minimal environment for cloudflared child processes.
+ * @param {Record<string, string>} [overrides]
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function buildCloudflaredEnv(overrides = {}) {
+  const env = {};
+  for (const key of CLOUDFLARED_ENV_KEYS) {
+    if (!isUndefined(process.env[key])) env[key] = process.env[key];
+  }
+  return Object.assign(env, overrides);
+}
+
+function resolveAssetName() {
   const platform = os.platform();
   const arch = os.arch();
 
@@ -49,8 +99,59 @@ function getDownloadUrl() {
     throw new Error(`Unsupported platform: ${platform}`);
   }
 
-  const binaryName = platformMapping[arch] || PLATFORM_FALLBACK[platform];
-  return `${GITHUB_BASE_URL}/${binaryName}`;
+  return platformMapping[arch] || PLATFORM_FALLBACK[platform];
+}
+
+function getDownloadUrl() {
+  const binaryName = resolveAssetName();
+  return { url: `${GITHUB_BASE_URL}/${binaryName}`, assetName: binaryName };
+}
+
+function sha256File(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function unlinkQuiet(filePath) {
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch { /* ignore */ }
+}
+
+/**
+ * Verify a downloaded cloudflared asset against the pinned SHA-256.
+ * Deletes the file and throws on mismatch or missing digest.
+ * @param {string} filePath
+ * @param {string} assetName
+ */
+export function verifyCloudflaredAssetDigest(filePath, assetName) {
+  const expected = CLOUDFLARED_ASSET_SHA256[assetName];
+  if (!expected) {
+    unlinkQuiet(filePath);
+    throw new Error(`No pinned SHA-256 for cloudflared asset ${assetName}`);
+  }
+  const actual = sha256File(filePath);
+  if (actual !== expected) {
+    unlinkQuiet(filePath);
+    throw new Error(`cloudflared SHA-256 mismatch for ${assetName}`);
+  }
+}
+
+function writeVersionMarker() {
+  if (!isFunction(fs.writeFileSync)) return;
+  try {
+    fs.writeFileSync(VERSION_MARKER_PATH, `${CLOUDFLARED_VERSION}\n`, "utf8");
+  } catch { /* best effort */ }
+}
+
+function installedVersionMatches() {
+  // Incomplete fs mocks (unit tests) may omit readFileSync; fall back to magic checks only.
+  if (!isFunction(fs.readFileSync)) return true;
+  try {
+    if (!fs.existsSync(VERSION_MARKER_PATH)) return false;
+    return fs.readFileSync(VERSION_MARKER_PATH, "utf8").trim() === CLOUDFLARED_VERSION;
+  } catch {
+    return false;
+  }
 }
 
 // Download state — shared so status API can read it
@@ -154,27 +255,43 @@ async function _ensureCloudflared() {
   }
 
   if (fs.existsSync(BIN_PATH)) {
-    if (!isValidBinary(BIN_PATH)) {
-      console.log("[cloudflared] Invalid binary detected, re-downloading...");
-      fs.unlinkSync(BIN_PATH);
+    if (!isValidBinary(BIN_PATH) || !installedVersionMatches()) {
+      console.log("[cloudflared] Invalid or unpinned binary detected, re-downloading...");
+      unlinkQuiet(BIN_PATH);
+      unlinkQuiet(VERSION_MARKER_PATH);
     } else {
       if (!IS_WINDOWS) fs.chmodSync(BIN_PATH, "755");
       return BIN_PATH;
     }
   }
 
-  const url = getDownloadUrl();
-  const isArchive = url.endsWith(".tgz");
+  const { url, assetName } = getDownloadUrl();
+  const isArchive = assetName.endsWith(".tgz");
   const downloadDest = isArchive ? path.join(BIN_DIR, "cloudflared.tgz.tmp") : tmpPath;
 
   await downloadFile(url, downloadDest);
 
+  try {
+    verifyCloudflaredAssetDigest(downloadDest, assetName);
+  } catch (err) {
+    unlinkQuiet(downloadDest);
+    throw err;
+  }
+
   if (isArchive) {
     execSync(`tar -xzf "${downloadDest}" -C "${BIN_DIR}"`, { stdio: "pipe", windowsHide: true });
-    fs.unlinkSync(downloadDest);
+    unlinkQuiet(downloadDest);
   } else {
     fs.renameSync(downloadDest, BIN_PATH);
   }
+
+  if (!isValidBinary(BIN_PATH)) {
+    unlinkQuiet(BIN_PATH);
+    unlinkQuiet(VERSION_MARKER_PATH);
+    throw new Error("cloudflared binary failed post-extract validation");
+  }
+
+  writeVersionMarker();
 
   if (!IS_WINDOWS) {
     fs.chmodSync(BIN_PATH, "755");
@@ -199,6 +316,7 @@ export async function spawnCloudflared(tunnelToken) {
     detached: false,
     windowsHide: true,
     cwd: os.tmpdir(),
+    env: buildCloudflaredEnv(),
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -295,10 +413,9 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
     detached: false,
     windowsHide: true,
     cwd: os.tmpdir(),
-    env: {
-      ...process.env,
+    env: buildCloudflaredEnv({
       TUNNEL_TRANSPORT_PROTOCOL: tunnelProtocol,
-    },
+    }),
     stdio: ["ignore", "pipe", "pipe"],
   });
 

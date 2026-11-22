@@ -38,6 +38,7 @@ import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { REVIEWED_ORPHANS } from "../open-sse/config/catalogAllowlist.js";
 import { isString } from "../src/shared/utils/typeChecks.js";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -192,7 +193,8 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
     // a parenthesised high/medium/low tier; Hydrogen's supported XHigh wire ID
     // is the one exact additional form (runtime maps its XHigh intent to Gemini
     // `thinkingLevel: "high"`). Keep this exact and provider-scoped so malformed
-    // or unresolved aliases still fail the audit.
+    // or unresolved aliases still fail the audit. An XHigh preset also resolves
+    // when its suffix-free base is a different catalog entry in this provider.
     const WIRE_ONLY_UPSTREAM_ID = /\((?:high|medium|low)\)$/;
     for (let i = 0; i < models.length; i++) {
       const raw = models[i];
@@ -200,9 +202,12 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
       const isHydrogenXhighWireId = ["antigravity", "agy"].includes(provider) &&
         m.id === "gemini-4-hydrogen-xhigh" &&
         m.upstreamModelId === "gemini-4-hydrogen-xhigh(xhigh)";
+      const xhighBase = isString(m.upstreamModelId) && m.upstreamModelId.endsWith("(xhigh)")
+        ? m.upstreamModelId.slice(0, -"(xhigh)".length) : null;
       if (m.upstreamModelId != null &&
       !idSet.has(m.upstreamModelId) &&
       !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId) &&
+      !(xhighBase && xhighBase !== m.id && idSet.has(xhighBase)) &&
       !isHydrogenXhighWireId) {
         addFinding(
           `${provider}:${m.id}`,
@@ -604,7 +609,7 @@ async function main() {
   process.exit(1);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
     console.error(err.message || err);
     process.exit(2);

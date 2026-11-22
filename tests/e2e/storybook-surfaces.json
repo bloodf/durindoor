@@ -10472,31 +10472,45 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/apiKeyExpiry.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/apiKeyExpiry.js",
       "symbol": "[module]",
-      "sourceSha256": "d3fa5730809b3396d71742395784d2d3d92b90a93618d9a12204b954c2bb212c",
+      "sourceSha256": "b2852c387bea7ea5daed08f58dbfb38135455fb8db91fbb5821b73767237594c",
       "proposedClassification": "nonvisual",
-      "approvedClassification": "nonvisual",
-      "proposedCoverageRationale": "No renderable symbol detected; helper/config/transport module. Reclassify if export/caller analysis finds a visible return.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [],
       "approvedScenarioIds": [],
       "storyScenarios": [],
-      "approvedException": {
-        "reason": "Exports pure expiry parsing/formatting helpers only; no JSX.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Exports pure expiry parsing/formatting helpers only; no JSX.",
-        "runtimeStatus": "pending"
-      },
+      "approvedException": null,
+      "reviewEvidence": null,
       "proposedException": {
         "reason": "Exports pure expiry parsing/formatting helpers only; no JSX."
       },
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
-      "runtimeStatus": "pending"
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "d3fa5730809b3396d71742395784d2d3d92b90a93618d9a12204b954c2bb212c",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "nonvisual",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "Exports pure expiry parsing/formatting helpers only; no JSX.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "storyScenarios": [],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Exports pure expiry parsing/formatting helpers only; no JSX.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/apiKeyPolicy.js#[module]",
@@ -12664,7 +12678,7 @@
       "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow",
       "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       "symbol": "ApiKeyRow",
-      "sourceSha256": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+      "sourceSha256": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -12685,7 +12699,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Default fixture",
@@ -12701,7 +12715,7 @@
           ],
           "proposedSourceEvidence": "KeysPageClient KeyLimits fixture renders real API key row named Production key; play proves limits card content.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "expectedVisibleText": "Production key"
@@ -12771,7 +12785,7 @@
       "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#KeysPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       "symbol": "KeysPageClient",
-      "sourceSha256": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+      "sourceSha256": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -12794,7 +12808,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Default",
@@ -12810,7 +12824,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Empty",
@@ -12825,7 +12839,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#KeyLimits",
@@ -12841,7 +12855,7 @@
           ],
           "proposedSourceEvidence": "Actual lightweight KeysPage wrapper imports KeysPageClient; empty API fixture and play assert Create Key.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "35d60259398aa313f3b83fe5f0fe392109df23dff05bd1d0217f1ad153c7d24f",
             "src/app/(dashboard)/dashboard/keys/page.stories.jsx": "424765edd9d3d04399f7d7881f176ab33708d3e21949efca2f01fbbf84eee642"
           },
           "expectedVisibleText": "Create Key"

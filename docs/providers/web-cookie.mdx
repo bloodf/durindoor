@@ -61,7 +61,7 @@ The field is plain text, not a password field, so the cookie is visible on scree
 | Grok Web | `grok-web` | `sso` value/header; dashboard import, browser extension, and in-page login. Runnable. |
 | Perplexity Web | `perplexity-web` | `__Secure-next-auth.session-token` including all chunks; dashboard import, extension, and in-page login. Runnable; no provider-specific guide in this checkout. |
 | Copilot Web | `copilot-web` | Personal `access_token`, bearer token, accepted cookie/JSON, or origin-matched HAR. Manual and HAR only; runnable. |
-| Microsoft 365 Copilot Web | `copilot-m365-web` | `access_token` plus `chathubPath`, a Chathub WebSocket URL, or matching HAR. Manual/HAR only; runnable. No provider-specific guide in this checkout. |
+| Microsoft 365 Copilot Web | `copilot-m365-web` | `access_token` plus `chathubPath`, a Chathub WebSocket URL, or matching HAR. Manual/HAR paste, or native work/school sign-in with refresh. See the [Microsoft 365 Copilot Web guide](./copilot-m365-web.mdx). |
 | ZenMux Free | `zenmux-free` | Full Cookie header containing `ctoken=`. Manual paste only; runnable. |
 | Kimi Web | `kimi-web` | Token JSON from localStorage (not a cookie); manual only. Runnable; see [Kimi Web](./kimi-web.mdx). |
 | ChatGPT Web | `chatgpt-web` | Full header or session token with every chunk; dashboard import, extension, and in-page login. Runnable; see [ChatGPT Web](./chatgpt-web.mdx). |
@@ -155,7 +155,7 @@ Most providers do not expose a reliable expiry time. A failed read-only check, a
 
 ## Source attribution (#2034)
 
-This operational guide describes DurinDoor behavior from the local provider registry and current account guides. The cookie-capture extension is an original DurinDoor implementation; it is not ported from another project. Copilot credential/HAR behavior was compared with OmniRoute `cheaper-inference/OmniRoute` commit [`07a790f5c158c1358eb55aa5e31463bb5f22f769`, `open-sse/utils/m365Credentials.ts`](https://github.com/cheaper-inference/OmniRoute/blob/07a790f5c158c1358eb55aa5e31463bb5f22f769/open-sse/utils/m365Credentials.ts) and documented in [the #2034 lifecycle report](../../internal/docs/copilot-cookie-lifecycle-2034.md); no native sign-in or refresh flow is claimed as ported.
+This operational guide describes DurinDoor behavior from the local provider registry and current account guides. The cookie-capture extension is an original DurinDoor implementation; it is not ported from another project. Copilot credential/HAR behavior was compared with OmniRoute `cheaper-inference/OmniRoute` commit [`07a790f5c158c1358eb55aa5e31463bb5f22f769`, `open-sse/utils/m365Credentials.ts`](https://github.com/cheaper-inference/OmniRoute/blob/07a790f5c158c1358eb55aa5e31463bb5f22f769/open-sse/utils/m365Credentials.ts) and documented in [the #2034 lifecycle report](../../internal/docs/copilot-cookie-lifecycle-2034.md); the native sign-in, refresh, continuation, image and tool handling are ported from the OmniRoute commit named in [the Microsoft 365 Copilot Web guide](./copilot-m365-web.mdx).
 
 ## When the session ends
 
@@ -187,11 +187,13 @@ Each request starts a fresh conversation. Responses stream as SSE or return as o
 3. Paste one of: `access_token=<jwt>; chathubPath=<oid>@<tenant>` (alias `userTenant=` is accepted), the full WebSocket URL, or a HAR export. From a HAR, the newest `wss://substrate.office.com` Chathub entry is used; other hosts and redacted tokens are skipped. The credential is not a cookie. Other hosts are rejected.
 4. Validate checks locally that both fields are present, the host is allowed and the JWT has not expired. It opens no socket. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` or `included` select the education profile. Individual accounts keep the defaults.
 
+Native work or school sign-in, per-connection refresh, conversation continuation, images and tools are described in the [Microsoft 365 Copilot Web guide](./copilot-m365-web.mdx); the paste above stays supported and a native connection can sit beside it.
+
 If a Microsoft 365 stream rewrites text already sent, the stream reports an error. Retry without streaming to receive the final snapshot. Token counts are estimated by the gateway.
 
 #### Known limits
 
-- Neither provider refreshes. Manual tokens are short lived (Microsoft 365 tokens last roughly an hour); native work/school sign-in, refresh tokens, conversation continuation, images and tools for Microsoft 365 are not implemented here.
+- Pasted sessions never refresh. Manual tokens are short lived (Microsoft 365 tokens last roughly an hour). Only a Microsoft 365 native sign-in connection holds a refresh token and renews itself; Copilot Web has no refresh.
 - Personal Copilot may send a proof-of-work `challenge` frame. DurinDoor answers only the bounded hashcash form and fails the request otherwise; it does not attempt any other attestation.
 - Copilot does not report quota, so these providers have no preflight or usage gauge.
 - Opaque tokens that are not JWTs are not judged locally; expiry shows up as a provider 401.

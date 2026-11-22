@@ -370,7 +370,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     }
 
     let existing = null;
-    if (data.authType === "oauth" && data.email) {
+    // Microsoft 365 sign-ins are the same account only for the same tenant/object identity: two
+    // tenants can share an email, and a sign-in without an email claim must still merge.
+    if (data.authType === "oauth" && data.provider === "copilot-m365-web" && data.providerSpecificData?.chathubPath) {
+      existing = all.find((c) => c.authType === "oauth" &&
+      c.providerSpecificData?.chathubPath === data.providerSpecificData.chathubPath) || null;
+    }
+    if (!existing && data.authType === "oauth" && data.email && data.provider !== "copilot-m365-web") {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find((c) => {

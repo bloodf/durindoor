@@ -37,7 +37,7 @@
 //   node scripts/migrate-from-9router.mjs --dry-run
 //   node scripts/migrate-from-9router.mjs
 //   node scripts/migrate-from-9router.mjs --target-dir <path> --legacy-dir <path>
-import { existsSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFileSync, renameSync, rmSync, chmodSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -364,8 +364,15 @@ export class Migrator {
     while (existsSync(dest)) dest = root.replace(/\.tar$/, '-' + (++n) + '.tar');
     this.log('backup ' + srcDir + ' -> ' + dest);
     if (this.dryRun) return null;
-    const result = spawnSync('tar', ['-cf', dest, '-C', dirname(srcDir), '--', basename(srcDir)], { stdio: 'inherit' });
+    const previousUmask = process.umask(0o077);
+    let result;
+    try {
+      result = spawnSync('tar', ['-cf', dest, '-C', dirname(srcDir), '--', basename(srcDir)], { stdio: 'inherit' });
+    } finally {
+      process.umask(previousUmask);
+    }
     if (result.status !== 0) throw new Error('tar backup failed for ' + srcDir);
+    chmodSync(dest, 0o600);
     this.backupMade = true;
     return dest;
   }

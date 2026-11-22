@@ -16,8 +16,8 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the Cookie header from a notrack.ai chat request (uid, si_usr_id, si_ses_id; nt_session is optional).",
-  // Import requires the three session cookies the executor needs; nt_session is optional.
-  cookieImport: { origin: "https://notrack.ai", cookieNames: ["uid", "si_usr_id", "si_ses_id"], cookiePrefixes: [], extensionCapture: true },
+  // Import requires the three session cookies the executor needs; nt_session is kept when present and never required.
+  cookieImport: { origin: "https://notrack.ai", cookieNames: ["uid", "si_usr_id", "si_ses_id"], cookiePrefixes: [], optionalCookies: ["nt_session"], extensionCapture: true },
   webLogin: {
     startUrl: "https://notrack.ai/",
     origin: "https://notrack.ai",

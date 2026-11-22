@@ -10,7 +10,7 @@ const CASES = [
     id: "agnes",
     alias: "agnes",
     base: "https://apihub.agnes-ai.com/v1",
-    models: ["agnes-2.0-flash","agnes-2.5-flash","agnes-3.0-flash"],
+    models: ["agnes-2.0-flash","agnes-2.5-flash","agnes-3.0-flash","agnes-3.0-pro"],
     fetcher: true,
     extraFormats: [],
     notice: true,

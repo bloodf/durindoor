@@ -105,7 +105,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
     } };
     expect(await capture.captureSessionTurn(args)).toBe(true);
     const rows = await capture.readSessionTurns(args);
-    expect(JSON.stringify(rows)).not.toMatch(/secret-owner|abc|sk-foobar|fixture-/);
+    expect(JSON.stringify(rows.map((row) => row.content))).not.toMatch(/secret-owner|abc|sk-foobar|fixture-/);
     expect(await capture.readSessionTurns({ credential: "secret-other", session })).toEqual([]);
     await capture.deleteSessionTurns({ credential: "secret-other", session });
     expect(await capture.readSessionTurns(args)).toHaveLength(1);

@@ -1,0 +1,6 @@
+{
+  "route": "error/dashboard/pxpipe",
+  "stories": [
+    "production-pxpipe-pxpipeerror--retry"
+  ]
+}

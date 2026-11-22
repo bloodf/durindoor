@@ -1,13 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { default as provider } from "../../open-sse/providers/private/g4f-gemini.js";
+import { default as provider } from "../../open-sse/providers/registry/g4f-gemini.js";
 
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: fetchMock }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: staged } = await import("../../open-sse/providers/private/g4f-gemini.js");
-  return { ...original, default: [...original.default, staged] };
-});
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";

@@ -1,20 +1,27 @@
-# DeepSeek Web
+---
+title: "DeepSeek Web"
+---
 
-DeepSeek Web connects to the first-party chat API at [chat.deepseek.com](https://chat.deepseek.com). The pinned OmniRoute implementation (release/v3.8.55, `open-sse/executors/deepseek-web.ts`) authenticates with the `userToken` held in browser local storage. A browser Cookie header alone is not a supported credential; the API exchanges the userToken for a short-lived access token.
+DeepSeek Web connects to the first-party chat API at [chat.deepseek.com](https://chat.deepseek.com). The connection authenticates with the `userToken` held in browser local storage. A browser Cookie header alone is not a supported credential; the API exchanges the userToken for a short-lived access token.
 
 ## Setup
 
 1. Sign in to [DeepSeek Chat](https://chat.deepseek.com).
 2. In browser developer tools, open Application/Storage → Local Storage for `https://chat.deepseek.com` and copy the `userToken` value. Keep it private; it grants access to your account.
-3. Add a DeepSeek Web connection and paste the value as its credential. The cookie-capture extension cannot capture this local-storage value; use the dashboard credential field.
+3. Add a DeepSeek Web connection and paste the value as its credential, or send it without copying anything (see below).
 4. Choose a listed model such as `deepseek-chat`, `deepseek-reasoner`, or a V4 model.
+
+## Capture or import the token
+
+DeepSeek Web is not a cookie provider: its credential is the `userToken` local storage item, so the connection stores it in the connection's provider data instead of an API key field. There are two ways in, both without a Cookie header, a cURL command or a HAR file (none of them carries the token):
+
+- **Cookie-capture extension.** With `chat.deepseek.com` open and signed in, send from the extension popup. It reads only `userToken`, and only from a page whose origin is exactly `https://chat.deepseek.com`; the tab is checked before and after the read, and a tab on any other site sends nothing. It asks for the optional `scripting` permission for that one origin and does not read cookies. See [the extension guide](./cookie-capture-extension.mdx).
+- **Import in the dashboard.** On the DeepSeek Web provider page choose **Import cookies**, then paste the `userToken` value into the `localStorage userToken` field. Either the bare token or the `{"value":"...","__version":"0"}` JSON the site stores works; the gateway sends the bare token.
+
+An import creates a connection or replaces the token of an existing one, and clears a key pasted earlier so the fresh token is the one used. A key pasted in the credential field still takes priority over an imported value. **Validate** and the connection test send one read-only `GET` to `users/current` with the token and never open a chat.
 
 The web app session can expire. Replace the stored userToken with a fresh value after an authentication error. Model access, search availability, and quotas are controlled by DeepSeek. Requests use the site's private web API and can stop working when DeepSeek changes it. The integration does not claim compatibility with a pasted Cookie header or HAR export.
 
 ## Source
 
-- [OmniRoute provider entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/deepseek/web/index.ts)
-- [OmniRoute executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/deepseek-web.ts)
 - [DeepSeek Chat](https://chat.deepseek.com)
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

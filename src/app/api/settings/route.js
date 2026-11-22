@@ -5,6 +5,7 @@ import { MAX_PROVIDER_RPM } from "@/shared/constants/providers";
 import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { resetRoundrobinCursors } from "open-sse/services/modelFallback.js";
 import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
@@ -28,6 +29,19 @@ import { validateModelAutoSyncSettingsPatch } from "@/lib/modelAutoSync/catalog.
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
+
+// Mirrors validateProxyUrl in src/lib/network/outboundProxy.js (the schemes and
+// control-character rules applyOutboundProxyEnv enforces when applying the env).
+const ALLOWED_PROXY_SCHEMES = ["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"];
+
+function isUsableProxyUrl(url) {
+  if (/[\n\r`$]/.test(url)) return false;
+  try {
+    return ALLOWED_PROXY_SCHEMES.includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
 
 const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
@@ -102,6 +116,10 @@ export async function PATCH(request) {
   try {
     const body = await request.json();
 
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+
     if (SCOPED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
       return NextResponse.json({
         error: "Auto-ping must be updated through the connection-scoped endpoint"
@@ -150,6 +168,21 @@ export async function PATCH(request) {
     delete body.newPassword;
 
 
+
+    // OIDC allowlists (#2195): arrays of non-empty strings; a comma/newline
+    // separated string from the profile form is split into the same shape.
+    for (const key of ["oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains"]) {
+      if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+      const raw = body[key];
+      if (!Array.isArray(raw) && !isString(raw)) {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      const items = (Array.isArray(raw) ? raw : raw.split(/[\s,]+/)).map((item) => (isString(item) ? item.trim() : null));
+      if (items.some((item) => item === null)) {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body[key] = [...new Set(items.filter(Boolean).map((item) => (key === "oidcAllowedSubjects" ? item : item.toLowerCase())))];
+    }
 
     if (Object.prototype.hasOwnProperty.call(body, "oidcClientSecret")) {
       if (!body.oidcClientSecret || !String(body.oidcClientSecret).trim()) {
@@ -402,6 +435,20 @@ export async function PATCH(request) {
       return NextResponse.json({ error: modelAutoSyncError }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
+    // An enabled proxy with an unusable URL would be saved, shown as on, and
+    // silently skipped by applyOutboundProxyEnv; reject it at the boundary.
+    if (Object.hasOwn(body, "outboundProxyEnabled") || Object.hasOwn(body, "outboundProxyUrl")) {
+      const stored = Object.hasOwn(body, "outboundProxyEnabled") && Object.hasOwn(body, "outboundProxyUrl")
+        ? {}
+        : await getSettings();
+      const enabled = Boolean(Object.hasOwn(body, "outboundProxyEnabled") ? body.outboundProxyEnabled : stored.outboundProxyEnabled);
+      const rawUrl = Object.hasOwn(body, "outboundProxyUrl") ? body.outboundProxyUrl : stored.outboundProxyUrl;
+      const url = rawUrl === undefined || rawUrl === null ? "" : String(rawUrl).trim();
+      if (enabled && url && !isUsableProxyUrl(url)) {
+        return NextResponse.json({ error: "Invalid outboundProxyUrl" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+
     const willChangePassword = body.password !== undefined;
     let settings;
     try {
@@ -451,6 +498,10 @@ export async function PATCH(request) {
     {
       resetComboRotation();
       resetComboScoring();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "modelFallbacks")) {
+      resetRoundrobinCursors();
     }
 
     // Write authority and read authority differ: an open local dashboard may

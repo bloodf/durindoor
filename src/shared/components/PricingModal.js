@@ -8,6 +8,8 @@ import Input from "@/shared/ui/components/Input.jsx";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 
 const PRICING_FIELDS = [
   { key: "input", label: "Input" },
@@ -33,6 +35,7 @@ function PricingCell({ provider, model, field, value, onChange }) {
 }
 
 export default function PricingModal({ isOpen, onClose, onSave }) {
+  const v5 = useUiV5();
   const [pricingData, setPricingData] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -162,14 +165,41 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
           </>
         }
       >
-        <div className="flex flex-col gap-4">
-          {error ? <div role="alert" className="flex items-start gap-2 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger"><span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">error</span><span>{error}</span></div> : null}
+        <div className={v5 ? "flex min-w-0 flex-col gap-4" : "flex flex-col gap-4"}>
+          {error ? (
+            v5 ? (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">
+                <span className="flex items-start gap-2">
+                  <MotionIcon name="error" size={16} className="mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </span>
+                <Button variant="secondary" size="sm" icon="refresh" onClick={loadPricing} disabled={loading || saving}>
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <div role="alert" className="flex items-start gap-2 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger">
+                <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">error</span>
+                <span>{error}</span>
+              </div>
+            )
+          ) : null}
           <aside className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 px-3 py-2 text-[13px] text-dd-muted">
             <p className="font-medium text-dd-text">Pricing rates format</p>
             <p className="mt-1">All rates are in <strong className="text-dd-text">dollars per million tokens</strong> ($/1M tokens). Example: an input rate of <span className="font-mono text-dd-text">2.50</span> means <span className="font-mono text-dd-text">{formatCost(2.5)}</span> per 1,000,000 input tokens.</p>
           </aside>
           {loading ? (
-            <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-6 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span><span>Loading pricing data…</span></div>
+            v5 ? (
+              <div role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 px-3 py-6 text-xs text-dd-muted">
+                <MotionIcon name="progress_activity" size={18} className="animate-spin text-dd-muted" />
+                <span>Loading pricing data…</span>
+              </div>
+            ) : (
+              <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-6 text-xs text-dd-muted">
+                <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span>
+                <span>Loading pricing data…</span>
+              </div>
+            )
           ) : rows.length === 0 ? (
             <EmptyState icon="payments" title="No pricing data available" message="Add a provider to configure model rates." />
           ) : (

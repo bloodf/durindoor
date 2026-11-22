@@ -1,31 +1,16 @@
 import "../translator/registerAll.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import codexProvider, { cookieCaptureProfile } from "../../open-sse/providers/private/chatgpt-web-codex.js";
+import codexProvider, { cookieCaptureProfile } from "../../open-sse/providers/registry/chatgpt-web-codex.js";
 import { ChatGptWebCodexExecutor } from "../../open-sse/executors/chatgpt-web-codex.js";
+import { getExecutor } from "../../open-sse/executors/index.js";
 
 const fakeHttp = vi.hoisted(() => ({ execute: vi.fn() }));
 const cookieA = "__Secure-next-auth.session-token=fixture-cookie-alpha";
 const cookieB = "__Secure-next-auth.session-token=fixture-cookie-beta";
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), errorLine: vi.fn() };
 
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: provider } = await import("../../open-sse/providers/private/chatgpt-web-codex.js");
-  return { ...original, default: [...original.default, provider] };
-});
-vi.mock("../../open-sse/providers/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: provider } = await import("../../open-sse/providers/private/chatgpt-web-codex.js");
-  const transport = { ...provider.transport, authType: provider.authType };
-  const models = provider.models.map((model) => ({ ...model, provider: provider.id }));
-  return {
-    ...original,
-    PROVIDERS: { ...original.PROVIDERS, [provider.id]: transport },
-    PROVIDER_MODELS: { ...original.PROVIDER_MODELS, [provider.id]: models, [provider.alias]: models },
-    PROVIDER_MEDIA: { ...original.PROVIDER_MEDIA, [provider.id]: { serviceKinds: ["llm"] } },
-  };
-});
+// Only the HTTP transport is replaced (no network); the registry and executor id come from production.
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const codexExecutor = new ChatGptWebCodexExecutor({ httpExecutor: fakeHttp });
@@ -33,15 +18,6 @@ vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
     ...original,
     getExecutor: (provider) => provider === "chatgpt-web-codex" ? codexExecutor : original.getExecutor(provider),
   };
-});
-vi.mock("@/shared/constants/providers", async (importOriginal) => {
-  const original = await importOriginal();
-  const metadata = { id: "chatgpt-web-codex", alias: "cgpt-codex", authType: "cookie", defaultBaseUrl: "https://chatgpt.com/backend-api/f/conversation", serviceKinds: ["llm"] };
-  return { ...original, AI_PROVIDERS: { ...original.AI_PROVIDERS, "chatgpt-web-codex": metadata } };
-});
-vi.mock("../../src/app/api/providers/[id]/models/modelsConfig.js", async (importOriginal) => {
-  const original = await importOriginal();
-  return { ...original, PROVIDER_MODELS_CONFIG: { ...original.PROVIDER_MODELS_CONFIG, "chatgpt-web-codex": { customResolver: async () => ({ models: codexProvider.models }) } } };
 });
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
@@ -65,6 +41,7 @@ const result = (body, status = 200) => ({ response: json(body, status), url: "ht
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getExecutor("chatgpt-web-codex").httpExecutor = fakeHttp;
   fakeHttp.execute.mockImplementation(async (input) => {
     const { stream, model, body, credentials } = input;
     if (credentials.apiKey === "expired") return result({ error: { message: "Invalid session cookie" } }, 401);
@@ -90,6 +67,10 @@ async function chat(body, format = "openai", cookie = cookieA) {
 }
 
 describe("ChatGPT Web Codex provider", () => {
+  it("registers the Codex lane executor in the real executor table", () => {
+    expect(getExecutor("chatgpt-web-codex")).toBeInstanceOf(ChatGptWebCodexExecutor);
+    expect(getExecutor("cgpt-codex")).toBeInstanceOf(ChatGptWebCodexExecutor);
+  });
   it("exports the cookie-capture profile and composes into normal provider discovery", () => {
     expect(cookieCaptureProfile).toMatchObject({ origin: "https://chatgpt.com", cookieNames: ["__Secure-next-auth.session-token"], validationProbe: { method: "GET" } });
     expect(REGISTRY.find((entry) => entry.id === "chatgpt-web-codex")).toBe(codexProvider);
@@ -97,8 +78,8 @@ describe("ChatGPT Web Codex provider", () => {
   });
 
   it("validates sessions and rejects expired credentials", async () => {
-    const ok = await probeRegistryProvider("chatgpt-web-codex", cookieA, async () => json({ user: { id: "fixture" } }));
-    const bad = await probeRegistryProvider("chatgpt-web-codex", "expired", async () => json({ error: "unauthorized" }, 401));
+    const ok = await probeRegistryProvider("chatgpt-web-codex", cookieA, async () => json({ accessToken: "synthetic-access-token", user: { id: "fixture" } }));
+    const bad = await probeRegistryProvider("chatgpt-web-codex", "__Secure-next-auth.session-token=expired", async () => json({ error: "unauthorized" }, 401));
     expect(ok).toMatchObject({ valid: true, status: 200 });
     expect(bad).toMatchObject({ valid: false, status: 401 });
   });

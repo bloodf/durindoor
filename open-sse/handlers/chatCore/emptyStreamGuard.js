@@ -172,7 +172,8 @@ export function createEmptyRetryStream({
   stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
   baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS,
   onAttemptDiscarded,
-  onExhausted
+  onExhausted,
+  onInBandError
 }) {
   const encoder = new TextEncoder();
   let currentReader = null;
@@ -301,7 +302,50 @@ export function createEmptyRetryStream({
           }
 
           const { done, value } = readResult;
-          if (done) break readAttempt;
+          if (done) {
+            // SSE permits the final event line to end at EOF without a line
+            // terminator. Classify that tail just like a newline-terminated
+            // line; otherwise an empty terminal can escape the retry guard.
+            lineBuffer += decoder.decode();
+            if (lineBuffer && !held) {
+              const line = lineBuffer;
+              lineBuffer = "";
+              const trimmed = line.trim();
+              if (!trimmed.startsWith("data:")) emit(line);
+              else {
+                const payload = trimmed.slice(5).trim();
+                if (!payload || payload === "[DONE]") emit(line);
+                else {
+                  let parsed;
+                  try { parsed = JSON.parse(payload); }
+                  catch { emit(line); }
+                  if (parsed !== undefined) {
+                    if (hasErrorEnvelope(parsed)) onInBandError?.(parsed.error || parsed.response?.error, currentBody);
+                    const decision = classifyEvent(parsed, meaningfulSeen);
+                    if (decision.meaningful) meaningfulSeen = true;
+                    if (decision.action === "hold") {
+                      held = { kind: decision.kind, reason: decision.reason, error: decision.error || null, line };
+                      lastHeld = held;
+                    } else if (decision.terminal) {
+                      if (!terminalForwarded) {
+                        terminalForwarded = true;
+                        terminalDrainDeadline = Date.now() + terminalDrainTimeoutMs;
+                        emit(line);
+                      } else if (hasErrorEnvelope(parsed)) emit(line);
+                      else {
+                        const drained = usagePayload(parsed);
+                        if (drained && drained.signature !== forwardedUsageSignature) {
+                          forwardedUsageSignature = drained.signature;
+                          emit(`data: ${JSON.stringify(drained.frame)}`);
+                        }
+                      }
+                    } else emit(line);
+                  }
+                }
+              }
+            }
+            break readAttempt;
+          }
 
           const nextPending = advancePendingSseLineBytes(pendingLineBytes, value);
           if (nextPending === null) {
@@ -337,6 +381,7 @@ export function createEmptyRetryStream({
               continue;
             }
 
+            if (hasErrorEnvelope(parsed)) onInBandError?.(parsed.error || parsed.response?.error, currentBody);
             const decision = classifyEvent(parsed, meaningfulSeen);
             if (decision.meaningful) meaningfulSeen = true;
             if (decision.action === "hold") {

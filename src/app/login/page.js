@@ -5,6 +5,16 @@ import { safeNextPath } from "@/lib/auth/safeNextPath";
 import { isBrowser } from "../../shared/utils/typeChecks.js";
 import { LoginView } from "./LoginView.js";
 
+// Login-page copy for OIDC callback/start refusals (#2195).
+const OIDC_LOGIN_ERRORS = Object.freeze({
+  oidc_allowlist_empty:
+    "OIDC sign-in is refused because no identity is allowlisted. Set oidcAllowedSubjects, oidcAllowedEmails or " +
+    "oidcAllowedDomains under Profile > OIDC (sign in with a password, open the dashboard from loopback, " +
+    "or use the CLI token).",
+  oidc_not_allowed:
+    "This OIDC identity is not on the allowlist. Ask an operator to add your subject, verified email or domain.",
+});
+
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -30,7 +40,12 @@ export default function LoginPage() {
   }, [retryAfter]);
 
   useEffect(() => {
-    setNextPath(safeNextPath(new URLSearchParams(window.location.search).get("next")));
+    const params = new URLSearchParams(window.location.search);
+    setNextPath(safeNextPath(params.get("next")));
+    const oidcError = params.get("error");
+    if (oidcError && Object.prototype.hasOwnProperty.call(OIDC_LOGIN_ERRORS, oidcError)) {
+      setError(OIDC_LOGIN_ERRORS[oidcError]);
+    }
   }, []);
 
   useEffect(() => {

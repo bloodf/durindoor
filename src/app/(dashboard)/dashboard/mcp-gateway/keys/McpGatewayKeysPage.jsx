@@ -21,10 +21,12 @@ import Button from "@/shared/ui/components/Button.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { CreatedKeyDialog, GrantsModal, KeysPanel, NewKeyDialog } from "../McpGatewayComponents.jsx";
 import { useGatewayCollection } from "../shared.js";
 
 export default function McpGatewayKeysPage() {
+  const uiV5 = useUiV5();
   const { items: keys, loading, error, reload, notify } = useGatewayCollection("/api/mcp-gateway/keys", "keys");
   // Grants are expressed in terms of instances, so the modal needs the list —
   // but only once the operator opens it. Loading instances on mount would let
@@ -74,7 +76,7 @@ export default function McpGatewayKeysPage() {
   }
 
   return <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 text-[13px]">
-    <PageHeader icon="vpn_key" title="Gateway Keys" subtitle="API keys harnesses use to talk to this gateway. Each key reaches only the instances it is granted." actions={<><Link href="/dashboard/mcp-gateway" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-base">hub</span>Instances</Link><Button variant="primary" icon="vpn_key" onClick={() => setKeyPromptOpen(true)}>New key</Button></>} />
+    <PageHeader className={uiV5 ? "pe-1" : undefined} icon="vpn_key" title="Gateway Keys" subtitle="API keys harnesses use to talk to this gateway. Each key reaches only the instances it is granted." actions={<><Link href="/dashboard/mcp-gateway" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-base">hub</span>Instances</Link><Button variant="primary" icon="vpn_key" onClick={() => setKeyPromptOpen(true)}>New key</Button></>} />
     <KeysPanel keys={keys} loading={loading} error={error} onRetry={reload} copied={copied} onCreate={() => setKeyPromptOpen(true)} onEdit={openGrants} onReveal={revealAndCopyKey} onDelete={(id) => setConfirmDelete({ kind: "key", id })} />
     {keyPromptOpen ? <NewKeyDialog onClose={() => setKeyPromptOpen(false)} onCreate={createKey} /> : null}
     {editingKey ? <GrantsModal keyId={editingKey} allInstances={instances} instancesLoading={instancesLoading} instancesError={instancesError} onRetryInstances={loadInstances} onClose={() => setEditingKey(null)} onSave={saveGrants} /> : null}

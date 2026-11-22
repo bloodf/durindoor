@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { openaiToAntigravityResponse } from "./openai-to-antigravity.js";
 

@@ -19,11 +19,13 @@ import Button from "@/shared/ui/components/Button.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { isString } from "@/shared/utils/typeChecks.js";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { InstanceEditModal, InstancesPanel } from "./McpGatewayComponents.jsx";
 import { emptyInstance, nowMs, parseMaybeJson, stringifyMaybe, useGatewayCollection } from "./shared.js";
 
 export default function McpGatewayPage({ openPopup = (url, target) => window.open(url, target) }) {
-  const { items: instances, loading, reload, notify } = useGatewayCollection("/api/mcp-gateway/instances", "instances");
+  const uiV5 = useUiV5();
+  const { items: instances, loading, error, reload, notify } = useGatewayCollection("/api/mcp-gateway/instances", "instances");
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [testResults, setTestResults] = useState({});
@@ -82,8 +84,8 @@ export default function McpGatewayPage({ openPopup = (url, target) => window.ope
   }
 
   return <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 text-[13px]">
-    <PageHeader icon="hub" title="MCP Gateway" subtitle={<span>Register upstream MCP servers. Tools appear as <code className="rounded-dd bg-dd-surface-2 px-1 font-mono text-xs text-dd-text">&lt;slug&gt;__&lt;toolName&gt;</code>.</span>} actions={<><Link href="/dashboard/mcp-gateway/keys" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-base">vpn_key</span>Gateway keys</Link><Button variant="primary" icon="add" onClick={() => setEditing(emptyInstance())}>New instance</Button></>} />
-    <InstancesPanel instances={instances} loading={loading} testResults={testResults} onCreate={() => setEditing(emptyInstance())} onToggle={toggleInstanceEnabled} onTest={testInstance} onConnect={connectInstance} onEdit={(instance) => setEditing({ ...instance, args: stringifyMaybe(instance.args), env: stringifyMaybe(instance.env), headers: stringifyMaybe(instance.headers) })} onDelete={(id) => setConfirmDelete({ kind: "instance", id })} />
+    <PageHeader className={uiV5 ? "pe-1" : undefined} icon="hub" title="MCP Gateway" subtitle={<span>Register upstream MCP servers. Tools appear as <code className="rounded-dd bg-dd-surface-2 px-1 font-mono text-xs text-dd-text">&lt;slug&gt;__&lt;toolName&gt;</code>.</span>} actions={<><Link href="/dashboard/mcp-gateway/keys" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-base">vpn_key</span>Gateway keys</Link><Button variant="primary" icon="add" onClick={() => setEditing(emptyInstance())}>New instance</Button></>} />
+    <InstancesPanel instances={instances} loading={loading} error={error} onRetry={reload} testResults={testResults} onCreate={() => setEditing(emptyInstance())} onToggle={toggleInstanceEnabled} onTest={testInstance} onConnect={connectInstance} onEdit={(instance) => setEditing({ ...instance, args: stringifyMaybe(instance.args), env: stringifyMaybe(instance.env), headers: stringifyMaybe(instance.headers) })} onDelete={(id) => setConfirmDelete({ kind: "instance", id })} />
     {editing ? <InstanceEditModal initial={editing} onClose={() => setEditing(null)} onSave={async (form) => { if (await saveInstance(form)) { setEditing(null); await reload(); } }} /> : null}
     <ConfirmDialog open={confirmDelete?.kind === "instance"} title="Delete instance?" message="All grants to this instance will also be removed." confirmLabel="Delete instance" onConfirm={() => deleteInstance(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />
   </main>;

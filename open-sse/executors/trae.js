@@ -1,6 +1,33 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import * as proxyFetch from "../utils/proxyFetch.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+
+const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
+
+/**
+ * Credentialed send through proxyAwareFetch with redirect:"error".
+ * Falls back to the live global when proxyFetch is empty-mocked or when the
+ * DurinDoor-patched global (including Vitest spies that preserve the patch
+ * flag) should observe the call.
+ */
+function routeExecutorFetch(url, init, proxyOptions = null) {
+  const options = { ...init, redirect: "error" };
+  let send = null;
+  try {
+    send = proxyFetch.proxyAwareFetch;
+  } catch {
+    send = null;
+  }
+  if (!isFunction(send)) {
+    return globalThis.fetch(url, { ...options, proxyOptions });
+  }
+  const live = globalThis.fetch;
+  if (isFunction(live) && live[DURINDOOR_FETCH_PATCH] === true) {
+    return live(url, { ...options, proxyOptions });
+  }
+  return send(url, options, proxyOptions);
+}
 
 const STREAM_TIMEOUT_MS = parseInt(process.env.TRAE_STREAM_TIMEOUT_MS || "300000", 10);
 
@@ -120,7 +147,7 @@ export class TraeExecutor extends BaseExecutor {
     return JSON.stringify(params);
   }
 
-  async createSession(headers, query, model, providerData, signal) {
+  async createSession(headers, query, model, providerData, signal, proxyOptions = null) {
     const { mode, strategy, modelName } = this.resolveMode(model);
     const requestBody = {
       mode,
@@ -138,12 +165,12 @@ export class TraeExecutor extends BaseExecutor {
       auto_create_project: false,
       origin: "web"
     };
-    const response = await fetch(`${this.base()}/chat_sessions`, {
+    const response = await routeExecutorFetch(`${this.base()}/chat_sessions`, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
       signal: signal || undefined
-    });
+    }, proxyOptions);
     const text = await response.text();
     if (!response.ok) throw new Error(`[${response.status}] ${text}`);
     const json = JSON.parse(text);
@@ -151,7 +178,7 @@ export class TraeExecutor extends BaseExecutor {
     return { sessionId: json.data.chat_session_id, messageId: json.data.message_id };
   }
 
-  async streamEvents(headers, sessionId, replyTo, onEvent, signal) {
+  async streamEvents(headers, sessionId, replyTo, onEvent, signal, proxyOptions = null) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error("trae stream timeout")), STREAM_TIMEOUT_MS);
     const onAbort = () => controller.abort();
@@ -159,7 +186,11 @@ export class TraeExecutor extends BaseExecutor {
     if (signal) signal.addEventListener("abort", onAbort, { once: true });
     try {
       const url = `${this.base()}/chat_sessions/${sessionId}/events?reply_to_message_id=${encodeURIComponent(replyTo)}`;
-      const response = await fetch(url, { method: "GET", headers, signal: controller.signal });
+      const response = await routeExecutorFetch(url, {
+        method: "GET",
+        headers,
+        signal: controller.signal
+      }, proxyOptions);
       if (!response.ok || !response.body) throw new Error(`[${response.status}] events stream failed`);
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -196,7 +227,7 @@ export class TraeExecutor extends BaseExecutor {
     }
   }
 
-  async execute({ model, body, stream, credentials, signal }) {
+  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
     const headers = this.buildHeaders(credentials);
     const providerData = credentials?.providerSpecificData || {};
     const query = flattenQuery(body?.messages || []);
@@ -205,7 +236,7 @@ export class TraeExecutor extends BaseExecutor {
 
     let session;
     try {
-      session = await this.createSession(headers, query, model, providerData, signal);
+      session = await this.createSession(headers, query, model, providerData, signal, proxyOptions);
     } catch (error) {
       return {
         response: new Response(JSON.stringify({ error: { message: safeErrorMessage(error.message), type: "api_error", code: "" } }), {
@@ -253,7 +284,7 @@ export class TraeExecutor extends BaseExecutor {
                 if (piece) emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] });
               }
               return eventName === "done";
-            }, signal);
+            }, signal, proxyOptions);
             if (errorEvent) emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [], error: { message: `trae ${errorEvent.code}: ${errorEvent.message}`, type: "api_error" } });else
             emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage });
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -281,7 +312,7 @@ export class TraeExecutor extends BaseExecutor {
       if (eventName === "token_usage") usage = data;
       if (eventName === "plan_item") renderNewText(data);
       return eventName === "done";
-    }, signal);
+    }, signal, proxyOptions);
 
     if (errorEvent) {
       return {

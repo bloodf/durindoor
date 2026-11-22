@@ -2,8 +2,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   homedir: vi.fn(),
+  realpath: vi.fn(),
+  readlink: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
+  copyFile: vi.fn(),
+  rename: vi.fn(),
+  unlink: vi.fn(),
   mkdir: vi.fn(),
   access: vi.fn(),
   exec: vi.fn(),
@@ -13,8 +18,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("fs/promises", () => ({
   default: {
     access: mocks.access,
+    realpath: mocks.realpath,
+    readlink: mocks.readlink,
     readFile: mocks.readFile,
     writeFile: mocks.writeFile,
+    copyFile: mocks.copyFile,
+    rename: mocks.rename,
+    unlink: mocks.unlink,
     mkdir: mocks.mkdir,
   },
   access: mocks.access,
@@ -59,8 +69,13 @@ describe("claude-settings POST", () => {
     mocks.homedir.mockReturnValue("/home/test");
     mocks.platform.mockReturnValue("linux");
     mocks.exec.mockImplementation((_cmd, _opts, cb) => cb(null, { stdout: "/usr/bin/claude" }));
+    mocks.realpath.mockImplementation(async (path) => path);
+    mocks.readlink.mockRejectedValue(Object.assign(new Error("not a link"), { code: "EINVAL" }));
     mocks.readFile.mockRejectedValue({ code: "ENOENT" });
     mocks.writeFile.mockResolvedValue();
+    mocks.copyFile.mockRejectedValue({ code: "ENOENT" });
+    mocks.rename.mockResolvedValue();
+    mocks.unlink.mockResolvedValue();
     mocks.mkdir.mockResolvedValue();
   });
 

@@ -110,7 +110,8 @@ describe("manifest and sources", () => {
   it("is MV3 with no permanent host access, no background and no storage", () => {
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.permissions).toEqual(["activeTab"]);
-    expect(manifest.optional_permissions).toEqual(["cookies"]);
+    // `scripting` only reads TinyCMS's localStorage item; it is requested for that provider alone.
+    expect(manifest.optional_permissions).toEqual(["cookies", "scripting"]);
     for (const key of ["host_permissions", "background", "content_scripts", "externally_connectable", "web_accessible_resources", "commands", "omnibox"]) {
       expect(manifest, key).not.toHaveProperty(key);
     }
@@ -137,6 +138,16 @@ describe("manifest and sources", () => {
   it("contains no telemetry, persistence, logging or dynamic code", () => {
     const sources = PACKAGE_FILES.filter((f) => f.endsWith(".js") || f.endsWith(".html")).map((f) => [f, fs.readFileSync(path.join(EXTENSION_DIR, f), "utf8")]);
     const forbidden = [/console\./, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /XMLHttpRequest/, /sendBeacon/, /WebSocket/, /\beval\(/, /new Function/, /innerHTML/, /document\.cookie/, /https?:\/\/(?!\*)[\w.-]+\.\w+/];
+    // TinyCMS (#2034 batch C): the one injected reader may touch page storage, and only to read. It is
+    // checked on its own and cut out of capture.js. The plan and request fields that carry item names
+    // (`localStorageKeys`, `localStorageCount`, the `localStorage` body field) are data, not storage
+    // access, so only those names are blanked; any member access on the storage object still fails below.
+    const reader = /export function readLocalStorageItems\(keys\) \{[\s\S]*?\n\}\n/;
+    const readerSource = fs.readFileSync(path.join(EXTENSION_DIR, "capture.js"), "utf8").match(reader)?.[0] ?? "";
+    expect(readerSource.match(/localStorage\.\w+/g)).toEqual(["localStorage.getItem"]);
+    for (const entry of sources) {
+      entry[1] = entry[1].replace(reader, "").replace(/\blocalStorage(?:Keys|Count)\b/g, "storageField").replace(/\blocalStorage\b(?!\s*[.[(])/g, "storageField");
+    }
     for (const [file, text] of sources) {
       const code = file.endsWith(".js") ? text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "") : text;
       for (const pattern of forbidden) {

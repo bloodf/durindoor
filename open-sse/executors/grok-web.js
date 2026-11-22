@@ -3,6 +3,7 @@ import { ACCEPT_ENCODING } from "../utils/zstdCompat.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 
@@ -172,9 +173,12 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
     if (resp.llmInfo?.modelHash && !fingerprint) fingerprint = resp.llmInfo.modelHash;
     if (resp.responseId) responseId = resp.responseId;
 
+    if (resp.isThinking === true) thinkOpened = true;
+
     if (resp.modelResponse) {
       const mr = resp.modelResponse;
       const message = mr.message;
+      const messageIsThinking = thinkOpened || resp.isThinking === true;
       if (message != null && !isString(message)) {
         yield { error: "Invalid Grok final message", done: true };
         return;
@@ -183,12 +187,18 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
         if (message) yield { thinking: message };
         thinkOpened = false;
       }
-      if (message) yield { fullMessage: message, fingerprint, responseId };
+      if (message && !messageIsThinking) yield { fullMessage: message, fingerprint, responseId };
       if (mr.metadata?.llm_info?.modelHash) fingerprint = mr.metadata.llm_info.modelHash;
       continue;
     }
 
-    if (resp.token != null) yield { delta: resp.token, fingerprint, responseId };
+    if (resp.token != null) {
+      if (resp.isThinking === true) {
+        if (isThinkingModel) yield { thinking: resp.token, fingerprint, responseId };
+      } else {
+        yield { delta: resp.token, fingerprint, responseId };
+      }
+    }
   }
   yield { done: true, fingerprint, responseId };
 }
@@ -253,7 +263,7 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
   });
 }
 
-async function buildNonStreamingResponse(eventStream, model, cid, created, isThinkingModel, signal) {
+async function buildNonStreamingResponse(eventStream, model, cid, created, isThinkingModel, signal, prompt) {
   let fullContent = "";
   let fingerprint = "";
   const thinkingParts = [];
@@ -274,7 +284,7 @@ async function buildNonStreamingResponse(eventStream, model, cid, created, isThi
   const msg = { role: "assistant", content: fullContent };
   if (thinkingParts.length > 0) msg.reasoning_content = thinkingParts.join("\n");
 
-  const promptTokens = Math.ceil(fullContent.length / 4);
+  const promptTokens = Math.ceil(prompt.length / 4);
   const completionTokens = Math.ceil(fullContent.length / 4);
 
   return new Response(JSON.stringify({
@@ -289,11 +299,17 @@ export class GrokWebExecutor extends BaseExecutor {
     super("grok-web", PROVIDERS["grok-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
         error: { message: "Missing or empty messages array", type: "invalid_request" }
+      }), { status: 400, headers: { "Content-Type": "application/json" } });
+      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
+    }
+    if (messages.some((message) => message == null)) {
+      const errResp = new Response(JSON.stringify({
+        error: { message: "Messages must not contain null entries", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
     }
@@ -363,9 +379,9 @@ export class GrokWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await fetch(GROK_CHAT_API, {
+      response = await proxyAwareFetch(GROK_CHAT_API, {
         method: "POST", headers, body: JSON.stringify(grokPayload), signal
-      });
+      }, proxyOptions);
     } catch (err) {
       log?.error?.("GROK-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
@@ -404,7 +420,7 @@ export class GrokWebExecutor extends BaseExecutor {
         headers: { ...SSE_HEADERS_NO_BUFFER }
       });
     } else {
-      finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, isThinking, signal);
+      finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, isThinking, signal, message);
     }
     return { response: finalResponse, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
   }

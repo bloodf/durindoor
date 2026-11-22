@@ -45,6 +45,8 @@ export default {
     { id: "dmodel", name: "DeepSeek-V4-Pro" },
     { id: "dfmodel", name: "DeepSeek-V4-Flash" },
     { id: "mmodel", name: "MiniMax-M3" },
+    { id: "smodel", name: "Sonus", supportsVision: true, supportsReasoning: true, maxInputTokens: 180_000 },
+    { id: "cmodel", name: "Cantus", supportsVision: true, supportsReasoning: true, maxInputTokens: 180_000 },
   ],
   oauth: {
     openApiBaseUrl: "https://openapi.qoder.sh",

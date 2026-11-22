@@ -3,6 +3,7 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
@@ -54,6 +55,7 @@ function getListingHref(kind) {
 }
 
 export default function ComboDetailPage() {
+  const v5 = useUiV5();
   const { id } = useParams();
   const router = useRouter();
   const [combo, setCombo] = useState(null);
@@ -266,7 +268,7 @@ export default function ComboDetailPage() {
   const backHref = getListingHref(combo.kind);
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className={`mx-auto flex w-full max-w-7xl flex-col gap-6${v5 ? " min-w-0 text-dd-text" : ""}`}>
       {deleteError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{deleteError}</p>}
       {saveError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{saveError}</p>}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

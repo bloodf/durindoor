@@ -1,5 +1,5 @@
 // Standalone detached updater process.
-// Spawns `npm i -g <pkg>@latest`, exposes progress via tiny HTTP server.
+// Spawns `npm i -g <pkg>@<exact-version>` (never @latest), exposes progress via tiny HTTP server.
 // Survives after parent Next server exits (detached + unref by spawner).
 
 const { spawn } = require("child_process");
@@ -9,7 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-const packageName = process.env.UPDATER_PKG_NAME || "9router";
+const packageName = process.env.UPDATER_PKG_NAME || "";
 const port = parseInt(process.env.UPDATER_PORT || "20129", 10);
 const tailLines = parseInt(process.env.UPDATER_TAIL_LINES || "8", 10);
 const maxRetries = parseInt(process.env.UPDATER_RETRIES || "3", 10);
@@ -64,9 +64,9 @@ function setPhase(phase) {
   persistStatus();
 }
 
-// HTTP server exposing status (browser polls this while Next server is dead)
+// HTTP server exposing status (browser polls this while Next server is dead).
+// Loopback-only listen below; no wildcard CORS — status must not be readable cross-origin.
 const server = http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Cache-Control", "no-store");
   if (req.url === "/update/status" || req.url === "/") {
     res.setHeader("Content-Type", "application/json");
@@ -128,9 +128,22 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function isPinnedInstallSpec(spec) {
+  // Require name@x.y.z (optional prerelease/build). Reject @latest / unversioned.
+  if (!spec || /@latest$/i.test(spec)) return false;
+  return /@.+\d+\.\d+\.\d+/.test(spec);
+}
+
 function runInstall() {
   state.attempt += 1;
   setPhase("installing");
+
+  if (!isPinnedInstallSpec(packageName)) {
+    pushLog(`[updater] refusing unpinned install spec: ${packageName || "(empty)"}`);
+    finalize(false, null, `Refusing unpinned install spec: ${packageName || "(empty)"}`);
+    return;
+  }
+
   pushLog(`[updater] attempt ${state.attempt}/${maxRetries} — npm i -g ${packageName} --prefer-online`);
 
   const isWin = process.platform === "win32";

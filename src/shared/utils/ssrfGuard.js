@@ -1,8 +1,7 @@
 // SSRF guard: block internal/private/metadata targets for server-side fetch.
 //
 // Three layers, each closing a distinct bypass class documented in #3714:
-//   1. assertPublicUrl        - synchronous literal-IP/hostname checks (cheap, for
-//                                immediate rejection of obviously-bad input at request-build time).
+//   1. isBlockedHost           - shared literal-IP/hostname address classifier.
 //   2. assertPublicUrlResolved - adds DNS resolution so a hostname that merely
 //                                *resolves* to a private/loopback address (e.g. a
 //                                nip.io/sslip.io wildcard-DNS domain, or an attacker's
@@ -46,19 +45,26 @@ const BLOCKED_V4_RANGES = [
   [ipv4ToInt("169.254.0.0"), 16], // includes 169.254.169.254 cloud metadata
   [ipv4ToInt("172.16.0.0"), 12],
   [ipv4ToInt("192.168.0.0"), 16],
+  [ipv4ToInt("192.0.0.0"), 24], // special-use protocol assignments
+  [ipv4ToInt("224.0.0.0"), 4], // multicast
+  [ipv4ToInt("240.0.0.0"), 4], // reserved, including limited broadcast
 ];
 
-function isBlockedIpv4Int(ip) {
+function classifyIpv4Int(ip) {
+  // Provider egress permits these globally reachable anycast assignments.
+  if (ip === ipv4ToInt("192.0.0.9") || ip === ipv4ToInt("192.0.0.10")) return "anycast";
+  // Fake-IP DNS proxies use the benchmarking range; provider egress permits it.
+  if ((ip & 0xfffe0000) === (ipv4ToInt("198.18.0.0") & 0xfffe0000)) return "benchmarking";
   return BLOCKED_V4_RANGES.some(([base, bits]) => {
     const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
     return (ip & mask) === (base & mask);
-  });
+  }) ? "blocked" : "public";
 }
 
 function isBlockedIpv4(host) {
   const ip = ipv4ToInt(host);
   if (ip === null) return false;
-  return isBlockedIpv4Int(ip);
+  return classifyIpv4Int(ip) !== "public";
 }
 
 function parseHextets(s) {
@@ -116,27 +122,31 @@ function parseIPv6ToGroups(rawHost) {
   return groups.length === 8 ? groups : null;
 }
 
-function isBlockedIpv6Groups(g) {
+function classifyIpv6Groups(g) {
   const isZero = (n) => g[n] === 0;
   // loopback ::1
-  if ([0, 1, 2, 3, 4, 5, 6].every(isZero) && g[7] === 1) return true;
+  if ([0, 1, 2, 3, 4, 5, 6].every(isZero) && g[7] === 1) return "blocked";
   // unspecified ::
-  if (g.every((x) => x === 0)) return true;
+  if (g.every((x) => x === 0)) return "blocked";
   // link-local fe80::/10
-  if ((g[0] & 0xffc0) === 0xfe80) return true;
+  if ((g[0] & 0xffc0) === 0xfe80) return "blocked";
+  // deprecated site-local fec0::/10 (RFC 3879) — still routed on some internal networks
+  if ((g[0] & 0xffc0) === 0xfec0) return "blocked";
   // unique local fc00::/7
-  if ((g[0] & 0xfe00) === 0xfc00) return true;
+  if ((g[0] & 0xfe00) === 0xfc00) return "blocked";
+  // multicast ff00::/8
+  if ((g[0] & 0xff00) === 0xff00) return "blocked";
   // IPv4-mapped ::ffff:0:0/96 (0:0:0:0:0:ffff:a.b.c.d — the 0xffff marker is
   // group index 5) and NAT64 well-known prefix 64:ff9b::/96 — both embed a
   // real IPv4 address in the low 32 bits; check it against the same IPv4
   // blocklist regardless of which prefix wraps it.
   const low32 = ((g[6] << 16) | g[7]) >>> 0;
-  if ([0, 1, 2, 3, 4].every(isZero) && g[5] === 0xffff) return isBlockedIpv4Int(low32);
-  if (g[0] === 0x0064 && g[1] === 0xff9b && [2, 3, 4, 5].every(isZero)) return isBlockedIpv4Int(low32);
+  if ([0, 1, 2, 3, 4].every(isZero) && g[5] === 0xffff) return classifyIpv4Int(low32);
+  if (g[0] === 0x0064 && g[1] === 0xff9b && [2, 3, 4, 5].every(isZero)) return classifyIpv4Int(low32);
   // IPv4-compatible ::a.b.c.d/96 (deprecated, still parseable) — excludes :: and ::1
   // which already matched above.
-  if ([0, 1, 2, 3, 4, 5].every(isZero) && low32 !== 0 && low32 !== 1) return isBlockedIpv4Int(low32);
-  return false;
+  if ([0, 1, 2, 3, 4, 5].every(isZero) && low32 !== 0 && low32 !== 1) return classifyIpv4Int(low32);
+  return "public";
 }
 
 function normalizeHost(hostname) {
@@ -146,27 +156,31 @@ function normalizeHost(hostname) {
   return hostname.toLowerCase().replace(/\.+$/, "");
 }
 
-export function isBlockedHost(host) {
+// Classify literals and hostnames once; callers choose whether benchmarking is blocked.
+export function classifyHost(host) {
   host = normalizeHost(host);
-  if (BLOCKED_HOSTNAMES.has(host)) return true;
-  if (BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) return true;
-  if (isBlockedIpv4(host)) return true;
+  if (BLOCKED_HOSTNAMES.has(host) || BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) return "blocked";
+  const ipv4 = ipv4ToInt(host);
+  if (ipv4 !== null) return classifyIpv4Int(ipv4);
   if (host.includes(":")) {
     const groups = parseIPv6ToGroups(host.replace(/^\[|\]$/g, ""));
-    if (groups && isBlockedIpv6Groups(groups)) return true;
+    if (groups) return classifyIpv6Groups(groups);
   }
-  return false;
+  return "public";
 }
 
-// Throw if URL targets a non-public host by literal hostname/IP alone (no DNS
-// resolution — see assertPublicUrlResolved for that). Caller should map to 400.
+export function isBlockedHost(host) {
+  return classifyHost(host) !== "public";
+}
+
+// Validate a literal URL before any network access.
 export function assertPublicUrl(rawUrl) {
   const parsed = new URL(rawUrl);
-  const host = normalizeHost(parsed.hostname);
-  if (isBlockedHost(host)) throw new Error("Blocked URL: internal host");
+  if (isBlockedHost(parsed.hostname)) throw new Error("Blocked URL: internal host");
+  return parsed;
 }
 
-// Async: assertPublicUrl plus DNS resolution of non-literal hostnames, so a
+// Resolve and validate non-literal hostnames, so a
 // domain that merely *resolves* to a private/loopback/metadata address (wildcard-DNS
 // services like nip.io/sslip.io, or an attacker-controlled domain with an A record
 // pointed at 127.0.0.1) is rejected too, not just IPs typed directly into the URL.
@@ -189,7 +203,7 @@ export async function assertPublicUrlResolved(rawUrl) {
     return;
   }
   for (const { address, family } of addresses) {
-    if (family === 4 ? isBlockedIpv4(address) : isBlockedIpv6Groups(parseIPv6ToGroups(address) || [])) {
+    if (family === 4 ? isBlockedIpv4(address) : classifyIpv6Groups(parseIPv6ToGroups(address) || []) !== "public") {
       throw new Error("Blocked URL: hostname resolves to an internal host");
     }
   }

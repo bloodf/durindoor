@@ -16,6 +16,7 @@ import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/
 import { isString, isFunction } from "../src/shared/utils/typeChecks.js";
 import { partitionInventory, mergeBatchReports } from "../tests/__baseline__/full-batches.mjs";
 import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Unknown or shared-risk paths deliberately require the existing full gate.
@@ -646,6 +647,6 @@ const bad = anyFail || evidence.steps.some((s) => ["failed", "not-run", "interru
 finish(bad ? 1 : 0, bad ? "failed" : "passed");
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   main().catch(error => { console.error(`local-ci: ${error.stack || error.message}`); process.exitCode = 1; });
 }

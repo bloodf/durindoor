@@ -126,6 +126,68 @@ function compatibleCatalogHeaders(provider, token) {
   return headers;
 }
 
+// Runtime context-window fields a compatible node's /models row may carry (port of upstream
+// decolua/9router #5808). Only fields describing the window the server will accept are read:
+// LM Studio `loaded_context_length`, vLLM `max_model_len`, and OpenRouter-style `context_length`,
+// `context_window`, `limit.context`. A model's trained maximum (`max_context_length`, llama.cpp
+// `n_ctx_train`) is ignored on purpose: it overstates a smaller loaded window.
+export function readCompatibleContextLength(model) {
+  const candidates = [
+    model?.loaded_context_length,
+    model?.max_model_len,
+    model?.context_length,
+    model?.context_window,
+    model?.limit?.context
+  ];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return null;
+}
+
+// LM Studio's OpenAI-compatible /v1/models returns ids only; the loaded window lives in its native
+// GET /api/v0/models (`loaded_context_length`, present only while the model is loaded). The probe goes
+// through the same SSRF guard, proxy and credential headers as the catalog fetch. Hosts without that
+// endpoint are skipped for 10 minutes. The miss cache is keyed per connection (hash key), never per host,
+// so one account's probe state cannot suppress or reveal another's.
+const LMSTUDIO_PROBE_MISS_TTL_MS = 10 * 60 * 1000;
+const lmStudioProbeMisses = new Map();
+async function probeLmStudioLoadedContexts(base, headers, guard, proxy, missKey) {
+  if (!/\/v1$/.test(base)) return new Map();
+  const missAt = lmStudioProbeMisses.get(missKey);
+  if (missAt && Date.now() - missAt < LMSTUDIO_PROBE_MISS_TTL_MS) return new Map();
+  try {
+    const response = await guardedProbeFetch(`${base.slice(0, -3)}/api/v0/models`, { headers, cache: "no-store", signal: AbortSignal.timeout(3000) }, guard, (url, options) => proxyAwareFetch(url, options, proxy || null));
+    if (!response.ok) {
+      lmStudioProbeMisses.set(missKey, Date.now());
+      return new Map();
+    }
+    const data = await response.json();
+    const rows = Array.isArray(data) ? data : data?.data;
+    const contexts = new Map();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const n = Number(row?.loaded_context_length);
+      if (isString(row?.id) && Number.isFinite(n) && n > 0) contexts.set(row.id, Math.floor(n));
+    }
+    lmStudioProbeMisses.delete(missKey);
+    return contexts;
+  } catch {
+    lmStudioProbeMisses.set(missKey, Date.now());
+    return new Map();
+  }
+}
+
+// A reported runtime window becomes a live capability; it outranks the static table (resolveModelLimits
+// prefers live over registry) and is overridden by explicit custom-model values. Nothing reported keeps
+// the previous behavior exactly.
+function withRuntimeContext(row, contextLength) {
+  if (!Number.isFinite(contextLength)) return row;
+  const capabilities = isRecord(row.capabilities) ? { ...row.capabilities } : {};
+  capabilities.contextWindow = contextLength;
+  return { ...row, capabilities };
+}
+
 // Cache per connection, endpoint and credential so private catalogs never cross accounts.
 // Entries live 5 minutes; a failed refresh serves the last-known-good catalog.
 const compatibleCatalogCache = new Map();
@@ -144,7 +206,13 @@ export async function resolveCompatibleCatalog(conn, guard) {
     const data = await response.json();
     const rows = Array.isArray(data) ? data : data?.data;
     if (!Array.isArray(rows)) return cached?.value || null;
-    const models = rows.map((row) => isString(row) ? { id: row } : row).filter((row) => isString(row?.id) && row.id.trim());
+    let models = rows.map((row) => isString(row) ? { id: row } : row).filter((row) => isString(row?.id) && row.id.trim());
+    models = models.map((row) => withRuntimeContext(row, readCompatibleContextLength(row)));
+    const reportsWindow = models.some((row) => Number.isFinite(row.capabilities?.contextWindow));
+    if (!reportsWindow && models.length > 0 && isOpenAICompatibleProvider(conn.provider)) {
+      const loaded = await probeLmStudioLoadedContexts(base, headers, guard, proxy, key);
+      if (loaded.size > 0) models = models.map((row) => withRuntimeContext(row, loaded.get(row.id)));
+    }
     const value = { models };
     compatibleCatalogCache.set(key, { time: Date.now(), value });
     return value;
@@ -825,6 +893,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   };
 
   const addNoAuthProviderModels = async (providerId, alias) => {
+    if (!providerMatchesKinds(providerId, kindFilter)) return;
     const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
     const transport = PROVIDERS[providerId];
     if (!registryFetcher || !OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type)) {
@@ -868,7 +937,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
-        if (!kindFilter.includes(kind)) continue;
+        // A model name can suggest a kind the provider cannot serve.
+        if (!kindFilter.includes(kind) || !providerMatchesKinds(providerId, [kind])) continue;
         const caps = isRecord(liveModel.capabilities) ? liveModel.capabilities : getCapabilitiesForModel(providerId, modelId, kind);
         models.push({
           id: `${alias}/${modelId}`,
@@ -1121,7 +1191,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           });
         } :
         null;
-        const liveResolver = syncedModels ? null : providerLiveResolver || openAIStyleLiveResolver;
+        // A curated custom-model list on a compatible node is the operator's
+        // selection: it must not be unioned with the provider's full upstream
+        // catalog (upstream decolua/9router #3880 / #3115).
+        const hasCuratedCompatibleModels = isCompatibleProvider && customModelIds.length > 0;
+        const liveResolver = syncedModels || hasCuratedCompatibleModels ? null : providerLiveResolver || openAIStyleLiveResolver;
         if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || openAIStyleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);
@@ -1407,7 +1481,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       const slash = model.id.indexOf("/");
       const provider = model.id.slice(0, slash);
       const modelId = model.id.slice(slash + 1);
-      if (!isModelExposureAllowed(provider, modelId, settings)) continue;
+      if (!isModelExposureAllowed(provider, modelId, settings, (p) => aliasToProviderId[p])) continue;
       enforceCursorCapabilities(aliasToProviderId[provider] ?? provider, model.capabilities);
     }
     dedupedModels.push(model);

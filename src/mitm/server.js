@@ -164,6 +164,9 @@ function getMappedOverride(tool, model, aliases) {
     for (const { match, alias } of patterns) {
       if (match.test(lookup) && aliases[alias]) return aliases[alias];
     }
+    // Wildcard catch-all: a "*" entry maps every model no other rule matched, so an
+    // operator can configure one default instead of enumerating every model id.
+    if (aliases["*"]) return aliases["*"];
     return null;
   } catch { return null; }
 }

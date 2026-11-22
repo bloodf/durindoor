@@ -325,3 +325,7 @@ Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_rou
 Dashboard REST under `/api/*` is on [Management API](./management-api.mdx). The same DurinDoor API key that calls `/v1` can call most of those routes; exclusions, redaction, and curl examples live there. MCP tools for the same work: [MCP control](../features/mcp-control.mdx).
 
 See [MCP gateway](../features/mcp-gateway.mdx) and [compression](../features/compression.mdx) for gateway features that are not `/v1` routes.
+
+OpenAI image generation forwards `complexity` and `moderation`. It forwards
+`output_compression` for JPEG and WebP output; GIF requests with compression
+are rejected before contacting the provider.

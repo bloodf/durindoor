@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { applyGemini4RequestRules, DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult, normalizeGeminiParameterRoot, liftGeminiNonStringEnums } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";

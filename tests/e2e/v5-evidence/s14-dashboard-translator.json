@@ -1,0 +1,11 @@
+{
+  "route": "/dashboard/translator",
+  "stories": [
+    "production-translator-translatorworkspace--empty",
+    "production-translator-translatorworkspace--load-failure",
+    "production-translator-translatorworkspace--dismiss-error",
+    "production-translator-translatorworkspace--capture-save-failure",
+    "production-translator-translatorerror--error-boundary",
+    "production-translator-translatorstepcard--loading"
+  ]
+}

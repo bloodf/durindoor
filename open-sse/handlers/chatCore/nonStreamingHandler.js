@@ -559,7 +559,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -845,6 +845,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency: { ttft: totalLatency, total: totalLatency },
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },

@@ -836,6 +836,26 @@ describe("chat quota fallback orchestration", () => {
     ]);
   });
 
+  it.each([409, 429])("keeps an account selectable after a detail-free %s", async (status) => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-detail-free", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, status, {
+      antigravityQuotaSignal: false, noQuotaMetadata: true,
+    }));
+    for (let i = 0; i < 3; i++) {
+      const response = await handleChat(request(`antigravity/${model}`));
+      expect(response.status).toBe(status);
+    }
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model: "gemini-other" });
+    const otherRoute = await handleChat(request("antigravity/gemini-other"));
+    expect(otherRoute.status).toBe(status);
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    expect(mocks.refreshProviderQuota).not.toHaveBeenCalled();
+    expect(mocks.handleChatCore).toHaveBeenCalledTimes(4);
+  });
+
   it("never strike-breaks on generic content-triggered Antigravity 429s", async () => {
     const model = "claude-opus-4-6-thinking";
     const account = selected("ag-content-429", "antigravity");

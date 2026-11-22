@@ -80,6 +80,15 @@ export const BACKOFF_CONFIG = resolveBackoffConfig();
 export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 
 /**
+ * 4xx statuses that describe the credential or the route, not the request body,
+ * and so keep rotating connections instead of being handed back to the client:
+ * 412 is Fireworks' "account is suspended", 423 and 428 are account/route
+ * preconditions (decolua/9router#4378). 409 stays request-scoped here on
+ * purpose: tests/unit/account-fallback-request-scoped-4xx.test.js pins it.
+ */
+export const ACCOUNT_SCOPED_4XX_STATUSES = new Set([412, 423, 428]);
+
+/**
  * Gateway/relay statuses: the hop in front of the origin answers while the
  * origin does not. 502/503/504 are also legitimate provider-application
  * statuses (an overloaded API answers 503 itself), so a bare one of them is

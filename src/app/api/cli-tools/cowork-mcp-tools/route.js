@@ -1,8 +1,10 @@
 "use server";
 
+import dns from "node:dns";
+import { isIP } from "node:net";
 import { NextResponse } from "next/server";
 import { isLocalRequest } from "@/dashboardGuard";
-import { assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
+import { assertOutboundUrlAllowed, assertResolvedAddressAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 8000;
@@ -27,6 +29,7 @@ async function probeMcp(url, guard) {
       }),
       signal: ac.signal
     }, guard);
+    if (initRes.status >= 300 && initRes.status < 400) throw new Error("Blocked URL: redirect");
     if (initRes.status === 401 || initRes.status === 403) {
       return { requiresAuth: true, tools: [] };
     }
@@ -78,7 +81,7 @@ async function probeMcp(url, guard) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // Propagate SSRF blocks so the route can map them to 400 (not a soft probe error).
-    if (msg.startsWith("Blocked URL")) throw e;
+    if (e?.code === "OUTBOUND_URL_GUARD_BLOCKED" || msg.startsWith("Blocked URL")) throw e;
     return { error: e.name === "AbortError" ? "timeout" : msg, tools: [] };
   } finally {
     clearTimeout(timer);
@@ -94,13 +97,20 @@ export async function POST(request) {
     // Remote peers can only probe public hosts; local peers retain LAN access.
     const guard = isLocalRequest(request) ? "block-metadata" : "public-only";
     try {
-      assertOutboundUrlAllowed(url, guard);
+      const parsed = assertOutboundUrlAllowed(url, guard);
+      const host = parsed.hostname.replace(/^\[|\]$/g, "");
+      if (!isIP(host)) {
+        // Resolution failures are handled by the pinned connection lookup below.
+        const addresses = await dns.promises.lookup(host, { all: true, verbatim: true }).catch(() => []);
+        for (const { address } of addresses) assertResolvedAddressAllowed(address, guard);
+      }
     } catch {
       return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
     }
     const result = await probeMcp(url, guard);
     return NextResponse.json(result);
   } catch (e) {
+    if (e?.code === "OUTBOUND_URL_GUARD_BLOCKED" || e?.message?.startsWith("Blocked URL")) return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
     return NextResponse.json({ error: e.message, tools: [] }, { status: 500 });
   }
 }

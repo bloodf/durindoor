@@ -7,7 +7,7 @@ import {
   shouldRefreshCredentials } from
 "../services/oauthCredentialManager.js";
 import { normalizeResponsesInput, normalizeStatelessResponseInput } from "../translator/formats/responsesApi.js";
-import { RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
+import { RESPONSES_ITEM, RESPONSES_INCLUDE, ROLE } from "../translator/schema/index.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
@@ -986,7 +986,7 @@ export class CodexExecutor extends BaseExecutor {
    * Transform request before sending - inject default instructions if missing.
    * Image fetching is handled separately in prefetchImages() so this stays sync.
    */
-  transformRequest(model, body, stream, credentials, requestContext = null) {
+  transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
     delete body._compact;
     const isCompact = requestContext?.compact === true;
     const responsesLite = usesResponsesLite(requestContext);
@@ -1133,12 +1133,22 @@ export class CodexExecutor extends BaseExecutor {
       body.context_management = normalizeSparkContextManagement(body.context_management);
     }
 
-    // Include reasoning encrypted content (required by Codex backend for reasoning models);
-    // compact requests omit the include field entirely.
-    if (!isCompact && body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
-      body.include = ["reasoning.encrypted_content", ...(body.include?.includes("web_search_call.action.sources") && body.tools?.some(tool => tool.type === "web_search") ? ["web_search_call.action.sources"] : [])];
-    } else if (isCompact) {
+    // ChatGPT's Codex backend accepts a smaller include set than OpenAI Responses.
+    // Fail closed when the endpoint is missing or malformed.
+    let platform = false;
+    try {
+      const endpoint = new URL(targetUrl || this.buildUrl(model, stream, 0, credentials, requestContext));
+      platform = !(endpoint.hostname.toLowerCase().replace(/\.$/, "") === "chatgpt.com" && /^\/backend-api\/codex(?:\/|$)/.test(endpoint.pathname));
+    } catch { /* use the conservative Codex set */ }
+    if (isCompact) {
       delete body.include;
+    } else {
+      const requested = Array.isArray(body.include) ? body.include : [];
+      const optional = [RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES, RESPONSES_INCLUDE.WEB_SEARCH_CALL_RESULTS,
+        ...(platform ? [RESPONSES_INCLUDE.FILE_SEARCH_CALL_RESULTS, RESPONSES_INCLUDE.MESSAGE_INPUT_IMAGE_IMAGE_URL,
+          RESPONSES_INCLUDE.COMPUTER_CALL_OUTPUT_OUTPUT_IMAGE_URL, RESPONSES_INCLUDE.CODE_INTERPRETER_CALL_OUTPUTS,
+          RESPONSES_INCLUDE.MESSAGE_OUTPUT_TEXT_LOGPROBS] : []), RESPONSES_INCLUDE.OUTPUT_ENCRYPTED_CONTENT];
+      body.include = [RESPONSES_INCLUDE.REASONING_ENCRYPTED_CONTENT, ...optional.filter((entry) => requested.includes(entry))];
     }
 
     // Remove unsupported parameters for Codex API

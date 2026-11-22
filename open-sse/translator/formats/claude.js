@@ -869,7 +869,7 @@ export function ensureTrailingUserTurn(messages, originalLastRole) {
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
-export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null, clientLastRole = null) {
+export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null, clientLastRole = null, preserveResponseCache = false) {
   // Anthropic API keys reject the subscription-only Claude Code identity.
   // Remove only leading identity blocks or lines, preserving user instructions.
   if (provider === "anthropic" && body.system) {
@@ -923,7 +923,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       normalizeMessageContent(msg);
 
       // Remove cache_control from content blocks
-      if (Array.isArray(msg.content)) {
+      if (!preserveResponseCache && Array.isArray(msg.content)) {
         for (const block of msg.content) {
           delete block.cache_control;
         }
@@ -1092,5 +1092,6 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     body = applyCloaking(body, apiKey, sid);
   }
 
+  if (preserveResponseCache) capCacheControlBlocks(body);
   return body;
 }

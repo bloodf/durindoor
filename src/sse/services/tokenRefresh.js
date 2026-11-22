@@ -310,7 +310,8 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       const mergedCreds = {
         ...newCreds,
-        existingProviderSpecificData: creds.providerSpecificData
+        // Persist saved configuration, not proxy values resolved for this request.
+        existingProviderSpecificData: creds._connection?.providerSpecificData || creds.providerSpecificData
       };
 
       // Persist to DB (non-blocking path continues below)
@@ -358,7 +359,11 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         };
 
         await updateProviderCredentials(creds.connectionId, {
-          providerSpecificData: updatedSpecific
+          providerSpecificData: {
+            ...(creds._connection?.providerSpecificData || creds.providerSpecificData),
+            copilotToken: copilotTokenResult.token,
+            copilotTokenExpiresAt: copilotTokenResult.expiresAt
+          }
         });
 
         creds.providerSpecificData = updatedSpecific;

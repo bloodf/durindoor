@@ -470,6 +470,12 @@ function emitToolCall(state, emit, tc) {
     state.funcCallIds[tcIdx] = newCallId;
   }
 
+  // Upstreams (vLLM/compat gateways) may omit the id on every fragment. Once the
+  // name is known mint a stable id for this index so the item is announced and
+  // closeToolCall() can emit it; otherwise the call vanished from
+  // response.completed entirely (decolua/9router#5636).
+  if (!state.funcCallIds[tcIdx] && state.funcNames[tcIdx]) state.funcCallIds[tcIdx] = fallbackToolCallId(tcIdx);
+
   // Emit output_item.added only once both id and name are known.
   const refCallId = state.funcCallIds[tcIdx];
   const refName = state.funcNames[tcIdx];

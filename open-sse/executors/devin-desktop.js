@@ -23,6 +23,7 @@ import { gunzipSync } from "node:zlib";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, sanitizeErrorMessage, buildErrorBody } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const DEVIN_DESKTOP_BASE_URL = "https://server.codeium.com";
@@ -389,7 +390,7 @@ const authHeaders = () => ({ "Content-Type": "application/proto", Accept: "*/*",
 
 /** Mint the short-lived user JWT from the session token. Throws a status-only error. */
 async function mintUserJwt(fetcher, apiKey, sessionId, signal) {
-  const response = await fetcher(DEVIN_DESKTOP_AUTH_URL, {
+  const response = await credentialFetch(fetcher, DEVIN_DESKTOP_AUTH_URL, {
     method: "POST",
     headers: authHeaders(),
     body: bodyBuffer(encodeDevinDesktopAuthRequest({ apiKey, sessionId })),
@@ -409,7 +410,7 @@ async function mintUserJwt(fetcher, apiKey, sessionId, signal) {
 export async function validateDevinDesktopSession({ apiKey, fetcher = proxyAwareFetch, proxyOptions, signal } = {}) {
   const token = String(apiKey ?? "").trim();
   if (!token) return { valid: false, status: 401, error: "Devin Desktop session token is empty" };
-  const send = (url, init) => fetcher(url, init, proxyOptions);
+  const send = (url, init) => credentialFetch((target, request) => fetcher(target, request, proxyOptions), url, init);
   try {
     await mintUserJwt(send, token, randomUUID(), signal ?? AbortSignal.timeout(10000));
     return { valid: true, status: 200 };
@@ -672,7 +673,7 @@ export class DevinDesktopExecutor extends BaseExecutor {
     const apiKey = String(credentials?.accessToken || credentials?.apiKey || "").trim();
     if (!apiKey) return failure(classifyDevinDesktopError(401), DEVIN_DESKTOP_CHAT_URL, body ?? null);
 
-    const fetcher = (url, init) => proxyAwareFetch(url, init, proxyOptions);
+    const fetcher = (url, init) => credentialFetch((target, request) => proxyAwareFetch(target, request, proxyOptions), url, init);
     const request = isRecord(body) ? body : {};
     const converted = convertMessages(Array.isArray(request.messages) ? request.messages : []);
     if (converted.prompts.length === 0) converted.prompts.push({ messageId: randomUUID(), source: 1, prompt: "" });

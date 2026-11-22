@@ -785,6 +785,18 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
   if (customToolNames.length > 0) result._customToolNames = customToolNames;
 
   // Cleanup Responses API specific fields
+  // Translate Responses structured output to the Chat Completions shape.
+  if (result.text?.format) {
+    const format = result.text.format;
+    if (format.type === "json_schema") {
+      const { type, ...schema } = format;
+      result.response_format = { type, json_schema: schema };
+    } else if (format.type === "json_object") {
+      result.response_format = { type: "json_object" };
+    }
+    delete result.text;
+  }
+
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
     if (result.max_tokens === undefined) result.max_tokens = result.max_output_tokens;
@@ -1104,6 +1116,15 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     const include = Array.isArray(result.include) ? result.include : [];
     if (!include.includes(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES)) include.push(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES);
     result.include = include;
+  }
+  // Responses text settings take precedence over Chat structured output settings.
+  if (body.text !== undefined) {
+    result.text = body.text;
+  } else if (body.response_format?.type === "json_schema") {
+    const { name, schema, strict, description } = body.response_format.json_schema || body.response_format;
+    result.text = { format: { type: "json_schema", name, schema, strict, description } };
+  } else if (body.response_format?.type === "json_object") {
+    result.text = { format: { type: "json_object" } };
   }
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);

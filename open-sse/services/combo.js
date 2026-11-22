@@ -1484,20 +1484,6 @@ export async function handleComboChat({
     JSON.stringify({ error: { message: "Request aborted" } }),
     { status: 499, headers: { "Content-Type": "application/json" } }
   );
-  const waitForCooldown = (milliseconds) => {
-    if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(finish, milliseconds);
-      const onAbort = () => finish(new DOMException("Request aborted", "AbortError"));
-      function finish(error = null) {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        if (error) reject(error);else
-        resolve();
-      }
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
-  };
   if (signal?.aborted) return abortedResponse();
   // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
   // leaking a generic "all models failed" after the fact.
@@ -1871,7 +1857,7 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs, requestScoped, terminal } = checkFallbackError(
+      const { shouldFallback, requestScoped, terminal } = checkFallbackError(
         result.status,
         errorText,
         0,
@@ -1911,20 +1897,7 @@ export async function handleComboChat({
 
       if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
 
-      // For transient errors (503/502/504), wait for cooldown before falling through
-      // so a briefly-overloaded provider gets a chance to recover rather than being
-      // skipped immediately (fixes: combo falls through on transient 503)
-      if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 && (
-      result.status === 503 || result.status === 502 || result.status === 504)) {
-        log.info("COMBO", `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`);
-        try {
-          await waitForCooldown(cooldownMs);
-        } catch (error) {
-          if (error?.name === "AbortError") return abortedResponse();
-          throw error;
-        }
-      }
-
+      // Transient failures fall through immediately; the next member may be healthy.
       // Fallback to next model
       releaseFailedAffinity(modelStr, i);
       recordFailure(result.status, errorText || String(result.status));

@@ -1252,6 +1252,44 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.stories.jsx",
+    "title": "V5 review/Pages/providers/AddApiKeyModal",
+    "storyId": "v5-review-pages-providers-addapikeymodal--open",
+    "states": [
+      "Open",
+      "Pending",
+      "SaveError"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-addapikeymodal--open",
+      "v5-review-pages-providers-addapikeymodal--pending",
+      "v5-review-pages-providers-addapikeymodal--save-error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/AddCustomModelModal.stories.jsx",
+    "title": "V5 review/Pages/providers/AddCustomModelModal",
+    "storyId": "v5-review-pages-providers-addcustommodelmodal--open",
+    "states": [
+      "Open",
+      "Pending",
+      "SaveError"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-addcustommodelmodal--open",
+      "v5-review-pages-providers-addcustommodelmodal--pending",
+      "v5-review-pages-providers-addcustommodelmodal--save-error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx",
     "title": "V5 review/Pages/providers/AutoPingScheduleModal",
     "storyId": "v5-review-pages-providers-autopingschedulemodal--open",
@@ -1268,6 +1306,82 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-providers-autopingschedulemodal--validation-error",
       "v5-review-pages-providers-autopingschedulemodal--loading",
       "v5-review-pages-providers-autopingschedulemodal--save-error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportCodexModal.stories.jsx",
+    "title": "V5 review/Pages/providers/BulkImportCodexModal",
+    "storyId": "v5-review-pages-providers-bulkimportcodexmodal--open",
+    "states": [
+      "Open",
+      "InvalidJson",
+      "Pending"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-bulkimportcodexmodal--open",
+      "v5-review-pages-providers-bulkimportcodexmodal--invalid-json",
+      "v5-review-pages-providers-bulkimportcodexmodal--pending"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportGrokCliModal.stories.jsx",
+    "title": "V5 review/Pages/providers/BulkImportGrokCliModal",
+    "storyId": "v5-review-pages-providers-bulkimportgrokclimodal--open",
+    "states": [
+      "Open",
+      "InvalidJson",
+      "Pending"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-bulkimportgrokclimodal--open",
+      "v5-review-pages-providers-bulkimportgrokclimodal--invalid-json",
+      "v5-review-pages-providers-bulkimportgrokclimodal--pending"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx",
+    "title": "V5 review/Pages/providers/CookieImportModal",
+    "storyId": "v5-review-pages-providers-cookieimportmodal--open",
+    "states": [
+      "Open",
+      "InvalidInput",
+      "Pending"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-cookieimportmodal--open",
+      "v5-review-pages-providers-cookieimportmodal--invalid-input",
+      "v5-review-pages-providers-cookieimportmodal--pending"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/EditCompatibleNodeModal.stories.jsx",
+    "title": "V5 review/Pages/providers/EditCompatibleNodeModal",
+    "storyId": "v5-review-pages-providers-editcompatiblenodemodal--open",
+    "states": [
+      "Open",
+      "Pending",
+      "SaveError"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-editcompatiblenodemodal--open",
+      "v5-review-pages-providers-editcompatiblenodemodal--pending",
+      "v5-review-pages-providers-editcompatiblenodemodal--save-error"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",
@@ -1357,6 +1471,27 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/ProviderErrorRulesModal.stories.jsx",
+    "title": "V5 review/Pages/providers/ProviderErrorRulesModal",
+    "storyId": "v5-review-pages-providers-providererrorrulesmodal--open",
+    "states": [
+      "Open",
+      "ValidationError",
+      "SaveError",
+      "Pending"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-providererrorrulesmodal--open",
+      "v5-review-pages-providers-providererrorrulesmodal--validation-error",
+      "v5-review-pages-providers-providererrorrulesmodal--save-error",
+      "v5-review-pages-providers-providererrorrulesmodal--pending"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/providers/[id]/ProviderRpmControl.stories.jsx",
     "title": "V5 review/Pages/providers/ProviderRpmControl",
     "storyId": "v5-review-pages-providers-providerrpmcontrol--loaded",
@@ -1369,6 +1504,57 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-providers-providerrpmcontrol--loaded",
       "v5-review-pages-providers-providerrpmcontrol--empty",
       "v5-review-pages-providers-providerrpmcontrol--limit-error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.stories.jsx",
+    "title": "V5 review/Pages/providers/VisibleModelsModal",
+    "storyId": "v5-review-pages-providers-visiblemodelsmodal--open",
+    "states": [
+      "Open",
+      "LoadError",
+      "SavePending"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-visiblemodelsmodal--open",
+      "v5-review-pages-providers-visiblemodelsmodal--load-error",
+      "v5-review-pages-providers-visiblemodelsmodal--save-pending"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/components/BulkReviewModal.stories.jsx",
+    "title": "V5 review/Pages/providers/components/BulkReviewModal",
+    "storyId": "v5-review-pages-providers-components-bulkreviewmodal--open",
+    "states": [
+      "Open",
+      "Pending"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-components-bulkreviewmodal--open",
+      "v5-review-pages-providers-components-bulkreviewmodal--pending"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/error.stories.jsx",
+    "title": "V5 review/Pages/providers/ProviderDetailError",
+    "storyId": "v5-review-pages-providers-providerdetailerror--error-boundary",
+    "states": [
+      "ErrorBoundary"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-providerdetailerror--error-boundary"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",
@@ -1505,11 +1691,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-providers-components-addcompatiblemodal--open-ai-open",
     "states": [
       "OpenAIOpen",
-      "AnthropicInvalid"
+      "AnthropicInvalid",
+      "CreatePending"
     ],
     "storyIds": [
       "v5-review-pages-providers-components-addcompatiblemodal--open-ai-open",
-      "v5-review-pages-providers-components-addcompatiblemodal--anthropic-invalid"
+      "v5-review-pages-providers-components-addcompatiblemodal--anthropic-invalid",
+      "v5-review-pages-providers-components-addcompatiblemodal--create-pending"
     ],
     "pathname": "/dashboard/providers",
     "routePattern": null,
@@ -2437,12 +2625,14 @@ export const REVIEW_SURFACES = [
     "states": [
       "AddAndDiscover",
       "DiscoveryError",
-      "EditAndRegister"
+      "EditAndRegister",
+      "SavePending"
     ],
     "storyIds": [
       "v5-review-workflows-shared-config-addsystemonecompatiblemodal--add-and-discover",
       "v5-review-workflows-shared-config-addsystemonecompatiblemodal--discovery-error",
-      "v5-review-workflows-shared-config-addsystemonecompatiblemodal--edit-and-register"
+      "v5-review-workflows-shared-config-addsystemonecompatiblemodal--edit-and-register",
+      "v5-review-workflows-shared-config-addsystemonecompatiblemodal--save-pending"
     ],
     "pathname": "/dashboard/media-providers",
     "routePattern": null,
@@ -2693,7 +2883,9 @@ export const REVIEW_SURFACES = [
       "OpenAIResponsesStore",
       "RegionPickerXiaomi",
       "TestFailureBadge",
-      "Closed"
+      "Closed",
+      "SavePending",
+      "SaveError"
     ],
     "storyIds": [
       "v5-review-workflows-shared-config-editconnectionmodal--api-key-open-ai",
@@ -2706,7 +2898,9 @@ export const REVIEW_SURFACES = [
       "v5-review-workflows-shared-config-editconnectionmodal--open-ai-responses-store",
       "v5-review-workflows-shared-config-editconnectionmodal--region-picker-xiaomi",
       "v5-review-workflows-shared-config-editconnectionmodal--test-failure-badge",
-      "v5-review-workflows-shared-config-editconnectionmodal--closed"
+      "v5-review-workflows-shared-config-editconnectionmodal--closed",
+      "v5-review-workflows-shared-config-editconnectionmodal--save-pending",
+      "v5-review-workflows-shared-config-editconnectionmodal--save-error"
     ],
     "pathname": "/dashboard/providers",
     "routePattern": null,

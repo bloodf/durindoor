@@ -7,6 +7,8 @@ import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 
 const VARIANT_CONFIG = {
   openai: {
@@ -39,6 +41,7 @@ const API_TYPE_OPTIONS = [
 ];
 
 function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
+  const v5 = useUiV5();
   const config = VARIANT_CONFIG[variant];
   const initialFormData = () => ({
     name: "",
@@ -147,7 +150,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   };
 
   return (
-    <Modal open={isOpen} title={config.title} onClose={onClose}>
+    <Modal open={isOpen} title={config.title} onClose={onClose} surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""}>
       <div className="flex flex-col gap-4">
         <Input
           label="Name"
@@ -165,14 +168,18 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           hint="Required. Used as the provider prefix for model IDs."
         />
 
-        {config.hasApiType ? (
+        {config.hasApiType ? (v5 ? (
+          <V5NativeSelect aria-label="API Type" value={formData.apiType} onChange={(event) => setFormData({ ...formData, apiType: event.target.value })}>
+            {API_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </V5NativeSelect>
+        ) : (
           <Select
             options={API_TYPE_OPTIONS}
             value={formData.apiType}
             onChange={(value) => setFormData({ ...formData, apiType: value })}
             aria-label="API Type"
           />
-        ) : null}
+        )) : null}
 
         <Input
           label="Base URL"

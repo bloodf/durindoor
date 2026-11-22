@@ -1,0 +1,10 @@
+{
+  "route": "dialog/AutoPingScheduleModal",
+  "stories": [
+    "production-providers-autopingschedulemodal--open",
+    "production-providers-autopingschedulemodal--empty",
+    "production-providers-autopingschedulemodal--validation-error",
+    "production-providers-autopingschedulemodal--loading",
+    "production-providers-autopingschedulemodal--save-error"
+  ]
+}

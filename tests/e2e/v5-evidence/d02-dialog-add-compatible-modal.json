@@ -1,0 +1,8 @@
+{
+  "route": "dialog/AddCompatibleModal",
+  "stories": [
+    "production-providers-components-addcompatiblemodal--open-ai-open",
+    "production-providers-components-addcompatiblemodal--anthropic-invalid",
+    "production-providers-components-addcompatiblemodal--create-pending"
+  ]
+}

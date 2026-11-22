@@ -41,9 +41,8 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
   "muse-spark-web": {
     aliases: ["ms-web"],
     source: [
-      "open-sse/executors/muse-spark-web.ts",
-      "open-sse/executors/muse-spark-web/response-parser.ts",
-      "tests/unit/muse-spark-web-continuation.test.ts",
+      "open-sse/executors/muse-spark-web.js",
+      "open-sse/executors/muse-spark-web/response-parser.js",
     ],
     reason: "requires Meta/Muse GraphQL request construction, continuation cache, and response parser",
   },

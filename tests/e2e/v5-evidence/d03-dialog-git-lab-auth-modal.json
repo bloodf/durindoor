@@ -1,0 +1,7 @@
+{
+  "route": "dialog/GitLabAuthModal",
+  "stories": [
+    "production-shared-oauth-gitlabauthmodal--mode-selection",
+    "production-shared-oauth-gitlabauthmodal--pat-failure"
+  ]
+}

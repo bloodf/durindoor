@@ -2927,12 +2927,14 @@ export const REVIEW_SURFACES = [
   {
     "source": "src/shared/components/GheCopilotAuthModal.stories.jsx",
     "title": "V5 review/Workflows/shared-auth/GheCopilotAuthModal",
-    "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
+    "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--default",
     "states": [
+      "Default",
       "InvalidOrigin",
       "DeviceCodeHandoff"
     ],
     "storyIds": [
+      "v5-review-workflows-shared-auth-ghecopilotauthmodal--default",
       "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
       "v5-review-workflows-shared-auth-ghecopilotauthmodal--device-code-handoff"
     ],
@@ -3369,12 +3371,14 @@ export const REVIEW_SURFACES = [
   {
     "source": "src/shared/components/OrcaRouterAuthModal.stories.jsx",
     "title": "V5 review/Workflows/shared-auth/OrcaRouterAuthModal",
-    "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+    "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--default",
     "states": [
+      "Default",
       "OAuthCodeFlow",
       "ApiKeyFailure"
     ],
     "storyIds": [
+      "v5-review-workflows-shared-auth-orcarouterauthmodal--default",
       "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
       "v5-review-workflows-shared-auth-orcarouterauthmodal--api-key-failure"
     ],

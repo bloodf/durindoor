@@ -209,7 +209,7 @@ describe("registration batch D: the opt-in guard defaults to off", () => {
   const notOptedIn = [undefined, {}, { [SESSION_DISPATCH_OPT_IN_KEY]: "true" }, { [SESSION_DISPATCH_OPT_IN_KEY]: 1 }, { [SESSION_DISPATCH_OPT_IN_KEY]: false }];
 
   it("names exactly this batch as the opt-in providers, under one key", () => {
-    expect([...SESSION_DISPATCH_PROVIDERS].sort()).toEqual(BATCH.map(({ id }) => id).sort());
+    expect([...SESSION_DISPATCH_PROVIDERS].sort()).toEqual([...BATCH.map(({ id }) => id), "muse-spark-web"].sort());
     expect(SESSION_DISPATCH_OPT_IN_KEY).toBe("enableSessionDispatch");
   });
 

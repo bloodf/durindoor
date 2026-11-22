@@ -12,6 +12,7 @@ export const SESSION_DISPATCH_PROVIDERS = Object.freeze(new Set([
   "devin-desktop",
   "freebuff",
   "minimax-code",
+  "muse-spark-web",
   "workbuddy",
   "zed-hosted",
 ]));

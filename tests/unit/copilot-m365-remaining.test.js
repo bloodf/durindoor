@@ -202,6 +202,13 @@ describe("M365 image generation", () => {
     ...body,
   }));
 
+  it("refuses image generation before opening a socket when a strict proxy is unavailable", async () => {
+    await expect(api.generation.generateM365Images({
+      credentials: nativeCredentials(), prompt: "x", proxyOptions: { strictProxy: true, disableEnvProxy: true },
+    })).rejects.toThrow(/WebSocket proxy required but unavailable/);
+    expect(calls).toHaveLength(0);
+  });
+
   it("draws through one temporary image turn and downloads the artifact with a Designer token", async () => {
     const saved = await seedNative({ refreshToken: "rt-seed" });
     script(update({ text: "Here is your image." }), drawn(1), drawn(2), finalResult({ value: "Success" }));

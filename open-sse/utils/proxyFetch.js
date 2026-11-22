@@ -578,19 +578,53 @@ function getProxyUrl(targetUrl, proxyOptions) {
 
 /**
  * Pick the proxy for a request made outside proxyAwareFetch (for example the
- * native tls-client): the connection proxy, then the HTTP(S)_PROXY env,
- * else direct. Loopback targets always go direct.
+ * native tls-client): the HTTP relay, then the connection proxy, then the
+ * HTTP(S)_PROXY env, else direct. Loopback targets always go direct.
+ *
+ * A vercel/cloudflare relay is not a CONNECT proxy (`proxyUrl` stays null);
+ * callers that cannot speak the relay header protocol must use
+ * {@link resolveConnectProxyForRequest} or {@link resolveWebSocketProxyRoute}.
+ *
  * @param {string} targetUrl
  * @param {object|null} [proxyOptions]
- * @returns {{source: "connection"|"env"|"direct", proxyUrl: string|null}}
+ * @returns {{source: "relay"|"connection"|"env"|"direct", proxyUrl: string|null, strict: boolean, vercelRelayUrl?: string}}
  */
 export function resolveProxyForRequest(targetUrl, proxyOptions = null) {
-  if (isLoopbackTarget(targetUrl)) return { source: "direct", proxyUrl: null };
+  const strict = proxyOptions?.strictProxy === true;
+  if (isLoopbackTarget(targetUrl)) return { source: "direct", proxyUrl: null, strict };
+  const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
+  if (vercelRelayUrl) return { source: "relay", proxyUrl: null, vercelRelayUrl, strict };
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  if (connectionProxyUrl) return { source: "connection", proxyUrl: connectionProxyUrl };
-  if (proxyOptions?.disableEnvProxy === true) return { source: "direct", proxyUrl: null };
+  if (connectionProxyUrl) return { source: "connection", proxyUrl: connectionProxyUrl, strict };
+  if (proxyOptions?.disableEnvProxy === true) return { source: "direct", proxyUrl: null, strict };
   const envProxyUrl = normalizeProxyUrl(getEnvProxyUrl(targetUrl));
-  return envProxyUrl ? { source: "env", proxyUrl: envProxyUrl } : { source: "direct", proxyUrl: null };
+  return envProxyUrl
+    ? { source: "env", proxyUrl: envProxyUrl, strict }
+    : { source: "direct", proxyUrl: null, strict };
+}
+
+/**
+ * CONNECT-capable proxy for TLS clients and Playwright. Same option order as
+ * {@link proxyAwareFetch} / {@link resolveProxyForRequest}, but an HTTP relay
+ * is not usable as a CONNECT proxy: under strictProxy it fails closed, and
+ * otherwise falls through to direct (non-strict behaviour unchanged).
+ *
+ * @param {string} targetUrl
+ * @param {object|null} [proxyOptions]
+ * @returns {{source: "connection"|"env"|"direct", proxyUrl: string|null, strict: boolean}}
+ */
+export function resolveConnectProxyForRequest(targetUrl, proxyOptions = null) {
+  const route = resolveProxyForRequest(targetUrl, proxyOptions);
+  if (route.source === "relay") {
+    if (route.strict) {
+      throw new Error("[ProxyFetch] Configured HTTP relay does not support CONNECT transport");
+    }
+    return { source: "direct", proxyUrl: null, strict: false };
+  }
+  if (route.strict && !route.proxyUrl) {
+    throw new Error("[ProxyFetch] Proxy required but unavailable (strictProxy=true)");
+  }
+  return route;
 }
 
 export function resolveConnectionProxyUrl(targetUrl, proxyOptions) {

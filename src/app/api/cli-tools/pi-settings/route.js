@@ -28,7 +28,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "@/shared/utils/typeChecks";
-import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import { getCombos } from "@/lib/localDb";
 import { getModelInfo, loadCustomCapabilities, parseModel } from "@/sse/services/model";
 import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
@@ -187,7 +187,7 @@ export async function POST(request) {
     };
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON.stringify({ ...existing, providers }, null, 2), "utf-8");
+    await writeConfigAtomic(configPath, JSON.stringify({ ...existing, providers }, null, 2), "utf-8");
 
     return NextResponse.json({
       success: true,
@@ -213,7 +213,7 @@ export async function DELETE() {
       delete providers[LEGACY_PROVIDER_ID];
       const next = { ...existing, providers };
       if (Object.keys(providers).length === 0) delete next.providers;
-      await fs.writeFile(configPath, JSON.stringify(next, null, 2), "utf-8");
+      await writeConfigAtomic(configPath, JSON.stringify(next, null, 2), "utf-8");
     }
 
     return NextResponse.json({ success: true, message: "DurinDoor removed from Pi" });

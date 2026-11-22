@@ -1,10 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
 
 const mocks = vi.hoisted(() => ({
   killAppProcesses: vi.fn(async () => {}),
   spawnUpdaterAndExit: vi.fn(),
+  registryGet: vi.fn(),
 }));
 
+vi.mock("https", () => ({ default: { get: mocks.registryGet } }));
 vi.mock("@/lib/appUpdater", () => ({
   killAppProcesses: mocks.killAppProcesses,
   spawnUpdaterAndExit: mocks.spawnUpdaterAndExit,
@@ -24,6 +27,17 @@ describe("port 9router #1686: selectable updater target version", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("NODE_ENV", "production");
+    mocks.registryGet.mockImplementation((_url, _options, callback) => {
+      const req = new EventEmitter();
+      req.destroy = vi.fn();
+      queueMicrotask(() => {
+        const response = new EventEmitter();
+        callback(response);
+        response.emit("data", JSON.stringify({ version: "4.5.6" }));
+        response.emit("end");
+      });
+      return req;
+    });
   });
 
   it("normalizes plain semver and rejects injection-shaped strings", () => {
@@ -42,10 +56,11 @@ describe("port 9router #1686: selectable updater target version", () => {
     expect((await res.json()).version).toBe("2.3.4");
   });
 
-  it("keeps @latest when no version is given", async () => {
+  it("pins the resolved latest version when no version is given", async () => {
     const res = await post({});
     expect(res.status).toBe(200);
-    expect(mocks.spawnUpdaterAndExit).toHaveBeenCalledWith("durindoor@latest");
+    expect(mocks.spawnUpdaterAndExit).toHaveBeenCalledWith("durindoor@4.5.6");
+    expect((await res.json()).version).toBe("4.5.6");
   });
 
   it("rejects a malformed version before cleanup or spawn", async () => {

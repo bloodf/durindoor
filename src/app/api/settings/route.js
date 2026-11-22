@@ -29,6 +29,19 @@ const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
+// Mirrors validateProxyUrl in src/lib/network/outboundProxy.js (the schemes and
+// control-character rules applyOutboundProxyEnv enforces when applying the env).
+const ALLOWED_PROXY_SCHEMES = ["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"];
+
+function isUsableProxyUrl(url) {
+  if (/[\n\r`$]/.test(url)) return false;
+  try {
+    return ALLOWED_PROXY_SCHEMES.includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
+
 const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
 /**
@@ -101,6 +114,10 @@ export async function GET(request) {
 export async function PATCH(request) {
   try {
     const body = await request.json();
+
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
 
     if (SCOPED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
       return NextResponse.json({
@@ -415,6 +432,20 @@ export async function PATCH(request) {
     const modelAutoSyncError = validateModelAutoSyncSettingsPatch(body);
     if (modelAutoSyncError) {
       return NextResponse.json({ error: modelAutoSyncError }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+
+    // An enabled proxy with an unusable URL would be saved, shown as on, and
+    // silently skipped by applyOutboundProxyEnv; reject it at the boundary.
+    if (Object.hasOwn(body, "outboundProxyEnabled") || Object.hasOwn(body, "outboundProxyUrl")) {
+      const stored = Object.hasOwn(body, "outboundProxyEnabled") && Object.hasOwn(body, "outboundProxyUrl")
+        ? {}
+        : await getSettings();
+      const enabled = Boolean(Object.hasOwn(body, "outboundProxyEnabled") ? body.outboundProxyEnabled : stored.outboundProxyEnabled);
+      const rawUrl = Object.hasOwn(body, "outboundProxyUrl") ? body.outboundProxyUrl : stored.outboundProxyUrl;
+      const url = rawUrl === undefined || rawUrl === null ? "" : String(rawUrl).trim();
+      if (enabled && url && !isUsableProxyUrl(url)) {
+        return NextResponse.json({ error: "Invalid outboundProxyUrl" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
     }
 
     const willChangePassword = body.password !== undefined;

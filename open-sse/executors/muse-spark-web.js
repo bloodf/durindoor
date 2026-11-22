@@ -8,6 +8,7 @@ import { UnsupportedOmniRouteWebSessionExecutor } from "./unsupported-websession
 import { normalizeSessionCookieHeader, normalizeSessionCookieHeaders } from "./websession-utils.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isRecord } from "./muse-spark-web/response-parser.js";
 import {
   _fetchFreshAccessTokenDispatch
@@ -465,9 +466,9 @@ function buildWsUrl(authorization, requestId) {
 function isGraphqlFailure(result) {
   return !result.ok;
 }
-async function graphqlPost(docId, variables, cookieHeader, label, signal) {
+async function graphqlPost(docId, variables, cookieHeader, label, signal, proxyOptions) {
   try {
-    const response = await fetch(META_AI_GRAPHQL_API, {
+    const response = await proxyAwareFetch(META_AI_GRAPHQL_API, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -478,8 +479,9 @@ async function graphqlPost(docId, variables, cookieHeader, label, signal) {
         Origin: "https://meta.ai"
       },
       body: JSON.stringify({ doc_id: docId, variables }),
-      signal: signal ?? void 0
-    });
+      signal: signal ?? void 0,
+      directFetch: (url, init) => globalThis.fetch(url, init)
+    }, proxyOptions);
     if (!response.ok) return { ok: false, status: response.status, error: `${label} failed: HTTP ${response.status}` };
     const text = await response.text();
     try {
@@ -719,7 +721,8 @@ class MuseSparkWebExecutor extends BaseExecutor {
     credentials,
     signal,
     log,
-    upstreamExtraHeaders
+    upstreamExtraHeaders,
+    proxyOptions
   }) {
     if (credentials?.providerSpecificData?.enableSessionDispatch !== true) {
       return new UnsupportedOmniRouteWebSessionExecutor("muse-spark-web").execute({ credentials });
@@ -739,7 +742,7 @@ class MuseSparkWebExecutor extends BaseExecutor {
     }
     let cookieHeader = selectMetaAiCookieHeader(credentials);
     if (!cookieHeader || !/(?:^|;\s*)ecto_1_sess=[^;]+/.test(cookieHeader)) return errorResult(401, "Re-import your ecto_1_sess session cookie.", "auth_error", {}, body);
-    const freshToken = await _fetchFreshAccessTokenDispatch(cookieHeader, signal, credentials.connectionId);
+    const freshToken = await _fetchFreshAccessTokenDispatch(cookieHeader, signal, credentials.connectionId, proxyOptions);
     if (!freshToken.ok) {
       const status = freshToken.status === 429 ? 429 : (freshToken.status === 401 || freshToken.status === 403 ? 401 : 502);
       return errorResult(status, status === 401 ? "Meta AI session expired; re-import your ecto_1_sess cookie." : "Meta AI token bootstrap failed", "meta_ai_auth_error", {}, body);
@@ -757,7 +760,8 @@ class MuseSparkWebExecutor extends BaseExecutor {
       { conversationId: conversationContext.conversationId },
       cookieHeader,
       "Warmup",
-      signal
+      signal,
+      proxyOptions
     );
     if (isGraphqlFailure(warmupResult)) {
       evictContinuationIfNeeded(cached, continuationCacheKey);
@@ -769,7 +773,8 @@ class MuseSparkWebExecutor extends BaseExecutor {
       { input: { conversationId: conversationContext.conversationId, mode: modelInfo.mode } },
       cookieHeader,
       "Mode switch",
-      signal
+      signal,
+      proxyOptions
     );
     if (isGraphqlFailure(modeResult)) {
       evictContinuationIfNeeded(cached, continuationCacheKey);

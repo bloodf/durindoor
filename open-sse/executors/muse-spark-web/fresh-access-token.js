@@ -2,13 +2,14 @@
 import { createHash } from "node:crypto";
 import { acquireBrowserContext, openPage } from "../../services/browserPool.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 const META_AI_GRAPHQL_API = "https://www.meta.ai/api/graphql";
 const META_AI_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 const META_AI_HEISENBERG_DOC_ID = "954e9b193487fa4af750af87906e4313";
 const ACCESS_TOKEN_RE = /accessToken[\\"]+:\s*[\\"]+ecto1:([A-Za-z0-9_-]+)[\\"]+/;
 const META_TOKEN_CACHE = /* @__PURE__ */ new Map();
 const META_TOKEN_TTL_MS = 4 * 60 * 1e3;
-async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "") {
+async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", proxyOptions = null) {
   const cacheKey = createHash("sha256").update(`${connectionId}\0${cookieHeader}`).digest("hex").slice(0, 16);
   for (const [key, entry] of META_TOKEN_CACHE) if (entry.expiresAt <= Date.now()) META_TOKEN_CACHE.delete(key);
   const cached = META_TOKEN_CACHE.get(cacheKey);
@@ -16,7 +17,7 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "") {
     return { ok: true, token: cached.token, updatedCookie: cached.updatedCookie };
   }
   try {
-    const heisenbergResponse = await fetch(META_AI_GRAPHQL_API, {
+    const heisenbergResponse = await proxyAwareFetch(META_AI_GRAPHQL_API, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -27,8 +28,9 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "") {
         Origin: "https://meta.ai"
       },
       body: JSON.stringify({ doc_id: META_AI_HEISENBERG_DOC_ID, variables: {} }),
-      signal: signal ?? void 0
-    });
+      signal: signal ?? void 0,
+      directFetch: (url, init) => globalThis.fetch(url, init)
+    }, proxyOptions);
     if (!heisenbergResponse.ok) return { ok: false, status: heisenbergResponse.status >= 300 && heisenbergResponse.status < 400 ? 401 : heisenbergResponse.status, error: "Meta AI session refresh failed" };
     let updatedCookie;
     const setCookie = heisenbergResponse.headers.get("set-cookie") || "";
@@ -103,7 +105,7 @@ function __resetMuseSparkTokenCacheForTesting() {
 function __fetchFreshAccessTokenForTesting(cookieHeader, signal) {
   return fetchFreshAccessToken(cookieHeader, signal);
 }
-const _fetchFreshAccessTokenDispatch = (cookieHeader, signal, connectionId) => _fetchFreshAccessTokenOverride ? _fetchFreshAccessTokenOverride(cookieHeader, signal, connectionId) : fetchFreshAccessToken(cookieHeader, signal, connectionId);
+const _fetchFreshAccessTokenDispatch = (cookieHeader, signal, connectionId, proxyOptions) => _fetchFreshAccessTokenOverride ? _fetchFreshAccessTokenOverride(cookieHeader, signal, connectionId, proxyOptions) : fetchFreshAccessToken(cookieHeader, signal, connectionId, proxyOptions);
 export {
   __fetchFreshAccessTokenForTesting,
   __resetMuseSparkTokenCacheForTesting,

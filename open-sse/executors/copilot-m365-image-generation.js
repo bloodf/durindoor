@@ -207,6 +207,7 @@ async function runImageTurn(request) {
   const images = new M365GeneratedImageCollector();
   await runM365Socket({
     wsUrl: url.toString(),
+    proxyOptions: request.proxyOptions,
     invocation,
     signal: request.signal,
     onFrame(frame) {

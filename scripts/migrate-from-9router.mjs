@@ -37,11 +37,11 @@
 //   node scripts/migrate-from-9router.mjs --dry-run
 //   node scripts/migrate-from-9router.mjs
 //   node scripts/migrate-from-9router.mjs --target-dir <path> --legacy-dir <path>
-import { existsSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFileSync, renameSync, rmSync, chmodSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -364,8 +364,15 @@ export class Migrator {
     while (existsSync(dest)) dest = root.replace(/\.tar$/, '-' + (++n) + '.tar');
     this.log('backup ' + srcDir + ' -> ' + dest);
     if (this.dryRun) return null;
-    const result = spawnSync('tar', ['-cf', dest, '-C', dirname(srcDir), '--', basename(srcDir)], { stdio: 'inherit' });
+    const previousUmask = process.umask(0o077);
+    let result;
+    try {
+      result = spawnSync('tar', ['-cf', dest, '-C', dirname(srcDir), '--', basename(srcDir)], { stdio: 'inherit' });
+    } finally {
+      process.umask(previousUmask);
+    }
     if (result.status !== 0) throw new Error('tar backup failed for ' + srcDir);
+    chmodSync(dest, 0o600);
     this.backupMade = true;
     return dest;
   }
@@ -454,7 +461,7 @@ export class Migrator {
   getTargetBackupPath() { return this.targetBackupPath; }
 }
 
-if (import.meta.url && process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const targetDir = arg('--target-dir', join(homedir(), '.durindoor'));
   const legacyDir = arg('--legacy-dir',  join(homedir(), '.9router'));
   const dryRun = has('--dry-run');

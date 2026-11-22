@@ -82,7 +82,7 @@ it("excludes usage history from portable export and detaches both associations o
   const db = await getAdapter();
   db.run(`INSERT INTO usageHistory(timestamp, apiKey, apiKeyId) VALUES
     (?, 'fixture-match', 'stable-id'), (?, NULL, 'id-only')`, [timestamp, timestamp]);
-  const backup = await exportDb();
+  const backup = await exportDb({ includeSecrets: true });
   expect(backup).not.toHaveProperty("usageHistory");
   await importDb(backup);
   expect(db.all(`SELECT timestamp, apiKey, apiKeyId FROM usageHistory ORDER BY id`)).toEqual([

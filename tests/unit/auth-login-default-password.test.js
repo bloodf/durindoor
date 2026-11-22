@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   recordFail: vi.fn(),
   recordSuccess: vi.fn(),
   getClientIp: vi.fn(),
+  reserveAttempt: vi.fn(() => ({ locked: false, remainingBeforeLock: 4 })),
+  releaseReservation: vi.fn(),
   isLocalRequest: vi.fn(),
   isUsingDefaultPassword: vi.fn(async () => true),
   issuePasswordChangeProof: vi.fn(() => "password-change-proof"),
@@ -30,7 +32,12 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 vi.mock("@/lib/auth/oidc", () => ({ isOidcConfigured: mocks.isOidcConfigured }));
 vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: mocks.hasExactRequestOrigin, hasTrustedLocalOrigin: mocks.hasTrustedLocalOrigin }));
 vi.mock("@/lib/auth/loginLimiter", () => ({
-  checkLock: mocks.checkLock, recordFail: mocks.recordFail, recordSuccess: mocks.recordSuccess, getClientIp: mocks.getClientIp,
+  checkLock: mocks.checkLock,
+  recordFail: mocks.recordFail,
+  recordSuccess: mocks.recordSuccess,
+  getClientIp: mocks.getClientIp,
+  reserveAttempt: mocks.reserveAttempt,
+  releaseReservation: mocks.releaseReservation,
 }));
 vi.mock("@/dashboardGuard", () => ({ isLocalRequest: mocks.isLocalRequest }));
 vi.mock("@/lib/auth/passwordChangeProof", () => ({ issuePasswordChangeProof: mocks.issuePasswordChangeProof }));
@@ -48,6 +55,8 @@ describe("POST /api/auth/login default-password safety", () => {
     mocks.checkLock.mockReset().mockReturnValue({ locked: false });
     mocks.recordFail.mockReset().mockReturnValue({ remainingBeforeLock: 4 });
     mocks.recordSuccess.mockReset();
+    mocks.reserveAttempt.mockReset().mockReturnValue({ locked: false, remainingBeforeLock: 4 });
+    mocks.releaseReservation.mockReset();
     mocks.getSettings.mockResolvedValue({});
     mocks.isUsingDefaultPassword.mockResolvedValue(true);
     mocks.isOidcConfigured.mockReturnValue(false);
@@ -117,6 +126,9 @@ describe("POST /api/auth/login default-password safety", () => {
     let failures = 0;
     mocks.recordFail.mockImplementation(() => ({ remainingBeforeLock: Math.max(0, 4 - ++failures) }));
     mocks.checkLock.mockImplementation(() => failures >= 5 ? { locked: true, retryAfter: 30 } : { locked: false });
+    mocks.reserveAttempt.mockImplementation(() => (
+      failures >= 5 ? { locked: true, retryAfter: 30 } : { locked: false, remainingBeforeLock: Math.max(0, 4 - failures) }
+    ));
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       expect((await POST(request())).status).toBe(403);

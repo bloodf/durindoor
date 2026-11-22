@@ -48,7 +48,7 @@ export function mountPopup(doc, { chrome, fetch, now = Date.now }) {
     $("out-dashboard").textContent = view.dashboardOrigin;
     $("out-target").textContent = view.action === "create" ? `New connection: ${view.target}` : `Replace cookies of connection ${view.target}`;
     // A localStorage item is shown with its storage, so it cannot be mistaken for a cookie name.
-    $("out-cookies").textContent = [...view.cookieNames, ...view.localStorageKeys.map((key) => `localStorage ${key}`)].join(", ");
+    $("out-cookies").textContent = [...view.cookieNames, ...view.optionalCookies.map((name) => `${name} (optional)`), ...view.localStorageKeys.map((key) => `localStorage ${key}`)].join(", ");
     const what = view.cookieNames.length ? "session cookies" : "session value";
     $("confirm-text").textContent = `I confirm: send my ${view.label} ${what} from ${view.providerOrigin} to ${view.dashboardOrigin}.`;
     confirm.checked = false;

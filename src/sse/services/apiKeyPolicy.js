@@ -1,5 +1,7 @@
 import { getApiKeyByKey, getApiKeyUsageTotals, getApiKeyById, saveRequestUsage } from "@/lib/localDb";
 import { extractApiKey, hasValidCliToken } from "./auth.js";
+import { getBatchRequestKeyId } from "./batchKeyIdentity.js";
+import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
@@ -137,7 +139,11 @@ export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limi
   if (apiKey === undefined) apiKey = extractApiKey(request);
   if (!apiKey) return null;
 
-  const keyRecord = await getApiKeyByKey(apiKey);
+  const batchKeyId = getBatchRequestKeyId(request);
+  const keyRecord = batchKeyId ? await getApiKeyById(batchKeyId) : await getApiKeyByKey(apiKey);
+  if (batchKeyId && (!keyRecord || !keyRecord.isActive || isApiKeyExpired(keyRecord.expiresAt))) {
+    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  }
   if (!keyRecord || !keyRecord.isActive) return null;
 
   const policyResult = validateApiKeyPolicy(keyRecord.policy);

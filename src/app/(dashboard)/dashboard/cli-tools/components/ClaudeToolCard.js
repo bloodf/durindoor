@@ -6,7 +6,7 @@ import { Card } from "@/shared/ui/components/Card";
 import Button from "@/shared/ui/components/Button";
 import IconButton from "@/shared/ui/components/IconButton";
 import { Badge } from "@/shared/ui/components/Badge";
-import Select from "@/shared/ui/components/Select";
+import CliOptionSelect from "./CliOptionSelect.js";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
@@ -384,7 +384,7 @@ export default function ClaudeToolCard({
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Context window</span>
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
-                  <Select
+                  <CliOptionSelect
                     size="sm"
                     aria-label="Context window"
                     value={maxContextTokens}

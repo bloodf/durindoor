@@ -105,6 +105,8 @@ const OAUTH_ERROR_STATUS = Object.freeze({
   OAUTH_STATE_MISMATCH: 400,
   OAUTH_FLOW_CONFLICT: 409,
   OAUTH_SESSION_GONE: 410,
+  // The dashboard closed the request: nginx-style "client closed request".
+  OAUTH_CANCELLED: 499,
   OAUTH_UPSTREAM_FAILURE: 502
 });
 
@@ -457,7 +459,7 @@ async function completeAccessToken(provider, code, resolvedProxy, flowClaim) {
   });
 }
 
-async function completeAuthorization(provider, input) {
+async function completeAuthorization(provider, input, signal = null) {
   const code = isString(input.code) ? input.code.trim() : "";
   const state = isString(input.state) ? input.state.trim() : "";
   const flowId = isString(input.flowId) ? input.flowId.trim() : "";
@@ -475,7 +477,7 @@ async function completeAuthorization(provider, input) {
       // remains active through the actual write.
       return await completeAccessToken(provider, code, resolvedProxy, claim);
     }
-    const { connection } = await exchangeAndSaveAuthorizationCode(provider, code, state, claim);
+    const { connection } = await exchangeAndSaveAuthorizationCode(provider, code, state, claim, signal);
     return connection;
   } catch (error) {
     throw normalizeOAuthCompletionError(error);
@@ -888,7 +890,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ success: true, connection: publicConnection(connection) });
     }
     if (action === "exchange") {
-      const connection = await completeAuthorization(provider, body);
+      const connection = await completeAuthorization(provider, body, request.signal);
       return NextResponse.json({ success: true, connection: publicConnection(connection) });
     }
     if (action === "poll") {

@@ -255,6 +255,10 @@ export const MODEL_PRICING = {
   "o3-pro": { input: 20.00, output: 80.00, cached: 20.00, reasoning: 80.00, cache_creation: 20.00 },
   "o4-mini": { input: 1.10, output: 4.40, cached: 0.275, reasoning: 4.40, cache_creation: 1.10 },
 
+  // === Agnes AI ===
+  // Vendor doc page: cache read is 10% of regular input. 3.0 Flash has no published price.
+  "agnes-3.0-pro": { input: 0.45, output: 0.90, cached: 0.045 },
+
   // === Gemini ===
   "gemini-3.8-flash": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
   "gemini-3.8-flash-high": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
@@ -372,6 +376,11 @@ export const PROVIDER_PRICING = {
   },
   // OpenAI API list price. Over 272K input, whole request uses long-context rates.
   openai: {
+    // GPT-6.2 Sol bills like 6.1 Sol; Astra is cheaper than GPT-6 Astra.
+    // https://developers.openai.com/api/docs/models/gpt-6.2-sol
+    // https://developers.openai.com/api/docs/models/gpt-6.2-astra
+    "gpt-6.2-sol": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gpt-6.2-astra": { input: 8.00, output: 40.00, cached: 0.40, reasoning: 40.00, cache_creation: 10.00, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
     "gpt-6-astra": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
   },
   // Cline advertises these exact ids as Free; other providers bill their twins.
@@ -382,7 +391,9 @@ export const PROVIDER_PRICING = {
   },
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
-    "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
+    "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
+    // Copilot uses a dotted ID for the canonical Sonnet 5.5 model.
+    "claude-sonnet-5.5": MODEL_PRICING["claude-sonnet-5-5"]
   },
   // Expose the current canonical tier to pricing management, without alias rows.
   xai: {

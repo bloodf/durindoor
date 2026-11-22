@@ -41,9 +41,21 @@ export function isOidcConfigured(settings) {
   );
 }
 
+/**
+ * Auth modes under which OIDC login is offered. "sso" is the OIDC-only value
+ * written by 9router installs sharing this data dir; the dashboard here writes
+ * "oidc" and "both". Without it an SSO-only install could never start login.
+ *
+ * @param {string|undefined} authMode Stored `authMode` setting.
+ * @returns {boolean}
+ */
+export function isOidcAuthMode(authMode) {
+  return ["sso", "oidc", "both"].includes(authMode);
+}
+
 export async function getOidcRuntimeConfig() {
   const settings = await getSettings();
-  if (!["oidc", "both"].includes(settings.authMode) || !isOidcConfigured(settings)) return null;
+  if (!isOidcAuthMode(settings.authMode) || !isOidcConfigured(settings)) return null;
 
   const issuerUrl = trimTrailingSlashes(settings.oidcIssuerUrl);
   warnIfOidcAllowlistEmpty(settings);

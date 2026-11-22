@@ -38,6 +38,7 @@ import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { REVIEWED_ORPHANS } from "../open-sse/config/catalogAllowlist.js";
 import { isString } from "../src/shared/utils/typeChecks.js";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -604,7 +605,7 @@ async function main() {
   process.exit(1);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
     console.error(err.message || err);
     process.exit(2);

@@ -92,6 +92,8 @@ Before anything other than loopback can reach `/dashboard`:
 
 `AUTH_COOKIE_SECURE=true` forces the `Secure` flag. Run the reverse proxy on the same host (loopback peer) and make it append the real client IP to `X-Forwarded-For`; traffic must go through `custom-server.js`. Cross-origin login is rejected (`hasExactRequestOrigin`). Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
 
+An authenticated dashboard session can enable or disable the tunnel from the same origin. Other local-only controls still require local access or the CLI token.
+
 If the proxy rewrites `Host` to an internal name, set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public origin so Origin checks match.
 
 ## Isolated web-provider login

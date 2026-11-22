@@ -29,6 +29,14 @@ import {
   looksLikeEncryptedEnvelope
 } from "@/shared/utils/credentialEnvelope";
 
+// providerSpecificData also carries provider-owned, non-secret keys the dashboard and the update merge
+// round-trip (workspaceId, nested oauthProxy, ...), so an exhaustive allowlist would hide them. Instead a
+// key is shown only when it is not an explicit secret and does not look like one: a new secret stored under
+// a credential-shaped name (copilotToken, dcaToken, ...) stays hidden without being listed here.
+const SECRET_LIKE_PROVIDER_SPECIFIC_KEY = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid/i;
+const NON_SECRET_PROVIDER_SPECIFIC_FIELDS = new Set([
+"tokenEndpoint", "token_endpoint", "enablePromptCacheKey", "copilotTokenExpiresAt"]
+);
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "chatgptPlanAccount",
 "chatgptPlanBindingRevision",
@@ -38,13 +46,36 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "alibabaConsoleCookie",
 "cookie",
 "QWEN_CLOUD_COOKIE",
-// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
 "sessionToken",
-// Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
 "mimoPassToken",
-// TinyCMS device UUID imported from site.tinycms.xyz localStorage; it is the whole credential.
-"app-config-uuid"]
+"app-config-uuid",
+"copilotToken",
+"dcaToken"]
 );
+
+function isSecretProviderSpecificKey(key) {
+  if (SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key)) return true;
+  return !NON_SECRET_PROVIDER_SPECIFIC_FIELDS.has(key) && SECRET_LIKE_PROVIDER_SPECIFIC_KEY.test(key);
+}
+
+const PROVIDER_SECRET_TOP_LEVEL_FIELDS = [
+"managementApiKey", "apiKey", "accessToken", "refreshToken", "idToken", "firecrawlHeaders",
+"sessionToken", "copilotToken", "dcaToken"];
+
+/** providerSpecificData without secrets (see isSecretProviderSpecificKey). */
+export function pickSafeProviderSpecificData(_provider, providerSpecificData) {
+  if (!providerSpecificData) return providerSpecificData;
+  return Object.fromEntries(
+    Object.entries(providerSpecificData).filter(([key]) => !isSecretProviderSpecificKey(key))
+  );
+}
+
+/** Drop top-level credential fields from a connection echoed to a caller. */
+export function stripConnectionSecrets(connection) {
+  const result = { ...connection };
+  for (const key of PROVIDER_SECRET_TOP_LEVEL_FIELDS) delete result[key];
+  return result;
+}
 
 /**
  * The session token to store for a new AWS connection. A client written for 9router may still
@@ -57,25 +88,12 @@ function awsSessionToken(sessionToken, providerSpecificData) {
   return isString(value) && value.trim() ? value.trim() : undefined;
 }
 
-function sanitizeProviderConnection(connection) {
-  const providerSpecificData = connection.providerSpecificData ?
-  Object.fromEntries(
-    Object.entries(connection.providerSpecificData).
-    filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
-  ) :
-  connection.providerSpecificData;
-
-  return {
-    ...connection,
-    managementApiKey: undefined,
-    apiKey: undefined,
-    accessToken: undefined,
-    refreshToken: undefined,
-    idToken: undefined,
-    firecrawlHeaders: undefined,
-    sessionToken: undefined,
-    ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
-  };
+export function sanitizeProviderConnection(connection) {
+  const result = stripConnectionSecrets(connection);
+  if (connection.providerSpecificData) {
+    result.providerSpecificData = pickSafeProviderSpecificData(connection.provider, connection.providerSpecificData);
+  }
+  return result;
 }
 
 // Mirrors src/app/api/providers/[id]/models/route.js branch-for-branch plus
@@ -215,7 +233,18 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json({ connections: safeConnections });
+    // Keep the original response for callers that do not request filtering.
+    const params = new URL(request?.url || "http://localhost/").searchParams;
+    const provider = params.get("provider") || "";
+    const query = (params.get("q") || "").trim().toLowerCase();
+    const paging = params.has("page") || params.has("pageSize");
+    if (!provider && !query && !paging) return NextResponse.json({ connections: safeConnections });
+    const filtered = safeConnections.filter((c) => (!provider || c.provider === provider) &&
+      (!query || [c.email, c.name, c.displayName, c.id].some((v) => String(v || "").toLowerCase().includes(query))));
+    const page = Math.max(1, Number.parseInt(params.get("page"), 10) || 1);
+    const pageSize = Math.min(200, Math.max(1, Number.parseInt(params.get("pageSize"), 10) || 100));
+    return NextResponse.json({ connections: paging ? filtered.slice((page - 1) * pageSize, page * pageSize) : filtered,
+      total: filtered.length, page: paging ? page : 1, pageSize: paging ? pageSize : filtered.length });
   } catch (error) {
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
@@ -228,7 +257,7 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const body = await request.json();
     if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return NextResponse.json({ error: "Private account references cannot be supplied" }, { status: 400 });
     const provider = normalizeProviderId(body.provider);
-    const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
+    const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly, authType: requestedAuthType } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -251,13 +280,16 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     // Validation
     const isNoAuthProvider = AI_PROVIDERS[provider]?.noAuth === true || FREE_PROVIDERS[provider]?.noAuth === true;
     const isWebCookieProvider = !!WEB_COOKIE_PROVIDERS[provider];
-    // Dual-auth providers (e.g. codebuddy-cn, xai) live under category "oauth" but also
-    // accept an API key via authModes — they aren't in APIKEY_PROVIDERS, so allow them here.
-    const supportsApiKeyMode = !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
+    // Multi-auth providers (e.g. codebuddy-cn, xai) live under category "oauth" but also
+    // accept an API key or auth_token via authModes — allow them here.
+    const providerAuthModes = AI_PROVIDERS[provider]?.authModes || [];
+    const supportsApiKeyMode = providerAuthModes.includes("apikey");
+    const supportsAuthTokenMode = providerAuthModes.includes("auth_token");
     const isValidProvider = APIKEY_PROVIDERS[provider] ||
     FREE_TIER_PROVIDERS[provider] ||
     FREE_PROVIDERS[provider] ||
     supportsApiKeyMode ||
+    supportsAuthTokenMode ||
     isWebCookieProvider ||
     isOpenAICompatibleProvider(provider) ||
     isAnthropicCompatibleProvider(provider) ||
@@ -270,6 +302,14 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
+    if (requestedAuthType === "auth_token" && !supportsAuthTokenMode) {
+      return NextResponse.json({ error: "Auth token mode is not supported for this provider" }, { status: 400 });
+    }
+    const resolvedAuthType = isWebCookieProvider
+      ? "cookie"
+      : requestedAuthType === "auth_token" && supportsAuthTokenMode
+        ? "auth_token"
+        : "apikey";
     if (provider === "cerebrium") {
       if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Cerebrium connections require an operator" }, { status: 403 });
       if (!cerebriumBaseUrl(body.providerSpecificData?.baseUrl) || !isString(apiKey) || !apiKey.trim()) return NextResponse.json({ error: "Cerebrium requires a deployment /run URL and project API key" }, { status: 400 });
@@ -300,7 +340,8 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
     if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !registryAllowsKeylessCredential(provider) && !hasApiKeySubstitute) {
-      return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
+      const label = isWebCookieProvider ? "Cookie value" : resolvedAuthType === "auth_token" ? "Auth Token" : "API Key";
+      return NextResponse.json({ error: `${label} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;
     const connectionName = isString(rawConnectionName) ? rawConnectionName.trim() : "";
@@ -416,7 +457,7 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     try {
       newConnection = await createProviderConnection({
         provider,
-        authType: isWebCookieProvider ? "cookie" : "apikey",
+        authType: resolvedAuthType,
         name: connectionName,
         apiKey: apiKey || "",
         managementApiKey: provider === "xai" && isString(body.managementApiKey) ? body.managementApiKey.trim() : undefined,

@@ -222,7 +222,8 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   if (body.messages && Array.isArray(body.messages)) {
     for (let i = 0; i < body.messages.length; i++) {
       const msg = body.messages[i];
-      const role = msg.role;
+      // "developer" is the OpenAI o-series/AI SDK name for a system instruction.
+      const role = msg.role === ROLE.DEVELOPER ? ROLE.SYSTEM : msg.role;
       const content = msg.content;
 
       if (role === ROLE.SYSTEM && body.messages.length > 1) {
@@ -597,6 +598,16 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
                       data: item.source.data
                     }
                   });
+                } else if (item.type === CLAUDE_BLOCK.IMAGE && item.image) {
+                  const parsed = parseDataUri(item.image);
+                  if (parsed) {
+                    imageParts.push({
+                      inlineData: {
+                        mimeType: parsed.mimeType || "image/png",
+                        data: parsed.base64
+                      }
+                    });
+                  }
                 } else if (item.type === "image_url" && item.image_url?.url) {
                   const parsed = parseDataUri(item.image_url.url);
                   if (parsed) {
@@ -710,7 +721,7 @@ export function openaiToAntigravityRequest(model, body, stream, credentials = nu
   const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
   // A lone OpenAI system message otherwise loses its role in the shared Gemini shape.
   // Promote it only for Antigravity so executor-level system rewriting stays provider-scoped.
-  if (body.messages?.length === 1 && body.messages[0]?.role === ROLE.SYSTEM) {
+  if (body.messages?.length === 1 && (body.messages[0]?.role === ROLE.SYSTEM || body.messages[0]?.role === ROLE.DEVELOPER)) {
     geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };
     geminiCLI.contents = [];
   }

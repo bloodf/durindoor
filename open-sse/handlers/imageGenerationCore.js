@@ -7,6 +7,7 @@ import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
 import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
 import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 function serializeRequestBody(requestBody) {
@@ -350,7 +351,9 @@ export async function handleImageGenerationCore({
   const normalized = adapter.normalize(parsed, body.prompt);
 
   // Already in OpenAI shape? skip re-normalize
-  const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
+  const providerBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
+  // Report the container the bytes really have, whatever the upstream declared.
+  const finalBody = adapter.reportOutputFormat ? normalizeImageOutput(providerBody, body.output_format, log?.warn?.bind(log)) : providerBody;
   // Runway's adapter also accepts video models; those outputs are not images.
   if (provider !== "runwayml" || model.includes("image")) returnedImageUnits(accounting, finalBody);
 

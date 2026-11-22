@@ -7,7 +7,16 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
-import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { isObject, isRecord, isString } from "../../../../shared/utils/typeChecks.js";
+
+const parseClaudeSettingsObject = (raw) => {
+  const parsed = JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new Error("expected an object");
+  }
+  return parsed;
+};
 
 const execAsync = promisify(exec);
 
@@ -98,25 +107,18 @@ export async function POST(request) {
     const settingsPath = getClaudeSettingsPath();
     const claudeDir = path.dirname(settingsPath);
 
+    // Read current settings before creating directory or writing; refuse unparseable files.
+    const currentSettings = (await readExistingConfig(settingsPath, parseClaudeSettingsObject)) ?? {};
+
     // Ensure .claude directory exists
     await fs.mkdir(claudeDir, { recursive: true });
 
-    // Read current settings
-    let currentSettings = {};
-    try {
-      const content = await fs.readFile(settingsPath, "utf-8");
-      currentSettings = JSON.parse(content);
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        throw error;
-      }
-    }
-
-    // Normalize ANTHROPIC_BASE_URL to ensure /v1 suffix
+    // Normalize ANTHROPIC_BASE_URL to ensure a single /v1 suffix
     if (env.ANTHROPIC_BASE_URL) {
-      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1") ?
-      env.ANTHROPIC_BASE_URL :
-      `${env.ANTHROPIC_BASE_URL}/v1`;
+      const trimmedBaseUrl = env.ANTHROPIC_BASE_URL.replace(/\/+$/, "");
+      env.ANTHROPIC_BASE_URL = trimmedBaseUrl.endsWith("/v1") ?
+      trimmedBaseUrl :
+      `${trimmedBaseUrl}/v1`;
     }
 
     // Strip the DurinDoor provider prefix (e.g. "cc/") from the
@@ -169,8 +171,9 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error updating claude settings:", error);
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
     return NextResponse.json(
-      { error: "Failed to update claude settings" },
+      { error: refusedToClobber ? error.message : "Failed to update claude settings" },
       { status: 500 }
     );
   }
@@ -183,6 +186,7 @@ const RESET_ENV_KEYS = [
 "ANTHROPIC_DEFAULT_OPUS_MODEL",
 "ANTHROPIC_DEFAULT_SONNET_MODEL",
 "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+"ANTHROPIC_DEFAULT_FABLE_MODEL",
 "API_TIMEOUT_MS",
 "CLAUDE_CODE_MAX_CONTEXT_TOKENS"];
 
@@ -192,19 +196,13 @@ export async function DELETE() {
   try {
     const settingsPath = getClaudeSettingsPath();
 
-    // Read current settings
-    let currentSettings = {};
-    try {
-      const content = await fs.readFile(settingsPath, "utf-8");
-      currentSettings = JSON.parse(content);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({
-          success: true,
-          message: "No settings file to reset"
-        });
-      }
-      throw error;
+    // Read current settings; refuse unparseable files without modifying them.
+    const currentSettings = await readExistingConfig(settingsPath, parseClaudeSettingsObject);
+    if (!currentSettings) {
+      return NextResponse.json({
+        success: true,
+        message: "No settings file to reset"
+      });
     }
 
     // Remove specified env fields
@@ -228,8 +226,9 @@ export async function DELETE() {
     });
   } catch (error) {
     console.log("Error resetting claude settings:", error);
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
     return NextResponse.json(
-      { error: "Failed to reset claude settings" },
+      { error: refusedToClobber ? error.message : "Failed to reset claude settings" },
       { status: 500 }
     );
   }

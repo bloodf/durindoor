@@ -3,11 +3,13 @@ import localFont from "next/font/local";
 import "material-symbols/outlined.css";
 import "@/shared/ui/tokens.css";
 import "./globals.css";
+import "@/shared/ui/v5/production/v5-tokens.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env
 import "@/shared/services/bootstrap"; // Auto-run initializeApp (watchdog, auto-resume tunnel)
 import { initConsoleLogCapture } from "@/lib/consoleLogBuffer";
 import { RuntimeI18nProvider } from "@/i18n/RuntimeI18nProvider";
+import { uiV5RootAttributes } from "@/shared/ui/v5/production/uiVersion";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, getLocaleDirection, normalizeLocale } from "@/i18n/config";
 
 // Hook console immediately at module load time (server-side only, runs once)
@@ -45,7 +47,7 @@ export default async function RootLayout({ children }) {
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value || DEFAULT_LOCALE);
   const direction = getLocaleDirection(locale);
   return (
-    <html lang={locale} dir={direction} suppressHydrationWarning>
+    <html lang={locale} dir={direction} suppressHydrationWarning {...uiV5RootAttributes()}>
       <head>
         {/* Blocking pre-paint bootstrap reads Zustand's {state:{theme}} envelope.
             Same-origin file (not inline) so a future nonce/hash CSP can authorize it;

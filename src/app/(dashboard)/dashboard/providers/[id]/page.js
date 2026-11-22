@@ -3,6 +3,7 @@
 import ProviderRpmControl from "./ProviderRpmControl.jsx";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
@@ -51,6 +52,10 @@ import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { useNotificationStore } from "@/store/notificationStore";
 import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from "./connectionDelete";
 import { connectionPage, togglePageSelection } from "./connectionPagination";
+import BulkReviewModal from "./components/BulkReviewModal";
+import PersistedTestResult from "./components/PersistedTestResult";
+import { buildBulkReview, reviewedTargets } from "./components/bulkReview";
+import { saveProviderTestResult, loadProviderTestResults } from "./components/providerTestStore";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
@@ -95,6 +100,7 @@ export default function ProviderDetailPage() {
 }
 
 function ProviderDetail({ providerId }) {
+  const uiV5 = useUiV5();
   const router = useRouter();
   const notify = useNotificationStore();
   const currentProviderIdRef = useRef(providerId);
@@ -114,6 +120,7 @@ function ProviderDetail({ providerId }) {
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
   const proxyPoolsReady = proxyPoolsReadyForProvider === providerId;
   const [showOAuthModal, setShowOAuthModal] = useState(false);
+  const [devinDesktopBrowserSignIn, setDevinDesktopBrowserSignIn] = useState(false);
   const [selectedOrcaModel, setSelectedOrcaModel] = useState("");
   // When set, the open OAuth modal replaces this existing connection in place
   // (the Reconnect flow) instead of creating a new row. Cleared on close/success.
@@ -199,6 +206,8 @@ function ProviderDetail({ providerId }) {
   const [oneByOneStopping, setOneByOneStopping] = useState(false);
   const [oneByOneCurrentConnectionId, setOneByOneCurrentConnectionId] = useState(null);
   const [oneByOneResults, setOneByOneResults] = useState({});
+  const [persistedTests, setPersistedTests] = useState({});
+  const [bulkReview, setBulkReview] = useState(null);
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const oneByOneRunRef = useRef(null);
@@ -234,6 +243,7 @@ function ProviderDetail({ providerId }) {
       setShowImportTokenModal(true);
       return;
     }
+    setDevinDesktopBrowserSignIn(false);
     setShowOAuthModal(true);
   };
 
@@ -507,6 +517,7 @@ function ProviderDetail({ providerId }) {
 
         if (!isCurrentRequest()) return;
         setConnections(filtered);
+        setPersistedTests(loadProviderTestResults(filtered.map((conn) => conn.id)));
         // Prune selection with the authoritative response, in the same batch.
         setSelectedConnectionIds((prev) => prev.filter((id) => filtered.some((conn) => conn.id === id)));
         setCodexPlans(plans);
@@ -960,6 +971,12 @@ function ProviderDetail({ providerId }) {
     }
   };
 
+  // Persist only the safe status and fixed guidance, never the upstream text.
+  const rememberTestResult = (connectionId, outcome) => {
+    const record = saveProviderTestResult(connectionId, outcome);
+    if (record) setPersistedTests((prev) => ({ ...prev, [connectionId]: record }));
+  };
+
   const handleRunOneByOneTest = async (targets = connections) => {
     if (oneByOneRunning || targets.length === 0 || oneByOneRunRef.current) return;
     const run = new AbortController();
@@ -1023,23 +1040,18 @@ function ProviderDetail({ providerId }) {
             failed += 1;
           }
 
-          setOneByOneResults((prev) => ({
-            ...prev,
-            [connection.id]: {
-              state: wasUnavailable ? "unavailable" : wasSkipped ? "skipped" : valid ? "success" : "failed",
-              error: valid ? null : data.error || null
-            }
-          }));
+          const outcome = {
+            state: wasUnavailable ? "unavailable" : wasSkipped ? "skipped" : valid ? "success" : "failed",
+            error: valid ? null : data.error || null
+          };
+          setOneByOneResults((prev) => ({ ...prev, [connection.id]: outcome }));
+          rememberTestResult(connection.id, outcome);
         } catch (error) {
           if (!isCurrent()) return;
           failed += 1;
-          setOneByOneResults((prev) => ({
-            ...prev,
-            [connection.id]: {
-              state: "failed",
-              error: error.message || "Test failed"
-            }
-          }));
+          const outcome = { state: "failed", error: error.message || "Test failed" };
+          setOneByOneResults((prev) => ({ ...prev, [connection.id]: outcome }));
+          rememberTestResult(connection.id, outcome);
         }
 
         setOneByOneSummary({
@@ -1088,27 +1100,18 @@ function ProviderDetail({ providerId }) {
     });
   };
 
-  const handleBulkDelete = () => {
-    const count = selectedConnectionIds.length;
-    if (count === 0) return;
+  const runBulkDelete = async (ids) => {
+    if (ids.length === 0) return;
     const generation = providerGenerationRef.current;
-    setConfirmState({
-      title: `Delete ${count} Connection${count > 1 ? "s" : ""}`,
-      message: `Delete ${count} connection${count > 1 ? "s" : ""}? This cannot be undone.`,
-      onConfirm: async () => {
-        setConfirmState(null);
-        if (generation !== providerGenerationRef.current) return;
-        setBulkFailures([]);
-        const result = await deleteConnections([...selectedConnectionIds]);
-        if (generation !== providerGenerationRef.current) return;
-        setBulkFailures(result.failures.map(({ id, error }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: sanitizeErrorMessage(error) })));
-        const deleted = new Set(result.deletedIds);
-        setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
-        // Failed rows stay listed and selected so the operator can fix and retry them.
-        setSelectedConnectionIds((prev) => prev.filter((id) => !deleted.has(id)));
-        if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
-      }
-    });
+    setBulkFailures([]);
+    const result = await deleteConnections([...ids]);
+    if (generation !== providerGenerationRef.current) return;
+    setBulkFailures(result.failures.map(({ id, error }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: sanitizeErrorMessage(error) })));
+    const deleted = new Set(result.deletedIds);
+    setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
+    // Failed rows stay listed and selected so the operator can fix and retry them.
+    setSelectedConnectionIds((prev) => prev.filter((id) => !deleted.has(id)));
+    if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
   };
 
   const handleOAuthSuccess = () => {
@@ -1246,8 +1249,8 @@ function ProviderDetail({ providerId }) {
     }
   };
 
-  const handleBulkSetConnectionStatus = async (isActive) => {
-    const idsToUpdate = [...selectedConnectionIds];
+  const handleBulkSetConnectionStatus = async (isActive, ids = selectedConnectionIds) => {
+    const idsToUpdate = [...ids];
     if (idsToUpdate.length === 0) return;
     const generation = providerGenerationRef.current;
 
@@ -1401,9 +1404,48 @@ function ProviderDetail({ providerId }) {
     }
   };
 
+  // Every bulk change goes through a review step first. The reviewed ids are
+  // frozen in the summary, so Confirm applies only to what was shown.
+  const requestBulkReview = (action, targets, detail, run) => {
+    if (targets.length === 0) return;
+    const generation = providerGenerationRef.current;
+    setBulkReview({
+      review: buildBulkReview({ action, detail, targets, visibleConnections: pageConnections }),
+      run: (reviewed) => {
+        if (generation === providerGenerationRef.current) return run(reviewed);
+      },
+    });
+  };
+
+  const cancelBulkReview = () => setBulkReview(null);
+
+  const confirmBulkReview = async () => {
+    if (!bulkReview) return;
+    const { review, run } = bulkReview;
+    setBulkReview(null);
+    await run(reviewedTargets(review, connections));
+  };
+
+  const requestBulkStatusReview = (isActive) => {
+    const targets = selectedConnections.filter((conn) => (conn.isActive !== false) !== isActive);
+    requestBulkReview(isActive ? "enable" : "disable", targets, "", (reviewed) => handleBulkSetConnectionStatus(isActive, reviewed.map((conn) => conn.id)));
+  };
+
+  const requestBulkDeleteReview = () => {
+    requestBulkReview("delete", selectedConnections, "this cannot be undone", (reviewed) => runBulkDelete(reviewed.map((conn) => conn.id)));
+  };
+
+  // Proxy changes apply to the selection; with nothing selected they apply to every connection.
+  const requestProxyReview = (detail, buildAssignments) => {
+    const targets = selectedConnections.length > 0 ? selectedConnections : connections;
+    setShowBulkProxyModal(false);
+    requestBulkReview("proxy", targets, detail, (reviewed) => applyProxyAssignments(buildAssignments(reviewed)));
+  };
+
   const handleApplySinglePool = (proxyPoolId) => {
-    const targets = connections.map((c) => ({ connectionId: c.id, proxyPoolId }));
-    return applyProxyAssignments(targets);
+    const poolName = proxyPools.find((p) => p.id === proxyPoolId)?.name;
+    const detail = proxyPoolId ? `bind to ${poolName || proxyPoolId}` : "unbind proxy";
+    requestProxyReview(detail, (reviewed) => reviewed.map((c) => ({ connectionId: c.id, proxyPoolId })));
   };
 
   const handleApplyOneToOne = () => {
@@ -1412,13 +1454,11 @@ function ProviderDetail({ providerId }) {
       alert("No active proxy pools available.");
       return;
     }
-    const targets = connections.map((c, i) => ({
+    requestProxyReview("rotate across active proxy pools", (reviewed) => reviewed.map((c, i) => ({
       connectionId: c.id,
       proxyPoolId: activePools[i % activePools.length].id
-    }));
-    return applyProxyAssignments(targets);
+    })));
   };
-
 
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
@@ -1484,6 +1524,7 @@ function ProviderDetail({ providerId }) {
                 onReconnect={() => handleReconnect(conn)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
+              {!oneByOneResults[conn.id] && <PersistedTestResult result={persistedTests[conn.id]} />}
               {(isCompatible || providerId === "ollama-local") && (
                 <NetworkNodeStatus
                   connection={conn}
@@ -1505,7 +1546,7 @@ function ProviderDetail({ providerId }) {
   <Modal
     isOpen={showBulkProxyModal}
     onClose={closeBulkProxyModal}
-    title={`Apply Proxy (${connections.length} connections)`}>
+    title={`Apply Proxy (${selectedConnections.length > 0 ? `${selectedConnections.length} selected` : `all ${connections.length}`} connections)`}>
     
       <div className="flex flex-col gap-3">
         <div className="flex flex-col">
@@ -1812,6 +1853,15 @@ function ProviderDetail({ providerId }) {
   }
 
 
+  const autoSyncPanel = !isCompatible ? (
+    <ModelAutoSyncPanel
+      key={providerId}
+      providerId={providerId}
+      hasConnection={connections.some((conn) => conn.isActive !== false)}
+      onModelsChange={setSyncedModels}
+    />
+  ) : null;
+
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
       {/* Header */}
@@ -1994,7 +2044,7 @@ function ProviderDetail({ providerId }) {
                   size="sm"
                   variant="secondary"
                   icon="check_circle"
-                  onClick={() => handleBulkSetConnectionStatus(true)}
+                  onClick={() => requestBulkStatusReview(true)}
                   disabled={bulkStatusAction !== null || selectedInactiveCount === 0}>
                   
                         {bulkStatusAction === "on" ? "Turning On..." : `On Selected (${selectedConnectionIds.length})`}
@@ -2003,7 +2053,7 @@ function ProviderDetail({ providerId }) {
                   size="sm"
                   variant="secondary"
                   icon="block"
-                  onClick={() => handleBulkSetConnectionStatus(false)}
+                  onClick={() => requestBulkStatusReview(false)}
                   disabled={bulkStatusAction !== null || selectedActiveCount === 0}>
                   
                         {bulkStatusAction === "off" ? "Turning Off..." : `Off Selected (${selectedConnectionIds.length})`}
@@ -2015,7 +2065,7 @@ function ProviderDetail({ providerId }) {
                   size="sm"
                   variant="danger"
                   icon="delete"
-                  onClick={handleBulkDelete}
+                  onClick={requestBulkDeleteReview}
                   disabled={bulkStatusAction !== null}>
                   
                         Delete Selected ({selectedConnectionIds.length})
@@ -2057,11 +2107,23 @@ function ProviderDetail({ providerId }) {
                 </Button>
             }
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-dd-muted font-medium">Round Robin</span>
-                <Toggle
-                ariaLabel="Toggle round robin"
-                checked={providerStrategy === "round-robin"}
-                onChange={handleRoundRobinToggle} />
+                {uiV5 ? (
+                  <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-xs text-dd-muted font-medium">Round Robin</span>
+                    <Toggle
+                      ariaLabel="Toggle round robin"
+                      checked={providerStrategy === "round-robin"}
+                      onChange={handleRoundRobinToggle} />
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-xs text-dd-muted font-medium">Round Robin</span>
+                    <Toggle
+                      ariaLabel="Toggle round robin"
+                      checked={providerStrategy === "round-robin"}
+                      onChange={handleRoundRobinToggle} />
+                  </>
+                )}
               
                 {providerStrategy === "round-robin" &&
               <div className="flex items-center gap-1.5">
@@ -2076,11 +2138,23 @@ function ProviderDetail({ providerId }) {
                 
                   </div>
               }
-                <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
-                <Toggle
-                ariaLabel="Toggle cache affinity"
-                checked={providerStrategy === "cache-affinity"}
-                onChange={handleCacheAffinityToggle} />
+                {uiV5 ? (
+                  <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
+                    <Toggle
+                      ariaLabel="Toggle cache affinity"
+                      checked={providerStrategy === "cache-affinity"}
+                      onChange={handleCacheAffinityToggle} />
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
+                    <Toggle
+                      ariaLabel="Toggle cache affinity"
+                      checked={providerStrategy === "cache-affinity"}
+                      onChange={handleCacheAffinityToggle} />
+                  </>
+                )}
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">
@@ -2308,6 +2382,8 @@ function ProviderDetail({ providerId }) {
         </Card>
       }
 
+      {uiV5 ? autoSyncPanel : null}
+
       {/* Models */}
       <Card>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2354,13 +2430,7 @@ function ProviderDetail({ providerId }) {
         {/* buildModelsList publishes compatible-provider catalogs from their
             custom/alias ids only and never applies this allowlist to them, so
             the control would silently do nothing for these providers. */}
-        {!isCompatible &&
-        <ModelAutoSyncPanel
-          key={providerId}
-          providerId={providerId}
-          hasConnection={connections.some((conn) => conn.isActive !== false)}
-          onModelsChange={setSyncedModels} />
-        }
+        {!uiV5 ? autoSyncPanel : null}
         {!isCompatible &&
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" icon="visibility" onClick={() => setShowVisibleModels(true)}>
@@ -2440,10 +2510,24 @@ function ProviderDetail({ providerId }) {
         proxyPoolsReady={proxyPoolsReady} /> :
 
       isImportToken ?
+      providerId === "devin-desktop" && devinDesktopBrowserSignIn ?
+      // Devin Desktop offers browser sign-in from its token import; switching back reopens the import.
+      <OAuthModal
+        isOpen={showOAuthModal}
+        provider={providerId}
+        providerInfo={providerInfo}
+        onPasteToken={() => setDevinDesktopBrowserSignIn(false)}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => {setShowOAuthModal(false);setReconnectConnectionId(null);}}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady}
+        connectionId={reconnectConnectionId} /> :
+
       <ImportTokenModal
         isOpen={showOAuthModal}
         provider={providerId}
         providerInfo={providerInfo}
+        onBrowserSignIn={providerId === "devin-desktop" ? () => setDevinDesktopBrowserSignIn(true) : undefined}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)} /> :
 
@@ -2652,6 +2736,8 @@ function ProviderDetail({ providerId }) {
         cancelText="Cancel"
         variant="danger" />
       
+
+      <BulkReviewModal review={bulkReview?.review ?? null} onConfirm={confirmBulkReview} onCancel={cancelBulkReview} />
 
       {/* Confirm Modal */}
       <ConfirmModal

@@ -7,6 +7,10 @@ ZCode (`zcode`, alias `zc`) runs one text-only turn per request against a `zcode
 
 This provider is **staged and unverified**. Tests use an in-memory fake process that speaks the documented V4 NDJSON frames. No live ZCode runtime, profile, account or model list has been run against it. Treat every statement here as the documented contract, not tested behavior.
 
+## Account and isolation
+
+ZCode runs the operator's locally signed-in ZCode CLI on the gateway host. Every opted-in ZCode connection, and every API key routed through one, uses that same local login and its quota; connections do not carry separate ZCode credentials. Enable ZCode only on a gateway you operate for yourself. Tools stay disabled regardless of connection or API key.
+
 ## Read this first
 
 - **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request fail with HTTP 403 `zcode_dispatch_disabled` before any process starts. Each connection opts in on its own.

@@ -49,7 +49,7 @@ function binaryImageResponse(base64, outputFormat) {
  * @param {object} options.credentials - Provider credentials
  * @param {object} [options.log] - Logger
  * @param {boolean} [options.streamToClient] - Pipe SSE to client (codex)
- * @param {boolean} [options.binaryOutput] - Return raw image bytes
+ * @param {boolean} [options.binaryOutput] - Return raw image bytes (rejects n > 1 with 400 before dispatch)
  * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
@@ -88,6 +88,14 @@ export async function handleImageGenerationCore({
 
   if (!body.prompt) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
+  }
+
+  // Binary output carries a single image response; reject n > 1 before billing upstream.
+  if (binaryOutput && Number(body.n) > 1) {
+    return createErrorResult(
+      HTTP_STATUS.BAD_REQUEST,
+      "Binary image output (response_format=binary) supports at most n=1"
+    );
   }
 
   const adapter = getImageAdapter(provider);

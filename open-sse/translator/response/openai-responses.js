@@ -216,6 +216,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     state.finishReason = choice.finish_reason;
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
+    mintMissingToolCallIds(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
     if (state.responsesUsage) {
       sendTerminal(state, emit);
@@ -470,12 +471,6 @@ function emitToolCall(state, emit, tc) {
     state.funcCallIds[tcIdx] = newCallId;
   }
 
-  // Upstreams (vLLM/compat gateways) may omit the id on every fragment. Once the
-  // name is known mint a stable id for this index so the item is announced and
-  // closeToolCall() can emit it; otherwise the call vanished from
-  // response.completed entirely (decolua/9router#5636).
-  if (!state.funcCallIds[tcIdx] && state.funcNames[tcIdx]) state.funcCallIds[tcIdx] = fallbackToolCallId(tcIdx);
-
   // Emit output_item.added only once both id and name are known.
   const refCallId = state.funcCallIds[tcIdx];
   const refName = state.funcNames[tcIdx];
@@ -535,8 +530,8 @@ function emitToolCall(state, emit, tc) {
           output_index: outputIndex,
           delta
         });
-      } else if (refCallId) {
-        // Name not yet known; queue regular delta for replay once name arrives.
+      } else {
+        // Id or name not yet known; queue regular delta for replay on output_item.added.
         (state.funcPendingArgs[tcIdx] ||= []).push(delta);
       }
     }
@@ -578,6 +573,22 @@ function isCustomToolByState(state, tcIdx, funcName) {
   const name = resolved.name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
+}
+
+/**
+ * Upstreams (vLLM/compat gateways) may omit the id on every fragment. At close
+ * time mint a stable id for each named call that never got one, so the item is
+ * announced and closed instead of vanishing from response.completed
+ * (decolua/9router#5636). Deferred to close so a real id arriving after the name
+ * (parallel, out-of-order fragments) still wins.
+ */
+function mintMissingToolCallIds(state, emit) {
+  for (const i in state.funcNames) {
+    if (state.funcCallIds[i] || !state.funcNames[i]) continue;
+    const idx = Number(i);
+    state.funcCallIds[i] = fallbackToolCallId(idx);
+    emitToolCall(state, emit, { index: idx });
+  }
 }
 
 function closeToolCall(state, emit, idx) {
@@ -704,6 +715,7 @@ function flushEvents(state) {
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
+  mintMissingToolCallIds(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
   sendTerminal(state, emit);
 

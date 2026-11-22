@@ -569,6 +569,29 @@ export async function claimProviderConnectionPing(id, expected, next) {
   return claimed;
 }
 
+// Compare-and-swap on providerSpecificData fields (OmniRoute #20403). Under the
+// writer lock, applies `next` (merged into providerSpecificData) only when every
+// `expected` psd field still holds the given value (missing counts as null).
+// Used for single-use rotating refresh tokens kept in providerSpecificData.
+export async function compareAndSwapProviderSpecificData(id, expected, next) {
+  const db = await getAdapter();
+  let outcome = { applied: false, current: null };
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider data swap requires an initialized schema");
+    const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    if (!row) return;
+    const existing = rowToConn(row);
+    const psd = isObject(existing.providerSpecificData) && existing.providerSpecificData !== null ? existing.providerSpecificData : {};
+    outcome = { applied: false, current: existing };
+    if (Object.entries(expected).some(([field, value]) => (psd[field] ?? null) !== (value ?? null))) return;
+    const merged = { ...existing, providerSpecificData: { ...psd, ...next }, updatedAt: new Date().toISOString() };
+    upsert(db, merged);
+    outcome = { applied: true, current: merged };
+  });
+  return outcome;
+}
+
 const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
 
 function boundedModelScope(provider, model, options) {

@@ -186,10 +186,28 @@ export function isStructuredWsUrlCredential(value) {
   return /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\//i.test(String(value || "").trim());
 }
 
-function resolveTierOverrides(psd) {
-  const tier = isString(psd.tier) ? psd.tier.toLowerCase() : "";
-  const isEduTier = tier === "edu" || tier === "included";
-  const isEnterpriseTier = tier === "enterprise" || tier === "work";
+/**
+ * The tier a connection routes through: `edu`, `enterprise` or undefined (individual). An explicit
+ * `providerSpecificData.tier` wins (`individual`/`personal` opts out of the automatic choice). Without
+ * one, and without explicit scenario/licence/agent fields, a native sign-in is a work or school
+ * account (the consumer tenant is refused at sign-in), so it routes as `enterprise`. A pasted session
+ * keeps the individual defaults: its token may be the opaque individual-tier kind.
+ */
+export function resolveM365Tier(credentials) {
+  const psd = credentials?.providerSpecificData ?? {};
+  const tier = isString(psd.tier) ? psd.tier.trim().toLowerCase() : "";
+  if (tier === "edu" || tier === "included") return { tier: "edu", tierSource: "explicit" };
+  if (tier === "enterprise" || tier === "work") return { tier: "enterprise", tierSource: "explicit" };
+  if (tier) return { tier: undefined, tierSource: "explicit" };
+  const explicitRoute = ["scenario", "licenseType", "agent", "isEdu"].some((key) => psd[key] !== undefined && psd[key] !== "");
+  const nativeIdentity = isString(credentials?.accessToken) && m365IdentityFromAccessToken(credentials.accessToken);
+  if (!explicitRoute && nativeIdentity) return { tier: "enterprise", tierSource: "auto" };
+  return { tier: undefined, tierSource: "default" };
+}
+
+function resolveTierOverrides(psd, tier) {
+  const isEduTier = tier === "edu";
+  const isEnterpriseTier = tier === "enterprise";
   const psdIsEdu =
   isString(psd.isEdu) && psd.isEdu ||
   isBoolean(psd.isEdu) && String(psd.isEdu) ||
@@ -253,11 +271,12 @@ export function resolveConnectionParams(credentials) {
     return { error: "Unsupported M365 Copilot WebSocket host." };
   }
   const variants = isString(psd.variants) && psd.variants ? psd.variants : undefined;
-  return { host, chathubPath, accessToken, variants, ...resolveTierOverrides(psd) };
+  const { tier, tierSource } = resolveM365Tier(credentials);
+  return { host, chathubPath, accessToken, variants, tier, tierSource, ...resolveTierOverrides(psd, tier) };
 }
 
 /**
- * Build the Chathub WebSocket URL. Pass `conversation` (`{ conversationId, sessionId }`) to continue an
+ * Build the Chathub WebSocket URL. `params.disableMemory` marks the turn as a temporary chat. Pass `conversation` (`{ conversationId, sessionId }`) to continue an
  * existing conversation; otherwise new ids are minted. The access_token rides in the query string, so
  * the URL must only be logged through redactWsUrl().
  */
@@ -285,6 +304,9 @@ export function buildWsUrl(params, conversation) {
     agent: params.agent ?? M365_INDIVIDUAL_DEFAULTS.agent,
     scenario: params.scenario ?? M365_INDIVIDUAL_DEFAULTS.scenario
   });
+  // Copilot's temporary chat: the conversation keeps its context while it runs and never
+  // appears in the account's history or memory.
+  if (params.disableMemory) query.set("disableMemory", "1");
   return `wss://${host}/m365Copilot/Chathub/${encodedPath}?${query.toString()}`;
 }
 

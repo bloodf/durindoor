@@ -45,6 +45,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
 | `grok-cli` | GrokCliExecutor | `./grok-cli.js` |
 | `grok-web` | GrokWebExecutor | `./grok-web.js` |
+| `hyperagent` | HyperAgentExecutor | `./hyperagent.js` |
 | `iflow` | IFlowExecutor | `./iflow.js` |
 | `in-ai` | InnerAiExecutor | `./inner-ai.js` |
 | `inner-ai` | InnerAiExecutor | `./inner-ai.js` |
@@ -77,6 +78,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
+| `twinmind` | TwinmindExecutor | `./twinmind.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
 | `veoaifree-web` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
 | `vertex` | VertexExecutor | `./vertex.js` |

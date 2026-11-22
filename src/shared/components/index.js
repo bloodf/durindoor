@@ -32,6 +32,7 @@ export { default as XiaomiMimoAuthModal } from "./XiaomiMimoAuthModal";
 export { default as IFlowCookieModal } from "./IFlowCookieModal";
 export { default as GitLabAuthModal } from "./GitLabAuthModal";
 export { default as GheCopilotAuthModal } from "./GheCopilotAuthModal";
+export { default as CopilotM365AuthModal } from "./CopilotM365AuthModal";
 export { default as OrcaRouterAuthModal } from "./OrcaRouterAuthModal";
 export { default as OrcaModelDropdown } from "./OrcaModelDropdown";
 export { default as ImportTokenModal } from "./ImportTokenModal";

@@ -13,8 +13,6 @@ import {
 
 // [IPv4, expanded IPv4-mapped IPv6, NAT64 well-known prefix]
 const RESERVED = [
-  ["198.18.0.1", "0:0:0:0:0:ffff:c612:1", "64:ff9b::c612:1"],
-  ["198.19.255.254", "0:0:0:0:0:ffff:c613:fffe", "64:ff9b::c613:fffe"],
   ["192.0.0.1", "0:0:0:0:0:ffff:c000:1", "64:ff9b::c000:1"],
   ["192.0.0.255", "0:0:0:0:0:ffff:c000:ff", "64:ff9b::c000:ff"],
   ["224.0.0.1", "0:0:0:0:0:ffff:e000:1", "64:ff9b::e000:1"],
@@ -35,8 +33,8 @@ const PRIVATE_BEFORE = [
   ["192.168.1.1", "0:0:0:0:0:ffff:c0a8:101", "64:ff9b::c0a8:101"],
 ];
 
-// Neighbours of the blocked ranges and ordinary public hosts. Benchmarking
-// addresses are blocked under public-only, but remain usable in other modes.
+// Neighbours of the blocked ranges, ordinary public hosts and the benchmarking
+// block, which stays allowed for fake-IP proxy setups.
 const PUBLIC = [
   "8.8.8.8",
   "1.1.1.1",
@@ -44,6 +42,8 @@ const PUBLIC = [
   "191.255.255.255",
   "192.0.1.1",
   "192.0.2.10",
+  "198.18.0.1",
+  "198.19.255.254",
   "203.0.113.10",
   "223.255.255.255",
   "100.63.255.255",
@@ -53,11 +53,14 @@ const PUBLIC = [
   "2001:4860:4860::8888",
 ];
 
-// The guard blocks the full special-use 192.0.0.0/24, including the anycast
-// subranges, to keep all classifiers and connection-time checks consistent.
+// IANA IPv4 Special-Purpose Address Registry, last updated 2025-10-09:
+// 192.0.0.9/32 (Port Control Protocol Anycast, RFC 7723) and 192.0.0.10/32
+// (Traversal Using Relays around NAT Anycast, RFC 8155) are the two more
+// specific reservations inside 192.0.0.0/24 whose "Globally Reachable" value
+// is True. They are routable anycast destinations, so they stay public.
 //
 // [IPv4, expanded IPv4-mapped IPv6, NAT64 well-known prefix]
-const RESERVED_ANYCAST = [
+const PUBLIC_ANYCAST = [
   ["192.0.0.9", "0:0:0:0:0:ffff:c000:9", "64:ff9b::c000:9"],
   ["192.0.0.10", "0:0:0:0:0:ffff:c000:a", "64:ff9b::c000:a"],
 ];
@@ -97,34 +100,34 @@ describe("reserved address classification", () => {
   }
 });
 
-describe("anycast assignments in the blocked special-use range", () => {
-  for (const [v4, mapped, nat64] of RESERVED_ANYCAST) {
-    it(`blocks ${v4}, ${mapped} and ${nat64}`, () => {
-      expect(isPrivateHost(v4)).toBe(true);
-      expect(isPrivateHost(mapped)).toBe(true);
-      expect(isPrivateHost(`[${mapped}]`)).toBe(true);
-      expect(isPrivateHost(nat64)).toBe(true);
+describe("globally reachable anycast assignments", () => {
+  for (const [v4, mapped, nat64] of PUBLIC_ANYCAST) {
+    it(`keeps ${v4}, ${mapped} and ${nat64} public`, () => {
+      expect(isPrivateHost(v4)).toBe(false);
+      expect(isPrivateHost(mapped)).toBe(false);
+      expect(isPrivateHost(`[${mapped}]`)).toBe(false);
+      expect(isPrivateHost(nat64)).toBe(false);
     });
 
-    it(`rejects ${v4} in every spelling under public-only`, () => {
+    it(`accepts ${v4} in every spelling under public-only`, () => {
       for (const url of [
         `http://${v4}/`,
         `http://[::ffff:${v4}]/`,
         `http://[${mapped}]/`,
         `http://[${nat64}]/`,
       ]) {
-        expect(() => assertOutboundUrlAllowed(url, "public-only"), url).toThrow(OutboundUrlGuardError);
+        expect(() => assertOutboundUrlAllowed(url, "public-only"), url).not.toThrow();
       }
     });
 
-    it(`rejects ${v4} as a resolved address under public-only`, () => {
-      expect(() => assertResolvedAddressAllowed(v4, "public-only")).toThrow(OutboundUrlGuardError);
-      expect(() => assertResolvedAddressAllowed(mapped, "public-only")).toThrow(OutboundUrlGuardError);
-      expect(() => assertResolvedAddressAllowed(nat64, "public-only")).toThrow(OutboundUrlGuardError);
+    it(`accepts ${v4} as a resolved address under public-only`, () => {
+      expect(() => assertResolvedAddressAllowed(v4, "public-only")).not.toThrow();
+      expect(() => assertResolvedAddressAllowed(mapped, "public-only")).not.toThrow();
+      expect(() => assertResolvedAddressAllowed(nat64, "public-only")).not.toThrow();
     });
   }
 
-  it("keeps the other addresses in the same block blocked", () => {
+  it("keeps the anycast neighbours of the same block blocked", () => {
     for (const [v4, mapped, nat64] of RESERVED_ANYCAST_NEIGHBOURS) {
       expect(isPrivateHost(v4), v4).toBe(true);
       expect(() => assertResolvedAddressAllowed(v4, "public-only"), v4).toThrow(OutboundUrlGuardError);
@@ -166,6 +169,7 @@ describe("public-only URL handling", () => {
       "https://api.openai.com/v1/models",
       "http://8.8.8.8/",
       "http://223.255.255.255/",
+      "http://198.18.0.1/",
       "https://[2001:4860:4860::8888]/",
     ]) {
       expect(() => assertOutboundUrlAllowed(url, "public-only"), url).not.toThrow();
@@ -193,9 +197,7 @@ describe("resolved address handling", () => {
 
   it("accepts public answers and keeps other modes unchanged", () => {
     expect(() => assertResolvedAddressAllowed("93.184.216.34", "public-only")).not.toThrow();
-    expect(() => assertResolvedAddressAllowed("198.18.0.1", "public-only")).toThrow(OutboundUrlGuardError);
-    expect(() => assertResolvedAddressAllowed("198.18.0.1", "block-metadata")).not.toThrow();
-    expect(() => assertOutboundUrlAllowed("http://198.18.0.1/", "none")).not.toThrow();
+    expect(() => assertResolvedAddressAllowed("198.18.0.1", "public-only")).not.toThrow();
     expect(() => assertResolvedAddressAllowed("240.0.0.1", "block-metadata")).not.toThrow();
   });
 
@@ -211,11 +213,11 @@ describe("resolved address handling", () => {
     expect(await answer("93.184.216.34", 4)).toBeNull();
   });
 
-  it("blocks lookup answers in the anycast allocations", async () => {
-    expect(await answer("192.0.0.9", 4)).toBeInstanceOf(OutboundUrlGuardError);
-    expect(await answer("192.0.0.10", 4)).toBeInstanceOf(OutboundUrlGuardError);
-    expect(await answer("0:0:0:0:0:ffff:c000:9", 6)).toBeInstanceOf(OutboundUrlGuardError);
-    expect(await answer("64:ff9b::c000:a", 6)).toBeInstanceOf(OutboundUrlGuardError);
+  it("passes a lookup answer in the globally reachable anycast allocations", async () => {
+    expect(await answer("192.0.0.9", 4)).toBeNull();
+    expect(await answer("192.0.0.10", 4)).toBeNull();
+    expect(await answer("0:0:0:0:0:ffff:c000:9", 6)).toBeNull();
+    expect(await answer("64:ff9b::c000:a", 6)).toBeNull();
   });
 
   it("still refuses a lookup answer from the rest of the protocol-assignment block", async () => {

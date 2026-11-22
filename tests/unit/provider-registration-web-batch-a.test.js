@@ -125,11 +125,15 @@ describe("extension profile and dashboard import recognise the cookies", () => {
     expect(buildImportedCookieHeader(contract, [{ ...cookies[0], domain: "other.example" }, ...cookies.slice(1)]).ok).toBe(false);
   });
 
-  it("DeepSeek Web takes its local-storage userToken as an API-key credential, so there is no cookie import", () => {
-    expect(APIKEY_PROVIDERS["deepseek-web"]).toMatchObject({ name: "DeepSeek Web" });
+  it("DeepSeek Web takes its local-storage userToken as an API-key credential: no cookie import, but a local-storage capture and import", () => {
+    expect(APIKEY_PROVIDERS["deepseek-web"]).toMatchObject({ name: "DeepSeek Web", authType: "apikey", apiKeyOptionalWith: "userToken" });
     expect(WEB_COOKIE_PROVIDERS["deepseek-web"]).toBeUndefined();
-    expect(getCookieImportContract("deepseek-web")).toBeNull();
-    expect(EXTENSION_PROVIDERS["deepseek-web"]).toBeUndefined();
+    const contract = getCookieImportContract("deepseek-web");
+    expect(contract).toMatchObject({ origin: "https://chat.deepseek.com", authType: "apikey", extensionCapture: true, cookieNames: [], localStorageKeys: ["userToken"] });
+    expect(describeCookieImportContract(contract)).toEqual({ origin: "https://chat.deepseek.com", cookieNames: [], cookiePrefixes: [], localStorageKeys: ["userToken"] });
+    expect(EXTENSION_PROVIDERS["deepseek-web"]).toMatchObject({ origin: "https://chat.deepseek.com", cookieNames: [], localStorageKeys: ["userToken"] });
+    // A cookie header, cURL or HAR carries no token, so only the localStorage path imports it.
+    expect(buildImportedCookieHeader(contract, [{ name: "ds_session_id", value: "synthetic" }]).ok).toBe(false);
   });
 });
 

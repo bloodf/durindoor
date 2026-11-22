@@ -32,6 +32,7 @@ const profiles = [
 // Profiles of providers outside the web-cookie category whose credential is a localStorage item.
 const localStorageProfiles = [
   ["tinycms-web", "https://site.tinycms.xyz", ["app-config-uuid"]],
+  ["deepseek-web", "https://chat.deepseek.com", ["userToken"]],
 ];
 const manual = [
   "copilot-web", "copilot-m365-web", "huggingchat", "kimi-web",

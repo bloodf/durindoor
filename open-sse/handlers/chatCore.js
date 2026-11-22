@@ -2,6 +2,7 @@ import { normalizeResponsesImageReplay } from "../translator/concerns/responsesI
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
 import { supportsServiceTier } from "../config/serviceTier.js";
+import { stripClientTierFields } from "./chatCore/clientTierFieldStrip.js";
 import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
@@ -863,6 +864,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+  // Opt-in connection guard: drop client-supplied tier/identity fields first so an
+  // explicit model modifier below remains the only operator-approved tier source.
+  stripClientTierFields(translatedBody, credentials?.providerSpecificData);
   // Explicit model modifiers take precedence after translation on supported transports.
   if (supportsServiceTier(provider) && parsedModel.serviceTier &&
       (finalFormat === FORMATS.OPENAI || finalFormat === FORMATS.OPENAI_RESPONSES)) {

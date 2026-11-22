@@ -372,6 +372,11 @@ export const PROVIDER_PRICING = {
   },
   // OpenAI API list price. Over 272K input, whole request uses long-context rates.
   openai: {
+    // GPT-6.2 Sol bills like 6.1 Sol; Astra is cheaper than GPT-6 Astra.
+    // https://developers.openai.com/api/docs/models/gpt-6.2-sol
+    // https://developers.openai.com/api/docs/models/gpt-6.2-astra
+    "gpt-6.2-sol": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gpt-6.2-astra": { input: 8.00, output: 40.00, cached: 0.40, reasoning: 40.00, cache_creation: 10.00, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
     "gpt-6-astra": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
   },
   // Cline advertises these exact ids as Free; other providers bill their twins.

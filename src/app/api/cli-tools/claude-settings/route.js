@@ -8,7 +8,6 @@ import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
-import { writeConfigAtomic } from "@/lib/cliTools/writeConfigAtomic.js";
 
 const execAsync = promisify(exec);
 
@@ -162,7 +161,7 @@ export async function POST(request) {
     }
 
     // Write new settings
-    await writeConfigAtomic(settingsPath, JSON.stringify(newSettings, null, 2));
+    await fs.writeFile(settingsPath, JSON.stringify(newSettings, null, 2), { mode: 0o600 });
 
     return NextResponse.json({
       success: true,
@@ -221,7 +220,7 @@ export async function DELETE() {
     }
 
     // Write updated settings
-    await writeConfigAtomic(settingsPath, JSON.stringify(currentSettings, null, 2));
+    await fs.writeFile(settingsPath, JSON.stringify(currentSettings, null, 2), { mode: 0o600 });
 
     return NextResponse.json({
       success: true,

@@ -142,3 +142,19 @@ export const EmptyRoute = {
     await expect(await within(canvasElement).findByText("No connected provider supports this")).toBeVisible();
   },
 };
+
+export const CustomUnavailable = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-routes",
+      params: {},
+      routes: { "GET /api/media-providers/routes": { body: { routes: [customRoute] }, status: 200 } },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Custom order")).toBeVisible();
+    await expect(canvas.getByText("unavailable, skipped")).toBeVisible();
+  },
+};

@@ -1,0 +1,7 @@
+{
+  "route": "dialog/ModelSelectModal",
+  "stories": [
+    "production-shared-config-modelselectmodal--embedding-kind",
+    "production-shared-config-modelselectmodal--with-selection"
+  ]
+}

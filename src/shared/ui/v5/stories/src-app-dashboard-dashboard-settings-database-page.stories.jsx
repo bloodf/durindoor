@@ -10,3 +10,4 @@ export const StartupEnvFromEnvironment = { ...reviewStory(original.StartupEnvFro
 export const StartupEnvFromFile = { ...reviewStory(original.StartupEnvFromFile, {"source":"src/app/(dashboard)/dashboard/settings/database/page.stories.jsx","standalone":false}) };
 export const PostgresCutoverTarget = { ...reviewStory(original.PostgresCutoverTarget, {"source":"src/app/(dashboard)/dashboard/settings/database/page.stories.jsx","standalone":false}) };
 export const StatusUnavailable = { ...reviewStory(original.StatusUnavailable, {"source":"src/app/(dashboard)/dashboard/settings/database/page.stories.jsx","standalone":false}) };
+export const CutoverConfirm = { ...reviewStory(original.CutoverConfirm, {"source":"src/app/(dashboard)/dashboard/settings/database/page.stories.jsx","standalone":false}) };

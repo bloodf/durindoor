@@ -29,6 +29,8 @@ export default {
 //     by the providers / shared lane; see producer's stories).
 //   - EmbeddingExampleCard, SttExampleCard, TtsExampleCard, GenericExampleCard:
 //     exercised in their dedicated stories under [kind]/[id]/components/*.
+export const Loaded = {};
+
 export const EmbeddingExample = {};
 
 export const RunExample = {
@@ -48,6 +50,39 @@ export const TtsExample = {
       params: { kind: "tts", id: "openai" },
       routes: baseRoutes,
     },
+  },
+};
+
+export const SttExample = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/stt/openai",
+      params: { kind: "stt", id: "openai" },
+      routes: baseRoutes,
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByLabelText("Model")).toBeVisible();
+    await expect(canvas.getByLabelText("Audio file")).toBeInTheDocument();
+    await expect(canvas.getByText("Choose audio file")).toBeVisible();
+  },
+};
+
+export const GenericExample = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/webSearch/tavily",
+      params: { kind: "webSearch", id: "tavily" },
+      routes: baseRoutes,
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByLabelText("Query")).toBeVisible();
+    await expect(canvas.getByLabelText("API Key")).toBeVisible();
   },
 };
 

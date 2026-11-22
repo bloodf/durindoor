@@ -6,6 +6,7 @@ import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Pages/providers/ProviderDetailPage", parameters: reviewParameters(originalMeta.parameters, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
 export const OpenAIDetail = { ...reviewStory(original.OpenAIDetail, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const ZCodeProvider = { ...reviewStory(original.ZCodeProvider, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const SettingsControls = { ...reviewStory(original.SettingsControls, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const CompatibleBranch = { ...reviewStory(original.CompatibleBranch, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const CompatibleProxyOpen = { ...reviewStory(original.CompatibleProxyOpen, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
@@ -36,3 +37,9 @@ export const TencentAistudioWebConnection = { ...reviewStory(original.TencentAis
 export const TinycmsWebConnection = { ...reviewStory(original.TinycmsWebConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const BlackboxWebConnection = { ...reviewStory(original.BlackboxWebConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const ConolWebConnection = { ...reviewStory(original.ConolWebConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const CursorApiConnection = { ...reviewStory(original.CursorApiConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const DevinDesktopConnection = { ...reviewStory(original.DevinDesktopConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const WorkbuddyConnection = { ...reviewStory(original.WorkbuddyConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const MinimaxCodeConnection = { ...reviewStory(original.MinimaxCodeConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const ZedHostedConnection = { ...reviewStory(original.ZedHostedConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const FreebuffConnection = { ...reviewStory(original.FreebuffConnection, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };

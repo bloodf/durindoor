@@ -34,10 +34,10 @@ const repo = (...parts) => resolve(__dirname, "../..", ...parts);
 const read = (...parts) => readFileSync(repo(...parts), "utf8");
 
 describe("DURINDOOR_UI_V5 resolution", () => {
-  it("is off by default and exports the attribute name", () => {
-    expect(UI_V5_DEFAULT).toBe(false);
+  it("is on by default and exports the attribute name", () => {
+    expect(UI_V5_DEFAULT).toBe(true);
     expect(UI_V5_ATTRIBUTE).toBe("data-ui");
-    expect(isUiV5Enabled({})).toBe(false);
+    expect(isUiV5Enabled({})).toBe(true);
   });
 
   it.each(["1", "true", "on", "TRUE", " On "])("treats %j as on", (value) => {
@@ -60,10 +60,10 @@ describe("DURINDOOR_UI_V5 resolution", () => {
     vi.unstubAllEnvs();
   });
 
-  it("builds root attributes only when on", () => {
+  it("builds root attributes unless switched off", () => {
     expect(uiV5RootAttributes({ DURINDOOR_UI_V5: "on" })).toEqual({ "data-ui": "v5" });
     expect(uiV5RootAttributes({ DURINDOOR_UI_V5: "off" })).toEqual({});
-    expect(uiV5RootAttributes({})).toEqual({});
+    expect(uiV5RootAttributes({})).toEqual({ "data-ui": "v5" });
   });
 });
 
@@ -76,23 +76,25 @@ describe("root layout", () => {
     return tree.props;
   }
 
-  it("renders data-ui only when the switch is on", async () => {
+  it("renders data-ui when the switch is on", async () => {
     vi.stubEnv("DURINDOOR_UI_V5", "1");
     expect((await htmlProps())["data-ui"]).toBe("v5");
     vi.stubEnv("DURINDOOR_UI_V5", "on");
     expect((await htmlProps())["data-ui"]).toBe("v5");
   });
 
-  it("leaves the root element as today when the switch is off or unset", async () => {
+  it("leaves the root element as before when the switch is off, and renders v5 when unset", async () => {
     vi.stubEnv("DURINDOOR_UI_V5", "0");
     const off = await htmlProps();
     expect(off).not.toHaveProperty("data-ui");
+    expect(Object.keys(off).sort()).toEqual(["children", "dir", "lang", "suppressHydrationWarning"]);
+    expect(off.lang).toBe("en");
     vi.stubEnv("DURINDOOR_UI_V5", "");
-    expect(await htmlProps()).not.toHaveProperty("data-ui");
+    expect((await htmlProps())["data-ui"]).toBe("v5");
     delete process.env.DURINDOOR_UI_V5;
     const unset = await htmlProps();
-    expect(unset).not.toHaveProperty("data-ui");
-    expect(Object.keys(unset).sort()).toEqual(["children", "dir", "lang", "suppressHydrationWarning"]);
+    expect(unset["data-ui"]).toBe("v5");
+    expect(Object.keys(unset).sort()).toEqual(["children", "data-ui", "dir", "lang", "suppressHydrationWarning"]);
     expect(unset.lang).toBe("en");
   });
 

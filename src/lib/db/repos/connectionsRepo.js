@@ -22,6 +22,7 @@ import {
 
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
+import { connectionHasCredential } from "../../../shared/utils/credentialFingerprint.js";
 
 export { SENSITIVE_CONNECTION_FIELDS };
 
@@ -605,6 +606,7 @@ export async function recordProviderConnectionFallbackState(id, {
   cooldownMs,
   backoffLevel = 0,
   observedAt,
+  credentialFingerprint = null,
   webFetch = false,
   webSearch = false,
   videoPoll = false
@@ -633,6 +635,10 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
+    if (!connectionHasCredential(existing, credentialFingerprint)) {
+      result = { applied: false, connection: existing };
+      return;
+    }
     // Auth may have read this account before a concurrent terminal failure.
     // Recheck under the write transaction: ordinary cooldowns cannot demote
     // durable reauth or erase the marker that guards later success clearing.
@@ -684,6 +690,7 @@ export async function recordProviderConnectionFallbackState(id, {
 export async function clearProviderConnectionFallbackState(id, {
   model = null,
   observedAt,
+  credentialFingerprint = null,
   webFetch = false,
   webSearch = false
 } = {}, { signal = null, now = Date.now() } = {}) {
@@ -697,6 +704,10 @@ export async function clearProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
+    if (!connectionHasCredential(existing, credentialFingerprint)) {
+      result = { applied: false, connection: existing };
+      return;
+    }
     const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch });
     const relevantScopes = webFetch || webSearch || scope === "__all" ? [scope] : [scope, "__all"];
     const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;

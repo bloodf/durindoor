@@ -986,7 +986,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     });
   }
 
-  // Vercel relay: forward request via relay headers
+  // Vercel/Cloudflare relay: forward request via relay headers
   if (vercelRelayUrl) {
     const parsed = new URL(targetUrl);
     // new Headers() copies plain objects AND Headers instances; object spread
@@ -994,7 +994,27 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const relayHeaders = new Headers(options.headers);
     relayHeaders.set("x-relay-target", `${parsed.protocol}//${parsed.host}`);
     relayHeaders.set("x-relay-path", `${parsed.pathname}${parsed.search}`);
-    return runProviderAttemptDispatch(() => originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders }));
+
+    // Prefer an explicit option; otherwise peel a secret embedded as URL userinfo
+    // by resolveConnectionProxyConfig (credential hops that only forward vercelRelayUrl).
+    let relayFetchUrl = vercelRelayUrl;
+    let relaySecret = normalizeString(proxyOptions?.relaySecret);
+    try {
+      const relayParsed = new URL(vercelRelayUrl);
+      if (!relaySecret && relayParsed.username) {
+        relaySecret = decodeURIComponent(relayParsed.username);
+      }
+      if (relayParsed.username || relayParsed.password) {
+        relayParsed.username = "";
+        relayParsed.password = "";
+        relayFetchUrl = relayParsed.toString();
+      }
+    } catch {
+      // Keep the original relay URL when it is not a parseable absolute URL.
+    }
+    if (relaySecret) relayHeaders.set("x-relay-secret", relaySecret);
+
+    return runProviderAttemptDispatch(() => originalFetch(relayFetchUrl, { ...options, headers: relayHeaders }));
   }
 
   // A strict OAuth pool is an egress boundary, not a preference. If the

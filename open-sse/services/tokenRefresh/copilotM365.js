@@ -79,3 +79,52 @@ export async function refreshM365Token(credentials, log, proxyOptions = null) {
     }
   }, log, proxyOptions);
 }
+
+/**
+ * Mint an access token for another `scope` (the Designer artifact service) from a connection's
+ * refresh token, at its own tenant. Returns `{ accessToken, refreshToken, expiresIn }` or
+ * `{ error }`. De-duplicated per refresh token and scope, separately from the chat refresh, so the
+ * two never hand each other a token for the wrong audience. Ported from OmniRoute
+ * `refreshM365ScopedToken` (MIT) at 5ffa68e83544.
+ */
+export async function mintM365ScopedToken(credentials, scope, { signal, proxyOptions = null, log } = {}) {
+  const refreshToken = credentials?.refreshToken;
+  if (!isString(refreshToken) || !refreshToken) return { error: "missing_refresh_token" };
+  const tenant = m365RefreshTenant(credentials);
+  if (tenant === null) return { error: "invalid_tenant" };
+  const dedupKey = `copilot-m365-web:${scope}`;
+  return dedupRefresh(dedupKey, refreshToken, async () => {
+    try {
+      const timeout = AbortSignal.timeout(M365_REFRESH_TIMEOUT_MS);
+      const fetcher = (url, init) => proxyAwareFetch(url, init, proxyOptions);
+      const response = await credentialFetch(fetcher, m365TokenUrl(tenant), {
+        method: "POST",
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: new URLSearchParams({
+          client_id: getM365ClientId(),
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          scope
+        })
+      });
+      const body = await readTokenBody(response);
+      if (!response.ok || !isString(body.access_token) || !body.access_token) {
+        const code = isString(body.error) ? body.error : "m365_scoped_token_failed";
+        log?.warn?.("TOKEN_REFRESH", sanitizeErrorMessage(`M365 scoped token rejected: ${code}`));
+        return { error: code };
+      }
+      const expiresIn = isNumber(body.expires_in) && body.expires_in > 0 && body.expires_in <= 31_536_000 ?
+      body.expires_in :
+      undefined;
+      return {
+        accessToken: body.access_token,
+        refreshToken: isString(body.refresh_token) && body.refresh_token ? body.refresh_token : refreshToken,
+        ...(expiresIn ? { expiresIn } : null)
+      };
+    } catch (error) {
+      log?.warn?.("TOKEN_REFRESH", sanitizeErrorMessage(`M365 scoped token failed: ${error?.code || error?.name || "error"}`));
+      return { error: "m365_scoped_token_failed" };
+    }
+  }, log, proxyOptions);
+}

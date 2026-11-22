@@ -99,7 +99,7 @@ export function buildChatInvocation(opts) {
       spokenTextMode: "None",
       options: {},
       extraExtensionParameters: {},
-      allowedMessageTypes: [...ALLOWED_MESSAGE_TYPES],
+      allowedMessageTypes: [...(opts.allowedMessageTypes ?? ALLOWED_MESSAGE_TYPES)],
       sliceIds: [],
       threadLevelGptId: {},
       traceId: opts.traceId,

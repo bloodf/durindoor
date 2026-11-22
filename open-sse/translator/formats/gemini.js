@@ -624,7 +624,7 @@ function restoreNullableNodes(hits) {
  * schema property is itself named "properties", the properties-map dictionary would
  * be mistaken for a schema node and gain `type: "object"`, turning one of the
  * property values into the literal string `"object"` and triggering a Gemini 400.
- * Mutates `obj` in place.
+ * Converts string-valued property shorthand to schema objects and mutates `obj` in place.
  *
  * @param {object} obj - JSON Schema node to normalize (mutated in place).
  * @returns {void}
@@ -638,7 +638,15 @@ function ensureObjectType(obj) {
   // be mistaken for a schema node and gain `type: "object"`, turning one of the
   // property values into the literal string "object" -> Gemini 400.
   if (obj.properties && isObject(obj.properties)) {
-    for (const v of Object.values(obj.properties)) if (v && isObject(v)) ensureObjectType(v);
+    for (const [name, value] of Object.entries(obj.properties)) {
+      if (isString(value)) {
+        const type = value.toLowerCase();
+        obj.properties[name] = ["string", "number", "integer", "boolean", "array", "object"].includes(type)
+          ? { type }
+          : { type: "string", description: value };
+      }
+      if (obj.properties[name] && isObject(obj.properties[name])) ensureObjectType(obj.properties[name]);
+    }
   }
   if (obj.items && isObject(obj.items)) ensureObjectType(obj.items);
 }

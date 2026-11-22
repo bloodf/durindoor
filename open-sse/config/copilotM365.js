@@ -54,3 +54,11 @@ export function m365TokenUrl(tenant = "common") {
   if (tenant !== "common" && !isM365Guid(tenant)) throw new Error("invalid_tenant");
   return `${M365_LOGIN_ORIGIN}/${tenant}/oauth2/v2.0/token`;
 }
+
+/**
+ * The service behind generated-image artifacts. The chat token is refused there; the same
+ * first-party client is preauthorized for it, so a stored refresh token can mint one.
+ * Ported from OmniRoute `copilot-m365-connection.ts` (MIT) at 5ffa68e83544.
+ */
+export const M365_IMAGE_ARTIFACT_SCOPE =
+  "openid profile offline_access https://designerappservice.officeapps.live.com/.default";

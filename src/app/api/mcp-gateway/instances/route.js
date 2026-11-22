@@ -1,14 +1,49 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { NextResponse } from "next/server";
 import { getInstances, createInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
-import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import {
+  assertOutboundUrlAllowed,
+  assertResolvedAddressAllowed,
+  getProviderValidationGuard,
+  OutboundUrlGuardError
+} from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
 const SLUG_RE = /^[a-z0-9-]{2,40}$/;
+
+/**
+ * Persist-time SSRF check (#2237): static assertOutboundUrlAllowed plus DNS
+ * resolution so names that resolve to blocked addresses (nip.io → loopback,
+ * attacker A → metadata) are rejected before the row is stored. DNS failures
+ * fail open (same as assertPublicUrlResolved) so transient lookup errors do
+ * not block legitimate creates; connection-time guardedProbeFetch still pins.
+ */
+async function assertInstanceUrlAllowed(rawUrl) {
+  const guard = getProviderValidationGuard();
+  const url = assertOutboundUrlAllowed(rawUrl, guard);
+  if (guard === "none") return url;
+  const host = url.hostname;
+  if (isIP(host)) {
+    assertResolvedAddressAllowed(host, guard);
+    return url;
+  }
+  let addresses;
+  try {
+    addresses = await dnsLookup(host, { all: true, verbatim: true });
+  } catch {
+    return url;
+  }
+  for (const { address } of addresses) {
+    assertResolvedAddressAllowed(address, guard);
+  }
+  return url;
+}
 
 const VALID_KINDS = new Set(["http", "sse", "npx", "python", "docker", "command"]);
 const VALID_TRANSPORTS = new Set(["http", "sse", "stdio"]);
@@ -72,7 +107,7 @@ export async function POST(request) {
     // OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS=false.
     if (body.url) {
       try {
-        assertOutboundUrlAllowed(body.url);
+        await assertInstanceUrlAllowed(body.url);
       } catch (err) {
         if (err instanceof OutboundUrlGuardError) {
           console.log("MCP instance URL blocked by SSRF guard:", err?.message, "url=", err?.url);

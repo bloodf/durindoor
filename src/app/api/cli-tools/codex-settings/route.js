@@ -1,5 +1,7 @@
 "use server";
 
+import { migrateCodexFeatureFlags } from "@/shared/utils/codexConfig";
+
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -211,7 +213,7 @@ export async function POST(request) {
       readExistingConfig(authPath, (raw) => parseConfigObject(raw, JSON.parse)),
       readExistingConfig(backupPath, (raw) => parseConfigObject(raw, JSON.parse)),
     ]);
-    const parsed = existingConfig ?? {};
+    const parsed = migrateCodexFeatureFlags(existingConfig ?? {});
     const authData = existingAuth ?? {};
 
     const effectiveSubagentModel = subagentModel || model;
@@ -343,7 +345,7 @@ export async function DELETE() {
       });
     }
 
-    const parsed = existingConfig;
+    const parsed = migrateCodexFeatureFlags(existingConfig);
 
     // Remove 9router provider section and clean up empty [model_providers]
     deleteNestedSection(parsed, "model_providers.9router");

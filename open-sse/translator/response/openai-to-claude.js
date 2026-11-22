@@ -27,10 +27,18 @@ function deduplicateDoubledJson(str) {
   return str;
 }
 
+// Some non-Anthropic models wrap tool arguments in a markdown ```json fence.
+// Strip it so Claude clients receive parseable JSON (9router #1711).
+function stripJsonFence(argsJson) {
+  if (!isString(argsJson)) return argsJson;
+  return argsJson.trim().replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+}
+
 // Sanitize tool call arguments to fix bad params from non-Anthropic models
 function sanitizeToolArgs(toolName, argsJson) {
+  const cleaned = stripJsonFence(argsJson);
   try {
-    const args = JSON.parse(argsJson);
+    const args = JSON.parse(cleaned);
     const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
     toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) :
     toolName;
@@ -38,8 +46,8 @@ function sanitizeToolArgs(toolName, argsJson) {
     return JSON.stringify(args);
   } catch {
     // Deduplicate doubled JSON before giving up
-    const deduplicated = deduplicateDoubledJson(argsJson);
-    if (deduplicated !== argsJson) {
+    const deduplicated = deduplicateDoubledJson(cleaned);
+    if (deduplicated !== cleaned) {
       try {
         const args = JSON.parse(deduplicated);
         const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
@@ -49,7 +57,7 @@ function sanitizeToolArgs(toolName, argsJson) {
         return JSON.stringify(args);
       } catch {/* fall through to raw return */}
     }
-    return argsJson;
+    return cleaned;
   }
 }
 

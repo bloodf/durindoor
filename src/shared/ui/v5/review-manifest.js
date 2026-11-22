@@ -668,11 +668,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-savers-headroomclient--running-with-events",
     "states": [
       "RunningWithEvents",
-      "SetupDiagnostic"
+      "SetupDiagnostic",
+      "LoadFailure"
     ],
     "storyIds": [
       "v5-review-pages-savers-headroomclient--running-with-events",
-      "v5-review-pages-savers-headroomclient--setup-diagnostic"
+      "v5-review-pages-savers-headroomclient--setup-diagnostic",
+      "v5-review-pages-savers-headroomclient--load-failure"
     ],
     "pathname": "/dashboard/headroom",
     "routePattern": "/dashboard/headroom",
@@ -1339,14 +1341,52 @@ export const REVIEW_SURFACES = [
       "SettingsControls",
       "CompatibleBranch",
       "CompatibleProxyOpen",
-      "MnnAiConnection"
+      "MnnAiConnection",
+      "ClaudeWebConnection",
+      "GeminiWebConnection",
+      "DeepseekWebConnection",
+      "DoubaoWebConnection",
+      "ZaiWebConnection",
+      "ChatgptWebCodexConnection",
+      "HelyxaiConnection",
+      "TabitokenConnection",
+      "TwinmindConnection",
+      "HyperagentConnection",
+      "MaxaiConnection",
+      "LmarenaConnection",
+      "ChatplaygroundConnection",
+      "CloudflarePlaygroundConnection",
+      "PoeConnection",
+      "G4fGeminiConnection",
+      "G4fNvidiaConnection",
+      "G4fOllamaConnection",
+      "G4fPollinationsConnection"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerdetailpage--open-ai-detail",
       "v5-review-pages-providers-providerdetailpage--settings-controls",
       "v5-review-pages-providers-providerdetailpage--compatible-branch",
       "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
-      "v5-review-pages-providers-providerdetailpage--mnn-ai-connection"
+      "v5-review-pages-providers-providerdetailpage--mnn-ai-connection",
+      "v5-review-pages-providers-providerdetailpage--claude-web-connection",
+      "v5-review-pages-providers-providerdetailpage--gemini-web-connection",
+      "v5-review-pages-providers-providerdetailpage--deepseek-web-connection",
+      "v5-review-pages-providers-providerdetailpage--doubao-web-connection",
+      "v5-review-pages-providers-providerdetailpage--zai-web-connection",
+      "v5-review-pages-providers-providerdetailpage--chatgpt-web-codex-connection",
+      "v5-review-pages-providers-providerdetailpage--helyxai-connection",
+      "v5-review-pages-providers-providerdetailpage--tabitoken-connection",
+      "v5-review-pages-providers-providerdetailpage--twinmind-connection",
+      "v5-review-pages-providers-providerdetailpage--hyperagent-connection",
+      "v5-review-pages-providers-providerdetailpage--maxai-connection",
+      "v5-review-pages-providers-providerdetailpage--lmarena-connection",
+      "v5-review-pages-providers-providerdetailpage--chatplayground-connection",
+      "v5-review-pages-providers-providerdetailpage--cloudflare-playground-connection",
+      "v5-review-pages-providers-providerdetailpage--poe-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-gemini-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-nvidia-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-ollama-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-pollinations-connection"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",
@@ -1578,7 +1618,8 @@ export const REVIEW_SURFACES = [
       "Loading",
       "KeyboardPagingAndRange",
       "RTL",
-      "MobileViewport"
+      "MobileViewport",
+      "EventsFailure"
     ],
     "storyIds": [
       "v5-review-pages-pxpipe-pxpipeclient--populated",
@@ -1587,7 +1628,8 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-pxpipe-pxpipeclient--loading",
       "v5-review-pages-pxpipe-pxpipeclient--keyboard-paging-and-range",
       "v5-review-pages-pxpipe-pxpipeclient--rtl",
-      "v5-review-pages-pxpipe-pxpipeclient--mobile-viewport"
+      "v5-review-pages-pxpipe-pxpipeclient--mobile-viewport",
+      "v5-review-pages-pxpipe-pxpipeclient--events-failure"
     ],
     "pathname": "/dashboard/pxpipe",
     "routePattern": "/dashboard/pxpipe",

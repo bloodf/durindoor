@@ -1,0 +1,8 @@
+{
+  "route": "/dashboard/compression-studio",
+  "stories": [
+    "durin-ds-production-pages-compression-studio--empty",
+    "durin-ds-production-pages-compression-studio--unavailable-engine",
+    "durin-ds-production-pages-compression-studio--preview-failure"
+  ]
+}

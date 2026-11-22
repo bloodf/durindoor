@@ -1,0 +1,10 @@
+{
+  "route": "/dashboard/pxpipe",
+  "stories": [
+    "production-pxpipe-pxpipeclient--populated",
+    "production-pxpipe-pxpipeclient--empty",
+    "production-pxpipe-pxpipeclient--unavailable",
+    "production-pxpipe-pxpipeclient--loading",
+    "production-pxpipe-pxpipeclient--events-failure"
+  ]
+}

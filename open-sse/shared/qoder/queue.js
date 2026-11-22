@@ -1,11 +1,13 @@
 /**
- * Qoder model-queue handling (ported from upstream 9router 2720cd2a, trimmed).
+ * Qoder model-queue handling (ported from upstream 9router / qodercli queue
+ * polling, trimmed for DurinDoor's attempt + wall-clock budget).
  *
  * When a model is temporarily out of capacity Qoder answers the inference
  * request with a `{statusCodeValue, body}` SSE envelope whose body carries
  * `{ "code": "10605", "message": "{\"isQueued\":true,...,\"retryAfterSeconds\":30}",
  * "subCode": "RESOURCE_LIMIT" }`. That is a transient capacity signal, not a
- * billing block: the same request succeeds once the queue drains.
+ * billing block: the same request succeeds once the queue drains. Upstream
+ * also polls `/algo/api/v2/service/ask/queue/status` while waiting.
  *
  * The payload is frequently double-encoded, so lookups walk nested objects and
  * JSON-encoded string fields.
@@ -28,6 +30,9 @@ const DEFAULT_RETRY_MS = 30_000;
 // makes the throttle worse, so the floor is a full retry interval.
 const MIN_RETRY_MS = 15_000;
 const MAX_RETRY_MS = 60_000;
+// The queue-status endpoint can report isQueued:false while the inference call
+// is still refused, so its hint is not trusted below the default interval.
+const STATUS_HINT_FLOOR_MS = 30_000;
 
 const NESTED_KEYS = ["error", "data", "body", "message", "cause", "result", "payload"];
 
@@ -118,11 +123,44 @@ export function parseQoderQueueInfo(input) {
   return queued ? info : null;
 }
 
-/** Delay before the next replay: the server hint clamped into MIN..MAX. */
-export function computeQoderQueueDelayMs(info) {
+/**
+ * Delay before the next replay: the server hint clamped into MIN..MAX.
+ * Status-derived hints also honour STATUS_HINT_FLOOR_MS (see above).
+ */
+export function computeQoderQueueDelayMs(info, { fromStatus = false } = {}) {
   const hint = toNumber(info?.retryAfterSeconds) ?? toNumber(info?.waitTime);
-  const ms = hint === undefined ? DEFAULT_RETRY_MS : hint * 1000;
+  let ms = hint === undefined ? DEFAULT_RETRY_MS : hint * 1000;
+  if (fromStatus) ms = Math.max(ms, STATUS_HINT_FLOOR_MS);
   return Math.min(MAX_RETRY_MS, Math.max(MIN_RETRY_MS, ms));
+}
+
+/** Queue-status URL qodercli polls while a request sits in the model queue. */
+export function qoderQueueStatusUrl(baseUrl, { requestSetId, modelKey, queueType } = {}) {
+  const params = new URLSearchParams();
+  if (requestSetId) params.set("requestSetId", requestSetId);
+  if (modelKey) params.set("modelKey", modelKey);
+  if (queueType) params.set("queueType", queueType);
+  return `${baseUrl}/algo/api/v2/service/ask/queue/status?${params}`;
+}
+
+/**
+ * Parse a queue-status body. Returns null when the shape is unknown so the
+ * caller can fall back to the inference refusal's timed delay.
+ */
+export function parseQoderQueueStatus(input) {
+  const root = isString(input) ? tryParse(input) : input;
+  if (!isPlainObject(root)) return null;
+  const isQueued = toBool(root.isQueued);
+  if (isQueued === undefined) return null;
+  return {
+    isQueued,
+    serviceAvailable: toBool(root.serviceAvailable),
+    modelKey: toText(root.modelKey),
+    queueType: toText(root.queueType),
+    queueCount: toNumber(root.queueCount),
+    retryAfterSeconds: toNumber(root.retryAfterSeconds),
+    waitTime: toNumber(root.waitTime),
+  };
 }
 
 /** Total budget for holding a request open while its model is queued. */

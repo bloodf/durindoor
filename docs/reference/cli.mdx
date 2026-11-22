@@ -3,7 +3,7 @@ title: CLI
 description: Launcher flags, listen defaults, heap settings, tray behavior, and updates.
 ---
 
-The `durindoor` npm package starts the bundled standalone server. It has no subcommands. The package requires Node.js `>=24.22.2 <25`; the repository pins Node.js `24.22.2` (`.nvmrc`) and pnpm `12.18.0`.
+The `durindoor` npm package starts the bundled standalone server. Its `admin` command reads local gateway data. The package requires Node.js `>=24.22.2 <25`; the repository pins Node.js `24.22.2` (`.nvmrc`) and pnpm `12.18.0`.
 
 ```bash
 npm install --global durindoor
@@ -31,14 +31,33 @@ For a runtime change, record the exact Node version, operating system, architect
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `-p, --port <port>` | `20128` | Listen port. Parses the next argument as an integer; an invalid or zero value falls back to `20128`. |
-| `-H, --host <host>` | `0.0.0.0` | Bind address. `127.0.0.1` restricts access to this machine. |
+| `-p, --port <port>` | `20128` | Listen port, an integer from `1` through `65535`. |
+| `-H, --host <host>` | `0.0.0.0` | Bind address. Requires a value. `127.0.0.1` restricts access to this machine. |
 | `-n, --no-browser` | off | Accepted for compatibility. Startup does not automatically open a browser with either value. |
 | `-l, --log` | off | Show server stdout and stderr. Without it, stdout is hidden and stderr retains a 50-line crash buffer. |
 | `-t, --tray` | off | Start in tray mode and skip the terminal menu. |
+| `--headless` | off | Run without browser, tray or interactive menu; overrides `--tray`. |
 | `--skip-update` | off | Skip the npm registry version check. Without a TTY, this also selects tray mode. |
 | `-h, --help` | | Print usage and exit `0`. |
 | `-v, --version` | | Print the installed package version and exit `0`. |
+
+`--host` and `--port` require a value. Missing values, a next argument beginning
+with `--`, or a port outside the stated range exit with status `2`.
+
+## Admin command
+
+With the gateway running, retrieve a local combo by ID:
+
+```bash
+durindoor admin combos get <id>
+durindoor admin combos get <id> --port 20129
+durindoor admin --help
+```
+
+The command prints the existing combo API response as JSON. It uses loopback HTTP
+and the local management token from the server's `DATA_DIR`; it does not start
+the gateway or contact model providers. Invalid arguments exit `2`; API or
+connection failures exit `1`. Launcher flags such as `--host` are not accepted.
 
 <Callout type="warn">
 The default bind accepts connections on all interfaces. Remote access requires the settings in [Security](../operations/security.mdx).

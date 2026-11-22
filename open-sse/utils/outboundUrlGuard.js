@@ -46,6 +46,7 @@
 import { lookup as dnsLookup } from "node:dns";
 import { isIP } from "node:net";
 import { Agent, buildConnector } from "undici";
+import { isBlockedHost } from "../../src/shared/utils/ssrfGuard.js";
 import {
   PRIVATE_PROVIDER_URLS_ENV,
   LOCAL_PROVIDER_URLS_ENV,
@@ -106,69 +107,12 @@ function embeddedIpv4Address(host, includeCompatible = false) {
 
 export function isPrivateHost(hostname) {
   const normalized = normalizeHost(hostname);
-  if (!normalized) return true;
-
-  if (
-  normalized === "localhost" ||
-  normalized.endsWith(".localhost") ||
-  normalized.endsWith(".local") ||
-  normalized.endsWith(".internal"))
-  {
-    return true;
-  }
-
-  if (isIP(normalized) === 4) {
-    const [a, b, c, d] = normalized.split(".").map((s) => parseInt(s, 10));
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    // 192.0.0.0/24 IETF protocol assignments (special-use). The block itself is
-    // "not useable unless by virtue of a more specific reservation" (IANA
-    // footnote), and two /32 reservations inside it are real anycast
-    // destinations that IANA marks Globally Reachable = True:
-    //   192.0.0.9  — Port Control Protocol Anycast (RFC 7723)
-    //   192.0.0.10 — Traversal Using Relays around NAT Anycast (RFC 8155)
-    // Both are protocol-independent routable anycast addresses, so they stay
-    // public. Every other address in the /24 (the IPv4 Service Continuity
-    // Prefix 192.0.0.0/29, the 192.0.0.8 dummy address, the NAT64/DNS64
-    // discovery addresses 192.0.0.170/171 and everything unassigned) keeps the
-    // non-public classification.
-    if (a === 192 && b === 0 && c === 0 && d !== 9 && d !== 10) return true;
-    // 224.0.0.0/4 multicast plus 240.0.0.0/4 reserved, whose top address is the
-    // limited broadcast 255.255.255.255. 198.18.0.0/15 (benchmarking) stays
-    // allowed for fake-IP proxy setups.
-    if (a >= 224) return true;
-    return false;
-  }
-
-  if (isIP(normalized) === 6) {
-    const words = ipv6ToWords(normalized);
-    if (!words) return true;
-    if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
-      return isPrivateHost(wordsToIpv4(words));
-    }
-    // NAT64 well-known prefix 64:ff9b::/96 embeds an IPv4 address in the low
-    // 32 bits; classify that address by the IPv4 table. The local-use prefix
-    // 64:ff9b:1::/48 is special-use space and is never public.
-    if (words[0] === 0x0064 && words[1] === 0xff9b) {
-      if (words.slice(2, 6).every((word) => word === 0)) return isPrivateHost(wordsToIpv4(words));
-      if (words[2] === 0x0001) return true;
-    }
-    // Unspecified, loopback, and deprecated IPv4-compatible IPv6 (::/96).
-    if (words.slice(0, 6).every((word) => word === 0)) return true;
-    const first = words[0];
-    return (
-      (first & 0xfe00) === 0xfc00 ||
-      (first & 0xffc0) === 0xfe80 ||
-      (first & 0xffc0) === 0xfec0 ||
-      (first & 0xff00) === 0xff00 ||
-      first === 0x2001 && words[1] === 0x0db8);
-
-  }
-
-  return false;
+  if (!normalized || isBlockedHost(normalized)) return true;
+  const words = ipv6ToWords(normalized);
+  if (!words) return false;
+  // Preserve the outbound guard's additional local-use NAT64 and documentation blocks.
+  return words[0] === 0x0064 && words[1] === 0xff9b && words[2] === 0x0001 ||
+    words[0] === 0x2001 && words[1] === 0x0db8;
 }
 
 const CLOUD_METADATA_HOSTNAMES = new Set([

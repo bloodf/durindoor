@@ -1,8 +1,7 @@
 // SSRF guard: block internal/private/metadata targets for server-side fetch.
 //
 // Three layers, each closing a distinct bypass class documented in #3714:
-//   1. assertPublicUrl        - synchronous literal-IP/hostname checks (cheap, for
-//                                immediate rejection of obviously-bad input at request-build time).
+//   1. isBlockedHost           - shared literal-IP/hostname address classifier.
 //   2. assertPublicUrlResolved - adds DNS resolution so a hostname that merely
 //                                *resolves* to a private/loopback address (e.g. a
 //                                nip.io/sslip.io wildcard-DNS domain, or an attacker's
@@ -46,6 +45,9 @@ const BLOCKED_V4_RANGES = [
   [ipv4ToInt("169.254.0.0"), 16], // includes 169.254.169.254 cloud metadata
   [ipv4ToInt("172.16.0.0"), 12],
   [ipv4ToInt("192.168.0.0"), 16],
+  [ipv4ToInt("192.0.0.0"), 24], // special-use protocol assignments
+  [ipv4ToInt("224.0.0.0"), 4], // multicast
+  [ipv4ToInt("240.0.0.0"), 4], // reserved, including limited broadcast
 ];
 
 function isBlockedIpv4Int(ip) {
@@ -124,6 +126,9 @@ function isBlockedIpv6Groups(g) {
   if (g.every((x) => x === 0)) return true;
   // link-local fe80::/10
   if ((g[0] & 0xffc0) === 0xfe80) return true;
+  // deprecated site-local and multicast address space
+  if ((g[0] & 0xffc0) === 0xfec0) return true;
+  if ((g[0] & 0xff00) === 0xff00) return true;
   // unique local fc00::/7
   if ((g[0] & 0xfe00) === 0xfc00) return true;
   // IPv4-mapped ::ffff:0:0/96 (0:0:0:0:0:ffff:a.b.c.d — the 0xffff marker is
@@ -158,15 +163,7 @@ export function isBlockedHost(host) {
   return false;
 }
 
-// Throw if URL targets a non-public host by literal hostname/IP alone (no DNS
-// resolution — see assertPublicUrlResolved for that). Caller should map to 400.
-export function assertPublicUrl(rawUrl) {
-  const parsed = new URL(rawUrl);
-  const host = normalizeHost(parsed.hostname);
-  if (isBlockedHost(host)) throw new Error("Blocked URL: internal host");
-}
-
-// Async: assertPublicUrl plus DNS resolution of non-literal hostnames, so a
+// Resolve and validate non-literal hostnames, so a
 // domain that merely *resolves* to a private/loopback/metadata address (wildcard-DNS
 // services like nip.io/sslip.io, or an attacker-controlled domain with an A record
 // pointed at 127.0.0.1) is rejected too, not just IPs typed directly into the URL.

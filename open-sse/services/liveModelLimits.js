@@ -87,7 +87,7 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
   const endpoint = isString(options.endpoint) && options.endpoint.trim() ?
   options.endpoint.trim() :
   derivedEndpoint;
-  if (!token || !endpoint) return null;
+  if ((!token && !options.allowNoAuth) || !endpoint) return null;
   const key = cacheKey(endpoint, `${token}:${options.cacheVariant || options.anthropic === true}:${JSON.stringify(options.modelAliases || {})}`);
   const now = Date.now();
   const cached = catalogCache.get(key);

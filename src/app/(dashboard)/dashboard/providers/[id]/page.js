@@ -157,6 +157,7 @@ function ProviderDetail({ providerId }) {
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [connectionFilter, setConnectionFilter] = useState("");
   const [connectionPageNumber, setConnectionPageNumber] = useState(1);
+  const [connectionPageSize, setConnectionPageSize] = useState(25);
   const [bulkFailures, setBulkFailures] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
@@ -1341,7 +1342,7 @@ function ProviderDetail({ providerId }) {
   const selectedActiveCount = selectedConnections.filter((conn) => conn.isActive !== false).length;
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
   const visibleConnections = connections.filter((conn) => `${conn.name || ""} ${conn.email || ""}`.toLowerCase().includes(connectionFilter.trim().toLowerCase()));
-  const { page, pageCount, items: pageConnections } = connectionPage(visibleConnections, connectionPageNumber);
+  const { page, pageCount, items: pageConnections } = connectionPage(visibleConnections, connectionPageNumber, connectionPageSize);
   const allSelected = pageConnections.length > 0 && pageConnections.every((conn) => selectedConnectionIds.includes(conn.id));
   const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped", "unavailable"].includes(oneByOneResults[conn.id]?.state)).length;
 
@@ -2363,6 +2364,12 @@ function ProviderDetail({ providerId }) {
               {selectedConnections.length > 0 && <details className="mb-3 text-sm text-dd-muted"><summary className="min-h-11 cursor-pointer py-3">Review {selectedConnections.length} selected connections</summary><ul>{selectedConnections.map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id} ({conn.id})</li>)}</ul></details>}
               {bulkFailures.length > 0 && <div role="alert" className="mb-3 text-sm text-dd-danger"><p>Some connections could not be updated:</p><ul>{bulkFailures.map((failure) => <li key={failure.id}>{failure.name} ({failure.id}): {failure.reason}</li>)}</ul></div>}
               {connectionsList}
+              <label className="mt-3 flex items-center gap-2 text-xs text-dd-muted">
+                Connections per page
+                <select value={connectionPageSize} onChange={(event) => { setConnectionPageSize(Number(event.target.value)); setConnectionPageNumber(1); }} className="rounded border border-dd-border bg-transparent p-2">
+                  {[10, 25, 50, 100, 200].map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </label>
               {pageCount > 1 && <nav aria-label="Connection pages" className="mt-3 flex items-center gap-2">
                 <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setConnectionPageNumber(page - 1)}>Previous</Button>
                 <span aria-live="polite" className="text-xs text-dd-muted">Page {page} of {pageCount} ({visibleConnections.length} matching)</span>

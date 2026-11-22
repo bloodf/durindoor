@@ -24,28 +24,10 @@ vi.mock("../../open-sse/utils/requestLogger.js", async (original) => ({
   createRequestLogger: vi.fn(async () => ({ logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(), logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn() })),
 }));
 
-// The staging rule: the entry and executor are composed here, never registered.
-vi.mock("../../open-sse/providers/registry/index.js", async (original) => {
-  const actual = await original();
-  const { default: entry } = await import("../../open-sse/providers/private/freebuff.js");
-  return { ...actual, default: [...actual.default, entry] };
-});
-vi.mock("../../open-sse/executors/index.js", async (original) => {
-  const actual = await original();
-  const { FreebuffExecutor } = await import("../../open-sse/executors/freebuff.js");
-  const executor = new FreebuffExecutor({ fetch: routed });
-  const isFreebuff = (id) => id === "freebuff" || id === "fb";
-  return {
-    ...actual,
-    getExecutor: (id) => (isFreebuff(id) ? executor : actual.getExecutor(id)),
-    hasSpecializedExecutor: (id) => isFreebuff(id) || actual.hasSpecializedExecutor(id),
-  };
-});
-
 import entry, {
   FREEBUFF_AGENT_BY_MODEL, FREEBUFF_MODELS, FREEBUFF_OAUTH, FREEBUFF_OPT_IN_KEY,
   freebuffConnectionOptIn, freebuffCookieProfile,
-} from "../../open-sse/providers/private/freebuff.js";
+} from "../../open-sse/providers/registry/freebuff.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../../open-sse/providers/index.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
@@ -93,6 +75,8 @@ function fakeService({ session = () => json({ instanceId: "inst-1" }), chat, run
 const chatCall = (calls) => calls.find((call) => call.url === FREEBUFF_CHAT_URL);
 
 beforeEach(() => { fetchHolder.fetch = vi.fn(async () => { throw new Error("no network in tests"); }); });
+// The production executor map holds the shared instance; route its transport through the closed fetch.
+beforeEach(() => { getExecutor("freebuff").fetchImpl = routed; });
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe("Freebuff staged entry", () => {

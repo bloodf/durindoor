@@ -20,7 +20,7 @@ describe("WorkBuddy device authorization", () => {
   });
 });
 
-import provider, { modelsConfig } from "../../open-sse/providers/private/workbuddy.js";
+import provider, { modelsConfig } from "../../open-sse/providers/registry/workbuddy.js";
 import { WorkbuddyExecutor } from "../../open-sse/executors/workbuddy.js";
 
 it("keeps dispatch disabled until a connection opts in", async () => {
@@ -36,30 +36,7 @@ it("parses authenticated discovery without seeding a catalog", () => {
 });
 
 const upstream = vi.hoisted(() => vi.fn());
-vi.mock("../../open-sse/providers/registry/index.js", async (original) => {
-  const registry = await original();
-  const { default: entry } = await import("../../open-sse/providers/private/workbuddy.js");
-  return { ...registry, default: [...registry.default, entry] };
-});
-vi.mock("../../open-sse/providers/index.js", async (original) => {
-  const registry = await original();
-  const { default: entry } = await import("../../open-sse/providers/private/workbuddy.js");
-  return { ...registry, PROVIDERS: { ...registry.PROVIDERS, workbuddy: { ...entry.transport, authType: "oauth" } },
-    PROVIDER_MODELS: { ...registry.PROVIDER_MODELS, workbuddy: [], wb: [] },
-    PROVIDER_MEDIA: { ...registry.PROVIDER_MEDIA, workbuddy: { serviceKinds: ["llm"] } } };
-});
-vi.mock("../../open-sse/executors/index.js", async (original) => {
-  const executors = await original();
-  const { WorkbuddyExecutor: Executor } = await import("../../open-sse/executors/workbuddy.js");
-  const instance = new Executor();
-  return { ...executors, getExecutor: (id) => id === "workbuddy" ? instance : executors.getExecutor(id) };
-});
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: upstream }));
-vi.mock("../../src/app/api/providers/[id]/models/modelsConfig.js", async (original) => {
-  const configs = await original();
-  const { modelsConfig: config } = await import("../../open-sse/providers/private/workbuddy.js");
-  return { ...configs, PROVIDER_MODELS_CONFIG: { ...configs.PROVIDER_MODELS_CONFIG, workbuddy: config } };
-});
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));

@@ -8,7 +8,7 @@
 // https://cursor.com/dashboard/api) that the executor exchanges for a one-hour
 // session token. It is a separate identity so API-key and IDE-session
 // connections never share renewal, quota or dashboard semantics.
-import cursor from "../registry/cursor.js";
+import cursor from "./cursor.js";
 
 // A user API key is a bearer secret, not a browser session, so there is no
 // cookie to capture. Exported so the registration batch can see the contract is

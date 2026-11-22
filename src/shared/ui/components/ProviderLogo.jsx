@@ -43,6 +43,10 @@ const ALIASES = {
   "zai-web": "glm",
   "cloudflare-playground": "cloudflare-ai",
   "tencent-aistudio-web": "tencent",
+  // Opt-in sign-in providers reuse their vendor's mark where one exists locally.
+  "cursor-api": "cursor",
+  "minimax-code": "minimax",
+  zcode: "glm",
 };
 
 // Local asset availability; provider metadata is not imported (it starts runtime services).
@@ -62,10 +66,10 @@ const MARKS = {
   "continue": "svg", "copilot": "svg", "coqui": "png", "coze": "svg",
   "crof": "svg", "cursor": "svg", "deepgram": "svg", "deepseek": "svg",
   "deepseek-tui": "png", "dgrid": "svg", "dify": "svg", "digitalocean": "svg",
-  "dit": "svg", "docker-model-runner": "svg", "doubao": "svg", "droid": "svg",
+  "devin-desktop": "svg", "dit": "svg", "docker-model-runner": "svg", "doubao": "svg", "droid": "svg",
   "duckduckgo-web": "svg", "edge-tts": "png", "elevenlabs": "svg", "empower": "png",
   "exa": "svg", "factory": "svg", "fal-ai": "png", "firecrawl": "png",
-  "fireworks": "svg", "freeaiapikey": "svg", "freemodel-dev": "svg", "galadriel": "svg",
+  "fireworks": "svg", "freeaiapikey": "svg", "freebuff": "svg", "freemodel-dev": "svg", "galadriel": "svg",
   "gemini": "svg", "gemini-cli": "png", "gigachat": "png", "github": "png",
   "github-models": "png", "gitlab": "svg", "gitlab-duo": "svg", "gitlawb": "svg",
   "gitlawb-gmi": "svg", "glm": "png", "glm-cn": "png", "glmt": "png",
@@ -100,7 +104,7 @@ const MARKS = {
   "tencent": "svg", "theoldllm": "svg", "together": "png", "tokenrouter": "svg",
   "topaz": "png", "tortoise": "png", "uncloseai": "svg", "veoaifree-web": "svg",
   "vertex": "png", "vertex-partner": "png", "volcengine-ark": "png", "voyage-ai": "png",
-  "wafer": "svg", "wandb": "svg", "x5lab": "svg", "xai": "svg",
+  "wafer": "svg", "workbuddy": "svg", "wandb": "svg", "x5lab": "svg", "xai": "svg",
   "xiaomi-mimo": "png", "xiaomi-tokenplan": "png", "yi": "svg", "youcom": "png",
   "youcom-search": "svg", "yuanbao-web": "svg", "zed-hosted": "svg", "zenmux": "svg",
   "zenmux-free": "svg", "zeroclaw": "png",

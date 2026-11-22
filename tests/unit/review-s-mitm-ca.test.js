@@ -76,11 +76,13 @@ describe("review-s-mitm-ca (#2274)", () => {
       .sort();
     expect(permitted).toEqual([...TARGET_HOSTS].map((host) => host.toLowerCase()).sort());
 
-    const serialHex = String(cert.serialNumber).replace(/^0+/, "") || "0";
-    expect(serialHex).not.toBe("1");
+    const serialHex = String(cert.serialNumber);
+    expect(serialHex).not.toMatch(/^0*1$/);
     expect(serialHex.length).toBeGreaterThanOrEqual(30);
     expect(serialHex.length).toBeLessThanOrEqual(32);
-    expect(parseInt(serialHex.slice(0, 2), 16) & 0x80).toBe(0);
+    const serialBytes = Buffer.from(serialHex.padStart(32, "0"), "hex");
+    expect(serialBytes.length).toBe(16);
+    expect(serialBytes[0] & 0x80).toBe(0);
 
     const ms = cert.validity.notAfter.getTime() - cert.validity.notBefore.getTime();
     const years = ms / (365.25 * 24 * 60 * 60 * 1000);

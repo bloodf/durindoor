@@ -7,7 +7,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ActionEntry",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ActionEntry",
-      "sourceSha256": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+      "sourceSha256": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -27,7 +27,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           },
           "proposedSourceEvidence": "Private action entry rendered by StatusPreview",
@@ -127,7 +127,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#AutoConfigureClient",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "AutoConfigureClient",
-      "sourceSha256": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+      "sourceSha256": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -149,7 +149,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           },
           "proposedSourceEvidence": "AutoConfigureClient.stories.jsx StatusPreview",
@@ -170,7 +170,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           },
           "proposedSourceEvidence": "Play clicks Run auto-configure."
@@ -184,7 +184,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           },
           "proposedSourceEvidence": "AutoConfigureClient.stories.jsx RunFailure",
@@ -363,7 +363,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ResultSummary",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ResultSummary",
-      "sourceSha256": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+      "sourceSha256": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -383,7 +383,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           },
           "proposedSourceEvidence": "Private result summary rendered by RunSuccess",
@@ -492,7 +492,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ServiceRow",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ServiceRow",
-      "sourceSha256": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+      "sourceSha256": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -513,7 +513,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           },
           "proposedSourceEvidence": "Private service row rendered by StatusPreview",
@@ -534,7 +534,7 @@
           ],
           "proposedSourceEvidence": "Run report supplies services rendered as rows.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "b3383c6d7fdce0355ac58b53738d06f8430e0530b268ff943d754bccec7c741d",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
           }
         }
@@ -668,6 +668,84 @@
       "unresolvedHistoricalScenarioIds": []
     },
     {
+      "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#statusPreview",
+      "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
+      "symbol": "statusPreview",
+      "sourceSha256": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-auto-configure--status-preview",
+        "durin-ds-production-pages-auto-configure--run-success",
+        "durin-ds-production-pages-auto-configure--run-failure",
+        "durin-ds-production-pages-auto-configure--status-load-recovery"
+      ],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-auto-configure--status-preview",
+          "storyId": "durin-ds-production-pages-auto-configure--status-preview",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--status-preview",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-auto-configure--run-success",
+          "storyId": "durin-ds-production-pages-auto-configure--run-success",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-success",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-auto-configure--run-failure",
+          "storyId": "durin-ds-production-pages-auto-configure--run-failure",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-failure",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-auto-configure--status-load-recovery",
+          "storyId": "durin-ds-production-pages-auto-configure--status-load-recovery",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--status-load-recovery",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/auto-configure/autoConfigureStatus.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/autoConfigureStatus.js",
       "symbol": "[module]",
@@ -779,7 +857,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js#CLIToolsPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js",
       "symbol": "CLIToolsPageClient",
-      "sourceSha256": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+      "sourceSha256": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -804,7 +882,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
             "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx": "4df1fd46223e7cc94c1e03238504daf27f7b8aa2e55715cbcb72d70849ea6a18",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -823,7 +901,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
             "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx": "4df1fd46223e7cc94c1e03238504daf27f7b8aa2e55715cbcb72d70849ea6a18",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -841,7 +919,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
             "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx": "4df1fd46223e7cc94c1e03238504daf27f7b8aa2e55715cbcb72d70849ea6a18",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -859,7 +937,7 @@
           ],
           "expectedSha256": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
             "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx": "4df1fd46223e7cc94c1e03238504daf27f7b8aa2e55715cbcb72d70849ea6a18",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -876,7 +954,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
             "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx": "4df1fd46223e7cc94c1e03238504daf27f7b8aa2e55715cbcb72d70849ea6a18",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -899,7 +977,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "18a01a5e13540d3583db4fea572121dd71fefb43ee62421c28136b523ef22d38",
+            "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js": "c8a3475b6f7f4cf86e370dbac1b683a05d1a84a1120ffe45470e2c48825562af",
             "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx": "4df1fd46223e7cc94c1e03238504daf27f7b8aa2e55715cbcb72d70849ea6a18",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1079,10 +1157,452 @@
       ]
     },
     {
+      "id": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js#BackLink",
+      "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js",
+      "symbol": "BackLink",
+      "sourceSha256": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-cli-tools-tooldetailclient--claude",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--codex",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--open-code",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--cowork",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--droid",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--open-claw",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--hermes",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--copilot",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--cline",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--kilo",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--deep-seek-tui",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--jcode",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--grok-build",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--cursor",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--roo",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--continue",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--amp",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--qwen",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--omp",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--pi",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--crush",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--forge",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--smelt",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--codewhale",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--claude-loaded",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--claude-endpoint-menu",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--unknown-tool",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--loading",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--discovery-unavailable",
+        "durin-ds-production-pages-cli-tools-tooldetailclient--incomplete-discovery"
+      ],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--claude",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--claude",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--claude",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--codex",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--codex",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--codex",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--open-code",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-code",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-code",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--cowork",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--cowork",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--cowork",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--droid",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--droid",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--droid",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--open-claw",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-claw",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-claw",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--hermes",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--hermes",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--hermes",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--copilot",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--copilot",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--copilot",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--cline",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--cline",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--cline",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--kilo",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--kilo",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--kilo",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--deep-seek-tui",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--deep-seek-tui",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--deep-seek-tui",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--jcode",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--jcode",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--jcode",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--grok-build",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--grok-build",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--grok-build",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--cursor",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--cursor",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--cursor",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--roo",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--roo",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--roo",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--continue",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--continue",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--continue",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--amp",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--amp",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--amp",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--qwen",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--qwen",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--qwen",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--omp",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--omp",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--omp",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--pi",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--pi",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--pi",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--crush",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--crush",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--crush",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--forge",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--forge",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--forge",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--smelt",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--smelt",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--smelt",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--codewhale",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--codewhale",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--codewhale",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--claude-loaded",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--claude-loaded",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--claude-loaded",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--claude-endpoint-menu",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--claude-endpoint-menu",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--claude-endpoint-menu",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--unknown-tool",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--unknown-tool",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--unknown-tool",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--loading",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--loading",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--loading",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--discovery-unavailable",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--discovery-unavailable",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--discovery-unavailable",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-cli-tools-tooldetailclient--incomplete-discovery",
+          "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--incomplete-discovery",
+          "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--incomplete-discovery",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js#ToolDetailClient",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js",
       "symbol": "ToolDetailClient",
-      "sourceSha256": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+      "sourceSha256": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -1110,7 +1630,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1128,7 +1648,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1150,7 +1670,7 @@
           ],
           "expectedSha256": "071760a360879295bc2c01d7fc3a2f371e2d0aa50065a147a516420b8d81e0c9",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1166,7 +1686,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1185,7 +1705,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1209,7 +1729,7 @@
           ],
           "proposedSourceEvidence": "ToolDetailClient renders PageHeader title from CLI_TOOLS.codewhale.name before GenericCliToolCard dispatch.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1227,7 +1747,7 @@
           ],
           "proposedSourceEvidence": "ToolDetailClient renders PageHeader title from CLI_TOOLS.crush.name before GenericCliToolCard dispatch.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1245,7 +1765,7 @@
           ],
           "proposedSourceEvidence": "ToolDetailClient renders PageHeader title from CLI_TOOLS.forge.name before GenericCliToolCard dispatch.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1263,7 +1783,7 @@
           ],
           "proposedSourceEvidence": "ToolDetailClient renders PageHeader title from CLI_TOOLS.smelt.name before GenericCliToolCard dispatch.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1486,7 +2006,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js#renderToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js",
       "symbol": "renderToolCard",
-      "sourceSha256": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+      "sourceSha256": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -1529,7 +2049,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case claude.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1548,7 +2068,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case codex.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1567,7 +2087,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case opencode.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1586,7 +2106,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case cowork.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1605,7 +2125,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case droid.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1624,7 +2144,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case openclaw.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1643,7 +2163,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case hermes.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1662,7 +2182,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case copilot.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1681,7 +2201,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case cline.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1700,7 +2220,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case kilo.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1719,7 +2239,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case deepseek-tui.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1738,7 +2258,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case jcode.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1757,7 +2277,7 @@
           ],
           "proposedSourceEvidence": "Direct parent dispatch case grok-build.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1774,7 +2294,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1792,7 +2312,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1810,7 +2330,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1829,7 +2349,7 @@
           ],
           "proposedSourceEvidence": "Live ToolDetailClient Codewhale scenario reaches renderToolCard GenericCliToolCard branch; PageHeader supplies contextual visible CodeWhale text.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1847,7 +2367,7 @@
           ],
           "proposedSourceEvidence": "Live ToolDetailClient Crush scenario reaches renderToolCard GenericCliToolCard branch; PageHeader supplies contextual visible Crush text.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1865,7 +2385,7 @@
           ],
           "proposedSourceEvidence": "Live ToolDetailClient Forge scenario reaches renderToolCard GenericCliToolCard branch; PageHeader supplies contextual visible ForgeCode text.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -1883,7 +2403,7 @@
           ],
           "proposedSourceEvidence": "Live ToolDetailClient Smelt scenario reaches renderToolCard GenericCliToolCard branch; PageHeader supplies contextual visible Smelt text.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "b2c4e58a6dddb13fae4bba62495f65e3d03c7b10e036a2702f296dffe2cb8df4",
+            "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js": "591029a7d9d0e941c07efa35f0b01a552b25c401ed51f2e2defe120a0073991f",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2443,7 +2963,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js#ApiKeySelect",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js",
       "symbol": "ApiKeySelect",
-      "sourceSha256": "15c8d21ed6f2adda02f98bafd04867d2316f66a9f2d78e668309c438b17fff61",
+      "sourceSha256": "1e419d4d7f583f2109377730b43b0ebe2b259be30b9e79d109b757bd1a37e552",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -2466,7 +2986,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "15c8d21ed6f2adda02f98bafd04867d2316f66a9f2d78e668309c438b17fff61",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "1e419d4d7f583f2109377730b43b0ebe2b259be30b9e79d109b757bd1a37e552",
             "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.stories.jsx": "495d81e2e1716b8d9e88ff5d4e747eaee83874b00fbc1ec9696b667cf6ebf02a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2485,7 +3005,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "15c8d21ed6f2adda02f98bafd04867d2316f66a9f2d78e668309c438b17fff61",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "1e419d4d7f583f2109377730b43b0ebe2b259be30b9e79d109b757bd1a37e552",
             "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.stories.jsx": "495d81e2e1716b8d9e88ff5d4e747eaee83874b00fbc1ec9696b667cf6ebf02a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2516,7 +3036,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "15c8d21ed6f2adda02f98bafd04867d2316f66a9f2d78e668309c438b17fff61",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "1e419d4d7f583f2109377730b43b0ebe2b259be30b9e79d109b757bd1a37e552",
             "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.stories.jsx": "495d81e2e1716b8d9e88ff5d4e747eaee83874b00fbc1ec9696b667cf6ebf02a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2545,7 +3065,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "15c8d21ed6f2adda02f98bafd04867d2316f66a9f2d78e668309c438b17fff61",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "1e419d4d7f583f2109377730b43b0ebe2b259be30b9e79d109b757bd1a37e552",
             "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.stories.jsx": "495d81e2e1716b8d9e88ff5d4e747eaee83874b00fbc1ec9696b667cf6ebf02a",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2705,7 +3225,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js#BaseUrlSelect",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js",
       "symbol": "BaseUrlSelect",
-      "sourceSha256": "eeb5b57427d480f5eb42e0c58374a6231982d72d2ef031059d7a6fe238965050",
+      "sourceSha256": "b82a2197f45dce4465b561dc83f6c530865b076040c6a578d3a7ad6fd710fe43",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -2727,7 +3247,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "eeb5b57427d480f5eb42e0c58374a6231982d72d2ef031059d7a6fe238965050",
+            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "b82a2197f45dce4465b561dc83f6c530865b076040c6a578d3a7ad6fd710fe43",
             "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx": "8ae17a314f4237e13e1b8ef8aa8ff28e8c55368041c2870f14cb2aed3547349b",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2749,7 +3269,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "eeb5b57427d480f5eb42e0c58374a6231982d72d2ef031059d7a6fe238965050",
+            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "b82a2197f45dce4465b561dc83f6c530865b076040c6a578d3a7ad6fd710fe43",
             "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx": "8ae17a314f4237e13e1b8ef8aa8ff28e8c55368041c2870f14cb2aed3547349b",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2771,7 +3291,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "eeb5b57427d480f5eb42e0c58374a6231982d72d2ef031059d7a6fe238965050",
+            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "b82a2197f45dce4465b561dc83f6c530865b076040c6a578d3a7ad6fd710fe43",
             "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx": "8ae17a314f4237e13e1b8ef8aa8ff28e8c55368041c2870f14cb2aed3547349b",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2793,7 +3313,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "eeb5b57427d480f5eb42e0c58374a6231982d72d2ef031059d7a6fe238965050",
+            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "b82a2197f45dce4465b561dc83f6c530865b076040c6a578d3a7ad6fd710fe43",
             "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx": "8ae17a314f4237e13e1b8ef8aa8ff28e8c55368041c2870f14cb2aed3547349b",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2815,7 +3335,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "eeb5b57427d480f5eb42e0c58374a6231982d72d2ef031059d7a6fe238965050",
+            "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.js": "b82a2197f45dce4465b561dc83f6c530865b076040c6a578d3a7ad6fd710fe43",
             "src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx": "8ae17a314f4237e13e1b8ef8aa8ff28e8c55368041c2870f14cb2aed3547349b",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -2981,20 +3501,17 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js#ClaudeToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js",
       "symbol": "ClaudeToolCard",
-      "sourceSha256": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+      "sourceSha256": "cc7834168cca6b72ee863c825dbb872ac1fee5df71077ddde225dde4cc417427",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. direct reusable component story",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
         "durin-ds-production-pages-cli-tools-toolcards--claude-expanded"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
-        "durin-ds-production-pages-cli-tools-toolcards--claude-expanded"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
@@ -3007,7 +3524,7 @@
           ],
           "proposedSourceEvidence": "ClaudeToolCard always renders h3 tool.name in collapsed card.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js": "cc7834168cca6b72ee863c825dbb872ac1fee5df71077ddde225dde4cc417427",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
           }
         },
@@ -3020,7 +3537,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js": "cc7834168cca6b72ee863c825dbb872ac1fee5df71077ddde225dde4cc417427",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
           },
           "proposedSourceEvidence": "direct reusable component story",
@@ -3028,16 +3545,84 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. direct reusable component story",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "direct reusable component story",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
+            "durin-ds-production-pages-cli-tools-toolcards--claude-expanded"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
+              "storyId": "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
+              "expectedVisibleText": "Claude",
+              "expectedSha256": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+              "axes": [
+                "text"
+              ],
+              "proposedSourceEvidence": "ClaudeToolCard always renders h3 tool.name in collapsed card.",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
+              }
+            },
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolcards--claude-expanded",
+              "storyId": "durin-ds-production-pages-cli-tools-toolcards--claude-expanded",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--claude-expanded",
+              "axes": [
+                "expanded configured card",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js": "45f68a7b32c3dde3fd0fd6a2ed2f1c8b5beaef8789a4f5ce2c8a6adfc064872e",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
+              },
+              "proposedSourceEvidence": "direct reusable component story",
+              "expectedVisibleText": "Claude Code"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. direct reusable component story",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/cli-tools/components/CliOptionSelect.js#CliOptionSelect",
+      "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/CliOptionSelect.js",
+      "symbol": "CliOptionSelect",
+      "sourceSha256": "fc7fa989c13fe4dcecaf6a39a6731b26614aa5f3614550bd7e3e1a4416b29308",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
     },
     {
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ClineToolCard.js#ClineToolCard",
@@ -4313,7 +4898,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js#EndpointPresetControl",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js",
       "symbol": "EndpointPresetControl",
-      "sourceSha256": "d4867102e600f4f18c20010a511994a4ba014c8816bd1e70d0b666f3ab4f4eec",
+      "sourceSha256": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -4335,7 +4920,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "d4867102e600f4f18c20010a511994a4ba014c8816bd1e70d0b666f3ab4f4eec",
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
             "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "fdb727675486c2fd189b2eddee20dd34e27d2d5499c64a44e7c8080562810aaf"
           },
           "proposedSourceEvidence": "browser-local endpoint preset selector",
@@ -4350,7 +4935,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "d4867102e600f4f18c20010a511994a4ba014c8816bd1e70d0b666f3ab4f4eec",
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
             "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "fdb727675486c2fd189b2eddee20dd34e27d2d5499c64a44e7c8080562810aaf"
           },
           "proposedSourceEvidence": "browser-local endpoint preset selector",
@@ -4365,7 +4950,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "d4867102e600f4f18c20010a511994a4ba014c8816bd1e70d0b666f3ab4f4eec",
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
             "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "fdb727675486c2fd189b2eddee20dd34e27d2d5499c64a44e7c8080562810aaf"
           },
           "proposedSourceEvidence": "browser-local endpoint preset selector",
@@ -4861,18 +5446,16 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.js#MitmLinkCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.js",
       "symbol": "MitmLinkCard",
-      "sourceSha256": "66f19783e91eaa2887790f141a163f8eef24c067aa4d06ed20617e9bca13317c",
+      "sourceSha256": "2a16c908e14127843747ffb1c0c8ba138fb7f44c26a5bce933f5e3dd6d147c6b",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. MITM navigation card",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm",
@@ -4883,7 +5466,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.js": "66f19783e91eaa2887790f141a163f8eef24c067aa4d06ed20617e9bca13317c",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.js": "2a16c908e14127843747ffb1c0c8ba138fb7f44c26a5bce933f5e3dd6d147c6b",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.stories.jsx": "41876a702d6ec983f1ff01e01321918c89bbf99e39c2bd762c58d3f03bf173b5"
           },
           "proposedSourceEvidence": "MITM navigation card",
@@ -4891,25 +5474,57 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. MITM navigation card",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "historicalSourceReviewFindings": [
         "No production CLIToolsPageClient story fixture proves loaded MITM section; direct assigned story not established."
       ],
       "proposedSourceReviewNotes": "MITM navigation card",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "66f19783e91eaa2887790f141a163f8eef24c067aa4d06ed20617e9bca13317c",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm",
+              "storyId": "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-mitmlinkcard--antigravity-mitm",
+              "axes": [
+                "MITM link",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.js": "66f19783e91eaa2887790f141a163f8eef24c067aa4d06ed20617e9bca13317c",
+                "src/app/(dashboard)/dashboard/cli-tools/components/MitmLinkCard.stories.jsx": "41876a702d6ec983f1ff01e01321918c89bbf99e39c2bd762c58d3f03bf173b5"
+              },
+              "proposedSourceEvidence": "MITM navigation card",
+              "expectedVisibleText": "MITM"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. MITM navigation card",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js#MitmModelMappingRow",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js",
       "symbol": "MitmModelMappingRow",
-      "sourceSha256": "c5670269346e6a7f3ac2fe4004ed5739f92c3de725b98f193c016b2b90fa016f",
+      "sourceSha256": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -4934,7 +5549,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "c5670269346e6a7f3ac2fe4004ed5739f92c3de725b98f193c016b2b90fa016f",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
             "src/shared/constants/cliTools.js": "b337750844061174c69e88ccb5a28e71e8657cfad7fd69d4a39e54fb8ac6f18c"
           },
@@ -4953,7 +5568,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "c5670269346e6a7f3ac2fe4004ed5739f92c3de725b98f193c016b2b90fa016f",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
             "src/shared/constants/cliTools.js": "b337750844061174c69e88ccb5a28e71e8657cfad7fd69d4a39e54fb8ac6f18c"
           },
@@ -4969,7 +5584,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "c5670269346e6a7f3ac2fe4004ed5739f92c3de725b98f193c016b2b90fa016f",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
             "src/shared/constants/cliTools.js": "b337750844061174c69e88ccb5a28e71e8657cfad7fd69d4a39e54fb8ac6f18c"
           },
@@ -4985,7 +5600,7 @@
             "disabled"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "c5670269346e6a7f3ac2fe4004ed5739f92c3de725b98f193c016b2b90fa016f",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
             "src/shared/constants/cliTools.js": "b337750844061174c69e88ccb5a28e71e8657cfad7fd69d4a39e54fb8ac6f18c"
           },
@@ -5002,7 +5617,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "c5670269346e6a7f3ac2fe4004ed5739f92c3de725b98f193c016b2b90fa016f",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
             "src/shared/constants/cliTools.js": "b337750844061174c69e88ccb5a28e71e8657cfad7fd69d4a39e54fb8ac6f18c"
           },
@@ -5137,20 +5752,17 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js#MitmServerCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js",
       "symbol": "MitmServerCard",
-      "sourceSha256": "52d8266bce57dd7d84e0cb46ae7056345dbd4fa9cdc7a0f82f9181e5e880bbc6",
+      "sourceSha256": "a367dfafecb9584ffd211c52f034fb0c1e7e8c3f913b62edfa92e651cead22db",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. shared MITM lifecycle card",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
         "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
-        "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
@@ -5161,7 +5773,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js": "52d8266bce57dd7d84e0cb46ae7056345dbd4fa9cdc7a0f82f9181e5e880bbc6",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js": "a367dfafecb9584ffd211c52f034fb0c1e7e8c3f913b62edfa92e651cead22db",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
           },
           "proposedSourceEvidence": "shared MITM lifecycle card",
@@ -5176,7 +5788,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js": "52d8266bce57dd7d84e0cb46ae7056345dbd4fa9cdc7a0f82f9181e5e880bbc6",
+            "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js": "a367dfafecb9584ffd211c52f034fb0c1e7e8c3f913b62edfa92e651cead22db",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
           },
           "proposedSourceEvidence": "shared MITM lifecycle card",
@@ -5184,16 +5796,64 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. shared MITM lifecycle card",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "shared MITM lifecycle card",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "52d8266bce57dd7d84e0cb46ae7056345dbd4fa9cdc7a0f82f9181e5e880bbc6",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
+            "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
+              "storyId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
+              "axes": [
+                "server stopped",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js": "52d8266bce57dd7d84e0cb46ae7056345dbd4fa9cdc7a0f82f9181e5e880bbc6",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
+              },
+              "proposedSourceEvidence": "shared MITM lifecycle card",
+              "expectedVisibleText": "Start MITM"
+            },
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running",
+              "storyId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running",
+              "axes": [
+                "server running",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js": "52d8266bce57dd7d84e0cb46ae7056345dbd4fa9cdc7a0f82f9181e5e880bbc6",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx": "18367929bbaf6c6448a6d8f867ddde23aea2a84e5b331fbce1f8805ccfd87c11"
+              },
+              "proposedSourceEvidence": "shared MITM lifecycle card",
+              "expectedVisibleText": "running"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. shared MITM lifecycle card",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.js#MitmToolCard",
@@ -5477,12 +6137,12 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js#ToolSummaryCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js",
       "symbol": "ToolSummaryCard",
-      "sourceSha256": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+      "sourceSha256": "0ddfecf28c68192d6b271e68e93b5f610643772d40efe1ac45b30ad75bc8c4ac",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. status label/tone branches",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
         "durin-ds-production-pages-cli-tools-toolsummarycard--not-configured",
@@ -5490,13 +6150,7 @@
         "durin-ds-production-pages-cli-tools-toolsummarycard--unknown",
         "durin-ds-production-pages-cli-tools-toolsummarycard--unsupported"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
-        "durin-ds-production-pages-cli-tools-toolsummarycard--not-configured",
-        "durin-ds-production-pages-cli-tools-toolsummarycard--not-installed",
-        "durin-ds-production-pages-cli-tools-toolsummarycard--unknown",
-        "durin-ds-production-pages-cli-tools-toolsummarycard--unsupported"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
@@ -5507,7 +6161,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "0ddfecf28c68192d6b271e68e93b5f610643772d40efe1ac45b30ad75bc8c4ac",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
           },
           "proposedSourceEvidence": "status label/tone branches",
@@ -5522,7 +6176,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "0ddfecf28c68192d6b271e68e93b5f610643772d40efe1ac45b30ad75bc8c4ac",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
           },
           "proposedSourceEvidence": "status label/tone branches",
@@ -5537,7 +6191,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "0ddfecf28c68192d6b271e68e93b5f610643772d40efe1ac45b30ad75bc8c4ac",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
           },
           "proposedSourceEvidence": "status label/tone branches",
@@ -5552,7 +6206,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "0ddfecf28c68192d6b271e68e93b5f610643772d40efe1ac45b30ad75bc8c4ac",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
           },
           "proposedSourceEvidence": "status label/tone branches",
@@ -5567,7 +6221,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "0ddfecf28c68192d6b271e68e93b5f610643772d40efe1ac45b30ad75bc8c4ac",
             "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
           },
           "proposedSourceEvidence": "status label/tone branches",
@@ -5575,19 +6229,115 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. status label/tone branches",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "historicalSourceReviewFindings": [
         "No assigned loaded CLIToolsPageClient production story proves ToolSummaryCard mapping."
       ],
       "proposedSourceReviewNotes": "status label/tone branches",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
+            "durin-ds-production-pages-cli-tools-toolsummarycard--not-configured",
+            "durin-ds-production-pages-cli-tools-toolsummarycard--not-installed",
+            "durin-ds-production-pages-cli-tools-toolsummarycard--unknown",
+            "durin-ds-production-pages-cli-tools-toolsummarycard--unsupported"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
+              "storyId": "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolsummarycard--connected",
+              "axes": [
+                "connected",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
+              },
+              "proposedSourceEvidence": "status label/tone branches",
+              "expectedVisibleText": "Connected"
+            },
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolsummarycard--not-configured",
+              "storyId": "durin-ds-production-pages-cli-tools-toolsummarycard--not-configured",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolsummarycard--not-configured",
+              "axes": [
+                "installed unconfigured",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
+              },
+              "proposedSourceEvidence": "status label/tone branches",
+              "expectedVisibleText": "Not configured"
+            },
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolsummarycard--not-installed",
+              "storyId": "durin-ds-production-pages-cli-tools-toolsummarycard--not-installed",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolsummarycard--not-installed",
+              "axes": [
+                "missing",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
+              },
+              "proposedSourceEvidence": "status label/tone branches",
+              "expectedVisibleText": "Not installed"
+            },
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolsummarycard--unknown",
+              "storyId": "durin-ds-production-pages-cli-tools-toolsummarycard--unknown",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolsummarycard--unknown",
+              "axes": [
+                "unknown status",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
+              },
+              "proposedSourceEvidence": "status label/tone branches",
+              "expectedVisibleText": "Unknown"
+            },
+            {
+              "id": "durin-ds-production-pages-cli-tools-toolsummarycard--unsupported",
+              "storyId": "durin-ds-production-pages-cli-tools-toolsummarycard--unsupported",
+              "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolsummarycard--unsupported",
+              "axes": [
+                "unsupported",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.js": "21a25edc2ffe1ab43cf790b820edf0a21ef2f96acce1da320bbd6712f7bae36d",
+                "src/app/(dashboard)/dashboard/cli-tools/components/ToolSummaryCard.stories.jsx": "90efe89cafb878b4ab15cccb982514ed2535a87b57241c428f5a5e8fc71336f8"
+              },
+              "proposedSourceEvidence": "status label/tone branches",
+              "expectedVisibleText": "Unsupported"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. status label/tone branches",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointMatch.js#[module]",
@@ -21608,20 +22358,17 @@
       "id": "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js#MitmPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js",
       "symbol": "MitmPageClient",
-      "sourceSha256": "651a84a01c650ff0e1aa06833354f5a3ad71cc39ffaae40e57d891d9e43aca63",
+      "sourceSha256": "445178c3dceac26f43192e31be467f718d65a951e97535c4f97b6c22b3f97d75",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Actual client story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-operations-mitmpageclient--default",
         "production-operations-mitmpageclient--antigravity-expanded"
       ],
-      "approvedScenarioIds": [
-        "production-operations-mitmpageclient--default",
-        "production-operations-mitmpageclient--antigravity-expanded"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-operations-mitmpageclient--default",
@@ -21632,8 +22379,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js": "651a84a01c650ff0e1aa06833354f5a3ad71cc39ffaae40e57d891d9e43aca63",
-            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx": "c0cbfbc6cbaffff44c8be884b7043aa4b4437bd70fb8486883cc82aa8eda4109"
+            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js": "445178c3dceac26f43192e31be467f718d65a951e97535c4f97b6c22b3f97d75",
+            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx": "db191f3962e22ff6dec746bf9ae52804db6763b6475af3d272f9473970535814"
           },
           "proposedSourceEvidence": "MitmPageClient.stories.jsx#Default",
           "expectedVisibleText": "MITM Proxy"
@@ -21647,41 +22394,87 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js": "651a84a01c650ff0e1aa06833354f5a3ad71cc39ffaae40e57d891d9e43aca63",
-            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx": "c0cbfbc6cbaffff44c8be884b7043aa4b4437bd70fb8486883cc82aa8eda4109"
+            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js": "445178c3dceac26f43192e31be467f718d65a951e97535c4f97b6c22b3f97d75",
+            "src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx": "db191f3962e22ff6dec746bf9ae52804db6763b6475af3d272f9473970535814"
           },
           "proposedSourceEvidence": "MitmPageClient.stories.jsx#AntigravityExpanded",
           "expectedVisibleText": "Enable DNS to edit model mappings"
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Actual client story.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Actual client story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "651a84a01c650ff0e1aa06833354f5a3ad71cc39ffaae40e57d891d9e43aca63",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-operations-mitmpageclient--default",
+            "production-operations-mitmpageclient--antigravity-expanded"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-operations-mitmpageclient--default",
+              "storyId": "production-operations-mitmpageclient--default",
+              "runtimeArtifactId": "production-operations-mitmpageclient--default",
+              "axes": [
+                "no-providers",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js": "651a84a01c650ff0e1aa06833354f5a3ad71cc39ffaae40e57d891d9e43aca63",
+                "src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx": "c0cbfbc6cbaffff44c8be884b7043aa4b4437bd70fb8486883cc82aa8eda4109"
+              },
+              "proposedSourceEvidence": "MitmPageClient.stories.jsx#Default",
+              "expectedVisibleText": "MITM Proxy"
+            },
+            {
+              "id": "production-operations-mitmpageclient--antigravity-expanded",
+              "storyId": "production-operations-mitmpageclient--antigravity-expanded",
+              "runtimeArtifactId": "production-operations-mitmpageclient--antigravity-expanded",
+              "axes": [
+                "expanded-tool",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mitm/MitmPageClient.js": "651a84a01c650ff0e1aa06833354f5a3ad71cc39ffaae40e57d891d9e43aca63",
+                "src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx": "c0cbfbc6cbaffff44c8be884b7043aa4b4437bd70fb8486883cc82aa8eda4109"
+              },
+              "proposedSourceEvidence": "MitmPageClient.stories.jsx#AntigravityExpanded",
+              "expectedVisibleText": "Enable DNS to edit model mappings"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Actual client story.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mitm/error.js#MitmError",
       "sourcePath": "src/app/(dashboard)/dashboard/mitm/error.js",
       "symbol": "MitmError",
-      "sourceSha256": "916cea06c41e51942e926312e0be0bbaefd17043d36a1b9c3cfb1c9ff3f50022",
+      "sourceSha256": "0a0fdd4580397102d9fbe53f87cec93bed365ec5301a599486cb25e09eedfe5a",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Route error boundary direct story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-operations-mitmerror--default"
       ],
-      "approvedScenarioIds": [
-        "production-operations-mitmerror--default"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-operations-mitmerror--default",
@@ -21693,7 +22486,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mitm/error.js": "916cea06c41e51942e926312e0be0bbaefd17043d36a1b9c3cfb1c9ff3f50022",
+            "src/app/(dashboard)/dashboard/mitm/error.js": "0a0fdd4580397102d9fbe53f87cec93bed365ec5301a599486cb25e09eedfe5a",
             "src/app/(dashboard)/dashboard/mitm/error.stories.jsx": "e50768357ed3dbd9eb80c288eaa0778385ec3f779455ef6dea492c5c28124fc2"
           },
           "proposedSourceEvidence": "error.stories.jsx#Default",
@@ -21701,16 +22494,49 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Route error boundary direct story.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Route error boundary direct story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "916cea06c41e51942e926312e0be0bbaefd17043d36a1b9c3cfb1c9ff3f50022",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-operations-mitmerror--default"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-operations-mitmerror--default",
+              "storyId": "production-operations-mitmerror--default",
+              "runtimeArtifactId": "production-operations-mitmerror--default",
+              "axes": [
+                "error-boundary",
+                "retry",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mitm/error.js": "916cea06c41e51942e926312e0be0bbaefd17043d36a1b9c3cfb1c9ff3f50022",
+                "src/app/(dashboard)/dashboard/mitm/error.stories.jsx": "e50768357ed3dbd9eb80c288eaa0778385ec3f779455ef6dea492c5c28124fc2"
+              },
+              "proposedSourceEvidence": "error.stories.jsx#Default",
+              "expectedVisibleText": "Something went wrong"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Route error boundary direct story.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mitm/page.js#MitmPage",
@@ -29557,7 +30383,7 @@
       "id": "src/app/(dashboard)/dashboard/proxy-pools/page.js#ProxyPoolsPage",
       "sourcePath": "src/app/(dashboard)/dashboard/proxy-pools/page.js",
       "symbol": "ProxyPoolsPage",
-      "sourceSha256": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
+      "sourceSha256": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29587,8 +30413,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "page.stories.jsx#Populated",
           "expectedVisibleText": "Office relay"
@@ -29602,8 +30428,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "page.stories.jsx#Empty",
           "expectedVisibleText": "No proxy pools"
@@ -29618,8 +30444,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Play opens create dialog."
         },
@@ -29634,8 +30460,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Create flow."
         },
@@ -29649,8 +30475,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Edit flow."
         },
@@ -29664,8 +30490,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Delete flow."
         },
@@ -29679,8 +30505,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Play exercises action."
         },
@@ -29693,8 +30519,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "page.stories.jsx#CreateError",
           "expectedVisibleText": "Proxy endpoint rejected"
@@ -29709,8 +30535,8 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Error fixture."
         },
@@ -29724,8 +30550,8 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Pending route fixture."
         },
@@ -29739,8 +30565,8 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Pending route fixture."
         }
@@ -29954,7 +30780,7 @@
       "id": "src/app/(dashboard)/dashboard/proxy-pools/page.js#modalFooter",
       "sourcePath": "src/app/(dashboard)/dashboard/proxy-pools/page.js",
       "symbol": "modalFooter",
-      "sourceSha256": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
+      "sourceSha256": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29977,8 +30803,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "Pending deletion dialog renders footer."
         },
@@ -29991,8 +30817,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "f3f90d2934e271f0ab3527ea7265e184d8b1308056b97402d8e33666ee4b5540",
-            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828"
+            "src/app/(dashboard)/dashboard/proxy-pools/page.js": "272feb6d240cf0554e463462c735430bc5735637a2c04b5f4db08766b69bf3b6",
+            "src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803"
           },
           "proposedSourceEvidence": "page.stories.jsx#OpenCreateDialog parent modal render",
           "expectedVisibleText": "Add proxy pool"
@@ -76106,7 +76932,37 @@
     {
       "storyId": "v5-review-pages-operations-mitmpageclient--default",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-mitm-mitmpageclient.stories.jsx",
-      "sourceSha256": "85e6367d7d63934daaa6b000b4c718d5169b7f93c50d71585db26bb37f5ad66f",
+      "sourceSha256": "332d8d3168e94a68fd4b6b4a97cc5a51f6f9e136021f4ed9b583e8401dc8081d",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-operations-mitmpageclient--default",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-mitm-mitmpageclient.stories.jsx",
+        "sourceSha256": "85e6367d7d63934daaa6b000b4c718d5169b7f93c50d71585db26bb37f5ad66f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-operations-mitmpageclient--loaded",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-mitm-mitmpageclient.stories.jsx",
+      "sourceSha256": "332d8d3168e94a68fd4b6b4a97cc5a51f6f9e136021f4ed9b583e8401dc8081d",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-operations-mitmpageclient--trust-prompts",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-mitm-mitmpageclient.stories.jsx",
+      "sourceSha256": "332d8d3168e94a68fd4b6b4a97cc5a51f6f9e136021f4ed9b583e8401dc8081d",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -76116,12 +76972,22 @@
     {
       "storyId": "v5-review-pages-operations-mitmpageclient--antigravity-expanded",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-mitm-mitmpageclient.stories.jsx",
-      "sourceSha256": "85e6367d7d63934daaa6b000b4c718d5169b7f93c50d71585db26bb37f5ad66f",
+      "sourceSha256": "332d8d3168e94a68fd4b6b4a97cc5a51f6f9e136021f4ed9b583e8401dc8081d",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-operations-mitmpageclient--antigravity-expanded",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-mitm-mitmpageclient.stories.jsx",
+        "sourceSha256": "85e6367d7d63934daaa6b000b4c718d5169b7f93c50d71585db26bb37f5ad66f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-monitoring-monitoringpage--loaded",
@@ -86476,36 +87342,6 @@
       }
     },
     {
-      "storyId": "durin-ds-production-pages-auto-configure--status-load-recovery",
-      "sourcePath": "./src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx",
-      "sourceSha256": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null
-    },
-    {
-      "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--discovery-unavailable",
-      "sourcePath": "./src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx",
-      "sourceSha256": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null
-    },
-    {
-      "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--incomplete-discovery",
-      "sourcePath": "./src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx",
-      "sourceSha256": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null
-    },
-    {
       "storyId": "production-combos-comboallowlisteditor--rejected-clear-and-retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/combos/ComboAllowListEditor.stories.jsx",
       "sourceSha256": "7151c8dc819b3e07eb4cf835ccb29c34e0cbc82cdc03d71f468f17818078b93a",
@@ -86939,6 +87775,26 @@
       "storyId": "production-media-mediaroutes--custom-unavailable",
       "sourcePath": "./src/app/(dashboard)/dashboard/media-routes/page.stories.jsx",
       "sourceSha256": "7e2728e7e6a6ab3136ecf4e569d2e6819a21f458184a7f2f1684d8d610d851b2",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-operations-mitmpageclient--loaded",
+      "sourcePath": "./src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx",
+      "sourceSha256": "db191f3962e22ff6dec746bf9ae52804db6763b6475af3d272f9473970535814",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-operations-mitmpageclient--trust-prompts",
+      "sourcePath": "./src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx",
+      "sourceSha256": "db191f3962e22ff6dec746bf9ae52804db6763b6475af3d272f9473970535814",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -87808,7 +88664,7 @@
     {
       "storyId": "production-operations-proxypoolspage--load-failure-and-retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
-      "sourceSha256": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828",
+      "sourceSha256": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -87817,18 +88673,28 @@
       "historicalReferenceReview": {
         "storyId": "production-operations-proxypoolspage--load-failure-and-retry",
         "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
-        "sourceSha256": "09e5d5b65b03eb4b7ffa4558bc75d1a27fdca31724e53538f62a1f4326724857",
+        "sourceSha256": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
         "runtimeStatus": "pending",
-        "reviewEvidence": null
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "production-operations-proxypoolspage--load-failure-and-retry",
+          "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
+          "sourceSha256": "09e5d5b65b03eb4b7ffa4558bc75d1a27fdca31724e53538f62a1f4326724857",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
       }
     },
     {
       "storyId": "production-operations-proxypoolspage--malformed-response-and-retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
-      "sourceSha256": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828",
+      "sourceSha256": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -87837,18 +88703,28 @@
       "historicalReferenceReview": {
         "storyId": "production-operations-proxypoolspage--malformed-response-and-retry",
         "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
-        "sourceSha256": "09e5d5b65b03eb4b7ffa4558bc75d1a27fdca31724e53538f62a1f4326724857",
+        "sourceSha256": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
         "runtimeStatus": "pending",
-        "reviewEvidence": null
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "production-operations-proxypoolspage--malformed-response-and-retry",
+          "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
+          "sourceSha256": "09e5d5b65b03eb4b7ffa4558bc75d1a27fdca31724e53538f62a1f4326724857",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
       }
     },
     {
       "storyId": "production-operations-proxypoolspage--network-failure-and-retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
-      "sourceSha256": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828",
+      "sourceSha256": "9feef492355c165a25bdd6b5edf0e07bb879d43a5517cde23d6397e3b4780803",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -87857,12 +88733,22 @@
       "historicalReferenceReview": {
         "storyId": "production-operations-proxypoolspage--network-failure-and-retry",
         "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
-        "sourceSha256": "09e5d5b65b03eb4b7ffa4558bc75d1a27fdca31724e53538f62a1f4326724857",
+        "sourceSha256": "b7c373797fb263dd09ba396f579a79743e5d803444469cf1acae2702acd9d828",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
         "runtimeStatus": "pending",
-        "reviewEvidence": null
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "production-operations-proxypoolspage--network-failure-and-retry",
+          "sourcePath": "./src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx",
+          "sourceSha256": "09e5d5b65b03eb4b7ffa4558bc75d1a27fdca31724e53538f62a1f4326724857",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
       }
     },
     {
@@ -98466,11 +99352,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "f3ad773209e270fec680da64aef0087ae7ec7008d63b2fb16ccacbad9171b345",
-    "sourceCensusSha256": "21837967d29bf2a274bebe214cdef35bc9f64cb156b9aae7d53b6e0c414d8ba8",
-    "pendingRows": 393,
-    "retainedApprovedRows": 240,
-    "pendingReferences": 1408,
+    "builtIndexSha256": "2639761662ee226a92caa282f212672ea6c298c3336d1b1569fbd5a9495a41cf",
+    "sourceCensusSha256": "c646523924ff30ddbe9dc71b5e8ed44ce72828bd9cc9508cda2e8748a292c7e1",
+    "pendingRows": 402,
+    "retainedApprovedRows": 234,
+    "pendingReferences": 1409,
     "runtimeStatus": "pending"
   }
 }

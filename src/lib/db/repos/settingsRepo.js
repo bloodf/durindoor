@@ -69,6 +69,11 @@ const DEFAULT_SETTINGS = {
   oidcClientSecret: "",
   oidcScopes: "openid profile email",
   oidcLoginLabel: "Sign in with OIDC",
+  // OIDC operator allowlists (#2195). All empty = OIDC login is refused.
+  // Email/domain entries only match ids with email_verified === true.
+  oidcAllowedSubjects: [],
+  oidcAllowedEmails: [],
+  oidcAllowedDomains: [],
   // TOTP dashboard 2FA (decolua/9router#4144). mfaSecret/mfaBackupCodes are
   // credentials -- see SECRET_SETTING_KEYS in settingsPatchAuth.js and the
   // GET/PATCH redaction in the settings route; they must never round-trip

@@ -20,8 +20,11 @@ export default {
   transport: { baseUrl: "https://hyperagent.com/api/threads", format: "openai", executor: "hyperagent", authType: "cookie" },
   models: [
     { id: "fable-latest", name: "Fable 5" },
+    { id: "claude-fable-5", name: "Claude Fable 5" },
     { id: "opus-latest", name: "Claude Opus Latest" },
+    { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
     { id: "sonnet-latest", name: "Claude Sonnet Latest" },
+    { id: "claude-sonnet-5", name: "Claude Sonnet 5" },
   ],
   passthroughModels: true,
   serviceKinds: ["llm"],

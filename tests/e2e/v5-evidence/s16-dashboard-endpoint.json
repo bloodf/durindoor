@@ -1,0 +1,21 @@
+{
+  "route": "/dashboard/endpoint",
+  "stories": [
+    "production-endpoint-apikeymodelaccessmodal--allow-list-with-security-warning",
+    "production-endpoint-apikeymodelaccessmodal--add-and-reject-duplicate-rule",
+    "production-endpoint-apikeymodelaccessmodal--empty-block-list",
+    "durin-ds-production-pages-endpoint--default",
+    "durin-ds-production-pages-endpoint--loading",
+    "durin-ds-production-pages-endpoint--api-key-required",
+    "durin-ds-production-pages-endpoint--unsafe-tunnel",
+    "durin-ds-production-pages-endpoint--external-endpoints",
+    "durin-ds-production-pages-endpoint--enabled-endpoints-policy",
+    "durin-ds-production-pages-endpoint--enabled-endpoints-checking",
+    "durin-ds-production-pages-endpoint--tunnel-requires-api-key",
+    "durin-ds-production-pages-endpoint--load-failure-and-retry",
+    "durin-ds-production-pages-endpoint--malformed-response-and-retry",
+    "durin-ds-production-pages-endpoint--network-failure-and-retry",
+    "durin-ds-production-pages-endpoint--status-failure-and-retry",
+    "durin-ds-production-pages-endpoint--security-write-rejected"
+  ]
+}

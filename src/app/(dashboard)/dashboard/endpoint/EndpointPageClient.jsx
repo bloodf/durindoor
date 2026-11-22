@@ -28,6 +28,9 @@ import StatusAlert from "./components/StatusAlert";
 import MonitoringStrip from "./components/MonitoringStrip";
 import DocsLink from "@/shared/components/DocsLink";
 import { isBrowser, isBoolean } from "@/shared/utils/typeChecks.js";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
+const V5_ALERT_CLASS = "flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger";
 
 function CardSkeleton() {
   return (
@@ -83,6 +86,7 @@ function StatePill({ tone, icon, spin = false, children }) {
 
 
 export default function EndpointPageClient({ localPort = 20128 }) {
+  const uiV5 = useUiV5();
   const [loadError, setLoadError] = useState("");
   const [settingsKnown, setSettingsKnown] = useState(false);
   const [securityError, setSecurityError] = useState(null);
@@ -647,10 +651,10 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   const currentEndpoint = getLocalEndpointUrl(localPort);
 
-  if (!settingsKnown && loadError) return <div role="alert" className="flex flex-col gap-3 rounded-dd-lg border border-dd-danger/30 p-5"><p>Endpoint configuration could not be loaded. Authentication and exposure controls are unavailable until verified. {loadError}</p><Button icon="refresh" onClick={loadSettings}>Retry</Button></div>;
+  if (!settingsKnown && loadError) return <div role="alert" className={uiV5 ? "flex flex-col gap-3 rounded-dd-lg border border-dd-danger bg-dd-danger/10 p-5 text-[13px] text-dd-danger" : "flex flex-col gap-3 rounded-dd-lg border border-dd-danger/30 p-5"}><p>Endpoint configuration could not be loaded. Authentication and exposure controls are unavailable until verified. {loadError}</p><Button icon="refresh" onClick={loadSettings}>Retry</Button></div>;
   if (loading) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-8" {...(uiV5 ? { role: "status", "aria-busy": true, "aria-label": "Loading endpoint configuration" } : {})}>
         <CardSkeleton />
       </div>
     );
@@ -658,9 +662,9 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   return (
     <div className="flex flex-col gap-8">
-      {loadError && <div role="alert">Showing last confirmed endpoint configuration. {loadError}<Button icon="refresh" onClick={loadSettings}>Retry</Button></div>}
-      {securityError && <div role="alert">{securityError.message}<Button icon="refresh" onClick={securityError.retry}>Retry</Button></div>}
-      {securitySaving && <p role="status">Saving security setting…</p>}
+      {loadError && <div role="alert" className={uiV5 ? V5_ALERT_CLASS : undefined}>Showing last confirmed endpoint configuration. {loadError}<Button icon="refresh" onClick={loadSettings}>Retry</Button></div>}
+      {securityError && <div role="alert" className={uiV5 ? V5_ALERT_CLASS : undefined}>{securityError.message}<Button icon="refresh" onClick={securityError.retry}>Retry</Button></div>}
+      {securitySaving && <p role="status" className={uiV5 ? "text-[13px] text-dd-muted" : undefined}>Saving security setting…</p>}
       <PageHeader
         icon="key"
         title="Endpoint"

@@ -1,0 +1,18 @@
+{
+  "route": "/dashboard/mcp-gateway",
+  "stories": [
+    "durin-ds-production-pages-mcp-gateway--default",
+    "durin-ds-production-pages-mcp-gateway--delete-instance",
+    "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
+    "durin-ds-production-pages-mcp-gateway--create-instance",
+    "durin-ds-production-pages-mcp-gateway--retained-create-instance",
+    "durin-ds-production-pages-mcp-gateway--select-server-preset",
+    "durin-ds-production-pages-mcp-gateway--edit-instance",
+    "durin-ds-production-pages-mcp-gateway--toggle-instance",
+    "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+    "durin-ds-production-pages-mcp-gateway--empty-instances",
+    "durin-ds-production-pages-mcp-gateway--error-boundary",
+    "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+    "durin-ds-production-pages-mcp-gateway--v-5-load-failure-and-retry"
+  ]
+}

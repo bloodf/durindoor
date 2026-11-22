@@ -48,6 +48,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
+import { evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
@@ -1824,6 +1825,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         reexecute,
         signal: providerSignal,
         log,
+        onInBandError: (error, attemptBody) => {
+          if (error?.code === 401 || error?.code === 403) evictResponseDispatcher(attemptBody);
+        },
         onAttemptDiscarded: (attemptBody, _reason, { final } = {}) =>
         settleProviderAttemptDispatch(attemptBody, {
           success: false,

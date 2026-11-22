@@ -1,0 +1,6 @@
+{
+  "route": "error/dashboard/translator",
+  "stories": [
+    "production-translator-translatorerror--error-boundary"
+  ]
+}

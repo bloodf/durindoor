@@ -390,7 +390,8 @@ export class DefaultExecutor extends BaseExecutor {
 
 
     if (transformed && isObject(transformed)) {
-      // Cohere compatibility accepts only high when a reasoning effort is supplied.
+      // Cohere compatibility accepts only high when a reasoning effort is supplied;
+      // BaseExecutor returns any 422 unchanged instead of retrying this request.
       if (this.provider === "cohere" && isString(transformed.reasoning_effort)) {
         transformed.reasoning_effort = "high";
       }
@@ -832,7 +833,6 @@ export class DefaultExecutor extends BaseExecutor {
       openference: () => refreshOpenferenceToken(credentials, log, proxyOptions),
       claude: () => this.refreshFromGrant(credentials, proxyOptions),
       codex: () => this.refreshFromGrant(credentials, proxyOptions),
-      qwen: () => this.refreshWithForm(OAUTH_ENDPOINTS.qwen.token, { grant_type: "refresh_token", refresh_token: credentials.refreshToken, client_id: PROVIDERS.qwen.clientId }, proxyOptions),
       iflow: () => this.refreshIflow(credentials.refreshToken, proxyOptions),
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
@@ -841,7 +841,6 @@ export class DefaultExecutor extends BaseExecutor {
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
       "kimi-ai": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
-      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
     };
 
     const refresher = refreshers[this.provider];
@@ -920,10 +919,6 @@ export class DefaultExecutor extends BaseExecutor {
     return { accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
   }
 
-  async refreshKilocode(refreshToken, proxyOptions = null) {
-    // Kilocode uses device code flow, no refresh token support
-    return null;
-  }
 }
 
 export default DefaultExecutor;

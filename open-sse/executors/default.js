@@ -247,19 +247,27 @@ function setAuth(headers, spec, token) {
   headers[spec.header] = token;
 }
 
+// Header names are case-insensitive; preserve a configured version exactly once.
+function ensureAnthropicVersion(headers) {
+  const keys = Object.keys(headers).filter((key) => key.toLowerCase() === "anthropic-version");
+  const value = headers["anthropic-version"] ?? headers[keys[0]] ?? ANTHROPIC_API_VERSION;
+  for (const key of keys) delete headers[key];
+  headers["anthropic-version"] = value;
+}
+
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
     applyExtraHeaders(headers, desc.extraHeaders, credentials);
-    if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+    if (desc.anthropicVersion) ensureAnthropicVersion(headers);
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);else
   if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
   applyExtraHeaders(headers, desc.extraHeaders, credentials);
-  if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+  if (desc.anthropicVersion) ensureAnthropicVersion(headers);
 }
 
 function applyExtraHeaders(headers, extraHeaders, credentials) {

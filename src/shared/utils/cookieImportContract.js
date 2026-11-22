@@ -47,7 +47,10 @@ export function isValidLocalStorageKey(name) {
  * names no approved cookie or has no exact HTTPS origin.
  *
  * @param {object|null|undefined} config registry `cookieImport` or `webLogin` block
- * @returns {{ origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[] } | null}
+ * `optionalCookies` names cookies that are kept when a capture or import carries them and never
+ * required: a capture without them still succeeds.
+ *
+ * @returns {{ origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[], optionalCookies?: readonly string[] } | null}
  */
 export function resolveCookieImportContract(config) {
   if (!config || !Array.isArray(config.cookieNames) || !config.cookieNames.every(isValidCookieName)) return null;
@@ -55,6 +58,10 @@ export function resolveCookieImportContract(config) {
   if (!Array.isArray(localStorageKeys) || localStorageKeys.length > MAX_IMPORT_LOCAL_STORAGE_ITEMS || !localStorageKeys.every(isValidLocalStorageKey)) return null;
   // A contract names at least one credential: a cookie or a localStorage item.
   if (config.cookieNames.length === 0 && localStorageKeys.length === 0) return null;
+  const optionalCookies = config.optionalCookies === undefined ? [] : config.optionalCookies;
+  // Optional names follow the cookie-name grammar and never repeat a required name.
+  if (!Array.isArray(optionalCookies) || optionalCookies.length > MAX_IMPORT_COOKIES || !optionalCookies.every(isValidCookieName) ||
+    new Set(optionalCookies).size !== optionalCookies.length || optionalCookies.some((name) => config.cookieNames.includes(name))) return null;
   let credentialPattern = null;
   if (config.credentialPattern !== undefined) {
     if (!isString(config.credentialPattern)) return null;
@@ -74,6 +81,7 @@ export function resolveCookieImportContract(config) {
     extensionCapture: config.extensionCapture !== false,
     cookieNames: Object.freeze([...config.cookieNames]),
     cookiePrefixes: Object.freeze(Array.isArray(config.cookiePrefixes) ? [...config.cookiePrefixes] : []),
+    ...(optionalCookies.length ? { optionalCookies: Object.freeze([...optionalCookies]) } : null),
     ...(localStorageKeys.length ? { localStorageKeys: Object.freeze([...localStorageKeys]) } : null),
     ...(credentialPattern ? { credentialPattern } : null),
   });
@@ -126,7 +134,7 @@ export function cookieChunkIndex(contract, base, name) {
  * a chunk of an approved cookie.
  */
 export function isApprovedCookieName(contract, name) {
-  if (contract.cookieNames.includes(name)) return true;
+  if (contract.cookieNames.includes(name) || contract.optionalCookies?.includes(name)) return true;
   return contract.cookiePrefixes.some((prefix) =>
     name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)) &&
     contract.cookieNames.some((base) => prefix.startsWith(base)));

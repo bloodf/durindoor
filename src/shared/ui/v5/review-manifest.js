@@ -1233,13 +1233,15 @@ export const REVIEW_SURFACES = [
       "OpenAIDetail",
       "SettingsControls",
       "CompatibleBranch",
-      "CompatibleProxyOpen"
+      "CompatibleProxyOpen",
+      "MnnAiConnection"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerdetailpage--open-ai-detail",
       "v5-review-pages-providers-providerdetailpage--settings-controls",
       "v5-review-pages-providers-providerdetailpage--compatible-branch",
-      "v5-review-pages-providers-providerdetailpage--compatible-proxy-open"
+      "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
+      "v5-review-pages-providers-providerdetailpage--mnn-ai-connection"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",
@@ -2832,14 +2834,16 @@ export const REVIEW_SURFACES = [
       "WithSelection",
       "WithCombosAndSelection",
       "EmbeddingKind",
-      "Closed"
+      "Closed",
+      "OwnerPlanCatalog"
     ],
     "storyIds": [
       "v5-review-workflows-shared-config-modelselectmodal--open-llm",
       "v5-review-workflows-shared-config-modelselectmodal--with-selection",
       "v5-review-workflows-shared-config-modelselectmodal--with-combos-and-selection",
       "v5-review-workflows-shared-config-modelselectmodal--embedding-kind",
-      "v5-review-workflows-shared-config-modelselectmodal--closed"
+      "v5-review-workflows-shared-config-modelselectmodal--closed",
+      "v5-review-workflows-shared-config-modelselectmodal--owner-plan-catalog"
     ],
     "pathname": "/dashboard/providers",
     "routePattern": null,

@@ -13,6 +13,8 @@ import {
 
 // [IPv4, expanded IPv4-mapped IPv6, NAT64 well-known prefix]
 const RESERVED = [
+  ["198.18.0.1", "0:0:0:0:0:ffff:c612:1", "64:ff9b::c612:1"],
+  ["198.19.255.254", "0:0:0:0:0:ffff:c613:fffe", "64:ff9b::c613:fffe"],
   ["192.0.0.1", "0:0:0:0:0:ffff:c000:1", "64:ff9b::c000:1"],
   ["192.0.0.255", "0:0:0:0:0:ffff:c000:ff", "64:ff9b::c000:ff"],
   ["224.0.0.1", "0:0:0:0:0:ffff:e000:1", "64:ff9b::e000:1"],
@@ -33,8 +35,8 @@ const PRIVATE_BEFORE = [
   ["192.168.1.1", "0:0:0:0:0:ffff:c0a8:101", "64:ff9b::c0a8:101"],
 ];
 
-// Neighbours of the blocked ranges, ordinary public hosts and the benchmarking
-// block, which stays allowed for fake-IP proxy setups.
+// Neighbours of the blocked ranges and ordinary public hosts. Benchmarking
+// addresses are blocked under public-only, but remain usable in other modes.
 const PUBLIC = [
   "8.8.8.8",
   "1.1.1.1",
@@ -42,8 +44,6 @@ const PUBLIC = [
   "191.255.255.255",
   "192.0.1.1",
   "192.0.2.10",
-  "198.18.0.1",
-  "198.19.255.254",
   "203.0.113.10",
   "223.255.255.255",
   "100.63.255.255",
@@ -166,7 +166,6 @@ describe("public-only URL handling", () => {
       "https://api.openai.com/v1/models",
       "http://8.8.8.8/",
       "http://223.255.255.255/",
-      "http://198.18.0.1/",
       "https://[2001:4860:4860::8888]/",
     ]) {
       expect(() => assertOutboundUrlAllowed(url, "public-only"), url).not.toThrow();
@@ -194,7 +193,9 @@ describe("resolved address handling", () => {
 
   it("accepts public answers and keeps other modes unchanged", () => {
     expect(() => assertResolvedAddressAllowed("93.184.216.34", "public-only")).not.toThrow();
-    expect(() => assertResolvedAddressAllowed("198.18.0.1", "public-only")).not.toThrow();
+    expect(() => assertResolvedAddressAllowed("198.18.0.1", "public-only")).toThrow(OutboundUrlGuardError);
+    expect(() => assertResolvedAddressAllowed("198.18.0.1", "block-metadata")).not.toThrow();
+    expect(() => assertOutboundUrlAllowed("http://198.18.0.1/", "none")).not.toThrow();
     expect(() => assertResolvedAddressAllowed("240.0.0.1", "block-metadata")).not.toThrow();
   });
 

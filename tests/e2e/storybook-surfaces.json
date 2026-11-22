@@ -51013,20 +51013,17 @@
       "id": "src/shared/components/Modal.js#ConfirmModal",
       "sourcePath": "src/shared/components/Modal.js",
       "symbol": "ConfirmModal",
-      "sourceSha256": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+      "sourceSha256": "6e16346f28b58283f9cf12d27f2b6f6138b3b9097cc48a2dc4a6e627c2821b71",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: OpenConfirmation covers final open ConfirmModal; Confirmation separately covers confirm-to-closed interaction.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-overlays-modal--open-confirmation",
         "production-shared-overlays-modal--confirmation"
       ],
-      "approvedScenarioIds": [
-        "production-shared-overlays-modal--open-confirmation",
-        "production-shared-overlays-modal--confirmation"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-overlays-modal--open-confirmation",
@@ -51037,7 +51034,7 @@
             "confirmation"
           ],
           "sourceHashes": {
-            "src/shared/components/Modal.js": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+            "src/shared/components/Modal.js": "6e16346f28b58283f9cf12d27f2b6f6138b3b9097cc48a2dc4a6e627c2821b71",
             "src/shared/components/Modal.stories.jsx": "21f02b9769b9c7c1fd6ac4380806381a52ecb806a52b4463b37921a71344c186"
           },
           "proposedSourceEvidence": "OpenConfirmation renders confirm scenario open and final play asserts Delete request? dialog plus message visible.",
@@ -51053,7 +51050,7 @@
             "confirm-transition"
           ],
           "sourceHashes": {
-            "src/shared/components/Modal.js": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+            "src/shared/components/Modal.js": "6e16346f28b58283f9cf12d27f2b6f6138b3b9097cc48a2dc4a6e627c2821b71",
             "src/shared/components/Modal.stories.jsx": "21f02b9769b9c7c1fd6ac4380806381a52ecb806a52b4463b37921a71344c186"
           },
           "proposedSourceEvidence": "Actual Confirmation clicks Delete and waits for Delete request? dialog absence; OpenConfirmation separately retains visible confirmation ownership. No open content is asserted at final closed capture.",
@@ -51061,19 +51058,9 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
-        "sourceReason": "Current source/CSF audit: OpenConfirmation covers final open ConfirmModal; Confirmation separately covers confirm-to-closed interaction.",
-        "changedDependencyPaths": [
-          "src/shared/components/Modal.stories.jsx"
-        ],
-        "addedImportPaths": [],
-        "runtimeStatus": "pending",
-        "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "historicalSourceReviewFindings": [
         "Confirmation dialog content is exercised but not final story state."
       ],
@@ -51130,25 +51117,80 @@
             "runtimeStatus": "pending"
           },
           "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        },
+        {
+          "sourceSha256": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-overlays-modal--open-confirmation",
+            "production-shared-overlays-modal--confirmation"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-overlays-modal--open-confirmation",
+              "storyId": "production-shared-overlays-modal--open-confirmation",
+              "runtimeArtifactId": "production-shared-overlays-modal--open-confirmation",
+              "axes": [
+                "open-final",
+                "confirmation"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Modal.js": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+                "src/shared/components/Modal.stories.jsx": "21f02b9769b9c7c1fd6ac4380806381a52ecb806a52b4463b37921a71344c186"
+              },
+              "proposedSourceEvidence": "OpenConfirmation renders confirm scenario open and final play asserts Delete request? dialog plus message visible.",
+              "expectedVisibleText": "Delete request?"
+            },
+            {
+              "id": "production-shared-overlays-modal--confirmation",
+              "storyId": "production-shared-overlays-modal--confirmation",
+              "runtimeArtifactId": "production-shared-overlays-modal--confirmation",
+              "axes": [
+                "closed-final",
+                "absence",
+                "confirm-transition"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Modal.js": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+                "src/shared/components/Modal.stories.jsx": "21f02b9769b9c7c1fd6ac4380806381a52ecb806a52b4463b37921a71344c186"
+              },
+              "proposedSourceEvidence": "Actual Confirmation clicks Delete and waits for Delete request? dialog absence; OpenConfirmation separately retains visible confirmation ownership. No open content is asserted at final closed capture.",
+              "expectedVisibleText": null
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
+            "sourceReason": "Current source/CSF audit: OpenConfirmation covers final open ConfirmModal; Confirmation separately covers confirm-to-closed interaction.",
+            "changedDependencyPaths": [
+              "src/shared/components/Modal.stories.jsx"
+            ],
+            "addedImportPaths": [],
+            "runtimeStatus": "pending",
+            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
         }
-      ]
+      ],
+      "unresolvedHistoricalScenarioIds": []
     },
     {
       "id": "src/shared/components/Modal.js#Modal",
       "sourcePath": "src/shared/components/Modal.js",
       "symbol": "Modal",
-      "sourceSha256": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+      "sourceSha256": "6e16346f28b58283f9cf12d27f2b6f6138b3b9097cc48a2dc4a6e627c2821b71",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: Default starts open and assertion acts before Close.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-overlays-modal--default"
       ],
-      "approvedScenarioIds": [
-        "production-shared-overlays-modal--default"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-overlays-modal--default",
@@ -51159,7 +51201,7 @@
             "close-and-reopen-final"
           ],
           "sourceHashes": {
-            "src/shared/components/Modal.js": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+            "src/shared/components/Modal.js": "6e16346f28b58283f9cf12d27f2b6f6138b3b9097cc48a2dc4a6e627c2821b71",
             "src/shared/components/Modal.stories.jsx": "21f02b9769b9c7c1fd6ac4380806381a52ecb806a52b4463b37921a71344c186"
           },
           "proposedSourceEvidence": "Default closes initially open Request details dialog, clicks Open dialog, and final play asserts reopened native dialog visible.",
@@ -51167,19 +51209,9 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
-        "sourceReason": "Current source/CSF audit: Default starts open and assertion acts before Close.",
-        "changedDependencyPaths": [
-          "src/shared/components/Modal.stories.jsx"
-        ],
-        "addedImportPaths": [],
-        "runtimeStatus": "pending",
-        "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: Default starts open and assertion acts before Close.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -51216,8 +51248,48 @@
             "runtimeStatus": "pending"
           },
           "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        },
+        {
+          "sourceSha256": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-overlays-modal--default"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-overlays-modal--default",
+              "storyId": "production-shared-overlays-modal--default",
+              "runtimeArtifactId": "production-shared-overlays-modal--default",
+              "axes": [
+                "native-dialog",
+                "close-and-reopen-final"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Modal.js": "fa67e47ed0f6158863fc2b00ded7fdf5132764fc6e64f9d6f7783367b8285325",
+                "src/shared/components/Modal.stories.jsx": "21f02b9769b9c7c1fd6ac4380806381a52ecb806a52b4463b37921a71344c186"
+              },
+              "proposedSourceEvidence": "Default closes initially open Request details dialog, clicks Open dialog, and final play asserts reopened native dialog visible.",
+              "expectedVisibleText": "Request details"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
+            "sourceReason": "Current source/CSF audit: Default starts open and assertion acts before Close.",
+            "changedDependencyPaths": [
+              "src/shared/components/Modal.stories.jsx"
+            ],
+            "addedImportPaths": [],
+            "runtimeStatus": "pending",
+            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
         }
-      ]
+      ],
+      "unresolvedHistoricalScenarioIds": []
     },
     {
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
@@ -99353,9 +99425,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "2639761662ee226a92caa282f212672ea6c298c3336d1b1569fbd5a9495a41cf",
-    "sourceCensusSha256": "c646523924ff30ddbe9dc71b5e8ed44ce72828bd9cc9508cda2e8748a292c7e1",
-    "pendingRows": 402,
-    "retainedApprovedRows": 234,
+    "sourceCensusSha256": "c51c19f4b54d554e63450bdd9935dd3c4d4ceee3bf25c3ef764c98a1999ea45f",
+    "pendingRows": 404,
+    "retainedApprovedRows": 232,
     "pendingReferences": 1409,
     "runtimeStatus": "pending"
   }

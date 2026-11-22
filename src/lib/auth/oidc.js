@@ -1,8 +1,20 @@
 import crypto from "node:crypto";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
-import { fetchPublic } from "@/shared/utils/ssrfGuard.js";
+import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { isString } from "@/shared/utils/typeChecks.js";
+
+// Keep redirects manual and use the connection-pinned guard for every OIDC endpoint.
+async function fetchPublic(url, init = {}) {
+  try {
+    const response = await guardedProbeFetch(url, init, "public-only");
+    if (response.status >= 300 && response.status < 400) throw new Error("Blocked URL: redirect");
+    return response;
+  } catch (error) {
+    if (error?.code === "OUTBOUND_URL_GUARD_BLOCKED") throw new Error("Blocked URL: internal host");
+    throw error;
+  }
+}
 
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
@@ -71,8 +83,7 @@ export async function getOidcRuntimeConfig() {
 
 /**
  * Fetch the OIDC discovery document for an issuer.
- * Rejects link-local / private / metadata targets (including hostnames that resolve to
- * them) via fetchPublic, which also re-validates every redirect hop (#2196)
+ * Rejects non-public targets via the resolving, pinned outbound URL guard
  * (login start, callback, and settings discovery test all share this path).
  *
  * @param {string} issuerUrl Absolute issuer URL (no trailing slash required).
@@ -81,8 +92,15 @@ export async function getOidcRuntimeConfig() {
 export async function fetchOidcDiscovery(issuerUrl) {
   const base = trimTrailingSlashes(issuerUrl);
   const discoveryUrl = `${base}/.well-known/openid-configuration`;
-  // SSRF guard: block internal/private/metadata issuers and redirects to them.
-  const res = await fetchPublic(discoveryUrl, { cache: "no-store" });
+  let res;
+  try {
+    res = await fetchPublic(discoveryUrl, { cache: "no-store" });
+  } catch (error) {
+    if (error?.code === "OUTBOUND_URL_GUARD_BLOCKED") {
+      throw new Error("Blocked URL: internal host");
+    }
+    throw error;
+  }
   if (!res.ok) {
     throw new Error(`Failed to load OIDC discovery document from ${discoveryUrl}`);
   }

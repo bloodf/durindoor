@@ -36,6 +36,8 @@ A saved credential or successful probe does not prove chat, streaming, tools, or
 
 If an account is unavailable, routing can try another eligible connection for the same provider and model. A [combo](../features/combos.mdx) can then try another model. Priority controls fill-first order; other strategies are optional. Scope client keys when only selected accounts should be reachable.
 
+Atlas Cloud is available as an API-key provider with OpenAI-compatible chat and model discovery. SubQ is available as an API-key provider for the System One endpoint. ParalonCloud uses the connection's API key for chat, embeddings, and authenticated model discovery (`paraloncloud/<model>` or `paralon/<model>`); see the [Inference API documentation](https://paraloncloud.com/docs/inference-api). Parallel provides web search and Markdown extraction with an API key; search supports mode and domain filters. For NaN.Builders chat, embeddings, media, and reranking, see [NaN](./nan.mdx).
+
 <Cards>
   <Card title="Provider sign-in methods" href="/docs/providers/sign-in-methods" description="Compare implemented sign-in methods and their security boundaries." />
   <Card title="Connecting accounts" href="/docs/providers/connecting-accounts" description="OAuth, cookies, token refresh, and account priority." />
@@ -83,6 +85,9 @@ Some providers need more than the generic flow. These pages cover sign-in, impor
   <Card title="g4f Ollama" href="/docs/providers/g4f-ollama" description="g4f's hosted Ollama proxy with an optional member key." />
   <Card title="g4f Pollinations" href="/docs/providers/g4f-pollinations" description="g4f's hosted Pollinations proxy with an optional member key." />
   <Card title="NoTrack" href="/docs/providers/notrack" description="Developer API key, the documented model catalog, limits, and error types." />
+  <Card title="NaN" href="/docs/providers/nan" description="Inference API key (not a platform token), model discovery, and usage." />
+  <Card title="NLP Cloud" href="/docs/providers/nlpcloud" description="Bearer API key, GPU chatbot endpoint, and local quota reservations." />
+  <Card title="Replicate" href="/docs/providers/replicate" description="Text predictions, streaming, and local capacity refusal before dispatch." />
   <Card title="PromptQL" href="/docs/providers/promptql" description="Experimental playground session with cookie import." />
   <Card title="Notion AI Web" href="/docs/providers/notion-web" description="The token_v2 session cookie, workspace lookup, and Notion's private inference endpoint." />
   <Card title="NoTrack Web" href="/docs/providers/notrack-web" description="The notrack.ai chat session cookies and the single dispatch model." />

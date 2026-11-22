@@ -93,11 +93,12 @@ export default function CombosPage() {
     setPresetLoading(source);
     try {
       const previewRes = await fetch(`/api/combos/presets?source=${source}`);
-      const preview = await previewRes.json();
       if (!previewRes.ok) {
+        const preview = await previewRes.json().catch(() => ({}));
         alert(preview.error || `Failed to preview ${label}`);
         return;
       }
+      const preview = await previewRes.json();
 
       const toCreate = preview.toCreate ?? (preview.items || []).filter((i) => !i.exists).length;
       const toSkip = preview.toSkip ?? (preview.items || []).filter((i) => i.exists).length;
@@ -172,13 +173,13 @@ export default function CombosPage() {
         fetch("/api/settings"),
         fetch("/api/connection-groups"),
       ]);
-      const combosData = await combosRes.json();
-      const providersData = await providersRes.json();
+      const combosData = combosRes.ok ? await combosRes.json() : await combosRes.json().catch(() => ({}));
+      if (!combosRes.ok) throw new Error(combosData?.error || `Failed to load combos (${combosRes.status})`);
+      const providersData = providersRes.ok ? await providersRes.json() : await providersRes.json().catch(() => ({}));
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const groupsData = groupsRes.ok ? await groupsRes.json() : {};
 
       if (!isCurrent()) return;
-      if (!combosRes.ok) throw new Error(combosData?.error || "Failed to load combos");
       // Show every non-media combo here (llm, embedding, tts, ...); media/web
       // combos belong to media-providers/web (#2686).
       // Older or malformed records may omit models; cards and editors expect an array.
@@ -277,11 +278,15 @@ export default function CombosPage() {
       }
     }
     const updated = change(comboStrategies);
-    await fetch("/api/settings", {
+    const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comboStrategies: updated }),
     });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `Failed to save combo strategy (${res.status})`);
+    }
     setComboStrategies(updated);
   };
 
@@ -408,6 +413,7 @@ export default function CombosPage() {
       return { ok: true };
     } catch (error) {
       console.log("Error updating combo strategy:", error);
+      alert(error.message);
       return { ok: false, error: error.message };
     }
   };
@@ -922,6 +928,7 @@ function ModelItem({ id, index, model, weight = 1, requirePositiveWeight = false
       {/* Inline editable model value */}
       {editing ? (
         <input
+          aria-label={`Model ${index + 1}`}
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

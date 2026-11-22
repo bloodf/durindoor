@@ -84,12 +84,17 @@ export function toHeaders(raw) {
 export async function raceWithTimeout(promise, timeoutMs, signal) {
   // If no signal, just race with a simple timeout.
   if (!signal) {
-    return await Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        setTimeout(() => reject(new TlsClientHangError()), timeoutMs);
-      }),
-    ]);
+    let timer;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new TlsClientHangError()), timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // With signal, race against both timeout and abort.
@@ -504,18 +509,22 @@ function tailFileVariantB2(path, eofSymbol, done, signal = null, cleanupPath) {
  */
 export function createGetClient(config) {
   let clientPromise = null;
+  let activeClient = null;
   let exitHookInstalled = false;
 
-  const installExitHook = (client) => {
-    if (!exitHookInstalled) {
-      exitHookInstalled = true;
-      process.on("exit", () => {
-        void client.stop();
-      });
-    }
+  const installExitHook = () => {
+    if (exitHookInstalled) return;
+    exitHookInstalled = true;
+    process.on("exit", () => {
+      try {
+        void activeClient?.stop?.();
+      } catch {
+        /* ignore */
+      }
+    });
   };
 
-  return async function getClient() {
+  async function getClient() {
     if (!clientPromise) {
       clientPromise = (async () => {
         let TLSClientCtor;
@@ -538,15 +547,43 @@ export function createGetClient(config) {
           tlsOptions.clientIdentifier = config.tlsProfile;
         }
         const client = new TLSClientCtor(tlsOptions);
-        // Start the native TLS client binding
-        await client.start();
-        installExitHook(client);
-
+        try {
+          // Start the native TLS client binding
+          await client.start();
+        } catch (err) {
+          try {
+            void client.stop?.();
+          } catch {
+            /* ignore */
+          }
+          throw err;
+        }
+        activeClient = client;
+        installExitHook();
         return client;
-      })();
+      })().catch((err) => {
+        // Clear the cached rejection so the next getClient() retries.
+        clientPromise = null;
+        throw err;
+      });
     }
     return clientPromise;
+  }
+
+  getClient.resetClientCache = function resetClientCache() {
+    const previous = activeClient;
+    activeClient = null;
+    clientPromise = null;
+    if (previous) {
+      try {
+        void previous.stop();
+      } catch {
+        /* ignore */
+      }
+    }
   };
+
+  return getClient;
 }
 
 // The connection's proxy options for the request in flight. Executors wrap
@@ -617,18 +654,9 @@ export function createTlsClientModule(config) {
   const getClient = createGetClient({ providerName, tlsProfile });
 
   function resetClientCache() {
-    // The getClient closure holds clientPromise — by design the only
-    // reference is inside getClient's closure. After a hang we need
-    // the next call to spawn a fresh binding. We achieve this by
-    // clearing the local reference; the module-level tlsFetch will
-    // re-read via getClient which recreates it.
-    // Since getClient's clientPromise is a closure variable, we
-    // re-create getClient itself:
-    Object.assign(localState, {
-      getClient: createGetClient({ providerName, tlsProfile }),
-    });
-    // Note: this is safe because only tlsFetch calls getClient.
-    // A concurrent in-flight call holds its own reference.
+    // Stop the hung native binding and clear the cached promise inside the
+    // same getClient closure so we keep a single process "exit" listener.
+    localState.getClient.resetClientCache?.();
   }
 
   const localState = { getClient };
@@ -805,9 +833,9 @@ export function createTlsClientModule(config) {
   async function tlsFetch(url, options = {}) {
     if (!options.sameOriginRedirects) return tlsFetchOnce(url, options);
     let current = String(url);
-    // The streaming API exposes status only after the stream completes. Buffer guarded
-    // calls so no redirect can be mistaken for a successful stream.
-    let request = { ...options, redirect: "manual", stream: false };
+    // Redirect following stays disabled at the TLS layer, including for streams.
+    // A response with no streamed bytes exposes its status before any next hop.
+    let request = { ...options, redirect: "manual" };
     for (let count = 0; count <= 20; count++) {
       const result = await tlsFetchOnce(current, request);
       if (result.status < 300 || result.status >= 400) return result;

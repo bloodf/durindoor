@@ -70,6 +70,7 @@ async function handleTtsHandler(request) {
     const route = await resolveMediaRoute("tts", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
@@ -96,6 +97,7 @@ async function handleTtsHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("TTS", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, comboRouting),

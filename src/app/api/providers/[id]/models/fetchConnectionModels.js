@@ -1,3 +1,4 @@
+import { isPromptQlSessionError, readPromptQlCredentials } from "open-sse/executors/promptql.js";
 import { antigravityForbiddenBackoff, recordAntigravityForbidden } from "open-sse/services/antigravityCatalog.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
@@ -88,16 +89,18 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   // operation rather than an OpenAI-style /models endpoint.
   if (connection.provider === "promptql") {
     const endpoint = PROVIDERS.promptql?.baseUrl;
-    const token = connection.providerSpecificData?.token || connection.providerSpecificData?.jwt || connection.apiKey;
+    const { token } = readPromptQlCredentials(connection);
     if (!endpoint || !token) return { error: "PromptQL requires a playground JWT for model discovery", status: 401 };
     const promptQlProxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
     const response = await proxyAwareFetch(endpoint, {
       method: "POST",
+      redirect: "manual",
       headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${String(token).replace(/^Bearer\\s+/i, "")}`, origin: "https://prompt.ql.app", referer: "https://prompt.ql.app/" },
       body: JSON.stringify({ query: "query FetchLlmConfigs { llm_config(where: {deleted_at: {_is_null: true}}, order_by: {display_label: asc}) { id display_label model_reference model_id } }", operationName: "FetchLlmConfigs" }),
       signal: signal || AbortSignal.timeout(8000),
       cache: "no-store",
     }, promptQlProxyOptions);
+    if (isPromptQlSessionError(response.status)) return { error: "PromptQL session expired or invalid", status: 401 };
     if (!response.ok) return { error: `PromptQL model discovery failed: ${response.status}`, status: response.status };
     const data = await response.json();
     if (data.errors?.length) return { error: data.errors.map((entry) => entry.message || "GraphQL error").join("; "), status: 502 };

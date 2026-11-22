@@ -9,7 +9,8 @@
  *    dashboard) plus `cookies`, and gives back what it was granted afterwards;
  *  - reads only cookie names that are in both the built-in table and the pairing;
  *  - for a provider whose credential is a localStorage item (TinyCMS), reads only the
- *    built-in item names, once, from the confirmed tab, through `chrome.scripting`;
+ *    built-in item names, once, from the confirmed tab, through `chrome.scripting`, and only
+ *    while that tab and its page are still on the provider origin;
  *  - sends one request, to the dashboard URL named by the pairing, and never retries;
  *  - never stores, logs or echoes a cookie value or the pairing secret.
  */
@@ -37,6 +38,7 @@ export const MESSAGES = Object.freeze({
   no_cookie_store: "Could not find the browser session for this tab. Nothing was sent.",
   no_cookies: "No approved session cookie was found. Sign in to the provider in this tab, create a new pairing and try again.",
   no_local_storage: "The provider page holds no approved session value. Open the provider site in this tab, create a new pairing and try again.",
+  tab_navigated: "The tab left the provider site while its session value was being read, so nothing was sent. Return to the provider site in this tab and click Send again.",
   cancelled: "Cancelled. Create a new pairing if you want to try again.",
   network_error: "Could not reach the dashboard. The pairing may be spent; create a new pairing before trying again.",
   pairing_rejected: "The dashboard rejected the pairing (expired or already used). Create a new pairing.",
@@ -223,10 +225,17 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
 /**
  * Injected into the confirmed provider tab by `chrome.scripting.executeScript`. It runs in the
  * page's origin, reads only the item names it is given and changes nothing.
+ * The second argument is the provider origin the user confirmed. The reader answers nothing
+ * unless the page's own `location.origin` is exactly that origin, so a tab that navigated
+ * elsewhere after Send cannot hand over another site's value. It is read from `arguments` so
+ * the serialized signature stays `(keys)`.
  * Self-contained on purpose: it is serialized, so it cannot close over module state.
  */
 export function readLocalStorageItems(keys) {
+  const expectedOrigin = arguments[1];
   const found = {};
+  // Strict equality with the page's origin string: a missing or non-string origin never matches.
+  if (!expectedOrigin || globalThis.location?.origin !== expectedOrigin) return found;
   for (const key of keys) {
     const value = globalThis.localStorage.getItem(key);
     // getItem answers a string or null.
@@ -237,8 +246,25 @@ export function readLocalStorageItems(keys) {
 
 const LOCAL_VALUE_RE = /^[\x21-\x7e]{1,8192}$/;
 
+/** True when the confirmed tab still shows the provider origin. */
+async function tabOnProvider(chrome, plan) {
+  let tab = null;
+  try { tab = await chrome.tabs.get(plan.tabId); } catch { /* treated as navigated away */ }
+  return Boolean(tab) && originOf(tab.url) === plan.providerOrigin;
+}
+
+/**
+ * Read the approved items from the confirmed tab. The tab URL is checked right before and right
+ * after the injection, and the reader itself checks the page origin, so a navigation at any point
+ * yields `tab_navigated` instead of a value.
+ * @returns {Promise<{ ok: true, values: Record<string, string> } | { ok: false }>}
+ */
 async function readApprovedLocalStorage(chrome, plan) {
-  const results = await chrome.scripting.executeScript({ target: { tabId: plan.tabId }, func: readLocalStorageItems, args: [[...plan.localStorageKeys]] });
+  if (!(await tabOnProvider(chrome, plan))) return { ok: false };
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: plan.tabId }, func: readLocalStorageItems, args: [[...plan.localStorageKeys], plan.providerOrigin],
+  });
+  if (!(await tabOnProvider(chrome, plan))) return { ok: false };
   // Only the top frame of the confirmed tab counts.
   const top = Array.isArray(results) ? results.find((entry) => isRecord(entry) && entry.frameId === 0) : null;
   const items = isRecord(top?.result) ? top.result : {};
@@ -246,7 +272,7 @@ async function readApprovedLocalStorage(chrome, plan) {
   for (const key of plan.localStorageKeys) {
     if (isString(items[key]) && LOCAL_VALUE_RE.test(items[key])) values[key] = items[key];
   }
-  return values;
+  return { ok: true, values };
 }
 
 function statusCode(status) {
@@ -327,9 +353,12 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
 
     let localStorage = null;
     if (plan.localStorageKeys?.length) {
-      try { localStorage = await readApprovedLocalStorage(chrome, plan); }
+      let read;
+      try { read = await readApprovedLocalStorage(chrome, plan); }
       catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
       if (cancelled()) return fail("cancelled");
+      if (!read.ok) return fail("tab_navigated", { expectedOrigin: plan.providerOrigin });
+      localStorage = read.values;
     }
     if (!(await permissionsAvailable())) return cancelled() ? fail("cancelled") : fail("permission_denied");
     if (cancelled()) return fail("cancelled");

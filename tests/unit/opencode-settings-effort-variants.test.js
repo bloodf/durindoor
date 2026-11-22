@@ -3,6 +3,11 @@ import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 
 const fsMock = vi.hoisted(() => ({
   store: null,
+  realpath: vi.fn(async (path) => path),
+  readlink: vi.fn(async () => { throw Object.assign(new Error("not a link"), { code: "EINVAL" }); }),
+  copyFile: vi.fn(async () => {}),
+  rename: vi.fn(async () => {}),
+  unlink: vi.fn(async () => {}),
   readFile: vi.fn(async () => {
     if (fsMock.store === null) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     return fsMock.store;

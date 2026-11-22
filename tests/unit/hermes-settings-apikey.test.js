@@ -34,6 +34,8 @@ describe("HermesToolCard manual config builder", () => {
 
 const mocks = vi.hoisted(() => ({
   homedir: vi.fn(),
+  realpath: vi.fn(),
+  readlink: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
   copyFile: vi.fn(),
@@ -52,6 +54,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("fs/promises", () => ({
   default: {
     access: mocks.access,
+    realpath: mocks.realpath,
+    readlink: mocks.readlink,
     readFile: mocks.readFile,
     writeFile: mocks.writeFile,
     copyFile: mocks.copyFile,
@@ -114,6 +118,8 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
       const callback = typeof _opts === "function" ? _opts : cb;
       callback(new Error("not found"));
     });
+    mocks.realpath.mockImplementation(async (path) => path);
+    mocks.readlink.mockRejectedValue(Object.assign(new Error("not a link"), { code: "EINVAL" }));
     mocks.readFile.mockRejectedValue({ code: "ENOENT" });
     mocks.writeFile.mockResolvedValue();
     mocks.copyFile.mockRejectedValue({ code: "ENOENT" });

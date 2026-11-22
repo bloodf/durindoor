@@ -66,7 +66,7 @@ export function extractUsageFromResponse(responseBody) {
 }
 
 export function buildRequestDetail(base, overrides = {}) {
-  return {
+  const detail = {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
@@ -81,6 +81,17 @@ export function buildRequestDetail(base, overrides = {}) {
     status: base.status || "success",
     ...overrides
   };
+  // Combo opt-out removes payloads after overrides, before the detail reaches storage.
+  if (base.comboNoLog === true) {
+    detail.request = null;
+    detail.providerRequest = null;
+    detail.providerResponse = null;
+    const responseStatus = detail.response?.status;
+    detail.response = detail.status === "error" ? { error: "Request failed" } : {};
+    if (detail.status === "error" && Number.isInteger(responseStatus)) detail.response.status = responseStatus;
+    detail.pxpipe = undefined;
+  }
+  return detail;
 }
 
 /**

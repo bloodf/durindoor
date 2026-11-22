@@ -422,7 +422,7 @@ function withNativeClaudeFields(projected, message, claudeCompat) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -488,6 +488,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
           const totalLatency = Date.now() - requestStartTime;
           saveRequestDetail(buildRequestDetail({
+            comboNoLog,
             ...ctx,
             latency: { ttft: totalLatency, total: totalLatency },
             tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
@@ -517,6 +518,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
         const totalLatency = Date.now() - requestStartTime;
         saveRequestDetail(buildRequestDetail({
+          comboNoLog,
           ...ctx,
           latency: { ttft: totalLatency, total: totalLatency },
           tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
@@ -644,6 +646,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const totalLatency = Date.now() - requestStartTime;
       saveRequestDetail(buildRequestDetail({
+        comboNoLog,
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
         tokens: usage,

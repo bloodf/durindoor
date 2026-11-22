@@ -1137,6 +1137,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       billingEpoch,
       comboId: comboRouting?.id,
       comboName: comboRouting?.name,
+      comboNoLog: comboRouting?.noLog === true,
       comboPrompts,
       log,
       providerConcurrencyLimit: settings?.providerConcurrencyLimits,
@@ -1402,6 +1403,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // (comboRouting.allowedConnectionIds) without changing attribution.
         comboId: comboRouting?.id || null,
         comboName: comboRouting?.name || null,
+        comboNoLog: comboRouting?.noLog === true,
         quotaReservation,
         onProviderAttempt: () => {
           accountAttempts++;

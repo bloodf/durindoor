@@ -98,6 +98,18 @@ function normalizeAllowedConnectionIds(value) {
 // combo id) instead of a new column, so SQLite and PostgreSQL share the path and
 // no migration is needed. Each record: { step, model, provider, prunedAt, reason, weight }.
 const PRUNED_STEPS_SCOPE = "comboPrunedSteps";
+const NO_LOG_SCOPE = "comboNoLog";
+
+function withNoLog(db, row) {
+  const combo = rowToCombo(row);
+  if (!combo) return null;
+  return { ...combo, noLog: !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, [NO_LOG_SCOPE, combo.id, "true"]) };
+}
+
+function writeNoLog(db, id, noLog) {
+  db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [NO_LOG_SCOPE, id]);
+  if (noLog === true) db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)`, [NO_LOG_SCOPE, id, "true"]);
+}
 
 function normalizePrunedSteps(value) {
   if (!Array.isArray(value)) return [];
@@ -149,19 +161,19 @@ export async function getCombos() {
   const rows = db.all(`SELECT * FROM combos ORDER BY createdAt ASC`);
   const pruned = new Map(db.all(`SELECT key, value FROM kv WHERE scope = ?`, [PRUNED_STEPS_SCOPE])
     .map((entry) => [entry.key, normalizePrunedSteps(parseJson(entry.value, []))]));
-  return rows.map((row) => ({ ...rowToCombo(row), prunedSteps: pruned.get(row.id) || [] }));
+  return rows.map((row) => ({ ...withNoLog(db, row), prunedSteps: pruned.get(row.id) || [] }));
 }
 
 export async function getComboById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
-  return row ? { ...rowToCombo(row), prunedSteps: readPrunedSteps(db, id) } : null;
+  return row ? { ...withNoLog(db, row), prunedSteps: readPrunedSteps(db, id) } : null;
 }
 
 export async function getComboByName(name) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM combos WHERE name = ?`, [name]);
-  return rowToCombo(row);
+  return withNoLog(db, row);
 }
 
 // Routing accepts user-entered combo names case-insensitively, but management
@@ -176,7 +188,7 @@ export async function getComboForModel(name) {
       [name]
     );
   }
-  return rowToCombo(row);
+  return withNoLog(db, row);
 }
 
 export async function createCombo(data) {
@@ -196,16 +208,20 @@ export async function createCombo(data) {
     capabilities: data.capabilities || null,
     allowedConnectionIds: normalizeAllowedConnectionIds(data.allowedConnectionIds),
     prunedSteps: [],
+    noLog: data.noLog === true,
     createdAt: now,
     updatedAt: now
   };
   // Reject a violating combo before the write so nothing is persisted.
   validateComboInvariant({ ...combo, ...(invariant || {}) });
   validateComboCycles(db, combo);
-  db.run(
-    `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.members), invariant ? stringifyJson(invariant) : null, combo.capabilities ? stringifyJson(combo.capabilities) : null, stringifyJson(combo.allowedConnectionIds), combo.createdAt, combo.updatedAt]
-  );
+  db.transaction(() => {
+    db.run(
+      `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.members), invariant ? stringifyJson(invariant) : null, combo.capabilities ? stringifyJson(combo.capabilities) : null, stringifyJson(combo.allowedConnectionIds), combo.createdAt, combo.updatedAt]
+    );
+    writeNoLog(db, combo.id, combo.noLog);
+  });
   return combo;
 }
 
@@ -219,7 +235,7 @@ export async function updateCombo(id, data) {
     const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
     if (!row) return;
     // prunedSteps is written only by pruneComboSteps / restorePrunedSteps.
-    const merged = { ...rowToCombo(row), ...data, prunedSteps: readPrunedSteps(db, id), updatedAt: new Date().toISOString() };
+    const merged = { ...withNoLog(db, row), ...data, prunedSteps: readPrunedSteps(db, id), updatedAt: new Date().toISOString() };
     const priorMembers = rowToCombo(row).members;
     merged.models = Array.isArray(data.models) ? data.models : merged.models;
     merged.members = data.members !== undefined ?
@@ -239,6 +255,7 @@ export async function updateCombo(id, data) {
       `UPDATE combos SET name = ?, kind = ?, models = ?, members = ?, invariant = ?, capabilities = ?, allowedConnectionIds = ?, updatedAt = ? WHERE id = ?`,
       [merged.name, merged.kind, stringifyJson(merged.models || []), stringifyJson(merged.members), invariant ? stringifyJson(invariant) : null, merged.capabilities ? stringifyJson(merged.capabilities) : null, stringifyJson(merged.allowedConnectionIds), merged.updatedAt, id]
     );
+    writeNoLog(db, id, merged.noLog);
     result = merged;
   });
   return result;
@@ -248,6 +265,7 @@ export async function deleteCombo(id) {
   const db = await getAdapter();
   const res = db.run(`DELETE FROM combos WHERE id = ?`, [id]);
   db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [PRUNED_STEPS_SCOPE, id]);
+  db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [NO_LOG_SCOPE, id]);
   return (res?.changes ?? 0) > 0;
 }
 

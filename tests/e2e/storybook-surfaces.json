@@ -45523,7 +45523,7 @@
       "id": "src/shared/components/AddCustomEmbeddingModal.js#AddCustomEmbeddingModal",
       "sourcePath": "src/shared/components/AddCustomEmbeddingModal.js",
       "symbol": "AddCustomEmbeddingModal",
-      "sourceSha256": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+      "sourceSha256": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45546,7 +45546,7 @@
             "validation-success"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "Open enters API key and model ID, validates successfully and shows Valid.",
@@ -45561,7 +45561,7 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "InvalidEndpoint shows the error returned by its own validation fixture.",
@@ -45576,7 +45576,7 @@
             "prefilled-name"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "EditingExisting opens the actual Edit Custom Embedding form with existing Name field value.",
@@ -45596,7 +45596,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false and asserts the Add Custom Embedding dialog is absent.",
@@ -45715,7 +45715,7 @@
       "id": "src/shared/components/AddCustomEmbeddingModal.js#renderValidationResult",
       "sourcePath": "src/shared/components/AddCustomEmbeddingModal.js",
       "symbol": "renderValidationResult",
-      "sourceSha256": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+      "sourceSha256": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45735,7 +45735,7 @@
             "validation-success"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "Open performs validation; actual private success result is visible.",
@@ -45749,7 +45749,7 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "efb0c44c86d5674bb155fbbcd25f75d1fb01ea530df8362f64d0e34be80dc265",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "InvalidEndpoint performs validation; actual private error result is visible.",
@@ -99880,7 +99880,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "2639761662ee226a92caa282f212672ea6c298c3336d1b1569fbd5a9495a41cf",
-    "sourceCensusSha256": "d2a59d0e739f31b751393ac60bbaa7bd832c450501d95c250d575034b87851e4",
+    "sourceCensusSha256": "19d48aa4494dbe13c0abc666c6e1a7e9c536f46d2a89d505869c3044b526202f",
     "pendingRows": 410,
     "retainedApprovedRows": 226,
     "pendingReferences": 1409,

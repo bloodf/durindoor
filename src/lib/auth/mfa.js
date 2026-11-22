@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { consumeBackupCodeAtomic } from "@/lib/db/repos/settingsRepo.js";
 import { findTotpCounter } from "./totp.js";
 import { findBackupCodeHashIndexSync } from "./backupCodes.js";
+import { rotateDashboardSessionEpoch } from "./dashboardSession.js";
 
 /** True when a second factor must be presented for password logins. */
 export function isMfaEnabled(settings) {
@@ -65,5 +66,5 @@ export async function verifySecondFactor(input) {
 
 /** Turn MFA off and wipe every stored secret/recovery hash. */
 export async function disableMfa() {
-  await updateSettings({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [], mfaLastTotpCounter: null });
+  await rotateDashboardSessionEpoch({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [], mfaLastTotpCounter: null });
 }

@@ -81,6 +81,15 @@ const g4f = (id, host, model, answer) => ({
  * answers the site's own requests and returns undefined for anything unexpected.
  */
 const PROVIDERS = [
+  {
+    id: "hyperagent", model: "sonnet-latest", answer: "pong from hyperagent", credential: "session=synthetic-hyperagent-cookie", origins: ["https://hyperagent.com"],
+    handle: (url, init) => {
+      if (url === "https://hyperagent.com/api/threads" && init.method === "POST") return jsonResponse({ id: "thread_synthetic_0001" });
+      if (url === "https://hyperagent.com/api/threads/thread_synthetic_0001" && init.method === "PATCH") return jsonResponse({ ok: true });
+      if (url === "https://hyperagent.com/api/threads/thread_synthetic_0001/chat" && init.method === "POST") return eventStream(sse({ type: "session_start", sessionId: "session-synthetic" }) + sse({ type: "text", content: "pong from hyperagent" }) + "data: [DONE]\n\n");
+      return undefined;
+    },
+  },
   { id: "twinmind", model: "auto", answer: "pong from twinmind", credential: jwt({ exp: Math.floor(Date.now() / 1000) + 3600 }), origins: ["https://api2.twinmind.com"], handle: (url) => url === "https://api2.twinmind.com/api/v3/chat" ? eventStream(sse({ type: "text_delta", content: "pong from twinmind" })) : undefined },
   {
     id: "helyxai", model: "openai/gpt-4o", answer: "pong from helyx", credential: "synthetic-helyx-key", origins: ["https://helyxai.space"],

@@ -1,0 +1,6 @@
+{
+  "route": "error/dashboard/mitm",
+  "stories": [
+    "production-operations-mitmerror--default"
+  ]
+}

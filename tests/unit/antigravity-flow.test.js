@@ -73,7 +73,7 @@ beforeAll(async () => {
   // Importing open-sse installs its fetch wrapper; restore the closed mock
   // afterwards so every outbound request is intercepted.
   vi.stubGlobal("fetch", providerFetch);
-});
+}, 60_000); // Cold route imports can exceed Vitest's default hook timeout.
 beforeEach(() => {
   resetState();
 });

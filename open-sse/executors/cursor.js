@@ -26,6 +26,7 @@ import { chatChunkSse, sseChunk } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import {
   runProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
@@ -691,12 +692,12 @@ export class CursorExecutor extends BaseExecutor {
     );
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+      response = await runQuotaBearingProviderRequest(() => credentialFetch((target, init) => proxyAwareFetch(target, init, proxyOptions), url, {
         method: "POST",
         headers,
         body,
         signal: connectController.signal
-      }, proxyOptions));
+      }));
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener?.("abort", onAbort);

@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,12 +64,60 @@ export async function fetchLocalDeviceVoices() {
   }
 }
 
+/**
+ * Reject option-like voice ids and, when a voice list is available, require a
+ * known id. Empty / non-string voiceId means the system default voice.
+ *
+ * @param {unknown} voiceId
+ * @param {Array<{ id?: string }>|null|undefined} voices
+ * @returns {{ ok: true, voiceId: string|null } | { ok: false, error: string }}
+ */
+export function resolveLocalDeviceVoice(voiceId, voices) {
+  if (!isString(voiceId) || !voiceId.trim()) {
+    return { ok: true, voiceId: null };
+  }
+  const requested = voiceId.trim();
+  if (requested.startsWith("-")) {
+    return { ok: false, error: `Invalid local-device voice "${requested}": voice must not start with "-".` };
+  }
+  if (Array.isArray(voices) && voices.length > 0) {
+    const known = new Set(voices.map((v) => v?.id).filter(Boolean));
+    if (!known.has(requested)) {
+      return { ok: false, error: `Unknown local-device voice "${requested}".` };
+    }
+  }
+  return { ok: true, voiceId: requested };
+}
+
+/**
+ * Build `say` argv with an end-of-options marker so client text cannot inject
+ * flags such as `-f` (read a server-side file).
+ *
+ * @param {string} aiffPath
+ * @param {string} text
+ * @param {string|null|undefined} voiceId
+ * @returns {string[]}
+ */
+export function buildSayArgs(aiffPath, text, voiceId) {
+  if (voiceId) {
+    return ["-v", voiceId, "-o", aiffPath, "--", text];
+  }
+  return ["-o", aiffPath, "--", text];
+}
+
 async function synthesizeMacOrWin(text, voiceId) {
+  const voices = await fetchLocalDeviceVoices();
+  const resolved = resolveLocalDeviceVoice(voiceId, voices);
+  if (!resolved.ok) {
+    const err = new Error(resolved.error);
+    err.status = 400;
+    throw err;
+  }
   const dir = await mkdtemp(join(tmpdir(), "tts-"));
   const aiffPath = join(dir, "out.aiff");
   const mp3Path = join(dir, "out.mp3");
   try {
-    const args = voiceId ? ["-v", voiceId, "-o", aiffPath, text] : ["-o", aiffPath, text];
+    const args = buildSayArgs(aiffPath, text, resolved.voiceId);
     await execFileAsync("say", args);
     await execFileAsync("ffmpeg", ["-y", "-i", aiffPath, "-codec:a", "libmp3lame", "-qscale:a", "4", mp3Path]);
     const buf = await readFile(mp3Path);

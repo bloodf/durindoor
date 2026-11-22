@@ -1,0 +1,8 @@
+{
+  "route": "dialog/KiroAuthModal",
+  "stories": [
+    "production-shared-kiro-kiroauthmodal--method-selection",
+    "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+    "production-shared-kiro-kiroauthmodal--import-auto-detect-failure"
+  ]
+}

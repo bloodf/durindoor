@@ -18,6 +18,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [Brand guide](./brand-guide.mdx), [dashboard design system](./design-system.mdx), and [provider asset policy](./provider-brand-assets.mdx)
 - [Brand image prompts](./brand-prompts.md) and [provider audit evidence](./provider-expansion-audit.json)
 - [V5 admin design audit](./audits/v5-design-2026-10-29/README.md), including Visant findings, screenshots, preservation checks and verification limits
+- [V5 production integration plan (#1300)](./v5-production-integration.md): acceptance status, scope, opt-in switch, surface checks and implementation slices
 - [OmniRoute security-audit applicability (#1150)](./omniroute-security-audit-1150.md)
 - [OmniRoute open-PR working notes (#1073)](./omniroute-open-prs-1073.md)
 - [Claude Code sign-in comparison (#2034)](./claude-signin-parity-2034.md)

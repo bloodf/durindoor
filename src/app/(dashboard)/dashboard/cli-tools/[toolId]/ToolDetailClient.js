@@ -9,6 +9,8 @@ import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { loadToolConfiguration } from "../toolConfiguration.js";
 import { fallbackConnectionModels } from "../connectionModels";
 import {
@@ -21,7 +23,18 @@ import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
+function BackLink() {
+  const v5 = useUiV5();
+  return (
+    <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
+      {v5 ? <MotionIcon name="arrow_back" size={18} /> : <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>}
+      Back to CLI Tools
+    </Link>
+  );
+}
+
 export default function ToolDetailClient({ toolId, machineId }) {
+  const v5 = useUiV5();
   const tool = CLI_TOOLS[toolId];
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,24 +147,18 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   if (!tool) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]">
-        <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
-          <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
-          Back to CLI Tools
-        </Link>
+      <div className={v5 ? "v5-dashboard-page mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-4 text-[13px] text-dd-text" : "mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]"}>
+        <BackLink />
         <EmptyState icon="search_off" title="Tool not found" message="Tool not found or disabled." />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]">
-      <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
-        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
-        Back to CLI Tools
-      </Link>
+    <div className={v5 ? "v5-dashboard-page mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-4 text-[13px] text-dd-text" : "mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]"}>
+      <BackLink />
       <PageHeader icon={tool.icon || "terminal"} title={tool.name} subtitle={tool.description} />
-      {loading ? <CardSkeleton /> : loadError ? <div role="alert" className="space-y-3 rounded-dd border border-dd-danger p-4"><p>{loadError}</p><Button icon="refresh" onClick={() => setLoadAttempt((value) => value + 1)}>Retry configuration</Button></div> : renderToolCard()}
+      {loading ? <CardSkeleton /> : loadError ? <div role="alert" className="space-y-3 rounded-dd border border-dd-danger p-4">{v5 ? <MotionIcon name="error" size={18} className="text-dd-danger" /> : null}<p>{loadError}</p><Button icon="refresh" onClick={() => setLoadAttempt((value) => value + 1)}>Retry configuration</Button></div> : renderToolCard()}
     </div>
   );
 }

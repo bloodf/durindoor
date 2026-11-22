@@ -3,7 +3,11 @@
 Reviewed for #2034 against OmniRoute release/v3.8.55 candidate
 `4624250231f49ed118fb4522a9d735e4894322c6` and DurinDoor `main` and the
 working branch on 2026-11-20. Status: documented gap; no Zed-hosted support is
-implemented or claimed.
+implemented or claimed. **Superseded for staging by the owner's order on #2034:**
+the sign-in and gateway flow is now ported behind a per-connection opt-in
+(`providerSpecificData.enableSessionDispatch === true`), registered in the
+production registry and tested only against closed mocks; see `docs/providers/zed-hosted.mdx`. The authorization
+question below is unchanged and remains the operator's to settle.
 
 Zed describes [hosted models](https://zed.dev/docs/account/zed-hosted-models)
 as models billed through Zed. Its [provider guide](https://zed.dev/docs/ai/llm-providers)

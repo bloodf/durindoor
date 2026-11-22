@@ -235,8 +235,9 @@ export function shouldUseSecureCookie(request) {
 }
 
 export async function createDashboardAuthToken(claims = {}) {
-  const passwordSessionEpoch = claims.oidc ?
-  undefined :
+  // OIDC sessions are bound to the same server-side epoch as password
+  // sessions, so a password change/reset revokes them too (#2195).
+  const passwordSessionEpoch =
   claims.passwordSessionEpoch ?? (await getSettings()).passwordSessionEpoch;
   const jwtPayload = {
     authenticated: true,
@@ -260,7 +261,6 @@ export async function verifyDashboardAuthToken(token) {
     // session would make the second factor bypassable by replaying the
     // intermediate cookie, so it is rejected everywhere a session is expected.
     if (payload.scope === MFA_PENDING_SCOPE) return false;
-    if (payload.oidc) return true;
     const settings = await getSettings();
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch;
   } catch {
@@ -273,7 +273,6 @@ export async function getDashboardAuthSession(token) {
   try {
     const { payload } = await jwtVerify(token, getSecretBytes());
     if (payload.scope === MFA_PENDING_SCOPE) return null;
-    if (payload.oidc) return payload;
     const settings = await getSettings();
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch ? payload : null;
   } catch {

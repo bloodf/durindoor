@@ -9,3 +9,4 @@ export const AutomaticAndCustom = { ...reviewStory(original.AutomaticAndCustom, 
 export const CustomizeAddRemoveAndSave = { ...reviewStory(original.CustomizeAddRemoveAndSave, {"source":"src/app/(dashboard)/dashboard/media-routes/page.stories.jsx","standalone":false}) };
 export const LoadError = { ...reviewStory(original.LoadError, {"source":"src/app/(dashboard)/dashboard/media-routes/page.stories.jsx","standalone":false}) };
 export const EmptyRoute = { ...reviewStory(original.EmptyRoute, {"source":"src/app/(dashboard)/dashboard/media-routes/page.stories.jsx","standalone":false}) };
+export const CustomUnavailable = { ...reviewStory(original.CustomUnavailable, {"source":"src/app/(dashboard)/dashboard/media-routes/page.stories.jsx","standalone":false}) };

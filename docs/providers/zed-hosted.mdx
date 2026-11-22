@@ -1,0 +1,61 @@
+---
+title: Zed Hosted Models
+description: Opt-in provider that signs in to a Zed account and calls Zed's hosted LLM gateway. Off by default and verified only against a closed mock of the contract.
+---
+
+Zed Hosted Models (`zed-hosted`, alias `zdh`) signs in to a Zed account with Zed's native-app flow and sends chat requests to `cloud.zed.dev`, the gateway Zed's own editor uses for the models it bills. Zed fronts Anthropic, OpenAI, Google and xAI models there, and the live catalog decides which are available.
+
+It is separate from the existing Zed IDE entry (`zed`, alias `zd`). That entry only imports provider keys from the Zed keychain and is unchanged. `zed-hosted` never reuses those keys, and keys never move between the two.
+
+This provider is **unverified**. The tests run against an in-memory fake of the contract that OmniRoute's implementation uses. No live Zed account, token or request has been used.
+
+## Read this first
+
+- **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request and every model-discovery call fail with HTTP 403 `zed_hosted_dispatch_disabled` before any network call. Each connection opts in on its own, so enabling one account does not open another.
+- **It re-serves a Zed plan through the gateway.** Every client of this DurinDoor instance spends the plan of the account that signed in. Do not enable it for people who should not use that plan.
+- **Check Zed's terms first.** The [General Terms](https://zed.dev/terms), section 2.4, restrict providing access to a Zed product to third parties and accessing non-public APIs. Zed publishes no third-party gateway contract for hosted models, and the endpoints used here are the ones its editor calls. The operator decides whether their use is authorized. DurinDoor ships this behind the opt-in for that reason. See `internal/docs/zed-hosted-contract.md` in the repository for the review.
+
+## Set up
+
+1. Add **Zed Hosted Models** under **Providers**, then start the sign-in. DurinDoor generates a fresh RSA keypair for that attempt and opens `https://zed.dev/native_app_signin` with the public key.
+2. Sign in to Zed in your browser. Zed redirects to `http://127.0.0.1:<port>/?user_id=…&access_token=…`. That address usually does not load, because the redirect carries no OAuth `code` and nothing listens on that port for the dashboard. Copy the full URL from the browser's address bar, or just its query string, and paste it into the sign-in dialog.
+3. DurinDoor decrypts the access token with the private key, which never leaves the gateway, and looks up the account and its organization.
+4. Turn on **Allow session dispatch** in the connection's edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`). Until then it refuses to dispatch or list models.
+
+Cookie capture: **not applicable.** The sign-in is Zed's native-app keypair flow, so the cookie capture extension, pasted `Cookie:` header, cURL and HAR import flows do not apply.
+
+## How it works
+
+- **Tokens.** The Zed access token is long-lived and Zed exposes no refresh grant for it, so the connection stores no refresh token or expiry. Each request exchanges the access token and organization for a short-lived LLM token (`POST /client/llm_tokens`), cached in memory for 50 minutes per credential. When Zed answers 401 or sets `x-zed-expired-token` or `x-zed-outdated-token`, DurinDoor exchanges a new LLM token and retries once. A second rejection is returned as 401. If the access token itself is revoked, sign in again.
+- **Models.** The catalog is never seeded locally. It is read live from `GET /models` with the LLM token, cached for an hour, and drops disabled models. Other model ids pass through, and the vendor is inferred from the name when the catalog is unavailable.
+- **Chat.** Requests are `POST /completions` with a thread envelope whose `provider_request` is built in the format of the vendor Zed fronts for that model: Anthropic Messages, Gemini, OpenAI Responses or an OpenAI-compatible xAI body. The line-delimited reply is converted back with the gateway's own translators. DurinDoor always streams from Zed and aggregates the stream into JSON for clients that did not ask to stream.
+- **Routes.** Both the OpenAI chat route and the Anthropic Messages route work, JSON and streamed.
+- **Isolation.** LLM tokens and catalogs are cached under a hash of the user, organization and full access token. Two connections never share an entry, even when their user ids or organizations match.
+
+## Errors
+
+| Situation | Result |
+| --- | --- |
+| Connection did not opt in | 403 `zed_hosted_dispatch_disabled`, no network call |
+| Connection has no user ID or access token | 401 |
+| Zed rejects the sign-in (401 or 403 on the account or LLM-token exchange) | 401, sign in again |
+| Zed rate limit or quota (429) | 429 |
+| `trial_blocked` on completions | The upstream status with a message that trial or billing access is blocked |
+| Zed fails the stream before any output | In-band error event `ZED_STREAM_FAILED` |
+| Zed fails the stream after output started | The stream ends with a 502 error |
+| Other upstream failures | 502 |
+
+## Limits and not verified
+
+- Live behavior is untested: the sign-in redirect, the encryption scheme (OAEP-SHA256 first, PKCS#1 v1.5 as fallback), the `x-zed-*` headers, the vendor `provider` strings and the NDJSON status frames come from OmniRoute's pinned source and could differ in Zed's current service.
+- `x-zed-version` is pinned to `0.200.0`. Unlike OmniRoute, DurinDoor does not look up the latest Zed release. Set `providerSpecificData.appVersion` on a connection if Zed starts rejecting the pin.
+- OmniRoute's quota probe (`usage/zedHosted.ts`), the Zed keychain import cards and the MITM handler were not ported. Usage and quota are not shown for this provider.
+- Zed's Google and OpenAI proxies are narrower than the vendors' own APIs. DurinDoor applies OmniRoute's adaptations (safety threshold `BLOCK_NONE`, lowercase function-calling modes, uppercase thinking level, no `developer` role).
+
+## Sources
+
+- [OmniRoute zed-hosted registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/zed-hosted/index.ts)
+- [OmniRoute Zed auth helpers](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/shared/zedAuth.ts)
+- [OmniRoute Zed-hosted executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/zed-hosted.ts)
+- [OmniRoute Zed-hosted sign-in](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/oauth/providers/zed-hosted.ts)
+- [Zed hosted models](https://zed.dev/docs/account/zed-hosted-models), [Zed General Terms](https://zed.dev/terms)

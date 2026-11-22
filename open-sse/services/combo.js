@@ -1167,13 +1167,18 @@ export function getConversationCacheKey(body) {
 // Efraimidis-Spirakis weighted random permutation. Every member remains in the
 // fallback list, so a terminal 400 still returns immediately through the normal
 // `checkFallbackError` branch; weight changes selection only, never eligibility.
+// Weight-0 members keep fallback eligibility but always sort after positive-weight
+// members so they are never picked first when a positive-weight member exists.
 export function getWeightedModels(models, members = [], random = Math.random) {
   if (!Array.isArray(models) || models.length < 2) return models;
-  const weights = new Map((Array.isArray(members) ? members : []).map((member) => [member?.id, member?.weight]));
+  const remaining = Array.isArray(members) ? [...members] : [];
   return models.map((model, index) => {
-    const weight = weights.get(model);
-    return { model, index, key: Math.pow(random(), 1 / (Number.isFinite(weight) && weight > 0 ? weight : 1)) };
-  }).sort((a, b) => b.key - a.key || a.index - b.index).map(({ model }) => model);
+    const memberIndex = remaining.findIndex((member) => member?.id === model);
+    const value = memberIndex < 0 ? 1 : remaining.splice(memberIndex, 1)[0]?.weight;
+    const weight = Number.isFinite(value) && value >= 0 ? value : 1;
+    const key = weight > 0 ? Math.pow(random(), 1 / weight) : -1;
+    return { model, index, weight, key };
+  }).sort((a, b) => (b.weight > 0) - (a.weight > 0) || b.key - a.key || a.index - b.index).map(({ model }) => model);
 }
 
 /**
@@ -1675,33 +1680,35 @@ export async function handleComboChat({
       // the streaming stall/first-chunk timeouts.
       let attemptSignal = null;
       let attemptController = null;
-      let timeoutTimer = null;
       if (comboTimeoutMs > 0) {
         attemptController = new AbortController();
         attemptSignal = attemptController.signal;
       }
 
-      let result;
-      try {
-        if (comboTimeoutMs > 0) {
-          result = await Promise.race([
-          dispatch(attemptBody, modelStr, attemptSignal),
-          new Promise((_, reject) => {
-            timeoutTimer = setTimeout(() => {
-              const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
-              err.name = "AbortError";
-              err.isComboTimeout = true;
-              reject(err);
-              attemptController.abort();
-            }, comboTimeoutMs);
-          })]
-          );
-        } else {
-          result = await dispatch(attemptBody, modelStr, attemptSignal);
+      const runAttempt = async () => {
+        if (comboTimeoutMs <= 0) {
+          return dispatch(attemptBody, modelStr, attemptSignal);
         }
-      } finally {
-        if (timeoutTimer) clearTimeout(timeoutTimer);
-      }
+        let timeoutTimer = null;
+        try {
+          return await Promise.race([
+            dispatch(attemptBody, modelStr, attemptSignal),
+            new Promise((_, reject) => {
+              timeoutTimer = setTimeout(() => {
+                const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
+                err.name = "AbortError";
+                err.isComboTimeout = true;
+                reject(err);
+                attemptController.abort();
+              }, comboTimeoutMs);
+            })
+          ]);
+        } finally {
+          if (timeoutTimer) clearTimeout(timeoutTimer);
+        }
+      };
+
+      const result = await runAttempt();
 
       // A timed-out attempt may return a 499 Response; treat it as a deadline miss
       // rather than a genuine failure and fall back to the next model.
@@ -1763,7 +1770,14 @@ export async function handleComboChat({
           }
         } else if (checkEmptyBody && !body?.stream && await isBodyEmpty(result)) {
           log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
-          const retryResult = await dispatch(body, modelStr);
+          // Reuse runAttempt so the retry keeps the buffered attemptBody,
+          // attemptSignal, and comboTimeoutMs deadline from the first attempt.
+          const retryResult = await runAttempt();
+          if (retryResult?.status === 499 && attemptSignal?.aborted) {
+            releaseFailedAffinity(modelStr, i);
+            log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
+            continue;
+          }
           if (!retryResult.ok || await isBodyEmpty(retryResult)) {
             if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
             releaseFailedAffinity(modelStr, i);

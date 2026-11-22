@@ -1,0 +1,8 @@
+{
+  "route": "dialog/ManualConfigModal",
+  "stories": [
+    "production-shared-config-manualconfigmodal--open",
+    "production-shared-config-manualconfigmodal--long-content",
+    "production-shared-config-manualconfigmodal--empty"
+  ]
+}

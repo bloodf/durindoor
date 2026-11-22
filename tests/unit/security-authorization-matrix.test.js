@@ -434,7 +434,7 @@ describe.each(["anonymous", "owner"])("management mutations on loopback, login o
     fixture.trustedPeer = true;
     fixture.settings.requireLogin = false;
     const [path, method, body] = spec();
-    const response = await guarded(request(path, principal, method, body, { "x-9r-real-ip": "127.0.0.1" }), handler);
+    const response = await guarded(request(path, principal, method, body, { "x-9r-real-ip": "127.0.0.1", host: "localhost:20128" }), handler);
     if (principal === "anonymous") {
       expect(response.status).toBeLessThan(300);
       expect(fixture.writes.length).toBeGreaterThan(0);

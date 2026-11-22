@@ -73,6 +73,8 @@ export async function createProxyPool(data) {
     createdAt: now,
     updatedAt: now,
   };
+  // Deploy-time relay gate only; omit when absent so pre-secret pools stay open.
+  if (data.relaySecret) pool.relaySecret = data.relaySecret;
   upsert(db, pool);
   return pool;
 }

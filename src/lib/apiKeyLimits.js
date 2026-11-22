@@ -15,7 +15,7 @@
 // A secret is a credential that can change; the id is the account. Keying the
 // windows by the id keeps a key's budget intact across a secret change, and
 // keeps two keys that once shared a secret apart.
-import { getApiKeyByKey, getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
+import { getApiKeyByKey, getApiKeyUsageLimitStatus, getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
 import { getAdapterSync } from "@/lib/db/driver.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -35,9 +35,11 @@ const METRICS = {
   cost: { label: "budget", read: (u) => u.cost, money: true },
 };
 
-// `enforce: false` rows are shown on the dashboard only. The daily total is
-// the older `dailyLimitTokens` column, which the chat handler enforces with
-// committed-token accounting.
+// `enforce: false` rows are skipped by checkApiKeyLimits and shown on the
+// dashboard. The daily total is the older `dailyLimitTokens` column, which is
+// enforced with committed-token accounting by the chat/native admission and by
+// enforceApiKeyLimits (shared admission), so every billable route returns the
+// same 429 once the cap is reached.
 export const USAGE_LIMITS = [
   { field: "dailyLimitTokens", period: "day", metric: "tokens", label: "Tokens today", always: true, enforce: false },
   { field: "dailyInputTokenLimit", period: "day", metric: "inputTokens", label: "Input tokens today" },
@@ -232,6 +234,22 @@ export async function checkApiKeyLimits(record, now = new Date()) {
 }
 
 /**
+ * The daily `dailyLimitTokens` cap, measured like the chat/native admission
+ * (committed tokens since local midnight). Reads only; it never counts a hit.
+ */
+async function checkDailyTokenCap(record) {
+  if (record.dailyLimitTokens == null) return null;
+  const status = await getApiKeyUsageLimitStatus(record.key, new Date(), record.id || null);
+  if (!status.exceeded) return null;
+  const used = Math.round(status.usedTokens);
+  const limit = Math.round(status.limitTokens);
+  return {
+    message: `API key daily token limit exceeded (${used}/${limit} tokens)`,
+    retryAfter: Math.max(1, Math.ceil((new Date(status.resetAt).getTime() - Date.now()) / 1000)),
+  };
+}
+
+/**
  * Return a 429 with Retry-After when a limit is hit, otherwise null.
  *
  * A request is checked and counted once: chat checks at the top of the
@@ -246,7 +264,10 @@ export async function enforceApiKeyLimits(request, record) {
   }
   let limited;
   try {
-    limited = await checkApiKeyLimits(record);
+    limited = await checkDailyTokenCap(record).catch((error) => {
+      console.warn("[apiKeyLimits] daily cap check failed:", error?.message);
+      return null;
+    }) || await checkApiKeyLimits(record);
   } catch (error) {
     // Fail open: a broken usage query must not take the gateway down.
     console.warn("[apiKeyLimits] check failed:", error?.message);

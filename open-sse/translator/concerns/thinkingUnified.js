@@ -40,7 +40,8 @@ export function extractThinking(body, model = null, provider = null, modelCapabi
     return { mode: "level", level: e };
   }
 
-  const effort = body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
+  // camelCase `reasoningEffort` (OpenCode provider options, port of 9router #1936) wins over snake_case.
+  const effort = body.reasoningEffort ?? body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
 
   /**
    * Explicit Claude disable/budget intent wins over provider-injected effort.
@@ -162,6 +163,10 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   resolvedCaps.customKeys.has("thinkingFormat"))
   {
     return resolvedCaps.thinkingFormat;
+  }
+  // Antigravity uses the Gemini request envelope even for Claude models.
+  if (targetFormat === FORMATS.ANTIGRAVITY && resolvedCaps.reasoning) {
+    return resolvedCaps.thinkingFormat === "gemini-budget" ? "gemini-budget" : "gemini-level";
   }
   // Dynamic OpenAI-compatible gateways speak the OpenAI wire format regardless
   // of the underlying model family. A Qwen model served through such a gateway

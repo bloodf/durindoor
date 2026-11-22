@@ -40,6 +40,7 @@ import {
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 
 const PROBE_TIMEOUT_MS = 5000;
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
@@ -101,7 +102,7 @@ async function probeAnthropicCompatible(connection, effectiveProxy, fetcher) {
   if (baseUrl.endsWith("/messages")) baseUrl = baseUrl.slice(0, -9);
   if (baseUrl.endsWith("/v1")) baseUrl = baseUrl.slice(0, -3);
   const url = `${baseUrl}/v1/messages`;
-  const model = connection.defaultModel || "claude-3-haiku-20240307";
+  const model = connection.defaultModel || ANTHROPIC_VALIDATION_MODEL;
   // Keyless LAN nodes get no x-api-key or Authorization header at all.
   const headers = { "anthropic-version": "2023-06-01", "content-type": "application/json" };
   if (connection.apiKey) {

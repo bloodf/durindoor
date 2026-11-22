@@ -65,6 +65,12 @@ const STRIP_RULES = [
  * telemetry with `diagnostics: Extra inputs are not permitted`.
  */
 { match: /claude/i, drop: ["temperature", "diagnostics"] },
+/**
+ * OpenCode Go's Claude lane (/messages) rejects output_config.task_budget even with its own
+ * beta flag (400 "Extra inputs are not permitted"). effort stays: adaptive thinking needs it.
+ * context_management is supported there once its beta flag travels (see default.js).
+ */
+{ provider: "opencode-go", match: /claude/i, dropOutputConfigFields: ["task_budget"] },
 /** Claude Opus 5.5 also rejects the remaining sampling controls. */
 { match: /claude-opus-5[-.]5/i, drop: ["top_p", "top_k"] },
 // GitHub Copilot GPT-5.4+ (within 5.x) and GPT-6.x: temperature unsupported.
@@ -205,6 +211,13 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // Drop top-level params (guard: a rule may omit `drop`, e.g. message-only rules).
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
+    }
+    // Nested drops: keep the rest of output_config, remove it only when left empty.
+    for (const key of rule.dropOutputConfigFields || []) {
+      if (isObject(body.output_config) && body.output_config[key] !== undefined) {
+        delete body.output_config[key];
+        if (Object.keys(body.output_config).length === 0) delete body.output_config;
+      }
     }
     if (Array.isArray(rule.dropChat) && Array.isArray(body.messages)) {
       for (const key of rule.dropChat) {

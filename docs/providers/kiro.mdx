@@ -92,3 +92,5 @@ Kiro does not retry 429 on its own; the request moves on to the next account.
 **MITM Proxy** (`/dashboard/mitm`) can also intercept the Kiro IDE's calls to its us-east-1 runtime hosts and send them through DurinDoor. That is separate from the connection on this page. See [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors) for recovery steps.
 
 After connecting, send a short request with an ID from `GET /v1/models` and confirm **Usage**. If an imported token lacks the profile ARN, use Builder ID or Identity Center to acquire it. Token acquisition and a quota row do not prove that the selected model can answer.
+
+Kiro does not support Anthropic's `[1m]` context suffix. Use a direct Anthropic provider for that context option.

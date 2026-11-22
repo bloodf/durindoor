@@ -12,7 +12,7 @@ const MAX_PAGE_SIZE = 500;
 
 // Kiro's direct import persists authType "api_key" (src/app/api/oauth/kiro/
 // api-key/route.js); older rows use "apikey" — accept both spellings.
-const API_KEY_AUTH_TYPES = ["apikey", "api_key"];
+const API_KEY_AUTH_TYPES = ["apikey", "api_key", "auth_token"];
 
 export function isUsageEligible(connection) {
   // A disabled (isActive:false) api-key/free-tier row must not render a quota

@@ -3,6 +3,8 @@ title: Media routes
 description: Default model and fallbacks for each media endpoint, so requests can leave out the model.
 ---
 
+For NVIDIA's `nvidia/nv-embedqa-e5-v5` embedding model, omitted `input_type` defaults to `query`. Send `input_type: "passage"` when embedding documents.
+
 A media route is the ordered list of models an endpoint uses when a request has no `model`. Leave `model` out, or send `"model": "auto"`. DurinDoor tries the route's models in order and moves to the next one on a retryable failure (429, 5xx, missing or exhausted credentials). Any other error comes back unchanged. A 200 with an empty result (a silent audio file, a page with no text) is returned as is, not retried. If the request names a model or a combo, the route is not used.
 
 Routes exist for these endpoints:

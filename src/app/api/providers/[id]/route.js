@@ -389,7 +389,7 @@ export async function PUT(request, { params }) {
     }
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
-    if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    if (apiKey && (existing.authType === "apikey" || existing.authType === "auth_token")) updateData.apiKey = apiKey;
     // Re-importing a web session is how an expired cookie is recovered (#2034): the
     // Edit dialog sends the fresh cookie in `apiKey`, and the connection keeps its
     // identity. Failure state recorded against the old cookie (model cooldowns, 401

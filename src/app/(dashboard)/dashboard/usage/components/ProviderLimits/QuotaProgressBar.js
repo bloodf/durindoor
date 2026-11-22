@@ -1,6 +1,6 @@
 "use client";
 
-import { formatResetTime } from "./utils";
+import { formatResetTime, quotaStatusLevel } from "./utils";
 
 const TONES = {
   healthy: { text: "text-dd-success", bar: "bg-dd-success", surface: "bg-dd-surface-2", label: "Healthy" },
@@ -8,10 +8,11 @@ const TONES = {
   danger: { text: "text-dd-danger", bar: "bg-dd-danger", surface: "bg-dd-surface-2", label: "Depleted" },
 };
 
+// Thresholds live in ./utils (quotaStatusLevel); this file only maps level -> tone.
+const TONE_BY_LEVEL = { green: TONES.healthy, yellow: TONES.warning, red: TONES.danger };
+
 function toneFor(remaining) {
-  if (remaining > 70) return TONES.healthy;
-  if (remaining >= 30) return TONES.warning;
-  return TONES.danger;
+  return TONE_BY_LEVEL[quotaStatusLevel(remaining)];
 }
 
 function formatResetTimeDisplay(resetTime) {

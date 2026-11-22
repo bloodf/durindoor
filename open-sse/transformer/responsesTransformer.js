@@ -82,7 +82,11 @@ export function createResponsesApiTransformStream(logger = null) {
     usage: null,
     // Delay completion after finish_reason so a trailing usage-only chunk can enrich it.
     awaitingTrailingUsage: false,
-    completedSent: false
+    completedSent: false,
+    // Completed output items (from response.output_item.done), repeated in
+    // response.completed so clients that build the final result from the
+    // terminal event see the whole turn (decolua/9router#4380).
+    outputItems: []
   };
 
   const encoder = new TextEncoder();
@@ -155,15 +159,17 @@ export function createResponsesApiTransformStream(logger = null) {
         part: { type: "summary_text", text: state.reasoningBuf }
       });
 
+      const reasoningItem = {
+        id: state.reasoningId,
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: state.reasoningBuf }]
+      };
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: state.reasoningIndex,
-        item: {
-          id: state.reasoningId,
-          type: "reasoning",
-          summary: [{ type: "summary_text", text: state.reasoningBuf }]
-        }
+        item: reasoningItem
       });
+      state.outputItems.push({ outputIndex: state.reasoningIndex, item: reasoningItem });
     }
   };
 
@@ -191,16 +197,18 @@ export function createResponsesApiTransformStream(logger = null) {
         part: { type: "output_text", annotations: [], logprobs: [], text: fullText }
       });
 
+      const messageItem = {
+        id: msgId,
+        type: "message",
+        content: [{ type: "output_text", annotations: [], logprobs: [], text: fullText }],
+        role: "assistant"
+      };
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: outputIndex,
-        item: {
-          id: msgId,
-          type: "message",
-          content: [{ type: "output_text", annotations: [], logprobs: [], text: fullText }],
-          role: "assistant"
-        }
+        item: messageItem
       });
+      state.outputItems.push({ outputIndex, item: messageItem });
     }
   };
 
@@ -217,17 +225,19 @@ export function createResponsesApiTransformStream(logger = null) {
         arguments: args
       });
 
+      const functionCallItem = {
+        id: `fc_${callId}`,
+        type: "function_call",
+        arguments: args,
+        call_id: callId,
+        name: state.funcNames[idx] || ""
+      };
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: outputIndex,
-        item: {
-          id: `fc_${callId}`,
-          type: "function_call",
-          arguments: args,
-          call_id: callId,
-          name: state.funcNames[idx] || ""
-        }
+        item: functionCallItem
       });
+      state.outputItems.push({ outputIndex, item: functionCallItem });
 
       state.funcItemDone[idx] = true;
       state.funcArgsDone[idx] = true;
@@ -244,7 +254,8 @@ export function createResponsesApiTransformStream(logger = null) {
         created_at: state.created,
         status: "completed",
         background: false,
-        error: null
+        error: null,
+        output: state.outputItems.slice().sort((a, b) => a.outputIndex - b.outputIndex).map(({ item }) => item)
       };
       if (usage) response.usage = usage;
       emit(controller, "response.completed", {

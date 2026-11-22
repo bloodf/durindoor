@@ -13,7 +13,9 @@ export function isPoeMessagesModel(model) {
 }
 
 export class PoeExecutor extends BaseExecutor {
-  constructor(fetcher = proxyAwareFetch) {
+  // Resolve proxyAwareFetch lazily in execute() so module-level instantiation
+  // in executors/index.js does not read it at import time.
+  constructor(fetcher = null) {
     super("poe", PROVIDERS.poe);
     this.fetcher = fetcher;
   }
@@ -25,9 +27,10 @@ export class PoeExecutor extends BaseExecutor {
     const key = credentials.apiKey || credentials.accessToken;
     if (!key) return errorResult(401, "Poe API key is required", body, url);
     const payload = { ...body, model, stream: stream !== false };
+    const fetcher = this.fetcher || proxyAwareFetch;
     let response;
     try {
-      response = await this.fetcher(url, {
+      response = await fetcher(url, {
         method: "POST",
         signal,
         headers: {

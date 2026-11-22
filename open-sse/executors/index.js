@@ -30,6 +30,24 @@ import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
+import { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
+import { ClaudeWebExecutor } from "./claude-web.js";
+import { DeepSeekWebExecutor } from "./deepseek-web.js";
+import { DoubaoWebExecutor } from "./doubao-web.js";
+import { GeminiWebExecutor } from "./gemini-web.js";
+import { ZaiWebExecutor } from "./zai-web.js";
+import { PromptQlExecutor } from "./promptql.js";
+import { NotionWebExecutor } from "./notion-web.js";
+import { NotrackWebExecutor } from "./notrack-web.js";
+import { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.js";
+import { TinyCmsExecutor } from "./tinycms-web.js";
+import { BlackboxWebExecutor } from "./blackbox-web.js";
+import { ConolWebExecutor } from "./conol-web.js";
+import { ChatPlaygroundExecutor } from "./chatplayground.js";
+import { CloudflarePlaygroundExecutor } from "./cloudflare-playground.js";
+import { LmarenaExecutor } from "./lmarena.js";
+import { MaxaiExecutor } from "./maxai.js";
+import { PoeExecutor } from "./poe.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { PollinationsExecutor } from "./pollinations.js";
@@ -69,6 +87,22 @@ import { resolveProviderAlias } from "../services/model.js";
 import { OpenCodeServerExecutor } from "./opencode-server.js";
 
 const chatGptWebExecutor = new ChatGptWebExecutor();
+const chatGptWebCodexExecutor = new ChatGptWebCodexExecutor();
+const claudeWebExecutor = new ClaudeWebExecutor();
+const deepSeekWebExecutor = new DeepSeekWebExecutor();
+const geminiWebExecutor = new GeminiWebExecutor();
+const zaiWebExecutor = new ZaiWebExecutor();
+const chatPlaygroundExecutor = new ChatPlaygroundExecutor();
+const cloudflarePlaygroundExecutor = new CloudflarePlaygroundExecutor();
+const lmarenaExecutor = new LmarenaExecutor();
+const maxaiExecutor = new MaxaiExecutor();
+const promptQlExecutor = new PromptQlExecutor();
+const notionWebExecutor = new NotionWebExecutor();
+const notrackWebExecutor = new NotrackWebExecutor();
+const tencentAIStudioWebExecutor = new TencentAIStudioWebExecutor();
+const tinyCmsExecutor = new TinyCmsExecutor();
+const blackboxWebExecutor = new BlackboxWebExecutor();
+const conolWebExecutor = new ConolWebExecutor();
 
 const executors = {
   "adapta-web": new AdaptaWebExecutor(),
@@ -116,6 +150,40 @@ const executors = {
   "perplexity-web": new PerplexityWebExecutor(),
   "chatgpt-web": chatGptWebExecutor,
   "cgpt-web": chatGptWebExecutor,
+  "chatgpt-web-codex": chatGptWebCodexExecutor,
+  "cgpt-codex": chatGptWebCodexExecutor,
+  "claude-web": claudeWebExecutor,
+  cw: claudeWebExecutor,
+  "deepseek-web": deepSeekWebExecutor,
+  "ds-web": deepSeekWebExecutor,
+  "doubao-web": new DoubaoWebExecutor(),
+  "gemini-web": geminiWebExecutor,
+  gweb: geminiWebExecutor,
+  "zai-web": zaiWebExecutor,
+  zw: zaiWebExecutor,
+  promptql: promptQlExecutor,
+  pql: promptQlExecutor,
+  "notion-web": notionWebExecutor,
+  nw: notionWebExecutor,
+  "notrack-web": notrackWebExecutor,
+  ntw: notrackWebExecutor,
+  "tencent-aistudio-web": tencentAIStudioWebExecutor,
+  tasw: tencentAIStudioWebExecutor,
+  "tinycms-web": tinyCmsExecutor,
+  tcw: tinyCmsExecutor,
+  "blackbox-web": blackboxWebExecutor,
+  "bb-web": blackboxWebExecutor,
+  "conol-web": conolWebExecutor,
+  cnl: conolWebExecutor,
+  chatplayground: chatPlaygroundExecutor,
+  cpl: chatPlaygroundExecutor,
+  "cloudflare-playground": cloudflarePlaygroundExecutor,
+  cfp: cloudflarePlaygroundExecutor,
+  lmarena: lmarenaExecutor,
+  lma: lmarenaExecutor,
+  maxai: maxaiExecutor,
+  mx: maxaiExecutor,
+  poe: new PoeExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),
@@ -234,6 +302,19 @@ export { OpenCodeGoExecutor } from "./opencode-go.js";
 export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
+export { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
+export { ClaudeWebExecutor } from "./claude-web.js";
+export { DeepSeekWebExecutor } from "./deepseek-web.js";
+export { DoubaoWebExecutor } from "./doubao-web.js";
+export { GeminiWebExecutor } from "./gemini-web.js";
+export { ZaiWebExecutor } from "./zai-web.js";
+export { PromptQlExecutor } from "./promptql.js";
+export { NotionWebExecutor } from "./notion-web.js";
+export { NotrackWebExecutor } from "./notrack-web.js";
+export { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.js";
+export { TinyCmsExecutor } from "./tinycms-web.js";
+export { BlackboxWebExecutor } from "./blackbox-web.js";
+export { ConolWebExecutor } from "./conol-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { PollinationsExecutor } from "./pollinations.js";

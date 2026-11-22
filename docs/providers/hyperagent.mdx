@@ -1,6 +1,9 @@
-# HyperAgent
+---
+title: HyperAgent
+description: Unofficial HyperAgent browser-session integration; the provider is registered but chat dispatch is not ported yet.
+---
 
-The pinned OmniRoute provider is an unofficial browser-session integration for `hyperagent.com`. It sends a browser `Cookie` header to HyperAgent's thread API and uses a provider-specific SSE protocol and sticky thread/session state. It does not use a documented API key. The registry entry is staged; a provider-specific executor is required before dispatch is enabled.
+The pinned OmniRoute provider is an unofficial browser-session integration for `hyperagent.com`. It sends a browser `Cookie` header to HyperAgent's thread API and uses a provider-specific SSE protocol and sticky thread/session state. It does not use a documented API key. DurinDoor registers the provider so a connection can be saved, but the thread/SSE executor is not ported yet: a chat request returns HTTP 501 with `type: "provider_port_pending"`, and Validate and Test Connection never send the saved cookie to HyperAgent.
 
 ## Setup and limits
 
@@ -8,12 +11,10 @@ This integration depends on a reverse-engineered web session and may break when 
 
 ## Cookie capture
 
-Capture the Cookie header from an authenticated `hyperagent.com` session using the browser extension or paste the header into the connection. HAR and cURL imports can also contain the session cookie. Treat the value as a password and remove it before sharing logs or support reports.
+Copy the Cookie header from an authenticated `hyperagent.com` request and paste it into the connection as its credential. The browser extension and the dashboard cookie import do not cover this provider: the pinned integration names no session cookie, so there is no cookie allowlist to enforce. Treat the value as a password and remove it before sharing logs or support reports.
 
 ## Sources
 
 - [HyperAgent](https://hyperagent.com/)
 - [Pinned OmniRoute registry entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/hyperagent/index.ts)
 - [Pinned OmniRoute executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/hyperagent.ts)
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

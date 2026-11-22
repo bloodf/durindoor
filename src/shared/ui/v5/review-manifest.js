@@ -1207,6 +1207,92 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx",
+    "title": "V5 review/Pages/providers/AutoPingScheduleModal",
+    "storyId": "v5-review-pages-providers-autopingschedulemodal--open",
+    "states": [
+      "Open",
+      "Empty",
+      "ValidationError",
+      "Loading",
+      "SaveError"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-autopingschedulemodal--open",
+      "v5-review-pages-providers-autopingschedulemodal--empty",
+      "v5-review-pages-providers-autopingschedulemodal--validation-error",
+      "v5-review-pages-providers-autopingschedulemodal--loading",
+      "v5-review-pages-providers-autopingschedulemodal--save-error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx",
+    "title": "V5 review/Pages/providers/InferenceStatus",
+    "storyId": "v5-review-pages-providers-inferencestatus--empty",
+    "states": [
+      "Empty",
+      "Loading",
+      "Error",
+      "Passed",
+      "Skipped"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-inferencestatus--empty",
+      "v5-review-pages-providers-inferencestatus--loading",
+      "v5-review-pages-providers-inferencestatus--error",
+      "v5-review-pages-providers-inferencestatus--passed",
+      "v5-review-pages-providers-inferencestatus--skipped"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx",
+    "title": "V5 review/Pages/providers/ModelCatalogProvenance",
+    "storyId": "v5-review-pages-providers-modelcatalogprovenance--fresh",
+    "states": [
+      "Fresh",
+      "Empty",
+      "Error"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-modelcatalogprovenance--fresh",
+      "v5-review-pages-providers-modelcatalogprovenance--empty",
+      "v5-review-pages-providers-modelcatalogprovenance--error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx",
+    "title": "V5 review/Pages/providers/NativeProviderReadiness",
+    "storyId": "v5-review-pages-providers-nativeproviderreadiness--loaded",
+    "states": [
+      "Loaded",
+      "Empty",
+      "Loading",
+      "Error"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-nativeproviderreadiness--loaded",
+      "v5-review-pages-providers-nativeproviderreadiness--empty",
+      "v5-review-pages-providers-nativeproviderreadiness--loading",
+      "v5-review-pages-providers-nativeproviderreadiness--error"
+    ],
+    "pathname": "",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/providers/[id]/NetworkNodeStatus.stories.jsx",
     "title": "V5 review/Pages/providers/NetworkNodeStatus",
     "storyId": "v5-review-pages-providers-networknodestatus--healthy",
@@ -1226,6 +1312,25 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/ProviderRpmControl.stories.jsx",
+    "title": "V5 review/Pages/providers/ProviderRpmControl",
+    "storyId": "v5-review-pages-providers-providerrpmcontrol--loaded",
+    "states": [
+      "Loaded",
+      "Empty",
+      "LimitError"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-providerrpmcontrol--loaded",
+      "v5-review-pages-providers-providerrpmcontrol--empty",
+      "v5-review-pages-providers-providerrpmcontrol--limit-error"
+    ],
+    "pathname": "/dashboard/providers/openai",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
     "title": "V5 review/Pages/providers/ProviderDetailPage",
     "storyId": "v5-review-pages-providers-providerdetailpage--open-ai-detail",
@@ -1233,13 +1338,67 @@ export const REVIEW_SURFACES = [
       "OpenAIDetail",
       "SettingsControls",
       "CompatibleBranch",
-      "CompatibleProxyOpen"
+      "CompatibleProxyOpen",
+      "MnnAiConnection",
+      "ClaudeWebConnection",
+      "GeminiWebConnection",
+      "DeepseekWebConnection",
+      "DoubaoWebConnection",
+      "ZaiWebConnection",
+      "ChatgptWebCodexConnection",
+      "HelyxaiConnection",
+      "TabitokenConnection",
+      "TwinmindConnection",
+      "HyperagentConnection",
+      "MaxaiConnection",
+      "LmarenaConnection",
+      "ChatplaygroundConnection",
+      "CloudflarePlaygroundConnection",
+      "PoeConnection",
+      "G4fGeminiConnection",
+      "G4fNvidiaConnection",
+      "G4fOllamaConnection",
+      "G4fPollinationsConnection",
+      "PromptqlConnection",
+      "NotionWebConnection",
+      "NotrackWebConnection",
+      "TencentAistudioWebConnection",
+      "TinycmsWebConnection",
+      "BlackboxWebConnection",
+      "ConolWebConnection"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerdetailpage--open-ai-detail",
       "v5-review-pages-providers-providerdetailpage--settings-controls",
       "v5-review-pages-providers-providerdetailpage--compatible-branch",
-      "v5-review-pages-providers-providerdetailpage--compatible-proxy-open"
+      "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
+      "v5-review-pages-providers-providerdetailpage--mnn-ai-connection",
+      "v5-review-pages-providers-providerdetailpage--claude-web-connection",
+      "v5-review-pages-providers-providerdetailpage--gemini-web-connection",
+      "v5-review-pages-providers-providerdetailpage--deepseek-web-connection",
+      "v5-review-pages-providers-providerdetailpage--doubao-web-connection",
+      "v5-review-pages-providers-providerdetailpage--zai-web-connection",
+      "v5-review-pages-providers-providerdetailpage--chatgpt-web-codex-connection",
+      "v5-review-pages-providers-providerdetailpage--helyxai-connection",
+      "v5-review-pages-providers-providerdetailpage--tabitoken-connection",
+      "v5-review-pages-providers-providerdetailpage--twinmind-connection",
+      "v5-review-pages-providers-providerdetailpage--hyperagent-connection",
+      "v5-review-pages-providers-providerdetailpage--maxai-connection",
+      "v5-review-pages-providers-providerdetailpage--lmarena-connection",
+      "v5-review-pages-providers-providerdetailpage--chatplayground-connection",
+      "v5-review-pages-providers-providerdetailpage--cloudflare-playground-connection",
+      "v5-review-pages-providers-providerdetailpage--poe-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-gemini-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-nvidia-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-ollama-connection",
+      "v5-review-pages-providers-providerdetailpage--g-4-f-pollinations-connection",
+      "v5-review-pages-providers-providerdetailpage--promptql-connection",
+      "v5-review-pages-providers-providerdetailpage--notion-web-connection",
+      "v5-review-pages-providers-providerdetailpage--notrack-web-connection",
+      "v5-review-pages-providers-providerdetailpage--tencent-aistudio-web-connection",
+      "v5-review-pages-providers-providerdetailpage--tinycms-web-connection",
+      "v5-review-pages-providers-providerdetailpage--blackbox-web-connection",
+      "v5-review-pages-providers-providerdetailpage--conol-web-connection"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",
@@ -2832,14 +2991,16 @@ export const REVIEW_SURFACES = [
       "WithSelection",
       "WithCombosAndSelection",
       "EmbeddingKind",
-      "Closed"
+      "Closed",
+      "OwnerPlanCatalog"
     ],
     "storyIds": [
       "v5-review-workflows-shared-config-modelselectmodal--open-llm",
       "v5-review-workflows-shared-config-modelselectmodal--with-selection",
       "v5-review-workflows-shared-config-modelselectmodal--with-combos-and-selection",
       "v5-review-workflows-shared-config-modelselectmodal--embedding-kind",
-      "v5-review-workflows-shared-config-modelselectmodal--closed"
+      "v5-review-workflows-shared-config-modelselectmodal--closed",
+      "v5-review-workflows-shared-config-modelselectmodal--owner-plan-catalog"
     ],
     "pathname": "/dashboard/providers",
     "routePattern": null,

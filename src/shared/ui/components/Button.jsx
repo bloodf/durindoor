@@ -1,3 +1,9 @@
+import { forwardRef } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import AnimateButton from "@/shared/ui/v5/motion/AnimateButton.jsx";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+import { inferredButtonIcon } from "@/shared/ui/v5/motion/ReviewNativeButton.jsx";
+
 /**
  * Durin DS — Button.
  *
@@ -57,7 +63,7 @@ function ButtonIcon({ name, spin = false }) {
  * @param {React.ReactNode} [props.children] Visible label.
  * @param {string} [props.className] Appended last so callers can override spacing/width.
  */
-export default function Button({
+const Button = forwardRef(function Button({
   variant = "secondary",
   size = "md",
   icon,
@@ -68,7 +74,17 @@ export default function Button({
   children,
   className = "",
   ...rest
-}) {
+}, ref) {
+  const v5 = useUiV5();
+  if (v5) {
+    const leadingIcon = icon || inferredButtonIcon(children, { ...rest, iconTrailing, loading });
+    return <AnimateButton {...rest} ref={ref} type={type} disabled={disabled || loading} aria-busy={loading || undefined}
+      className={`inline-flex items-center justify-center gap-2 rounded-dd outline-none transition-colors focus-visible:shadow-dd-focus disabled:opacity-50 ${VARIANTS[variant] ?? VARIANTS.secondary} ${SIZES[size] ?? SIZES.md} ${className}`}>
+      {loading ? <MotionIcon name="progress_activity" /> : leadingIcon ? <MotionIcon name={leadingIcon} /> : null}
+      {children}
+      {iconTrailing ? <MotionIcon name={iconTrailing} /> : null}
+    </AnimateButton>;
+  }
   const classes = [
     "inline-flex items-center justify-center gap-1.5 rounded-dd outline-none transition-colors focus-visible:shadow-dd-focus disabled:pointer-events-none disabled:opacity-50",
     VARIANTS[variant] ?? VARIANTS.secondary,
@@ -79,7 +95,7 @@ export default function Button({
     .join(" ");
 
   return (
-    <button
+    <button ref={ref}
       {...rest}
       type={type}
       disabled={disabled || loading}
@@ -95,4 +111,6 @@ export default function Button({
       {iconTrailing ? <ButtonIcon name={iconTrailing} /> : null}
     </button>
   );
-}
+});
+
+export default Button;

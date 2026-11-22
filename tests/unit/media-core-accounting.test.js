@@ -13,8 +13,8 @@ import { handleEmbeddingsCore } from "../../open-sse/handlers/embeddingsCore.js"
 
 const credentials = { apiKey: "fixture" };
 const json = (value) => new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } });
-const image = (provider, extra = {}) => handleImageGenerationCore({
-  body: { prompt: "fixture", n: 9 }, modelInfo: { provider, model: "fixture" }, credentials, ...extra,
+const image = (provider, { body, ...extra } = {}) => handleImageGenerationCore({
+  body: { prompt: "fixture", n: 9, ...body }, modelInfo: { provider, model: "fixture" }, credentials, ...extra,
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -25,7 +25,7 @@ describe("internal media core accounting", () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({
       usageMetadata, candidates: [{ content: { parts: [{ inlineData: { data: "aGk=" } }] } }],
     })));
-    const result = await image("gemini", { binaryOutput: true });
+    const result = await image("gemini", { binaryOutput: true, body: { n: 1 } });
     expect(await result.response.text()).toBe("hi");
     expect(result.accounting).toMatchObject({
       state: "complete", tokens: { input_tokens: 11, output_tokens: 12, total_tokens: 23, cached_tokens: 3, reasoning_tokens: 5 },

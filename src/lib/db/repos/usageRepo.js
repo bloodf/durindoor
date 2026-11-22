@@ -350,7 +350,7 @@ async function calculateCost(provider, model, tokens) {
     // Receipts are numeric USD, never JavaScript-coerced booleans/strings/arrays.
     const cost = tokens[field];
     if (!isNumber(cost) || !Number.isFinite(cost) || cost < 0) throw new TypeError(`Invalid usage ${field}`);
-    return { cost: field === "cost_in_usd_ticks" ? cost / 1e12 : cost, split: null, costStatus: "known", costSource: "provider" };
+    return { cost: field === "cost_in_usd_ticks" ? cost / 1e10 : cost, split: null, costStatus: "known", costSource: "provider" };
   }
   const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
   const { resolvePricingForModel } = await import("./pricingRepo.js");
@@ -749,7 +749,7 @@ function settleAcceptedRowSync(db, row, entry, costSplit, identitySalt) {
  * Call inside the same transaction as the purge/export. Receipts contain no
  * accounting data and are retained independently of dashboard history.
  */
-export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
+export function backfillUsageEventReceiptsSync(db, cutoffIso = null, op = "<") {
   if (db.capabilities?.isPostgres && !db.get(QUOTA_WRITE_LOCK_SQL_PG)) {
     throw new Error("Usage storage is not initialized");
   }
@@ -757,7 +757,7 @@ export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
   // After a cutover, receipts already commit with every new event; importing
   // old history identities would mix snapshots and resurrect discarded receipts.
   if (db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'cutoverVersion'")?.value === "1") return;
-  const where = cutoffIso === null ? "" : " AND timestamp < ?";
+  const where = cutoffIso === null ? "" : ` AND timestamp ${op === ">=" ? ">=" : "<"} ?`;
   for (const row of db.all(`SELECT usageEventId FROM usageHistory
     WHERE usageEventId IS NOT NULL AND usageEventId <> ''${where}`, cutoffIso === null ? [] : [cutoffIso])) {
     claimUsageEventReceipt(db, row.usageEventId);
@@ -2072,6 +2072,47 @@ function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
   return Number(before?.cnt) || 0;
 }
 
+/**
+ * Delete usage rows, daily rollups and token-saver events recorded on or after
+ * `cutoffMs` (the selected recent reset window), then rebuild the boundary day
+ * and the lifetime counter from remaining older history.
+ */
+function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
+  const cutoffIso = new Date(cutoffMs).toISOString();
+  const cutoffDate = new Date(cutoffMs);
+  const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
+  backfillUsageEventReceiptsSync(db, cutoffIso, ">=");
+
+  // Delete usageHistory entries within the selected recent window (keep older history)
+  db.run(`DELETE FROM usageHistory WHERE timestamp >= ?`, [cutoffIso]);
+  const utcCutoffDay = cutoffIso.slice(0, 10);
+  const utcCutoffDayStart = `${utcCutoffDay}T00:00:00.000Z`;
+  db.run(`DELETE FROM usageLastSeen WHERE lastUsed >= ?`, [cutoffIso]);
+  db.run(`INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
+    SELECT SUBSTR(timestamp, 1, 10), COALESCE(provider, ''), COALESCE(model, ''),
+           COALESCE(connectionId, ''), COALESCE(apiKey, ''), COALESCE(endpoint, ''), MAX(timestamp)
+      FROM usageHistory
+     WHERE timestamp >= ? AND timestamp < ?
+     GROUP BY SUBSTR(timestamp, 1, 10), COALESCE(provider, ''), COALESCE(model, ''),
+              COALESCE(connectionId, ''), COALESCE(apiKey, ''), COALESCE(endpoint, '')
+    ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
+      lastUsed = excluded.lastUsed`, [utcCutoffDayStart, cutoffIso]);
+
+  // Delete usageDaily entries after the cutoff day and rebuild the boundary day
+  db.run(`DELETE FROM usageDaily WHERE dateKey > ?`, [cutoffKey]);
+  db.run(`DELETE FROM tokenSaverEvents WHERE timestamp >= ?`, [cutoffIso]);
+  db.run("DELETE FROM tokenSaverDaily WHERE dateKey >= ?", [utcCutoffDay]);
+  db.run("DELETE FROM tokenSaverDailyReasons WHERE dateKey >= ?", [utcCutoffDay]);
+  backfillTokenSaverDaily(db, "WHERE timestamp >= ? AND timestamp < ?", [
+    utcCutoffDayStart, cutoffIso,
+  ]);
+  rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
+
+  // Recalculate totalRequestsLifetime from remaining history
+  const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);
+  db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(remaining.cnt)]);
+}
+
 /** Retention sweep entry point: prune everything recorded before `cutoffMs`. */
 export async function pruneUsageOlderThan(cutoffMs) {
   const db = await getAdapter();
@@ -2107,7 +2148,7 @@ export async function resetUsageHistory(period) {
       db.run("DELETE FROM tokenSaverDailyReasons");
       db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
     } else {
-      pruneUsageBeforeInTx(db, Date.now() - RESET_PERIOD_MS[period], identitySalt);
+      deleteUsageSinceInTx(db, Date.now() - RESET_PERIOD_MS[period], identitySalt);
     }
   });
 

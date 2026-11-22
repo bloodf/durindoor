@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -395,7 +395,9 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
             ...(part.is_error && { is_error: part.is_error })
           });
         } else if (part.type === OPENAI_BLOCK.IMAGE_URL) {
-          const url = part.image_url.url;
+          // Skip malformed image_url parts missing a usable string url (#2186).
+          const url = part.image_url?.url;
+          if (!isString(url) || !url) continue;
           const parsed = parseDataUri(url);
           if (parsed) {
             blocks.push({

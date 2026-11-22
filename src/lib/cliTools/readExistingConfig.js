@@ -1,4 +1,6 @@
 import fs from "fs/promises";
+import path from "path";
+import { randomUUID } from "crypto";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 /**
@@ -29,6 +31,56 @@ export async function readExistingConfig(filePath, parse) {
         code: error?.code || null,
       },
     }));
-    throw new Error(`${filePath} exists but could not be parsed; refusing to overwrite it`);
+    const failure = new Error(`${filePath} exists but could not be parsed; refusing to overwrite it`);
+    failure.code = "CLI_CONFIG_PARSE_ERROR";
+    throw failure;
+  }
+}
+
+/** Atomically replace the resolved config target, retaining one private backup beside it. */
+export async function writeConfigAtomic(filePath, content) {
+  // realpath follows existing links; readlink also handles a missing link target.
+  const seen = new Set();
+  while (true) {
+    try {
+      filePath = await fs.realpath(filePath);
+      break;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      let target;
+      try {
+        target = await fs.readlink(filePath);
+      } catch (linkError) {
+        if (linkError?.code === "ENOENT" || linkError?.code === "EINVAL") break;
+        throw linkError;
+      }
+      const resolved = path.resolve(path.dirname(filePath), target);
+      if (seen.has(resolved)) {
+        const cycle = new Error(`Symlink cycle resolving CLI config: ${filePath}`);
+        cycle.code = "ELOOP";
+        throw cycle;
+      }
+      seen.add(resolved);
+      filePath = resolved;
+    }
+  }
+  const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+  const backupTemp = `${tempPath}.bak`;
+  try {
+    await fs.writeFile(tempPath, content, { encoding: "utf-8", mode: 0o600, flag: "wx" });
+    try {
+      await fs.copyFile(filePath, backupTemp);
+      await fs.chmod(backupTemp, 0o600);
+      await fs.rename(backupTemp, `${filePath}.bak`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    // The temp names only need cleanup when a write/backup/rename failed. A
+    // successful rename has already consumed them and should not require unlink.
+    try { await fs.unlink?.(tempPath); } catch { /* best-effort failure cleanup */ }
+    try { await fs.unlink?.(backupTemp); } catch { /* best-effort failure cleanup */ }
+    throw error;
   }
 }

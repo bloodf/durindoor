@@ -5,7 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
-import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 
 // Resolve chatLanguageModels.json path per OS
 const getConfigPath = () => {
@@ -108,7 +108,7 @@ export async function POST(request) {
       config.push(newEntry);
     }
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await writeConfigAtomic(configPath, JSON.stringify(config, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -143,7 +143,7 @@ export async function DELETE() {
     }
 
     config = config.filter((e) => e.name !== "DurinDoor");
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await writeConfigAtomic(configPath, JSON.stringify(config, null, 2));
 
     return NextResponse.json({
       success: true,

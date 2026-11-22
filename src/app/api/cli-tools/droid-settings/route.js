@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { applyEdits, modify, parse as parseJsonc } from "jsonc-parser";
@@ -162,7 +163,7 @@ export async function POST(request) {
           modify(existingRaw, ["customModels"], settings.customModels, { formattingOptions: JSONC_FORMAT_OPTIONS })
         )
       : JSON.stringify(settings, null, 2);
-    await fs.writeFile(settingsPath, nextContent);
+    await writeConfigAtomic(settingsPath, nextContent);
 
     return NextResponse.json({
       success: true,
@@ -203,7 +204,7 @@ export async function DELETE() {
         existingRaw,
         modify(existingRaw, ["customModels"], nextCustomModels, { formattingOptions: JSONC_FORMAT_OPTIONS })
       );
-      await fs.writeFile(settingsPath, nextContent);
+      await writeConfigAtomic(settingsPath, nextContent);
     }
 
     return NextResponse.json({

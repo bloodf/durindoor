@@ -12,6 +12,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { credentialFetch } from "../utils/credentialFetch.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sniffImageFormat } from "../utils/imageSniff.js";
 import { fetchRemoteMedia } from "../utils/chatgptWebAttachments.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -30,7 +31,7 @@ const DATA_URL = /^data:image\/(?:png|jpe?g|gif|webp);base64,/i;
 const SUPPORTED = new Set(["png", "jpeg", "gif", "webp"]);
 
 /** Swappable `fetch` for the upload request (tests only); resolved per call, never bound early. */
-let uploadFetch = (input, init) => fetch(input, init);
+let uploadFetch = (input, init) => globalThis.fetch(input, init);
 /** Replace the upload `fetch` for a test; returns a function restoring the previous one. */
 export function __setM365UploadFetchForTesting(impl) {
   const previous = uploadFetch;
@@ -161,14 +162,14 @@ function uploadFailure(status) {
  * next chat message. Fails closed: an image Copilot did not receive is an error, never a turn that goes
  * ahead without it.
  */
-export async function uploadM365Image({ host, accessToken, conversationId, image, signal }) {
+export async function uploadM365Image({ host, accessToken, conversationId, image, signal, proxyOptions }) {
   const form = new URLSearchParams({ scenario: "UploadImage", conversationId, FileBase64: image.dataUrl });
   for (const option of UPLOAD_OPTION_SETS) form.append("optionsSets", option);
   const timeout = AbortSignal.timeout(UPLOAD_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let response;
   try {
-    response = await credentialFetch(uploadFetch, `https://${host}/m365Copilot/UploadFile`, {
+    response = await credentialFetch((url, init) => proxyAwareFetch(url, { ...init, directFetch: uploadFetch }, proxyOptions), `https://${host}/m365Copilot/UploadFile`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,

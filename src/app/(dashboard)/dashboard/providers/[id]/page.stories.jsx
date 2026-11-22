@@ -111,6 +111,22 @@ export default openaiMeta;
 /** Live detail view. Parent scenario reaches ConnectionRow, ModelRow, and shared detail modals through their real triggers. */
 export const OpenAIDetail = {};
 
+/** ZCode provider detail remains configured without a connection until the user opts in. */
+export const ZCodeProvider = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/providers/zcode",
+      params: { id: "zcode" },
+      routes: {
+        ...baseRoutes,
+        "GET /api/providers": { body: { connections: [] } },
+        "GET /api/models/disabled": { body: { ids: [] } },
+      },
+    },
+  },
+};
+
 /** DS Retry-delay and Thinking-mode listboxes use real settings handlers; the request shape matches the page's settings fetch. */
 export const SettingsControls = {
   play: async ({ canvasElement }) => {

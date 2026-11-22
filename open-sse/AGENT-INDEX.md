@@ -497,6 +497,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `yuanbao-web` | openai | webCookie | `https://yuanbao.tencent.com/api/chat` |
 | `zai` | claude | apikey | `https://api.z.ai/api/anthropic/v1/messages` |
 | `zai-web` | openai | webCookie | `https://chat.z.ai/api/v2/chat/completions` |
+| `zcode` | openai | free | `zcode://app-server/stdio` |
 | `zed` |  | oauth | `` |
 | `zed-hosted` | openai | oauth | `https://cloud.zed.dev/completions` |
 | `zenmux` |  | freeTier | `https://zenmux.ai/api/v1/chat/completions` |

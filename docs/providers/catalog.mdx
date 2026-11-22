@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 392 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 393 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -88,8 +88,8 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | CodeBuddy CN | `codebuddy-cn` | oauth, apikey | 11 | [site](https://copilot.tencent.com) |
 | CodeBuddy International | `codebuddy-intl` | apikey | 6 | [site](https://www.codebuddy.ai) |
 | Codestral | `codestral` | apikey | 2 | [site](https://mistral.ai) |
-| OpenAI Codex | `codex` | oauth | 42 | [site](https://chatgpt.com/codex) |
-| OpenAI Codex (App-Server, unverified) | `codex-app-server` | none | 30 | [site](https://learn.chatgpt.com/docs/app-server) |
+| OpenAI Codex | `codex` | oauth | 48 | [site](https://chatgpt.com/codex) |
+| OpenAI Codex (App-Server, unverified) | `codex-app-server` | none | 36 | [site](https://learn.chatgpt.com/docs/app-server) |
 | Codex Cloud | `codex-cloud` | apikey | 0 | [site](https://openai.com/codex) |
 | Cohere | `cohere` | apikey | 24 | [site](https://cohere.com) |
 | ComfyUI | `comfyui` | apikey | 2 | [site](https://github.com/comfyanonymous/ComfyUI) |
@@ -156,7 +156,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | g4f Ollama | `g4f-ollama` | apikey | 1 | [site](https://g4f.dev) |
 | g4f Pollinations | `g4f-pollinations` | apikey | 2 | [site](https://g4f.dev) |
 | Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |
-| Gemini | `gemini` | freeTier | 31 | [site](https://ai.google.dev) |
+| Gemini | `gemini` | freeTier | 32 | [site](https://ai.google.dev) |
 | Gemini CLI | `gemini-cli` | oauth | 7 | [site](https://github.com/google-gemini/gemini-cli) |
 | Gemini Interactions | `gemini-interactions` | apikey | 3 | [site](https://aistudio.google.com/docs/interactions-overview) |
 | Gemini Web (Subscription) | `gemini-web` | cookie | 3 | [site](https://gemini.google.com) |
@@ -314,7 +314,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Puter | `puter` | apikey | 34 | [site](https://puter.com) |
 | Baidu Qianfan | `qianfan` | apikey | 3 | [site](https://cloud.baidu.com/product/wenxinworkshop) |
 | Qiniu | `qiniu` | apikey | 0 | [site](https://www.qiniu.com) |
-| Qoder | `qoder` | oauth, apikey | 16 | [site](https://qoder.com) |
+| Qoder | `qoder` | oauth, apikey | 18 | [site](https://qoder.com) |
 | Qoder CN | `qoder-cn` | oauth, apikey | 16 | [site](https://qoder.com.cn) |
 | Qwen Code | `qwen` | oauth | 4 | [site](https://chat.qwen.ai) |
 | Qwen Cloud | `qwen-cloud` | apikey | 14 | [site](https://www.qwencloud.com/) |
@@ -410,6 +410,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Tencent Yuanbao Web | `yuanbao-web` | cookie | 8 | [site](https://yuanbao.tencent.com) |
 | Z.AI | `zai` | apikey | 14 | [site](https://open.bigmodel.cn) |
 | Z.ai Web | `zai-web` | cookie | 3 | [site](https://chat.z.ai) |
+| ZCode (local app-server, unverified) | `zcode` | none | 2 | [site](https://github.com/zai-org/ZCode) |
 | Zed IDE | `zed` | oauth | 0 | [site](https://zed.dev) |
 | Zed Hosted Models (opt-in) | `zed-hosted` | oauth | 0 | [site](https://zed.dev) |
 | ZenMux | `zenmux` | freeTier | 9 | [site](https://zenmux.ai) |

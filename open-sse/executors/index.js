@@ -91,6 +91,7 @@ import REGISTRY from "../providers/registry/index.js";
 import { resolveProviderAlias } from "../services/model.js";
 
 import { OpenCodeServerExecutor } from "./opencode-server.js";
+import { ZcodeExecutor } from "./zcode.js";
 
 const chatGptWebExecutor = new ChatGptWebExecutor();
 const chatGptWebCodexExecutor = new ChatGptWebCodexExecutor();
@@ -116,6 +117,7 @@ const minimaxCodeExecutor = new MinimaxCodeExecutor();
 const zedHostedExecutor = new ZedHostedExecutor();
 const freebuffExecutor = new FreebuffExecutor();
 const workbuddyExecutor = new WorkbuddyExecutor();
+const zcodeExecutor = new ZcodeExecutor();
 
 const executors = {
   "adapta-web": new AdaptaWebExecutor(),
@@ -155,6 +157,8 @@ const executors = {
   "cursor-api": cursorApiExecutor,
   cua: cursorApiExecutor,
   "devin-desktop": new DevinDesktopExecutor(),
+  zcode: zcodeExecutor,
+  zc: zcodeExecutor,
   workbuddy: workbuddyExecutor,
   wb: workbuddyExecutor,
   "minimax-code": minimaxCodeExecutor,
@@ -322,6 +326,7 @@ export { DevinDesktopExecutor } from "./devin-desktop.js";
 export { FreebuffExecutor } from "./freebuff.js";
 export { MinimaxCodeExecutor } from "./minimax-code.js";
 export { WorkbuddyExecutor } from "./workbuddy.js";
+export { ZcodeExecutor } from "./zcode.js";
 export { ZedHostedExecutor } from "./zed-hosted.js";
 export { VertexExecutor } from "./vertex.js";
 export { DefaultExecutor } from "./default.js";

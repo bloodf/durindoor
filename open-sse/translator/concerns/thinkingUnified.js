@@ -163,6 +163,10 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   {
     return resolvedCaps.thinkingFormat;
   }
+  // Antigravity uses the Gemini request envelope even for Claude models.
+  if (targetFormat === FORMATS.ANTIGRAVITY && resolvedCaps.reasoning) {
+    return resolvedCaps.thinkingFormat === "gemini-budget" ? "gemini-budget" : "gemini-level";
+  }
   // Dynamic OpenAI-compatible gateways speak the OpenAI wire format regardless
   // of the underlying model family. A Qwen model served through such a gateway
   // must emit reasoning_effort, not native enable_thinking/thinking_budget,

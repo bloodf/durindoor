@@ -789,14 +789,17 @@ export async function POST(request) {
               max_tokens: 1,
               stream: false
             }, false);
+            const probeHeaders = {
+              "Content-Type": "application/json",
+              ...(cfg.headers || {}),
+              "x-session-id": crypto.randomUUID(),
+              "Authorization": `Bearer ${apiKey}`
+            };
+            // Per-connection Zero Data Retention opt-in must reach the probe too.
+            if (providerSpecificData?.zdrEnabled === true) probeHeaders["x-cmd-zdr"] = "1";
             const res = await fetchValidationProbe(cfg.baseUrl, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(cfg.headers || {}),
-                "x-session-id": crypto.randomUUID(),
-                "Authorization": `Bearer ${apiKey}`
-              },
+              headers: probeHeaders,
               body: JSON.stringify(payload)
             });
             // A schema/rate-limit response proves the key reached Command Code.

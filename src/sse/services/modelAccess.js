@@ -1,5 +1,5 @@
 import { getApiKeyByKey, getApiKeyProviderConnectionIds, getProviderNodes } from "@/lib/localDb";
-import { extractApiKey } from "./auth.js";
+import { resolveClientApiKey } from "./auth.js";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
@@ -69,7 +69,7 @@ export async function filterModelsByAccess(access, models) {
 
 /** Filter a `/v1/models` list by the model access rule of the caller's key. */
 export async function filterModelsForRequest(request, models) {
-  const apiKey = extractApiKey(request);
+  const { apiKey } = await resolveClientApiKey(request);
   if (!apiKey) return models;
   const key = await getApiKeyByKey(apiKey);
   if (!key?.isActive) return models;
@@ -83,7 +83,7 @@ export async function filterModelsForRequest(request, models) {
  * whose catalogs are bound to one endpoint list only the caller's own.
  */
 export async function getRequestConnectionScope(request) {
-  const apiKey = extractApiKey(request);
+  const { apiKey } = await resolveClientApiKey(request);
   if (!apiKey) return null;
   const key = await getApiKeyByKey(apiKey);
   if (!key?.isActive) return null;
@@ -93,7 +93,7 @@ export async function getRequestConnectionScope(request) {
 
 /** Authenticated key and explicit scope for private account-bound discovery. */
 export async function getRequestModelDiscoveryOptions(request) {
-  const apiKey = extractApiKey(request);
+  const { apiKey } = await resolveClientApiKey(request);
   const key = apiKey ? await getApiKeyByKey(apiKey) : null;
   if (!key?.isActive) return { allowedConnectionIds: null, verifiedKey: null };
   const ids = await getApiKeyProviderConnectionIds(key.id);

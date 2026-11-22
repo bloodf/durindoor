@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   homedir: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
+  copyFile: vi.fn(),
   mkdir: vi.fn(),
   access: vi.fn(),
   exec: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("fs/promises", () => ({
     access: mocks.access,
     readFile: mocks.readFile,
     writeFile: mocks.writeFile,
+    copyFile: mocks.copyFile,
     mkdir: mocks.mkdir,
     chmod: mocks.chmod,
     rename: mocks.rename,
@@ -114,6 +116,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     });
     mocks.readFile.mockRejectedValue({ code: "ENOENT" });
     mocks.writeFile.mockResolvedValue();
+    mocks.copyFile.mockRejectedValue({ code: "ENOENT" });
     mocks.mkdir.mockResolvedValue();
     mocks.chmod.mockResolvedValue();
     mocks.rename.mockResolvedValue();
@@ -177,7 +180,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     });
 
     expect(response.status).toBe(500);
-    expect(mocks.rename).not.toHaveBeenCalled();
+    expect(mocks.rename).not.toHaveBeenCalledWith("/home/test/.hermes/.env.tmp-unique/.env", "/home/test/.hermes/.env");
     expect(mocks.rm).toHaveBeenCalledWith("/home/test/.hermes/.env.tmp-unique", { recursive: true, force: true });
   });
 

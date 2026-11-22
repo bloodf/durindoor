@@ -8,7 +8,7 @@ import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject, isRecord } from "../../../../shared/utils/typeChecks.js";
-import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
@@ -244,12 +244,12 @@ export async function POST(request) {
     // Persist backup first, then write the merged config.toml and auth.json
     await fs.writeFile(backupPath, JSON.stringify(nextBackup, null, 2), { mode: 0o600 });
     const configContent = stringifyTOML(parsed);
-    await fs.writeFile(configPath, configContent);
+    await writeConfigAtomic(configPath, configContent);
 
     // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
     authData.OPENAI_API_KEY = apiKey;
     authData.auth_mode = "apikey";
-    await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
+    await writeConfigAtomic(authPath, JSON.stringify(authData, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -329,7 +329,7 @@ export async function DELETE() {
         if (Object.keys(existingAuth).length === 0) {
           await fs.unlink(authPath);
         } else {
-          await fs.writeFile(authPath, JSON.stringify(existingAuth, null, 2));
+          await writeConfigAtomic(authPath, JSON.stringify(existingAuth, null, 2));
         }
       }
 
@@ -353,7 +353,7 @@ export async function DELETE() {
           if (Object.keys(existingAuth).length === 0) {
             await fs.unlink(authPath);
           } else {
-            await fs.writeFile(authPath, JSON.stringify(existingAuth, null, 2));
+            await writeConfigAtomic(authPath, JSON.stringify(existingAuth, null, 2));
           }
         }
       }
@@ -361,7 +361,7 @@ export async function DELETE() {
 
     // Write updated config
     const configContent = stringifyTOML(parsed);
-    await fs.writeFile(configPath, configContent);
+    await writeConfigAtomic(configPath, configContent);
 
     return NextResponse.json({
       success: true,

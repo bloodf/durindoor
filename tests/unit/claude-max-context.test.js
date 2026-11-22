@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
   homedir: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
+  copyFile: vi.fn(),
+  rename: vi.fn(),
+  unlink: vi.fn(),
   mkdir: vi.fn(),
   access: vi.fn(),
   exec: vi.fn(),
@@ -15,6 +18,9 @@ vi.mock("fs/promises", () => ({
     access: mocks.access,
     readFile: mocks.readFile,
     writeFile: mocks.writeFile,
+    copyFile: mocks.copyFile,
+    rename: mocks.rename,
+    unlink: mocks.unlink,
     mkdir: mocks.mkdir,
   },
   access: mocks.access,
@@ -60,6 +66,9 @@ describe("claude-settings maxContextTokens", () => {
     mocks.exec.mockImplementation((_cmd, _opts, cb) => cb(null, { stdout: "/usr/bin/claude" }));
     mocks.readFile.mockRejectedValue({ code: "ENOENT" });
     mocks.writeFile.mockResolvedValue();
+    mocks.copyFile.mockRejectedValue({ code: "ENOENT" });
+    mocks.rename.mockResolvedValue();
+    mocks.unlink.mockResolvedValue();
     mocks.mkdir.mockResolvedValue();
   });
 

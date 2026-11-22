@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { createHash } from "crypto";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import processExitCodes from "@/shared/constants/processExitCodes";
 import { getCachedPassword, loadEncryptedPassword, stopServer } from "@/mitm/manager";
@@ -52,14 +53,19 @@ function resolveBundledUpdaterPath() {
   return fromCwd;
 }
 
-function ensureRuntimeUpdater(bundledPath) {
+function fileSha256(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+/** Copy the bundled updater into DATA_DIR when missing or content-divergent. */
+export function ensureRuntimeUpdater(bundledPath) {
   try {
     if (!bundledPath || !fs.existsSync(bundledPath)) return bundledPath;
     const runtimeDir = path.join(getDataDir(), "runtime", "updater");
     const runtimePath = path.join(runtimeDir, "updater.js");
     if (fs.existsSync(runtimePath)) {
       try {
-        if (fs.statSync(bundledPath).size === fs.statSync(runtimePath).size) return runtimePath;
+        if (fileSha256(bundledPath) === fileSha256(runtimePath)) return runtimePath;
       } catch { /* recopy */ }
     }
     fs.mkdirSync(runtimeDir, { recursive: true });

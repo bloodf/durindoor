@@ -21,6 +21,13 @@ const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
  * this exact path -- so it must authenticate itself via the mfa_pending
  * cookie and re-check origin/rate limits the same as step 1.
  */
+function lockedResponse(lock) {
+  return NextResponse.json(
+    { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter },
+    { status: 429, headers: { "Retry-After": String(lock.retryAfter), ...NO_STORE_HEADERS } },
+  );
+}
+
 export async function POST(request) {
   try {
     if (!hasExactRequestOrigin(request)) {
@@ -31,13 +38,13 @@ export async function POST(request) {
 
     // Share the password limiter: TOTP has only 10^6 values, so an unthrottled
     // endpoint is the weak point of the whole scheme.
-    const lock = checkLock(ip);
-    if (lock.locked) {
-      return NextResponse.json(
-        { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter },
-        { status: 429, headers: { "Retry-After": String(lock.retryAfter), ...NO_STORE_HEADERS } },
-      );
-    }
+    // Reserve the attempt slot synchronously before any await so concurrent
+    // TOTP bursts cannot all evaluate then race recordFail (issue #2242).
+    const preLock = checkLock(ip);
+    if (preLock.locked) return lockedResponse(preLock);
+    const { remainingBeforeLock } = recordFail(ip);
+    const reservedLock = checkLock(ip);
+    if (reservedLock.locked) return lockedResponse(reservedLock);
 
     const cookieStore = await cookies();
     const pending = await getMfaPendingSession(cookieStore.get(MFA_PENDING_COOKIE)?.value);
@@ -52,19 +59,17 @@ export async function POST(request) {
     const result = await verifySecondFactor(code);
 
     if (!result.ok) {
-      const { remainingBeforeLock } = recordFail(ip);
       const postLock = checkLock(ip);
-      if (postLock.locked) {
-        return NextResponse.json(
-          { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s.`, retryAfter: postLock.retryAfter },
-          { status: 429, headers: { "Retry-After": String(postLock.retryAfter), ...NO_STORE_HEADERS } },
-        );
-      }
+      if (postLock.locked) return lockedResponse(postLock);
       return NextResponse.json(
         { error: `Invalid code. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
         { status: 401, headers: NO_STORE_HEADERS },
       );
     }
+
+    // Refuse success if concurrent reservations locked the bucket mid-verify.
+    const successLock = checkLock(ip);
+    if (successLock.locked) return lockedResponse(successLock);
 
     recordSuccess(ip);
     clearMfaPendingCookie(cookieStore);

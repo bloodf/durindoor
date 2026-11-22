@@ -8,8 +8,10 @@ import { issuePasswordChangeProof } from "@/lib/auth/passwordChangeProof";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { hasExactRequestOrigin, hasTrustedLocalOrigin } from "@/lib/auth/requestOrigin";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
+import * as loginLimiter from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
+import { isFunction } from "@/shared/utils/typeChecks";
 
 const RESET_HINT = "Forgot password? Reset to default via DurinDoor CLI → Settings → Reset Password to Default.";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
@@ -21,20 +23,29 @@ function isTunnelRequest(request, settings) {
   return (tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost);
 }
 
+function lockedResponse(lock) {
+  return NextResponse.json(
+    { error: `Too many failed attempts. Try again in ${lock.retryAfter}s. ${RESET_HINT}`, retryAfter: lock.retryAfter, resetHint: RESET_HINT },
+    { status: 429, headers: { "Retry-After": String(lock.retryAfter) } }
+  );
+}
 
 export async function POST(request) {
   try {
     const ip = getClientIp(request);
-    const lock = checkLock(ip);
-    if (lock.locked) {
-      return NextResponse.json(
-        { error: `Too many failed attempts. Try again in ${lock.retryAfter}s. ${RESET_HINT}`, retryAfter: lock.retryAfter, resetHint: RESET_HINT },
-        { status: 429, headers: { "Retry-After": String(lock.retryAfter) } }
-      );
-    }
+    // Refuse while already locked before touching the body.
+    const preLock = checkLock(ip);
+    if (preLock.locked) return lockedResponse(preLock);
     if (!hasExactRequestOrigin(request)) {
       return NextResponse.json({ error: "Cross-origin login is not allowed" }, { status: 403, headers: NO_STORE_HEADERS });
     }
+
+    // Reserve a failure slot synchronously before any await so concurrent
+    // bursts cannot all pass checkLock, evaluate credentials, then race
+    // recordFail (issue #2242).
+    const { remainingBeforeLock } = recordFail(ip);
+    const reservedLock = checkLock(ip);
+    if (reservedLock.locked) return lockedResponse(reservedLock);
 
     const { password } = await request.json();
     const settings = await getSettings();
@@ -67,24 +78,10 @@ export async function POST(request) {
       // change-password endpoint accepts.
       const mustChangePassword = await isUsingDefaultPassword(settings);
       if (mustChangePassword) {
-        if (!isLocalRequest(request) || !hasTrustedLocalOrigin(request) || !hasExactRequestOrigin(request)) {
-          recordFail(ip);
-          const postLock = checkLock(ip);
-          if (postLock.locked) {
-            return NextResponse.json(
-              { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-              { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-            );
-          }
-          return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
-        }
-        recordFail(ip);
         const postLock = checkLock(ip);
-        if (postLock.locked) {
-          return NextResponse.json(
-            { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-            { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-          );
+        if (postLock.locked) return lockedResponse(postLock);
+        if (!isLocalRequest(request) || !hasTrustedLocalOrigin(request) || !hasExactRequestOrigin(request)) {
+          return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
         }
         const proof = issuePasswordChangeProof(ip, settings.passwordSessionEpoch ?? "initial");
         if (!proof) {
@@ -95,6 +92,11 @@ export async function POST(request) {
           { status: 403, headers: NO_STORE_HEADERS }
         );
       }
+      // Concurrent reservations may have locked the bucket while bcrypt ran —
+      // never clear the lock or issue a session in that case.
+      const successLock = checkLock(ip);
+      if (successLock.locked) return lockedResponse(successLock);
+
       const currentSettings = await getSettings();
       if ((currentSettings.passwordSessionEpoch ?? "initial") !== (settings.passwordSessionEpoch ?? "initial")) {
         return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
@@ -108,6 +110,11 @@ export async function POST(request) {
       // complete, and resetting it would hand an attacker a fresh lockout
       // budget for brute-forcing the second factor.
       if (isMfaEnabled(currentSettings)) {
+        // Undo the pre-await reservation only; do not recordSuccess (that would
+        // reset prior fails and hand the attacker a fresh TOTP budget).
+        if (isFunction(loginLimiter.releaseReservation)) {
+          loginLimiter.releaseReservation(ip);
+        }
         await setMfaPendingCookie(cookieStore, request);
         return NextResponse.json(
           { success: false, mfaRequired: true, mustChangePassword: false },
@@ -127,15 +134,9 @@ export async function POST(request) {
       }
     }
 
-
-    const { remainingBeforeLock } = recordFail(ip);
+    // Failure was already reserved above; only choose the response shape.
     const postLock = checkLock(ip);
-    if (postLock.locked) {
-      return NextResponse.json(
-        { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-        { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-      );
-    }
+    if (postLock.locked) return lockedResponse(postLock);
     return NextResponse.json(
       { error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
       { status: 401 }

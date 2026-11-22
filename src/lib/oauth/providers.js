@@ -50,6 +50,7 @@ import {
   fetchKiroProfileArn } from
 "./providerHelpers";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
+import { assertPublicUrlResolved } from "../../shared/utils/ssrfGuard.js";
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import museCode from "./museCodeProvider.js";
@@ -1676,6 +1677,7 @@ const PROVIDERS = {
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}, proxyOptions) => {
       const baseUrl = meta.baseUrl || config.defaultBaseUrl;
+      await assertPublicUrlResolved(`${baseUrl}${config.tokenUrlPath}`);
       const clientId = meta.clientId || "";
       const clientSecret = meta.clientSecret || "";
       const body = new URLSearchParams({
@@ -1690,13 +1692,16 @@ const PROVIDERS = {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
+        redirect: "manual",
         proxyOptions
       });
-      if (!response.ok) throw new Error(`GitLab token exchange failed: ${await response.text()}`);
+      if (!response.ok) throw new Error("GitLab token exchange failed");
       const tokens = await response.json();
       // Fetch user info
+      await assertPublicUrlResolved(`${baseUrl}${config.userInfoUrlPath}`);
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
+        redirect: "manual",
         proxyOptions
       });
       const user = userRes.ok ? await userRes.json() : {};
@@ -1738,8 +1743,11 @@ const PROVIDERS = {
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}, proxyOptions) => {
       const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
+      await assertPublicUrlResolved(`${baseUrl}${config.tokenUrlPath}`);
       const clientId = meta.clientId || config.clientId || "";
-      const clientSecret = meta.clientSecret || config.clientSecret || "";
+      // Deployment credentials belong only to the configured GitLab instance.
+      const configuredBase = (config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
+      const clientSecret = meta.clientSecret || (baseUrl === configuredBase ? config.clientSecret : "") || "";
       const body = new URLSearchParams({
         client_id: clientId,
         grant_type: "authorization_code",
@@ -1752,12 +1760,15 @@ const PROVIDERS = {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
+        redirect: "manual",
         proxyOptions
       });
-      if (!response.ok) throw new Error(`GitLab Duo token exchange failed: ${await response.text()}`);
+      if (!response.ok) throw new Error("GitLab Duo token exchange failed");
       const tokens = await response.json();
+      await assertPublicUrlResolved(`${baseUrl}${config.userInfoUrlPath}`);
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
+        redirect: "manual",
         proxyOptions
       });
       const user = userRes.ok ? await userRes.json() : {};

@@ -303,7 +303,7 @@ async function transcribeGeminiGenerateContent(cfg, file, model, token, formData
 // HuggingFace: POST raw binary to {baseUrl}/{model_id}
 async function transcribeHuggingFace(cfg, file, model, token, proxyOptions, signal) {
   if (model.includes("..") || model.includes("//")) return createErrorResult(400, "Invalid model ID");
-  const url = `${cfg.baseUrl.replace(/\/+$/, "")}/${model}`;
+  const url = `${cfg.baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(model)}`;
   const buf = await file.arrayBuffer();
   const res = await proxyAwareFetch(url, {
     method: "POST",

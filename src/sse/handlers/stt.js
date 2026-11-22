@@ -18,6 +18,32 @@ import { annotateClientAdmissionFailure } from "open-sse/services/operationalMet
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
+import { MAX_AUDIO_BYTES } from "open-sse/handlers/codexSttAudio.js";
+const MAX_UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
+
+async function readBoundedRequest(request, maxBytes) {
+  if (!request.body) return request;
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  return new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal });
+}
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -28,12 +54,18 @@ const CREDENTIALED_PROVIDERS = new Set(
 
 async function handleSttHandler(request, { kind = "transcription" } = {}) {
   await captureRequestBillingEpoch(request);
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES + MAX_UPLOAD_OVERHEAD_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
+  const boundedRequest = await readBoundedRequest(request, MAX_AUDIO_BYTES + MAX_UPLOAD_OVERHEAD_BYTES);
+  if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
   let formData;
   try {
-    formData = await request.formData();
+    formData = await boundedRequest.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart form data");
   }
+  const audioFile = formData.get("file");
+  if (audioFile instanceof Blob && audioFile.size > MAX_AUDIO_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
 
   const modelStr = formData.get("model");
   log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);

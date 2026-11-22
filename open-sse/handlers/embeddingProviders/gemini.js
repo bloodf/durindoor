@@ -2,7 +2,8 @@
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 function modelPath(model) {
-  return model.startsWith("models/") ? model : `models/${model}`;
+  const id = model.startsWith("models/") ? model.slice("models/".length) : model;
+  return `models/${encodeURIComponent(id)}`;
 }
 
 export default {

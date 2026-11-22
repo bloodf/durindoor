@@ -126,6 +126,8 @@ function isBlockedIpv6Groups(g) {
   if (g.every((x) => x === 0)) return true;
   // link-local fe80::/10
   if ((g[0] & 0xffc0) === 0xfe80) return true;
+  // deprecated site-local fec0::/10 (RFC 3879) — still routed on some internal networks
+  if ((g[0] & 0xffc0) === 0xfec0) return true;
   // unique local fc00::/7
   if ((g[0] & 0xfe00) === 0xfc00) return true;
   // multicast ff00::/8

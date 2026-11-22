@@ -1,0 +1,10 @@
+{
+  "route": "/dashboard/media-providers/web",
+  "stories": [
+    "production-media-weblisting--default",
+    "production-media-weblisting--create-combo-error",
+    "production-media-weblisting--load-failure-and-retry",
+    "production-media-weblisting--malformed-response-and-retry",
+    "production-media-weblisting--network-failure-and-retry"
+  ]
+}

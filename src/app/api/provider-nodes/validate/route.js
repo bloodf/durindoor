@@ -67,7 +67,13 @@ const isValidUrl = (url) => {
 };
 
 // Parse error details for user-friendly messages
-const getErrorMessage = (error) => {
+// Explain container loopback only for connection failures to an actual loopback host.
+const getErrorMessage = (error, baseUrl) => {
+  let loopback = false;
+  try { loopback = ["localhost", "127.0.0.1", "[::1]"].includes(new URL(baseUrl).hostname); } catch {}
+  if (loopback && ["ECONNREFUSED", "ETIMEDOUT"].includes(error.cause?.code)) {
+    return "Connection failed. In Docker, localhost refers to the container; use a reachable host address or host.docker.internal if configured.";
+  }
   if (error.cause?.code === "ECONNREFUSED") return "Connection refused - provider node offline or unreachable";
   if (error.cause?.code === "ENOTFOUND") return "DNS lookup failed - invalid domain or network issue";
   if (error.cause?.code === "ETIMEDOUT") return "Connection timeout - provider node too slow";
@@ -113,9 +119,11 @@ const blockedResponse = (err) => {
 
 // POST /api/provider-nodes/validate - Validate API key against base URL
 export async function POST(request) {
+  let baseUrl;
   try {
     const body = await request.json();
-    const { baseUrl, apiKey, type, modelId } = body;
+    ({ baseUrl } = body);
+    const { apiKey, type, modelId } = body;
 
     if (!baseUrl) {
       return NextResponse.json({ error: "Base URL required" }, { status: 400 });
@@ -337,7 +345,7 @@ export async function POST(request) {
     return NextResponse.json({ valid: false, error: getModelsErrorMessage(res.status), status: res.status });
   } catch (error) {
     const probeError = error instanceof ProbeFailure ? error.probeCause : error;
-    const errorMessage = getErrorMessage(probeError);
+    const errorMessage = getErrorMessage(probeError, baseUrl);
     console.error("Error validating provider node:", {
       message: error.message,
       cause: error.cause,

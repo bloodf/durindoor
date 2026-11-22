@@ -73,8 +73,10 @@ export class GithubExecutor extends BaseExecutor {
     return this.endpointUrl("baseUrl", credentials);
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, requestContext = null) {
     const token = credentials.copilotToken || credentials.accessToken;
+    // The latest turn identifies a continuation; earlier assistant turns do not.
+    const lastRole = requestContext?.copilotMessages?.at(-1)?.role;
     return {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -86,7 +88,7 @@ export class GithubExecutor extends BaseExecutor {
       "x-github-api-version": GITHUB_COPILOT.API_VERSION,
       "x-request-id": crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       "x-vscode-user-agent-library-version": "electron-fetch",
-      "X-Initiator": "user",
+      "X-Initiator": lastRole === "assistant" || lastRole === "tool" ? "agent" : "user",
       // Harmless no-op on /chat/completions and /responses; required by /v1/messages.
       "anthropic-version": ANTHROPIC_API_VERSION,
       "Accept": stream ? "text/event-stream" : "application/json"
@@ -243,6 +245,7 @@ export class GithubExecutor extends BaseExecutor {
 
   async execute(options) {
     const { model, log } = options;
+    options = { ...options, requestContext: { ...options.requestContext, copilotMessages: options.body?.messages } };
 
     // Local AI Credits cutoff runs before any route selection so every GitHub
     // path (messages shim, /responses, /chat/completions) is gated identically.
@@ -347,7 +350,7 @@ export class GithubExecutor extends BaseExecutor {
     // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
     // already knows how to buffer an SSE response into a single JSON reply when the
     // client asked for stream:false.
-    const headers = this.buildHeaders(credentials, true);
+    const headers = this.buildHeaders(credentials, true, requestContext);
 
     // Strip params GitHub's Claude route rejects (temperature, and thinking/
     // reasoning_effort for non-4.6 Claude) BEFORE translating — the normal
@@ -445,7 +448,7 @@ export class GithubExecutor extends BaseExecutor {
         const countSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
         const countResponse = await proxyAwareFetch(this.config.countTokensUrl, {
           method: "POST",
-          headers: this.buildHeaders(credentials, false),
+          headers: this.buildHeaders(credentials, false, requestContext),
           body: JSON.stringify(transformedBody),
           signal: countSignal
         }, proxyOptions);
@@ -773,7 +776,7 @@ export class GithubExecutor extends BaseExecutor {
     // below. Keep the upstream Responses request streaming even when the
     // original Chat Completions client requested a non-streaming response.
     const responsesStream = true;
-    const headers = this.buildHeaders(credentials, responsesStream);
+    const headers = this.buildHeaders(credentials, responsesStream, requestContext);
 
     const transformedBody = openaiToOpenAIResponsesRequest(model, body, responsesStream, credentials);
     // This route bypasses transformRequest(), so the unsupported-parameter filter

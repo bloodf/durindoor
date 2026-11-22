@@ -16,6 +16,32 @@ import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { imageModelKindError } from "./imageModelKind.js";
+import { MAX_IMAGE_BYTES } from "open-sse/config/mediaConfig.js";
+const MAX_UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
+
+async function readBoundedRequest(request, maxBytes) {
+  if (!request.body) return request;
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  return new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal });
+}
 
 // Allow large image uploads (mask + image can be several MB).
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
@@ -31,11 +57,15 @@ export const maxDuration = 300;
  */
 async function handleImageEditHandler(request) {
   await captureRequestBillingEpoch(request);
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES + MAX_UPLOAD_OVERHEAD_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Image edit upload exceeds 10 MiB");
+  const boundedRequest = await readBoundedRequest(request, MAX_IMAGE_BYTES + MAX_UPLOAD_OVERHEAD_BYTES);
+  if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Image edit upload exceeds 10 MiB");
   let formData;
   let jsonBody = null;
   try {
     if ((request.headers.get("content-type") || "").includes("application/json")) {
-      jsonBody = await request.json();
+      jsonBody = await boundedRequest.json();
       const hasImage = jsonBody?.image !== undefined;
       const hasImages = jsonBody?.images !== undefined;
       const validImages = hasImage ? isImageSource(jsonBody.image) : Array.isArray(jsonBody?.images) && jsonBody.images.length > 0 && jsonBody.images.every(isImageSource);
@@ -44,9 +74,12 @@ async function handleImageEditHandler(request) {
       formData.append("model", jsonBody.model);
       formData.append("prompt", jsonBody.prompt);
       formData.append("image", "json-image");
-    } else formData = await request.formData();
+    } else formData = await boundedRequest.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid image edit body");
+  }
+  for (const key of ["image", "images", "mask"]) {
+    if (formData.getAll(key).some((value) => value instanceof Blob && value.size > MAX_IMAGE_BYTES)) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Image edit upload exceeds 10 MiB");
   }
 
   const modelField = formData.get("model");

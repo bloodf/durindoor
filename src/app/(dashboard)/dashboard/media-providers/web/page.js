@@ -4,6 +4,7 @@ import { requestCollection } from "../../providers/workflowRequests.js";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -105,6 +106,7 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
 }
 
 export default function WebProvidersPage() {
+  const v5 = useUiV5();
   const router = useRouter();
   const [loadError, setLoadError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -150,7 +152,7 @@ export default function WebProvidersPage() {
 
   if (!loaded) return loadError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger"><p>Web providers could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchAll}>Retry</Button></div> : <p role="status">Loading web providers…</p>;
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
+    <div className={`mx-auto flex w-full max-w-7xl flex-col gap-8${v5 ? " min-w-0 text-dd-text" : ""}`}>
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchAll}>Retry</Button></div>}
       {createError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{createError}</p>}
       <Section title="Web Search" icon="search" kind="webSearch" providers={searchProviders} connections={connections} combos={searchCombos} onCreateCombo={() => handleCreateCombo("webSearch")} />

@@ -148,6 +148,13 @@ describe("localAudit", () => {
     expect(findings.some((f) => /upstreamModelId "missing-parent" resolves to no id/.test(f))).toBe(true);
   });
 
+  it("resolves an xhigh preset only when its base is a sibling model", async () => {
+    const audit = (models) => localAudit([{ id: "demo", models }], FORMATS, { model: {}, provider: {}, pattern: [] });
+    expect(await audit([{ id: "base" }, { id: "variant", upstreamModelId: "base(xhigh)" }])).toEqual([]);
+    const findings = await audit([{ id: "variant", upstreamModelId: "missing(xhigh)" }]);
+    expect(findings.some((f) => f.includes('upstreamModelId "missing(xhigh)" resolves to no id'))).toBe(true);
+  });
+
   it("accepts only Antigravity Hydrogen's exact XHigh wire-only upstream id", async () => {
     const audit = (provider, id, upstreamModelId) => localAudit(
       [{ id: provider, models: [{ id, upstreamModelId }] }],

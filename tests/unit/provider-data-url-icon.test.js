@@ -23,7 +23,13 @@ const view = vi.hoisted(() => {
   };
 });
 
-vi.mock("react", () => view.react);
+// Preserve React exports used by imported UI adapters while retaining this
+// suite's deterministic hook state for its direct component render checks.
+vi.mock("react", async (importOriginal) => ({
+  ...await importOriginal(),
+  ...view.react,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+}));
 vi.mock("prop-types", () => ({ default: { bool: { isRequired: null }, func: { isRequired: null }, string: { isRequired: null }, shape: () => ({ isRequired: null }) } }));
 vi.mock("@/shared/ui/components/Button.jsx", () => ({ default: "Button" }));
 vi.mock("@/shared/ui/components/Badge.jsx", () => ({ Badge: "Badge" }));

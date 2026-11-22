@@ -15,19 +15,15 @@ import {
   decryptField,
   isEncryptedBlob } from
 "@/lib/crypto/columnCrypto.js";
+import {
+  decryptProviderSpecificData,
+  encryptProviderSpecificData } from
+"../helpers/providerSpecificDataSecrets.js";
 
-// SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
-// inside providerConnections.data. All other fields stay plaintext.
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
-export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
-"accessToken",
-"refreshToken",
-"apiKey", "managementApiKey",
-"idToken",
-"firecrawlHeaders",
-// STS session token for temporary AWS keys (Bedrock static-key mode).
-"sessionToken"]
-);
+import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
+
+export { SENSITIVE_CONNECTION_FIELDS };
 
 const OPTIONAL_FIELDS = [
 "displayName", "email", "globalPriority", "defaultModel",
@@ -128,6 +124,9 @@ function rowToConn(row) {
       extra[field] = decryptField(value, row.id);
     }
   }
+  if (extra.providerSpecificData) {
+    extra.providerSpecificData = decryptProviderSpecificData(extra.providerSpecificData, row.id);
+  }
   return {
     ...extra,
     id: row.id,
@@ -170,6 +169,9 @@ function connToRow(c) {
     if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
       rest[field] = encryptField(value, id);
     }
+  }
+  if (rest.providerSpecificData) {
+    rest.providerSpecificData = encryptProviderSpecificData(rest.providerSpecificData, id);
   }
   return {
     id,
@@ -360,7 +362,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     }
 
     let existing = null;
-    if (data.authType === "oauth" && data.email) {
+    // Microsoft 365 sign-ins are the same account only for the same tenant/object identity: two
+    // tenants can share an email, and a sign-in without an email claim must still merge.
+    if (data.authType === "oauth" && data.provider === "copilot-m365-web" && data.providerSpecificData?.chathubPath) {
+      existing = all.find((c) => c.authType === "oauth" &&
+      c.providerSpecificData?.chathubPath === data.providerSpecificData.chathubPath) || null;
+    }
+    if (!existing && data.authType === "oauth" && data.email && data.provider !== "copilot-m365-web") {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find((c) => {
@@ -413,12 +421,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
           extractCookieValue(c.providerSpecificData?.cookie, "BXAuth") === session);
       }
     }
+    const isKeyLikeAuth = data.authType === "apikey" || data.authType === "auth_token";
     if (!existing && data.provider === "cursor" && data.providerSpecificData?.userId) {
       existing = all.find(
         (c) => c.providerSpecificData?.userId === data.providerSpecificData.userId
       );
-    } else if (data.authType === "apikey" && data.name) {
-      existing = all.find((c) => c.authType === "apikey" && c.name === data.name);
+    } else if (isKeyLikeAuth && data.name) {
+      existing = all.find((c) => c.authType === data.authType && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
 
@@ -427,17 +436,18 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     // instead of the default upsert — the UI planner assigns collision-free
     // names, and this guard catches any stale/concurrent state that slips past
     // it. Thrown inside the transaction so nothing is persisted.
-    if (existing && requireNewName && data.authType === "apikey") {
-      const err = new Error(`An API key named "${data.name}" already exists for this provider`);
+    if (existing && requireNewName && isKeyLikeAuth) {
+      const label = data.authType === "auth_token" ? "An auth token" : "An API key";
+      const err = new Error(`${label} named "${data.name}" already exists for this provider`);
       err.code = "PROVIDER_CONNECTION_NAME_CONFLICT";
       throw err;
     }
 
     if (existing) {
       // #6499 — create-only (dashboard "add API key"): a duplicate (provider,
-      // apikey, name) must error, never silently upsert/overwrite. The explicit
+      // apikey|auth_token, name) must error, never silently upsert/overwrite. The explicit
       // update path is updateProviderConnection (PUT /api/providers/[id]).
-      if (createOnly && data.authType === "apikey") {
+      if (createOnly && isKeyLikeAuth) {
         const error = new Error(`A connection named "${data.name}" already exists for this provider`);
         error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
         throw error;
@@ -492,6 +502,7 @@ export async function updateProviderConnection(id, data, {
   returnCommitResult = false,
   signal = null,
   shouldCommit = null,
+  shouldCommitConnection = null,
   // Compatibility fallback writer (#1324/#1311): re-read under the write lock
   // and refuse demoting a concurrent durable reauth marker.
   refuseIfReauth = false
@@ -513,6 +524,11 @@ export async function updateProviderConnection(id, data, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) {result = null;return;}
     const existing = rowToConn(row);
+    if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
+    if (isFunction(shouldCommitConnection) && !shouldCommitConnection(existing)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
     if (expectedUpdatedAt && existing.updatedAt !== expectedUpdatedAt) {
       const error = new Error("Provider connection changed during credential refresh");
       error.code = "PROVIDER_CONNECTION_REVISION_CONFLICT";

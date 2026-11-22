@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Card from "@/shared/components/Card";
 import { cn } from "@/shared/utils/cn";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const POLL_MS = 10000;
 
@@ -204,6 +205,7 @@ function Metric({ label, value, tone = "neutral" }) {
 }
 
 function SuccessBadge({ rate }) {
+  const uiV5 = useUiV5();
   if (rate === null || rate === undefined) {
     return <span className="text-xs text-dd-muted">—</span>;
   }
@@ -213,9 +215,10 @@ function SuccessBadge({ rate }) {
     <span
       className={cn(
         "inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold tabular-nums",
-        good && "bg-green-500/10 text-green-500",
-        !good && mid && "bg-amber-500/10 text-amber-500",
-        !good && !mid && "bg-red-500/10 text-red-500"
+        // V5 uses the semantic tokens, which meet AA contrast in both themes.
+        good && (uiV5 ? "bg-dd-success/10 text-dd-success" : "bg-green-500/10 text-green-500"),
+        !good && mid && (uiV5 ? "bg-dd-warning/10 text-dd-warning" : "bg-amber-500/10 text-amber-500"),
+        !good && !mid && (uiV5 ? "bg-dd-danger/10 text-dd-danger" : "bg-red-500/10 text-red-500")
       )}
     >
       {rate}%

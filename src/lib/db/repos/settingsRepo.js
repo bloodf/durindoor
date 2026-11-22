@@ -69,6 +69,11 @@ const DEFAULT_SETTINGS = {
   oidcClientSecret: "",
   oidcScopes: "openid profile email",
   oidcLoginLabel: "Sign in with OIDC",
+  // OIDC operator allowlists (#2195). All empty = OIDC login is refused.
+  // Email/domain entries only match ids with email_verified === true.
+  oidcAllowedSubjects: [],
+  oidcAllowedEmails: [],
+  oidcAllowedDomains: [],
   // TOTP dashboard 2FA (decolua/9router#4144). mfaSecret/mfaBackupCodes are
   // credentials -- see SECRET_SETTING_KEYS in settingsPatchAuth.js and the
   // GET/PATCH redaction in the settings route; they must never round-trip
@@ -90,6 +95,12 @@ const DEFAULT_SETTINGS = {
    */
   modelAutoSyncIntervalHours: 24,
   modelAutoSyncProviders: {},
+  /**
+   * Opt-in: after a successful, non-empty model sync of a provider, move combo
+   * steps whose model left that provider's live catalog to the combo's
+   * prunedSteps (restorable from the combo editor). Off by default.
+   */
+  autoPruneStaleComboSteps: false,
   observabilityMaxRecords: 1000,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,

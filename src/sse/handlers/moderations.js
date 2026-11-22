@@ -20,7 +20,8 @@ import { annotateClientAdmissionFailure } from "open-sse/services/operationalMet
 
 /**
  * Handle moderations request — OpenAI-compatible /v1/moderations passthrough.
- * Follows the same auth + fallback pattern as handleChat/handleEmbeddings.
+ * Follows the same auth + fallback pattern as handleChat/handleEmbeddings and
+ * forwards request.signal without cooling down accounts on client abort.
  *
  * @param {Request} request
  * @returns {Promise<Response>}
@@ -66,6 +67,9 @@ async function handleModerationsHandler(request) {
 }
 
 async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId, usageContext) {
+  if (request.signal?.aborted) {
+    return errorResponse(499, "Moderation request aborted");
+  }
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("MODERATION", "Invalid model format", { model: modelStr });
@@ -107,8 +111,11 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log });
+    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log, signal: request.signal });
     if (result.success) return recordSuccess(result, credentials);
+    if (request.signal?.aborted || result.status === 499) {
+      return result.response || errorResponse(499, result.error || "Moderation request aborted");
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Moderation failed");
   }
 
@@ -147,12 +154,18 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
       modelInfo: { provider, model },
       credentials: toExecutorCredentials(refreshedCredentials),
       log,
+      signal: request.signal,
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
       },
     });
 
     if (result.success) return recordSuccess(result, credentials);
+
+    // Client abort: return 499 without cooling down the account or trying fallbacks.
+    if (request.signal?.aborted || result.status === 499) {
+      return result.response || errorResponse(499, result.error || "Moderation request aborted");
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
 

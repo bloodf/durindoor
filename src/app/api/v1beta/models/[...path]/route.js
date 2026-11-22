@@ -112,7 +112,18 @@ async function POSTHandler(request, { params }) {
     });
 
     inheritHttpObservation(newRequest);
-    const response = await handleChat(newRequest);
+    const response = await handleChat(newRequest, {
+      endpoint: new URL(request.url).pathname,
+      body: convertedBody,
+      headers: Object.fromEntries(request.headers.entries()),
+      geminiNativeResponse: true,
+    });
+
+    if (response.headers.get("x-durindoor-internal-gemini-native") === "1") {
+      const headers = new Headers(response.headers);
+      headers.delete("x-durindoor-internal-gemini-native");
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
 
     if (stream) {
       // Transform OpenAI SSE => Gemini SSE on the fly.

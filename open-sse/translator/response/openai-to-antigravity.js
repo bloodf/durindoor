@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";

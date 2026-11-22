@@ -6,7 +6,7 @@ import { sseChunk } from "../utils/sse.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
@@ -307,7 +307,7 @@ function applyWorkflowBlock(answers, workflow) {
 
 function applyWorkflowDiff(answers, patches) {
   let firstKey;
-  for (const patch of patches ?? []) {
+  for (const patch of (Array.isArray(patches) ? patches : []).filter(isRecord)) {
     const step = /^\/steps\/(\d+)$/.exec(patch.path ?? "");
     if (step) {
       for (const [itemIndex, item] of (patch.value?.items ?? []).entries()) {
@@ -369,7 +369,7 @@ async function* extractContent(eventStream, signal) {
     }
     if (event.backend_uuid) backendUuid = event.backend_uuid;
 
-    const blocks = event.blocks ?? [];
+    const blocks = Array.isArray(event.blocks) ? event.blocks.filter(isRecord) : [];
     for (const block of blocks) {
       const usage = block.intended_usage ?? "";
 
@@ -498,7 +498,8 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
           if (chunk.done) {fullAnswer = chunk.answer || fullAnswer;break;}
           let dt = chunk.delta || "";
           if (dt) {
-            dt = cleanResponse(dt, false);
+            const previousAnswer = fullAnswer;
+            dt = cleanResponse(previousAnswer + dt, false).slice(previousAnswer.length);
             if (dt) {
               controller.enqueue(encoder.encode(sseChunk({
                 id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,

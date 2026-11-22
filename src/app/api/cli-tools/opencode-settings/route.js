@@ -6,6 +6,7 @@ import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import {
@@ -157,7 +158,7 @@ export async function POST(request) {
       model: `9router/${effectiveSubagentModel}`
     });
 
-    await fs.writeFile(configPath, next);
+    await writeConfigAtomic(configPath, next);
 
     return NextResponse.json({
       success: true,
@@ -185,7 +186,7 @@ export async function PATCH(request) {
       const config = parseOpenCodeConfig(source);
       if (config.model?.startsWith("9router/")) {
         const next = modifyOpenCodeConfig(source, ["model"], "");
-        await fs.writeFile(configPath, next);
+        await writeConfigAtomic(configPath, next);
       }
     }
 
@@ -239,7 +240,7 @@ export async function DELETE(request) {
       return NextResponse.json({ success: true, message: "Nothing to remove" });
     }
 
-    await fs.writeFile(configPath, next);
+    await writeConfigAtomic(configPath, next);
 
     return NextResponse.json({
       success: true,

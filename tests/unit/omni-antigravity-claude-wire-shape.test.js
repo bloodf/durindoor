@@ -20,9 +20,16 @@ describe("Antigravity Claude request shape", () => {
     expect(request.generationConfig).toMatchObject({ temperature: 0.5, maxOutputTokens: 1234 });
     expect(request.tools[0].functionDeclarations[0].name).toBe("lookup");
     expect(request.toolConfig.functionCallingConfig).toEqual({ mode: "ANY", allowedFunctionNames: ["lookup"] });
-    expect(request).toMatchObject({ sessionId: "12345", sessionMetadata: { source: "client" }, labels: { keep: "yes" }, cachedContent: "cache/1" });
+    expect(request.sessionId).not.toBe("12345");
+    expect(request).toMatchObject({ sessionId: expect.stringMatching(/^-?\d+$/), sessionMetadata: { source: "client" }, labels: { keep: "yes" }, cachedContent: "cache/1" });
+    expect(BigInt.asIntN(64, BigInt(request.sessionId)).toString()).toBe(request.sessionId);
     expect(request).not.toHaveProperty("internalMarker");
     expect(request).not.toHaveProperty("messages");
+  });
+
+  it("passes an incoming session id through unchanged without a credential to scope it", () => {
+    const request = new AntigravityExecutor().transformRequest("claude-sonnet-4-6", { request: { contents: [{ role: "user", parts: [{ text: "hi" }] }], sessionId: "12345" } }, false, { projectId: "test-project" }).request;
+    expect(request.sessionId).toBe("12345");
   });
 
   it("leaves non-Claude request fields and empty-tool omission unchanged", () => {

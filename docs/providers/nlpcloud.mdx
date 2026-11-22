@@ -1,0 +1,14 @@
+---
+title: NLP Cloud
+description: Connect an NLP Cloud API key and use the GPU chatbot endpoint with quota reservations.
+---
+
+Add an NLP Cloud API key using the normal provider connection form. NLP Cloud accepts Bearer authentication. Connection testing makes a chatbot request and may consume provider credits; only a successful response confirms the key. See [NLP Cloud pricing](https://nlpcloud.com/pricing.html) for account-specific charges and plans. Models shown in the dashboard are the chatbot models listed in the [NLP Cloud API reference](https://docs.nlpcloud.com/#chatbot-and-conversational-ai); availability depends on the account.
+
+Requests use the model-specific GPU chatbot endpoint. System or developer instructions become the chatbot context, and alternating user and assistant messages become its history. The last message must be from the user. The endpoint supports text and native streaming, but not tools, images, or structured JSON output; these are rejected. The native chatbot response does not report token usage, so the gateway does not fabricate provider usage. Other OpenAI generation parameters are not sent because they are not documented for this endpoint.
+
+Each request holds one gateway quota reservation for its physical upstream call. If no reservation is available, the gateway refuses the request locally and answers `503 Provider quota capacity unavailable` without contacting NLP Cloud; that refusal is a local capacity decision, not an NLP Cloud error. See [Troubleshooting](../troubleshooting.mdx#rate-limit-or-quota-skip).
+
+The gateway commits the reservation after a nonempty JSON `response` or a native event stream with nonempty text and a trailing `[DONE]` marker at clean EOF. An embedded marker cannot finish the stream early. Errors, missing terminals, and client cancellations release the reservation.
+
+This integration has been exercised with local mocks only; account-backed behavior has not been verified. The dashboard uses a neutral icon.

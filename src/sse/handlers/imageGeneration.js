@@ -72,11 +72,16 @@ async function handleImageGenerationHandler(request) {
   }
 
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
+  // Binary output carries one image payload; reject n > 1 before combo/account/upstream dispatch.
+  if (binaryOutput && Number(body.n) > 1) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Binary image output (response_format=binary) supports at most n=1");
+  }
 
   if (wantsDefaultRoute(modelStr)) {
     const route = await resolveMediaRoute("image", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId }),
@@ -104,6 +109,7 @@ async function handleImageGenerationHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("IMAGE", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting }),

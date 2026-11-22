@@ -1,0 +1,8 @@
+{
+  "route": "dialog/XiaomiMimoAuthModal",
+  "stories": [
+    "production-shared-auth-xiaomimimoauthmodal--local-credentials-found",
+    "production-shared-auth-xiaomimimoauthmodal--detection-fallback",
+    "production-shared-auth-xiaomimimoauthmodal--browser-login-cluster-selection"
+  ]
+}

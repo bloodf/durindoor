@@ -65,6 +65,7 @@ export default function UpdatePanel({
   currentVersion,
   latestVersion,
   installCmd,
+  isTrayMode = false,
   onClose,
   onReload = reloadPage,
 }) {
@@ -233,9 +234,14 @@ export default function UpdatePanel({
     }
   }, [startStatusPoll, failToManual]);
 
+  const relaunchCmd = `${UPDATER_CONFIG.npmPackageName}${isTrayMode ? " --tray" : ""}`;
+  const installAndRelaunchCmd = `${installCmd} && ${relaunchCmd}`;
   const handleCopyAndShutdown = async () => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = null;
+    setCountdown(UPDATER_CONFIG.shutdownCountdownSec);
     try {
-      await navigator.clipboard.writeText(installCmd);
+      await navigator.clipboard.writeText(installAndRelaunchCmd);
     } catch {
       /* clipboard blocked */
     }
@@ -401,7 +407,7 @@ export default function UpdatePanel({
                 ? `Command copied. Server will stop in ${countdown}s…`
                 : error
                   ? "Auto-update unavailable — install manually."
-                  : `Copy the install command, stop the server, then re-run ${UPDATER_CONFIG.npmPackageName}.`
+                : "Copy the command and stop the server to install and restart."
           }
         />
 
@@ -413,7 +419,7 @@ export default function UpdatePanel({
 
         <p className="mb-2 text-sm text-dd-text">Install command:</p>
         <div className="mb-4 w-full rounded-dd bg-dd-bg-alt px-3 py-2">
-          <code className="break-all font-mono text-xs text-dd-accent-2">{installCmd}</code>
+          <code className="break-all font-mono text-xs text-dd-accent-2">{installAndRelaunchCmd}</code>
         </div>
 
         <ol className="mb-4 list-decimal space-y-1 pl-5 text-xs text-dd-muted">
@@ -422,11 +428,11 @@ export default function UpdatePanel({
           </li>
           <li>Paste the command into your terminal and press Enter.</li>
           <li>
-            Run{" "}
+            The command runs{" "}
             <code className="rounded-dd bg-dd-surface-2 px-1 py-0.5 font-mono text-[11px] text-dd-success">
-              {UPDATER_CONFIG.npmPackageName}
+              {relaunchCmd}
             </code>{" "}
-            again after install.
+            after install.
           </li>
         </ol>
 
@@ -497,5 +503,6 @@ UpdatePanel.propTypes = {
   currentVersion: PropTypes.string,
   latestVersion: PropTypes.string,
   installCmd: PropTypes.string.isRequired,
+  isTrayMode: PropTypes.bool,
   onClose: PropTypes.func.isRequired,
 };

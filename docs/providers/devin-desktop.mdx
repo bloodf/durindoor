@@ -1,0 +1,59 @@
+---
+title: Devin Desktop
+description: Opt-in provider that re-serves a Devin account through the Devin Desktop Connect-protobuf transport. Browser sign-in or pasted session token, off until each connection opts in.
+---
+
+Devin Desktop (`devin-desktop`) sends chat to Devin's desktop API at `https://server.codeium.com` using the Connect-protobuf `GetChatMessage` stream, and translates it to and from OpenAI chat. It reuses the Devin CLI sign-in. It is separate from `devin-cli` and `devin-cli-agentic`, which drive a local Devin CLI process over ACP stdio and need no network credential.
+
+This provider is **unverified**. Tests answer every call from a closed mock of the pinned contract. No live Devin account, token or model list has been run against it, and the upstream transport is undocumented: it still identifies itself as Windsurf, and the wire schema comes from the pinned OmniRoute port, not from a published API. Treat this page as the documented contract, not tested behavior.
+
+## Read this first
+
+- **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes the request fail with HTTP 403 `devin_desktop_dispatch_disabled` before any outbound call. Each connection opts in on its own, and the gateway falls through to the next connection that has.
+- **Subscription risk.** This re-serves a Devin account through an app transport, not through a published API. Check Cognition's terms before using it, and use an account you own.
+- **Session tokens do not refresh.** The sign-in returns one token with no refresh token and no expiry. When Devin rejects it, requests fail with 401 `invalid_session` and you sign in again. DurinDoor does not retry a rejected token.
+
+## Setup
+
+Two ways to create the connection. Both store the same credential, a Devin session token (`devin-session-token$...`) or an API key, as the connection's access token.
+
+1. **Browser sign-in.** The OAuth routes (`/api/oauth/devin-desktop/authorize` and `exchange`) open `https://app.devin.ai/auth/cli/continue` with PKCE (S256, 96-byte verifier) and a loopback redirect to `http://127.0.0.1:59653/callback`. The port is fixed because Devin registers that exact redirect, so nothing else may listen on it. DurinDoor then posts `{code, code_verifier}` as JSON to `https://api.devin.ai/auth/cli/token` and stores the returned token. If the browser cannot reach the loopback port, paste the full callback URL; its `state` must match the login in progress.
+2. **Import.** In the dashboard, add **Devin Desktop** under **Providers** and paste an existing Devin session token or API key from an authenticated Devin session. The dashboard has no browser sign-in button yet; the browser flow runs through the OAuth routes. Whether and how a key can be exported varies by Devin version and account.
+
+Then turn on **Allow session dispatch** in the connection's edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`). It is off for every new connection.
+
+Models are addressed as `devin-desktop/<model>`, for example `devin-desktop/swe-1-7`. The catalog is the curated upstream list, with effort variants as separate ids (`claude-opus-5-max`, `gpt-5-6-sol-high`, ...). Live discovery posts `GetCliModelConfigs` and keeps the account's enabled models; if it fails, the curated catalog is served.
+
+## How a request runs
+
+1. `GetUserJwt` with the session token in the request metadata mints a short-lived user JWT. This happens on every request, so the JWT never goes stale.
+2. `GetChatMessage` carries both the token and the JWT. The reply is a Connect stream of protobuf frames, which becomes OpenAI chat chunks (text, reasoning, tool calls, usage). The provider forces streaming upstream; JSON clients get the stream collapsed to a JSON completion.
+3. The OpenAI chat route and the Anthropic Messages route both work, with tools, tool choice and parallel-tool-call control. Images are not forwarded; only text parts are.
+
+## Errors
+
+| Upstream | Gateway |
+| --- | --- |
+| 401, or Connect `unauthenticated` | 401 `invalid_session`: sign in again |
+| 403, or `permission_denied` | 403 `access_denied`: plan or model not available to the account |
+| 429, or `resource_exhausted` | 429 `quota_exceeded`, with `Retry-After` when sent |
+| `unavailable`, `deadline_exceeded` | 503, 504 |
+| anything else | 502 |
+
+A Connect error trailer that arrives before any content is returned as a plain status. After content has started it is sent as an error event in the stream. Messages never include the upstream body or the token.
+
+## Limits
+
+- Enterprise `custom_api_server_url` values in the auth reply are decoded but never followed. Following a credential-derived URL would be an SSRF path, so only `server.codeium.com` is used.
+- Client versions are pinned (`windsurf/3.6.27`, extension `1.48.2`). Override with `DEVIN_DESKTOP_VERSION` or `DEVIN_DESKTOP_EXTENSION_VERSION` (`x.y.z` only). If Devin starts rejecting the pinned version, this provider breaks until the pin is updated.
+- Unary replies and frames are bounded (1 MB auth reply, 16 MB frame); anything larger fails the request.
+
+## Cookie capture
+
+Devin Desktop has no session cookie, so the extension, a pasted cURL or Cookie header, and a HAR file carry nothing to import. The credential is the session token from the sign-in or a pasted key. If you share a token, cURL or HAR anywhere, remove it first.
+
+The import profile (domains `app.devin.ai`, `api.devin.ai`, `server.codeium.com`, no cookie names, token prefix `devin-session-token$`, and the `GetUserJwt` validation probe) is exported as `DEVIN_DESKTOP_CREDENTIAL_PROFILE` from `open-sse/providers/private/devin-desktop.js`.
+
+## Sources
+
+- [Devin](https://devin.ai) and [Devin CLI docs](https://docs.devin.ai/cli)

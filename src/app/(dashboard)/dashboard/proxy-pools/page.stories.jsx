@@ -3,7 +3,6 @@ import React from "react";
 import { expect, userEvent, within, waitFor } from "storybook/test";
 import ProxyPoolsPage from "./page";
 import { useNotificationStore } from "@/store/notificationStore";
-import DashboardLayout from "@/shared/components/layouts/DashboardLayout";
 
 const initialPool = { id: "pool-1", name: "Office relay", proxyUrl: "http://proxy.example:8080", noProxy: "localhost", isActive: true, testStatus: "active", boundConnectionCount: 2, lastTestedAt: "2026-09-05T00:00:00.000Z", type: "cloudflare" };
 
@@ -45,6 +44,10 @@ const deadProxyRoutes = { ...buildStatefulRoutes(), "POST /api/proxy-pools/pool-
 function StoryNotifications() {
   const notifications = useNotificationStore((state) => state.notifications);
   return <div role="log" aria-label="Fixture notifications">{notifications.map((notification) => <p key={notification.id}>{notification.message}</p>)}</div>;
+}
+function StoryAlerts() {
+  const notifications = useNotificationStore((state) => state.notifications);
+  return notifications.filter((notification) => notification.type === "error").map((notification) => <div key={notification.id} role="alert">{notification.message}</div>);
 }
 
 const meta = { title: "Production/operations/ProxyPoolsPage", component: ProxyPoolsPage, parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: baseRoutes } } };
@@ -99,8 +102,8 @@ export const DisableDeadProxies = {
   },
 };
 export const CreateError = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: { ...failedCreateRoutes, "GET /api/settings": { body: {} }, "GET /api/version": { body: {} }, "GET /api/auth/status": { body: {} } } } },
-  render: () => <DashboardLayout><ProxyPoolsPage /></DashboardLayout>,
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: failedCreateRoutes } },
+  render: () => <><ProxyPoolsPage /><StoryAlerts /></>,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Add proxy pool" }));

@@ -1,6 +1,6 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 // Fixed probe target. Previously this endpoint accepted a caller-supplied
 // `testUrl` from the request body, which turned the proxy-test route into
@@ -30,84 +30,40 @@ function parseProxyUrl(proxyUrl) {
   const normalizedInput = normalizeString(proxyUrl);
   if (!normalizedInput) return null;
 
-  // Handle protocol:// prefix
-  let urlStr = normalizedInput;
-  if (urlStr.includes("://")) {
-    urlStr = urlStr.split("://")[1];
-  }
-
-  // Handle user:pass@ip:port format
-  let username = null;
-  let password = null;
-  let hostPort = urlStr;
-
-  if (urlStr.includes("@")) {
-    const [authPart, hostPortPart] = urlStr.split("@");
-    hostPort = hostPortPart;
-
-    if (authPart.includes(":")) {
-      [username, password] = authPart.split(":");
-    } else {
-      username = authPart;
+  // URL parsing preserves the transport scheme and treats the final @ as the
+  // userinfo/host separator, so @ inside credentials cannot redirect the test.
+  if (normalizedInput.includes("://")) {
+    try {
+      const parsed = new URL(normalizedInput);
+      if (!["http:", "https:", "socks:", "socks4:", "socks5:"].includes(parsed.protocol)) return null;
+      if (!parsed.hostname) return null;
+      return parsed.toString();
+    } catch {
+      return null;
     }
   }
 
-  // Handle ip:port:user:pass format (no @)
-  if (hostPort.includes(":") && !hostPort.startsWith("http")) {
-    const parts = hostPort.split(":");
-    if (parts.length === 4) {
-      // ip:port:user:pass format
-      [hostPort, username, password] = parts;
-    } else if (parts.length === 3) {
-      // ip:port:user format (user without password)
-      [hostPort, username] = parts;
-    }
+  // Handle ip:port:user:pass and ip:port:user legacy formats.
+  const parts = normalizedInput.split(":");
+  if (parts.length === 4) {
+    const [host, port, username, ...passwordParts] = parts;
+    const password = passwordParts.join(":");
+    if (!host || !port) return null;
+    return `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
+  }
+  if (parts.length === 3 && /^\d+$/.test(parts[1])) {
+    const [host, port, username] = parts;
+    return `http://${encodeURIComponent(username)}@${host}:${port}`;
   }
 
-  // Parse host and port
-  let host = "";
-  let port = "";
-  let protocol = "http"; // default
-
-  if (hostPort.includes("/")) {
-    // Handle path-like formats
-    const url = new URL(`http://${hostPort}`);
-    host = url.hostname;
-    port = url.port;
-    protocol = url.protocol.replace(":", "");
-  } else if (hostPort.includes(":")) {
-    [host, port] = hostPort.split(":");
-  } else {
-    host = hostPort;
-    port = "";
-  }
-
-  // Validate host
-  if (!host || host === "") {
+  // Bare host:port and user:pass@host:port forms default to HTTP.
+  try {
+    const parsed = new URL(`http://${normalizedInput}`);
+    if (!parsed.hostname) return null;
+    return parsed.toString();
+  } catch {
     return null;
   }
-
-  // Build proxy URL
-  let parsedProxyUrl = "";
-  if (protocol) {
-    parsedProxyUrl += `${protocol}://`;
-  }
-
-  if (username) {
-    if (password) {
-      parsedProxyUrl += `${username}:${password}@`;
-    } else {
-      parsedProxyUrl += `${username}@`;
-    }
-  }
-
-  parsedProxyUrl += host;
-
-  if (port) {
-    parsedProxyUrl += `:${port}`;
-  }
-
-  return parsedProxyUrl;
 }
 
 /**
@@ -197,7 +153,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
       // verify the proxy can reach the public internet; if it cannot
       // fetch https, it cannot proxy real traffic.
       try {
-        assertPublicUrl(testUrl);
+        assertOutboundUrlAllowed(testUrl, "public-only");
       } catch (guardErr) {
         return {
           ok: false,
@@ -220,7 +176,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
 
       let res;
       try {
-        res = await undiciFetch(testUrl, {
+        res = await guardedProbeFetch(testUrl, {
           method: "HEAD",
           dispatcher,
           signal: controller.signal,
@@ -228,7 +184,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
           headers: {
             "User-Agent": "9Router",
           },
-        });
+        }, "public-only", (url, options) => undiciFetch(url, { ...options, dispatcher }));
       } catch (err) {
         const message =
           err?.name === "AbortError"

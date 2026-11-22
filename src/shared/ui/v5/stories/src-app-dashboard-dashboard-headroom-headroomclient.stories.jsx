@@ -7,3 +7,4 @@ const meta = { ...originalMeta, title: "V5 review/Pages/savers/HeadroomClient", 
 export default meta;
 export const RunningWithEvents = { ...reviewStory(original.RunningWithEvents, {"source":"src/app/(dashboard)/dashboard/headroom/HeadroomClient.stories.jsx","standalone":false}) };
 export const SetupDiagnostic = { ...reviewStory(original.SetupDiagnostic, {"source":"src/app/(dashboard)/dashboard/headroom/HeadroomClient.stories.jsx","standalone":false}) };
+export const LoadFailure = { ...reviewStory(original.LoadFailure, {"source":"src/app/(dashboard)/dashboard/headroom/HeadroomClient.stories.jsx","standalone":false}) };

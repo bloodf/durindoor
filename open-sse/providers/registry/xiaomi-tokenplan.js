@@ -35,6 +35,7 @@ export default {
       ams: "https://token-plan-ams.xiaomimimo.com/v1",
     },
     defaultRegion: "sgp",
+    reasoningInject: { scope: "all" },
   },
   // Multi-endpoint: pick the transport matching client sourceFormat to skip translation.
   // baseUrl omitted — region-dynamic, resolved in the executor's buildUrl.

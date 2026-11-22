@@ -1,0 +1,7 @@
+{
+  "route": "dialog/ApiKeyModelAccessModal",
+  "stories": [
+    "production-endpoint-apikeymodelaccessmodal--allow-list-with-security-warning",
+    "production-endpoint-apikeymodelaccessmodal--empty-block-list"
+  ]
+}

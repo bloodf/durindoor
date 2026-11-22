@@ -458,8 +458,11 @@ describe("Vertex isolation", () => {
     try {
       await new VertexExecutor("vertex-partner").execute({ model: "partner-model", body: {}, credentials: { apiKey: "opaque+key&fixture" }, proxyOptions: route, signal });
       expect(calls).toHaveLength(2);
-      for (const call of calls) {
-        expect(call.proxy).toBe(route); expect(call.init.signal).toBe(signal);
+      for (const [index, call] of calls.entries()) {
+        expect(call.proxy).toBe(route);
+        expect(call.init.signal).toBeInstanceOf(AbortSignal);
+        if (index === 0) expect(call.init.signal).toBe(signal);
+        else expect(call.init.signal).not.toBe(signal);
         expect(new URL(call.url).searchParams.get("key")).toBe("opaque+key&fixture");
       }
       expect(calls[1].url).toContain("/projects/partner-project/");

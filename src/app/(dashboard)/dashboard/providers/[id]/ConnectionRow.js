@@ -76,12 +76,13 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
   const rowAuthType = connection.authType || (isOAuth ? "oauth" : "apikey");
   const isOAuthConnection = rowAuthType === "oauth";
   const isCookieConnection = rowAuthType === "cookie";
-  const authIcon = isCookieConnection ? "cookie" : isOAuthConnection ? "lock" : "key";
-  const authLabel = isOAuthConnection ? "OAuth" : isCookieConnection ? "Cookie" : "API Key";
+  const isAuthTokenConnection = rowAuthType === "auth_token";
+  const authIcon = isCookieConnection ? "cookie" : isOAuthConnection ? "lock" : isAuthTokenConnection ? "token" : "key";
+  const authLabel = isOAuthConnection ? "OAuth" : isCookieConnection ? "Cookie" : isAuthTokenConnection ? "Auth Token" : "API Key";
   const displayName = connection.name?.trim()
     || connection.email?.trim()
     || connection.displayName?.trim()
-    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
+    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : isAuthTokenConnection ? "Auth Token" : "API Key");
   // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
   // connection badges. The live quota plan wins; the connection's stored OAuth
   // metadata is only written at authorization time, so it goes stale after an

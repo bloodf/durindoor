@@ -42,7 +42,7 @@ export class XaiExecutor extends BaseExecutor {
     for (const level of effortLevels) {
       if (out.model && out.model.endsWith(`-${level}`)) {
         modelEffort = level;
-        out.model = out.model.replace(`-${level}`, "");
+        out.model = out.model.slice(0, -level.length - 1);
         break;
       }
     }

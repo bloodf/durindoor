@@ -25,6 +25,8 @@ const INSTALL_TIMEOUT_MS = 20 * 60 * 1000;
 const INSTALL_KILL_GRACE_MS = 5000;
 
 let installInFlight = null;
+/** In-process ChildProcess for the managed proxy — preferred over a bare PID for stop. */
+let managedChild = null;
 
 function ensureDir() {
   if (!fs.existsSync(HEADROOM_DIR)) fs.mkdirSync(HEADROOM_DIR, { recursive: true });
@@ -67,6 +69,27 @@ async function awaitPidDeath(pid, { termGraceMs = 2000, killWaitMs = 800, pollMs
   return !isPidAlive(pid);
 }
 
+/**
+ * Stop via the ChildProcess handle we spawned (never a bare reused PID).
+ * Signals go through `child.kill`; liveness is still probed by that child's pid.
+ */
+async function awaitChildDeath(child, { termGraceMs = 2000, killWaitMs = 800, pollMs = 100 } = {}) {
+  const pid = child?.pid;
+  if (!pid || !isNumber(pid)) return false;
+  try { child.kill("SIGTERM"); } catch { return !isPidAlive(pid); }
+  const termDeadline = Date.now() + termGraceMs;
+  while (Date.now() < termDeadline && isPidAlive(pid)) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  if (!isPidAlive(pid)) return true;
+  try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  const killDeadline = Date.now() + killWaitMs;
+  while (Date.now() < killDeadline && isPidAlive(pid)) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return !isPidAlive(pid);
+}
+
 // process.kill throws if pid is dead — use this to probe.
 export function isPidAlive(pid) {
   if (!pid || !isNumber(pid)) return false;
@@ -74,6 +97,9 @@ export function isPidAlive(pid) {
 }
 
 export function getManagedPid() {
+  if (managedChild && isNumber(managedChild.pid) && isPidAlive(managedChild.pid)) {
+    return managedChild.pid;
+  }
   const pid = readPid();
   return pid && isPidAlive(pid) ? pid : null;
 }
@@ -107,9 +133,9 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
 
   let child;
   try {
+    // Stay attached to the parent so shutdown can reap us; do not detach/unref.
     child = spawn(binary, ["proxy", "--port", String(safePort), ...(kompress ? [] : ["--disable-kompress"])], {
       stdio: ["ignore", outFd, outFd],
-      detached: true,
       windowsHide: true,
       env: childEnv()
     });
@@ -127,7 +153,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
     throw err;
   }
 
-  child.unref();
+  managedChild = child;
   writePid(child.pid);
 
   // Wait until the process either stays alive briefly (success) or exits fast (failure).
@@ -153,9 +179,11 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
       logTail: redactSensitive(getHeadroomLogTail(40))
     }));
     const onExit = (code) => {
+      if (managedChild === child) managedChild = null;
       if (finish(reject, startupFailure(`The proxy process exited with code ${code}.`))) clearPid(child.pid);
     };
     const onError = (error) => {
+      if (managedChild === child) managedChild = null;
       const err = new Error(error?.message || "Failed to spawn headroom proxy");
       err.code = error?.code || "SPAWN_FAILED";
       if (finish(reject, err)) clearPid(child.pid);
@@ -176,6 +204,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
 
   const spawnedPid = child.pid;
   child.once("exit", () => {
+    if (managedChild === child) managedChild = null;
     try { if (!isPidAlive(spawnedPid)) clearPid(spawnedPid); } catch {/* ignore late cleanup */}
   });
 
@@ -185,7 +214,32 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
 }
 
 export async function stopHeadroomProxy() {
-  const pid = getManagedPid();
+  // Prefer the in-process ChildProcess we spawned. If a PID file names a
+  // different pid (stale handle from a prior start/test), drop the handle and
+  // fall through to the file-based path.
+  const filePid = readPid();
+  if (managedChild && isNumber(managedChild.pid) && filePid && filePid !== managedChild.pid) {
+    managedChild = null;
+  }
+
+  if (managedChild && isNumber(managedChild.pid)) {
+    const child = managedChild;
+    const pid = child.pid;
+    managedChild = null;
+    const stopped = await awaitChildDeath(child);
+    if (!stopped) {
+      const err = new Error(`Failed to stop headroom proxy (pid ${pid} still alive) — see proxy.log`);
+      err.code = "STOP_FAILED";
+      throw err;
+    }
+    clearPid(pid);
+    return { stopped: true, pid };
+  }
+
+  // No live handle in this process (restart / unit tests): fall back to the
+  // PID file. Callers that only have a file still need a stop path; the
+  // handle path above is what prevents reuse kills for in-process children.
+  const pid = filePid && isPidAlive(filePid) ? filePid : null;
   if (!pid) return { stopped: false, reason: "not_running" };
   const stopped = await awaitPidDeath(pid);
   if (!stopped) {
@@ -367,6 +421,12 @@ function assertInstallDiskSpace(requested, python) {
 }
 
 export { quoteShellArg } from "@/shared/utils/setupDiagnostics.js";
+
+/** Test seam for in-process child identity (stop-via-handle). */
+export const __test__ = {
+  getManagedChild: () => managedChild,
+  setManagedChild: (child) => { managedChild = child; },
+};
 
 function createInstallError({ python, requested, manualCommand, reason, rawLog }) {
   // Match on rawLog; only the redacted copy ever leaves the process.

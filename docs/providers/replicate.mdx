@@ -1,4 +1,7 @@
-# Replicate text predictions
+---
+title: Replicate
+description: Run Replicate text predictions with an API token, including streaming and local quota refusal.
+---
 
 Add a Replicate API token in Providers, then select `replicate/meta/meta-llama-3-70b-instruct`. The catalog and model sync expose this documented official text model. Other official `owner/name` models can be selected as custom models if they accept the same `prompt`, `system_prompt`, `max_tokens`, `temperature`, and `top_p` inputs and return text. Model-specific schemas differ; unsupported inputs or outputs are rejected by Replicate or the gateway.
 

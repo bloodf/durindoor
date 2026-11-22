@@ -32,8 +32,8 @@ export class LmarenaExecutor extends BaseExecutor {
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Origin: "https://arena.ai", Referer: "https://arena.ai/", Cookie: cookie };
     const result = await tlsFetchLMArena(URL, { method: "POST", headers, body: JSON.stringify(upstreamBody(model, body?.messages, credentials)), signal, stream: !!stream, sameOriginRedirects: true });
     if (result.status >= 400) return { response: error(result.status, result.text || `Arena returned HTTP ${result.status}`), url: URL, headers, transformedBody: body };
-    const upstream = result.response || new Response(result.text || "", { status: result.status, headers: { "content-type": "text/event-stream" } });
-    if (stream) return { response: new Response(openAIStream(upstream.body, model), { status: 200, headers: { "content-type": "text/event-stream" } }), url: URL, headers, transformedBody: body };
+    const upstream = new Response(result.text || "", { status: result.status, headers: { "content-type": "text/event-stream" } });
+    if (stream) return { response: new Response(openAIStream(result.body || result.response?.body || upstream.body, model), { status: 200, headers: { "content-type": "text/event-stream" } }), url: URL, headers, transformedBody: body };
     const text = result.text || await upstream.text(); let usage;
     const answer = text.split(/\r?\n/).map((line) => line.replace(/^data:\s*/, "")).filter(Boolean).map((line) => { try { const x = JSON.parse(line); if (x.usage) usage = x.usage; return x.text ?? x.delta?.text ?? x.content ?? ""; } catch { return ""; } }).join("");
     const completion = { id: "lmarena", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: answer }, finish_reason: "stop" }] };

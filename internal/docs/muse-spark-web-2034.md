@@ -22,3 +22,7 @@ Gaps found and fixed (DurinDoor-original):
 
 - **Validate and Test Connection sent the saved cookie.** The generic probe POSTed `Authorization: Bearer <cookie>` to `https://www.meta.ai/api/graphql`, bypassing the dispatch guard. Both now return `skipped` through `src/lib/providers/conversationProbe.js` without any request.
 - **The guard locked and rotated accounts.** `chatCore` flattens the guard body to `[501]: ... runtime execution is not ported yet`, which dropped the `provider_port_pending` type that `checkFallbackError` matched, so every connection was locked for 30 seconds and the router tried each sibling. `checkFallbackError` now also matches the guard's own 501 wording, so no cooldown or fallback is recorded. The same wording covers every provider behind `UnsupportedOmniRouteWebSessionExecutor`.
+
+## Main integration provenance
+
+The implementation ports the MIT-licensed OmniRoute contract at [4265bb2ad5477450a07d3a43ea33a62c6c874878](https://github.com/cheaper-inference/OmniRoute/tree/4265bb2ad5477450a07d3a43ea33a62c6c874878), including [fresh-access-token.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/fresh-access-token.ts), [ws-frame.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/ws-frame.ts), [ws-templates.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/ws-templates.ts), and its executor.

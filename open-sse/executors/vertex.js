@@ -7,6 +7,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "../services/tokenRefresh/dedup.js";
 import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
+import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
+import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
 const projectIdCache = new Map();
@@ -191,14 +193,23 @@ export class VertexExecutor extends BaseExecutor {
       requestContext
     );
 
-    const response = await proxyAwareFetch(url, {
-      method: "POST",
-      headers,
-      // Only the partner endpoint speaks Chat Completions; Gemini stays native.
-      body: JSON.stringify(this.provider === "vertex-partner" ?
-        this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody),
-      signal
-    }, proxyOptions);
+    const connectController = new AbortController();
+    const mergedSignal = signal ? AbortSignal.any([signal, connectController.signal]) : connectController.signal;
+    const connectTimer = setTimeout(() => connectController.abort(new Error("Vertex connect timeout")), this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS);
+    let response;
+    try {
+      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+        method: "POST",
+        headers,
+        // Only the partner endpoint speaks Chat Completions; Gemini stays native.
+        body: JSON.stringify(this.provider === "vertex-partner" ?
+          this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody),
+        signal: mergedSignal,
+        redirect: "error"
+      }, proxyOptions));
+    } finally {
+      clearTimeout(connectTimer);
+    }
 
     return {
       response,

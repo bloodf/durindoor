@@ -237,6 +237,9 @@ export default function UpdatePanel({
   const relaunchCmd = `${UPDATER_CONFIG.npmPackageName}${isTrayMode ? " --tray" : ""}`;
   const installAndRelaunchCmd = `${installCmd} && ${relaunchCmd}`;
   const handleCopyAndShutdown = async () => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = null;
+    setCountdown(UPDATER_CONFIG.shutdownCountdownSec);
     try {
       await navigator.clipboard.writeText(installAndRelaunchCmd);
     } catch {

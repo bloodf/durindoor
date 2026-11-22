@@ -89,6 +89,7 @@ describe("GET /api/usage/me", () => {
     const res = await route.GET(request());
     expect(res.body.connections).toHaveLength(1);
     expect(res.body.connections[0].id).toBe("conn-2");
+    expect(res.body.connections[0]).not.toHaveProperty("key");
   });
 
   it("rejects an unsupported format value before touching the database", async () => {

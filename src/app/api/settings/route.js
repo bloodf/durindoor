@@ -9,6 +9,7 @@ import { resetRoundrobinCursors } from "open-sse/services/modelFallback.js";
 import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
+import { isMfaEnabled, verifySecondFactor } from "@/lib/auth/mfa";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
@@ -156,6 +157,12 @@ export async function PATCH(request) {
       if (!(await verifyDashboardPassword(body.currentPassword))) {
         return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
       }
+      if (isMfaEnabled(settings)) {
+        const secondFactor = await verifySecondFactor(body.mfaCode);
+        if (!secondFactor.ok) {
+          return NextResponse.json({ error: "Invalid MFA code" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+      }
 
       const salt = await bcrypt.genSalt(10);
       passwordSessionEpoch = crypto.randomBytes(16).toString("hex");
@@ -166,6 +173,7 @@ export async function PATCH(request) {
 
     delete body.currentPassword;
     delete body.newPassword;
+    delete body.mfaCode;
 
 
 

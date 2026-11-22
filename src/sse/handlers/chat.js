@@ -1,4 +1,5 @@
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { summarizeToolSources } from "../utils/toolSources.js";
 import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
 import { CAPTURE_CONSENT_HEADER, CAPTURE_SESSION_HEADER, prepareMessageCapture } from "../utils/messageCapture.js";
 import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
@@ -468,6 +469,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     log.warn("AUTH", "Invalid API key");
     return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
   }
+  const toolSummary = summarizeToolSources(body.tools, settings.logToolSources);
+  if (toolSummary) log.debug("TOOLS", toolSummary);
+
   // Use only the admitted stored key and the original request headers.
   clientRawRequest.usageAttribution = apiKeyAuth.stored && apiKeyAuth.apiKeyId ?
     usageAttributionFromHeaders(request.headers) : null;

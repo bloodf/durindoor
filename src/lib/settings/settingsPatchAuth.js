@@ -50,6 +50,7 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "oidcAllowedDomains",
   "tunnelDashboardAccess",
   "enableObservability",
+  "logToolSources",
   "enableSessionCapture",
   "outboundProxyEnabled",
   "outboundProxyUrl",

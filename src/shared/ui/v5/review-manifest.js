@@ -1104,6 +1104,27 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/monitoring/page.stories.jsx",
+    "title": "V5 review/Pages/monitoring/MonitoringPage",
+    "storyId": "v5-review-pages-monitoring-monitoringpage--loaded",
+    "states": [
+      "Loaded",
+      "RequestFailure",
+      "Loading",
+      "PausePolling"
+    ],
+    "storyIds": [
+      "v5-review-pages-monitoring-monitoringpage--loaded",
+      "v5-review-pages-monitoring-monitoringpage--request-failure",
+      "v5-review-pages-monitoring-monitoringpage--loading",
+      "v5-review-pages-monitoring-monitoringpage--pause-polling"
+    ],
+    "pathname": "/dashboard/monitoring",
+    "routePattern": "/dashboard/monitoring",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.stories.jsx",
     "title": "V5 review/Pages/playground/PlaygroundCompare",
     "storyId": "v5-review-pages-playground-playgroundcompare--two-columns",
@@ -1678,11 +1699,15 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-operations-quotapage--empty-providers",
     "states": [
       "EmptyProviders",
-      "Loading"
+      "Loading",
+      "AccountRows",
+      "QuotaFailure"
     ],
     "storyIds": [
       "v5-review-pages-operations-quotapage--empty-providers",
-      "v5-review-pages-operations-quotapage--loading"
+      "v5-review-pages-operations-quotapage--loading",
+      "v5-review-pages-operations-quotapage--account-rows",
+      "v5-review-pages-operations-quotapage--quota-failure"
     ],
     "pathname": "/dashboard/quota",
     "routePattern": "/dashboard/quota",
@@ -1749,14 +1774,16 @@ export const REVIEW_SURFACES = [
       "StartupEnvFromEnvironment",
       "StartupEnvFromFile",
       "PostgresCutoverTarget",
-      "StatusUnavailable"
+      "StatusUnavailable",
+      "CutoverConfirm"
     ],
     "storyIds": [
       "v5-review-pages-settings-databasesettingspage--default",
       "v5-review-pages-settings-databasesettingspage--startup-env-from-environment",
       "v5-review-pages-settings-databasesettingspage--startup-env-from-file",
       "v5-review-pages-settings-databasesettingspage--postgres-cutover-target",
-      "v5-review-pages-settings-databasesettingspage--status-unavailable"
+      "v5-review-pages-settings-databasesettingspage--status-unavailable",
+      "v5-review-pages-settings-databasesettingspage--cutover-confirm"
     ],
     "pathname": "/dashboard/settings/database",
     "routePattern": "/dashboard/settings/database",
@@ -2274,11 +2301,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-profile-pricingsettingspage--default",
     "states": [
       "Default",
-      "EmptyPricing"
+      "EmptyPricing",
+      "PricingLoadFailure"
     ],
     "storyIds": [
       "v5-review-pages-profile-pricingsettingspage--default",
-      "v5-review-pages-profile-pricingsettingspage--empty-pricing"
+      "v5-review-pages-profile-pricingsettingspage--empty-pricing",
+      "v5-review-pages-profile-pricingsettingspage--pricing-load-failure"
     ],
     "pathname": "/dashboard/settings/pricing",
     "routePattern": "/dashboard/settings/pricing",

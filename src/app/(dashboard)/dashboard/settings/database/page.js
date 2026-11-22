@@ -11,6 +11,7 @@ import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import { CapabilityMatrix } from "./components/CapabilityMatrix.jsx";
 import StartupConfiguration from "./components/StartupConfiguration.jsx";
 import PostgresConnectionTarget from "./components/PostgresConnectionTarget.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const REFRESH_MS = 5000;
 
@@ -22,6 +23,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const uiV5 = useUiV5();
   const refreshRequest = useRef(0);
   const refreshBusy = useRef(false);
   const refreshController = useRef(null);
@@ -147,6 +149,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
     return (
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6">
         <PageHeader icon="database" title="Database Settings" subtitle="Loading..." />
+        {uiV5 ? <p role="status" className="text-[13px] text-dd-muted">Loading database status…</p> : null}
       </main>
     );
   }
@@ -260,6 +263,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
           body="This will mirror every SQLite table to the target cluster, flip the runtime to PG, and persist the change. The process takes a few seconds to a few minutes depending on DB size."
           confirmLabel="Cut over"
           confirmVariant="primary"
+          {...(uiV5 ? { message: "This will mirror every SQLite table to the target cluster, flip the runtime to PG, and persist the change. The process takes a few seconds to a few minutes depending on DB size.", tone: "danger", pending: cutoverBusy } : {})}
           onConfirm={handleCutover}
           onCancel={() => setShowCutoverConfirm(false)}
         />
@@ -272,6 +276,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
           body="This restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched."
           confirmLabel="Rollback"
           confirmVariant="ghost"
+          {...(uiV5 ? { message: "This restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched.", tone: "danger" } : {})}
           onConfirm={handleRollback}
           onCancel={() => setShowRollbackConfirm(false)}
         />

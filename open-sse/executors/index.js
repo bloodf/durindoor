@@ -1,3 +1,5 @@
+import { TwinmindExecutor } from "./twinmind.js";
+import { HyperAgentExecutor } from "./hyperagent.js";
 import { AdaptaWebExecutor } from "./adapta-web.js";
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
@@ -120,6 +122,8 @@ const workbuddyExecutor = new WorkbuddyExecutor();
 const zcodeExecutor = new ZcodeExecutor();
 
 const executors = {
+  twinmind: new TwinmindExecutor(),
+  hyperagent: new HyperAgentExecutor(),
   "adapta-web": new AdaptaWebExecutor(),
   "adp-web": new AdaptaWebExecutor(),
   antigravity: new AntigravityExecutor(),
@@ -302,6 +306,7 @@ export function hasSpecializedExecutor(provider) {
 }
 
 export { BaseExecutor } from "./base.js";
+export { HyperAgentExecutor, HYPERAGENT_FALLBACK_MODELS } from "./hyperagent.js";
 export { AntigravityExecutor } from "./antigravity.js";
 export { AuggieExecutor } from "./auggie.js";
 export { AzureExecutor } from "./azure.js";

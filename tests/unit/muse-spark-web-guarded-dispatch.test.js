@@ -21,7 +21,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("Muse Spark Web guarded dispatch (#2034)", () => {
   for (const id of ["muse-spark-web", "ms-web"]) {
-    for (const flag of [undefined, false, "true"]) {
+    for (const flag of [undefined, null, false, "true", 1, "yes", {}]) {
       for (const stream of [false, true]) {
         it(`${id} flag=${flag} stream=${stream} stays on the guard with no request`, async () => {
           const result = await getExecutor(id).execute({
@@ -44,8 +44,8 @@ describe("Muse Spark Web guarded dispatch (#2034)", () => {
   it("two connections stay isolated: neither sends a request or leaks the other cookie", async () => {
     const executor = getExecutor("muse-spark-web");
     const [a, b] = await Promise.all([
-      executor.execute({ model: "muse-spark", body, stream: false, credentials: credsFor("conn-a", false) }),
-      executor.execute({ model: "muse-spark", body, stream: false, credentials: credsFor("conn-b", false) }),
+      executor.execute({ model: "muse-spark", body, stream: false, credentials: credsFor("conn-a", "true") }),
+      executor.execute({ model: "muse-spark", body, stream: false, credentials: credsFor("conn-b", "true") }),
     ]);
     const text = JSON.stringify([await a.response.json(), await b.response.json()]);
     expect(text).not.toContain("synthetic-conn-a");

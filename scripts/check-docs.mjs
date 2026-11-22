@@ -1,6 +1,5 @@
-import { pathToFileURL } from "node:url";
 import { readFile, access, stat } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -512,7 +511,7 @@ export async function validateRepository(cwd) {
   return validateDocumentation({ root: cwd, files });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && realpathSync(process.argv[1]) === import.meta.filename) {
   const issues = await validateRepository(process.cwd());
   if (issues.length) {
     console.error(issues.join("\n"));

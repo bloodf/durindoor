@@ -12664,7 +12664,7 @@
       "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow",
       "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       "symbol": "ApiKeyRow",
-      "sourceSha256": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+      "sourceSha256": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -12685,7 +12685,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Default fixture",
@@ -12701,7 +12701,7 @@
           ],
           "proposedSourceEvidence": "KeysPageClient KeyLimits fixture renders real API key row named Production key; play proves limits card content.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "expectedVisibleText": "Production key"
@@ -12768,10 +12768,116 @@
       ]
     },
     {
+      "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#KeySecretNotice",
+      "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
+      "symbol": "KeySecretNotice",
+      "sourceSha256": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-api-keys--default",
+        "durin-ds-production-pages-api-keys--empty",
+        "durin-ds-production-pages-api-keys--key-limits",
+        "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+        "durin-ds-production-pages-api-keys--revocation-pending",
+        "durin-ds-production-pages-api-keys--rotation"
+      ],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-api-keys--default",
+          "storyId": "durin-ds-production-pages-api-keys--default",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--default",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--empty",
+          "storyId": "durin-ds-production-pages-api-keys--empty",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--empty",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--key-limits",
+          "storyId": "durin-ds-production-pages-api-keys--key-limits",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--key-limits",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+          "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--revocation-pending",
+          "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--revocation-pending",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--rotation",
+          "storyId": "durin-ds-production-pages-api-keys--rotation",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--rotation",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#KeysPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       "symbol": "KeysPageClient",
-      "sourceSha256": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+      "sourceSha256": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -12794,7 +12900,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Default",
@@ -12810,7 +12916,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Empty",
@@ -12825,7 +12931,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#KeyLimits",
@@ -12841,7 +12947,7 @@
           ],
           "proposedSourceEvidence": "Actual lightweight KeysPage wrapper imports KeysPageClient; empty API fixture and play assert Create Key.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "7e494da1151896ba910a8f0a6fe6c9c6a8ba89b6080241d657f3287e25664e26",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "64e4039292fe63bb8f7f90db779217078abe88c64b9c4a1acab759785dbc9d7b",
             "src/app/(dashboard)/dashboard/keys/page.stories.jsx": "424765edd9d3d04399f7d7881f176ab33708d3e21949efca2f01fbbf84eee642"
           },
           "expectedVisibleText": "Create Key"
@@ -83607,56 +83713,6 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
-      "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-      "sourceSha256": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null,
-      "historicalReferenceReview": {
-        "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
-        "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-        "sourceSha256": "975fab85824f65994b0054e7d05de84a3e10d59442d5970c49cb2887a826454c",
-        "reviewStatus": "pending",
-        "reviewedBy": null,
-        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-        "runtimeStatus": "pending",
-        "reviewEvidence": null
-      }
-    },
-    {
-      "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
-      "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-      "sourceSha256": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null,
-      "historicalReferenceReview": {
-        "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
-        "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-        "sourceSha256": "975fab85824f65994b0054e7d05de84a3e10d59442d5970c49cb2887a826454c",
-        "reviewStatus": "pending",
-        "reviewedBy": null,
-        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-        "runtimeStatus": "pending",
-        "reviewEvidence": null
-      }
-    },
-    {
-      "storyId": "durin-ds-production-pages-api-keys--rotation",
-      "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-      "sourceSha256": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null
-    },
-    {
       "storyId": "durin-ds-production-pages-mcp-gateway-keys--load-failure-and-retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx",
       "sourceSha256": "a0757ae9178712a0f3e7e9f87fda75f46396b29a7e6be00cfc6b455996b8bf2e",
@@ -95688,10 +95744,10 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "70c44214994092086a3de6fc9ae6da85f97b96a4ec63c93f4d08bf01dc732b9d",
-    "sourceCensusSha256": "7d6ff2cfd96e923f97bbca14abb26e3ac65690fa40e8b7285f0c598cc6faa5f7",
-    "pendingRows": 361,
+    "sourceCensusSha256": "e47ef8943ac2f05d2222e8adf940ae81c805db3e9fbb2ecce9fbb383593b3fa1",
+    "pendingRows": 362,
     "retainedApprovedRows": 262,
-    "pendingReferences": 1357,
+    "pendingReferences": 1354,
     "runtimeStatus": "pending"
   }
 }

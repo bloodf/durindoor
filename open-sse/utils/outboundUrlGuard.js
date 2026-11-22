@@ -265,6 +265,13 @@ export function createOutboundUrlConnector(guard, lookup = dnsLookup) {
 const guardedDispatchers = new Map();
 const guardedProbeDispatchers = new WeakMap();
 export const GUARDED_PROBE_MAX_ORIGINS = MEMORY_CONFIG.proxyDispatchersMaxSize;
+/**
+ * undici defaults to 16 KB of response headers. A signed-in gemini.google.com
+ * page sends ~30 KB (rotated Set-Cookie values), which failed as
+ * UND_ERR_HEADERS_OVERFLOW and made every valid Gemini Web cookie look
+ * unreachable. Browsers accept far more; share this ceiling across dispatchers.
+ */
+export const MAX_RESPONSE_HEADER_SIZE = 128 * 1024;
 
 /** Module-private dispatcher identity plus its immutable guard mode. */
 export function isGuardedProbeDispatcher(dispatcher) {
@@ -280,6 +287,7 @@ export function assertGuardedProbeDispatcherAddressAllowed(dispatcher, address) 
 
 export function createGuardedProbeDispatcher(guard, lookup = dnsLookup, options = {}) {
   const dispatcher = new Agent({
+    maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
     ...options,
     maxOrigins: GUARDED_PROBE_MAX_ORIGINS,
     connect: createOutboundUrlConnector(guard, lookup)

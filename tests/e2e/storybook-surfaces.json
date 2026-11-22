@@ -50711,7 +50711,7 @@
       "id": "src/shared/components/ProviderIcon.js#ProviderIcon",
       "sourcePath": "src/shared/components/ProviderIcon.js",
       "symbol": "ProviderIcon",
-      "sourceSha256": "38fe9a0b42752755439e6da417f138cf480900c56150250ba6672f8288efd3cd",
+      "sourceSha256": "2f70a043c19a4fff4accb99ed63d398c5dfaca6f09140aa936819cc034e4fa33",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50731,7 +50731,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/ProviderIcon.js": "38fe9a0b42752755439e6da417f138cf480900c56150250ba6672f8288efd3cd",
+            "src/shared/components/ProviderIcon.js": "2f70a043c19a4fff4accb99ed63d398c5dfaca6f09140aa936819cc034e4fa33",
             "src/shared/components/ProviderIcon.stories.jsx": "992855b6a3382bd4c8e470bc154cc01c9abb09547e438368d9e829c36ee41894"
           },
           "proposedSourceEvidence": "ProviderAsset passes src /providers/claude.png and alt Claude; play asserts image accessible name Claude. No text assertion: rendered asset is icon-only. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending."
@@ -50744,7 +50744,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/ProviderIcon.js": "38fe9a0b42752755439e6da417f138cf480900c56150250ba6672f8288efd3cd",
+            "src/shared/components/ProviderIcon.js": "2f70a043c19a4fff4accb99ed63d398c5dfaca6f09140aa936819cc034e4fa33",
             "src/shared/components/ProviderIcon.stories.jsx": "992855b6a3382bd4c8e470bc154cc01c9abb09547e438368d9e829c36ee41894"
           },
           "proposedSourceEvidence": "MissingAssetFallback passes null src, fallbackText U, and alt Unknown provider; ProviderIcon synchronously renders role=img with that accessible name.",
@@ -57846,7 +57846,7 @@
       "id": "src/shared/ui/components/ProviderLogo.jsx#ProviderLogo",
       "sourcePath": "src/shared/ui/components/ProviderLogo.jsx",
       "symbol": "ProviderLogo",
-      "sourceSha256": "edb5f6e01d93de756fdf794fe07fe603d715d6c4e61d31629c5b38acbb4ac9d9",
+      "sourceSha256": "995f5171c80a4ca5e91fe897a2f68a61a404aa0d8a84f81003b8cd5e80f2708e",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -57870,7 +57870,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "edb5f6e01d93de756fdf794fe07fe603d715d6c4e61d31629c5b38acbb4ac9d9",
+            "src/shared/ui/components/ProviderLogo.jsx": "995f5171c80a4ca5e91fe897a2f68a61a404aa0d8a84f81003b8cd5e80f2708e",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "ProviderLogo.stories.jsx export grid directly renders visible canvas text 'claude', 'codex'.",
@@ -57885,7 +57885,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "edb5f6e01d93de756fdf794fe07fe603d715d6c4e61d31629c5b38acbb4ac9d9",
+            "src/shared/ui/components/ProviderLogo.jsx": "995f5171c80a4ca5e91fe897a2f68a61a404aa0d8a84f81003b8cd5e80f2708e",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "ProviderLogo.stories.jsx export aliases and fallback directly renders visible canvas text 'cc → claude, cx → codex, ollama → ollama-local, kilo → kilocode, unknown → letter tile'.",
@@ -57899,7 +57899,7 @@
             "size"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "edb5f6e01d93de756fdf794fe07fe603d715d6c4e61d31629c5b38acbb4ac9d9",
+            "src/shared/ui/components/ProviderLogo.jsx": "995f5171c80a4ca5e91fe897a2f68a61a404aa0d8a84f81003b8cd5e80f2708e",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "src/shared/ui/components/ProviderLogo.stories.jsx meta title Durin DS/Surfaces/ProviderLogo export CaseInsensitive resolves to durin-ds-surfaces-providerlogo--case-insensitive; its actual production component parent reaches src/shared/ui/components/ProviderLogo.jsx#ProviderLogo. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -57914,7 +57914,7 @@
             "fallback"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "edb5f6e01d93de756fdf794fe07fe603d715d6c4e61d31629c5b38acbb4ac9d9",
+            "src/shared/ui/components/ProviderLogo.jsx": "995f5171c80a4ca5e91fe897a2f68a61a404aa0d8a84f81003b8cd5e80f2708e",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "Actual Missing passes empty/unrecognized provider IDs; production falls back to the visible single-character ? tile (and B for brand-new-tool), not image alt text.",
@@ -57928,7 +57928,7 @@
             "size"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/ProviderLogo.jsx": "edb5f6e01d93de756fdf794fe07fe603d715d6c4e61d31629c5b38acbb4ac9d9",
+            "src/shared/ui/components/ProviderLogo.jsx": "995f5171c80a4ca5e91fe897a2f68a61a404aa0d8a84f81003b8cd5e80f2708e",
             "src/shared/ui/components/ProviderLogo.stories.jsx": "d56b90cfcff0995900b15b3cd35e39c317d2501b7bca75ed8314d8c53d26d677"
           },
           "proposedSourceEvidence": "src/shared/ui/components/ProviderLogo.stories.jsx meta title Durin DS/Surfaces/ProviderLogo export Sizes resolves to durin-ds-surfaces-providerlogo--sizes; its actual production component parent reaches src/shared/ui/components/ProviderLogo.jsx#ProviderLogo. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -95688,7 +95688,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "70c44214994092086a3de6fc9ae6da85f97b96a4ec63c93f4d08bf01dc732b9d",
-    "sourceCensusSha256": "af6e5de5c3395bf84f4b1019d2c6ec4c4b349542c1c4b19d787f04fa39f59e1c",
+    "sourceCensusSha256": "7d6ff2cfd96e923f97bbca14abb26e3ac65690fa40e8b7285f0c598cc6faa5f7",
     "pendingRows": 361,
     "retainedApprovedRows": 262,
     "pendingReferences": 1357,

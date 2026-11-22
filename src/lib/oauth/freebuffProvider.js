@@ -20,6 +20,7 @@
 import { randomBytes } from "node:crypto";
 import { FREEBUFF_OAUTH } from "open-sse/config/freebuff.js";
 import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
+import { credentialFetch } from "../../../open-sse/utils/credentialFetch.js";
 
 const EPOCH_DIGITS = /^\d+(\.\d+)?$/;
 
@@ -71,7 +72,7 @@ export default {
 
   requestDeviceCode: async (config, _codeChallenge, _options, proxyOptions) => {
     const fingerprintId = generateFreebuffFingerprintId();
-    const response = await fetch(config.codeUrl, {
+    const response = await credentialFetch(fetch, config.codeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ fingerprintId }),
@@ -104,7 +105,7 @@ export default {
     url.searchParams.set("fingerprintHash", state.fingerprintHash);
     url.searchParams.set("expiresAt", state.expiresAt);
 
-    const response = await fetch(url.toString(), { method: "GET", headers: { Accept: "application/json" }, proxyOptions });
+    const response = await credentialFetch(fetch, url.toString(), { method: "GET", headers: { Accept: "application/json" }, proxyOptions });
     const expired = expiresAtMs(state.expiresAt) <= Date.now();
     if (!response.ok) {
       if (expired) return expiredResult();

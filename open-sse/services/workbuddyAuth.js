@@ -10,17 +10,19 @@
  */
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { clientHeaders } from "../providers/registry/workbuddy.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 
 export const WORKBUDDY_REFRESH_URL = "https://www.workbuddy.ai/v2/plugin/auth/token/refresh";
 
-export async function refreshWorkbuddyToken(credentials, _log, proxyOptions = null) {
+export async function refreshWorkbuddyToken(credentials, _log, proxyOptions = null, fetchImpl = null) {
   if (!credentials?.refreshToken) return null;
   try {
-    const response = await proxyAwareFetch(WORKBUDDY_REFRESH_URL, {
+    const transport = fetchImpl || ((url, init) => proxyAwareFetch(url, init, proxyOptions));
+    const response = await credentialFetch(transport, WORKBUDDY_REFRESH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", ...clientHeaders, "X-Refresh-Token": credentials.refreshToken },
       body: "{}",
-    }, proxyOptions);
+    });
     if (!response.ok) return null;
     const payload = await response.json();
     if (payload.code !== 0 || !payload.data?.accessToken) return null;

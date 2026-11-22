@@ -15,6 +15,7 @@
 // What *is* refreshed is the short-lived user JWT, which the executor mints from the
 // session token on every request (GetUserJwt).
 import { isString } from "../../../shared/utils/typeChecks.js";
+import { credentialFetch } from "../../../../open-sse/utils/credentialFetch.js";
 
 export const DEVIN_DESKTOP_CONFIG = Object.freeze({
   apiServerUrl: "https://server.codeium.com",
@@ -106,7 +107,7 @@ export const devinDesktopOAuth = {
       body: JSON.stringify({ code: authorizationCode, code_verifier: codeVerifier }),
     };
     if (proxyOptions) init.proxyOptions = proxyOptions;
-    const response = await fetcher(config.tokenUrl, init);
+    const response = await credentialFetch(fetcher, config.tokenUrl, init);
     // Status only: the body can echo the code, and the route surfaces this message.
     if (!response.ok) throw new Error(`Devin token exchange failed: ${response.status}`);
     const data = await response.json().catch(() => null);

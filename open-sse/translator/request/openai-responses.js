@@ -17,11 +17,12 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_BLOCK, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
 import { normalizeResponsesImageReplay } from "../concerns/responsesImageReplay.js";
 import { parseDataUri } from "../concerns/image.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
+import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
 import { normalizeToolSchema, normalizeToolParameters, sanitizeToolSchemaParameters } from "../concerns/toolSchema.js";
 
@@ -338,7 +339,7 @@ export function boundToolOutputImages(groups, maxCount = MAX_TOOL_OUTPUT_IMAGES,
 }
 
 function responsesContentToOpenAI(c) {
-  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text, ...(c.cache_control?.type === "ephemeral" && { cache_control: c.cache_control }) };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
     const url = responsesImageUrl(c);
     return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
@@ -369,7 +370,7 @@ function qualifyNamespacedChoice(choice) {
   return Array.isArray(qualified.tools) ? { ...qualified, tools: qualified.tools.map(qualify) } : qualified;
 }
 
-export function openaiResponsesToOpenAIRequest(model, body, stream, credentials) {
+export function openaiResponsesToOpenAIRequest(model, body, stream, credentials, translationContext = null) {
   if (!body.input) return body;
 
   const result = { ...body };
@@ -384,6 +385,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  let pendingClaudeThinking = [];
+  let thinkingOrigin = null;
   // True once this pending assistant turn absorbed a Responses `message` item.
   // A tool-only turn (function_call first) followed by a later assistant
   // message is a new turn (#1335); trailing text after a message-opened turn
@@ -433,7 +436,31 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // strip below: pairing an id-less function_call_output with the oldest
   // unanswered function_call keeps a legitimate tool result instead of the
   // strip pass discarding it as an orphan.
-  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input))));
+  let repairedItems = repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input)));
+  if (translationContext?.targetFormat === FORMATS.CLAUDE && Array.isArray(repairedItems)) {
+    const known = collectKnownCallIds(repairedItems);
+    repairedItems = repairedItems.map((item) => {
+      if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || known.has(item.call_id)) return item;
+      const raw = Array.isArray(item.output) ? item.output : [{ type: RESPONSES_ITEM.INPUT_TEXT, text: isString(item.output) ? item.output : JSON.stringify(item.output ?? "") }];
+      const content = [];
+      let droppedCache = null;
+      for (const part of raw) {
+        let converted = responsesContentToOpenAI(part);
+        const cache = part?.cache_control?.type === "ephemeral" ? part.cache_control : null;
+        if (converted?.type === OPENAI_BLOCK.TEXT && !converted.text?.trim()) {
+          if (content.length && cache && !content.at(-1).cache_control) content[content.length - 1] = { ...content.at(-1), cache_control: cache };
+          else if (!content.length && cache) droppedCache = cache;
+          continue;
+        }
+        if (cache && converted) converted = { ...converted, cache_control: cache };
+        if (converted) content.push(converted);
+      }
+      if (!content.length) content.push({ type: OPENAI_BLOCK.TEXT, text: "Tool result was empty.", ...(droppedCache && { cache_control: droppedCache }) });
+      if (!content.at(-1).cache_control && item.cache_control?.type === "ephemeral") content[content.length - 1] = { ...content.at(-1), cache_control: item.cache_control };
+      return { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content };
+    });
+  }
+  const inputItems = stripOrphanedToolOutputs(repairedItems);
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above
@@ -473,6 +500,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (pendingReasoning) {
       currentAssistantMsg.reasoning_content = pendingReasoning;
       pendingReasoning = "";
+    }
+    if (pendingClaudeThinking.length) {
+      currentAssistantMsg._responsesClaudeThinking = pendingClaudeThinking;
+      pendingClaudeThinking = [];
+      thinkingOrigin = null;
     }
     if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
     // A text-only content array (no tool calls survived, or every call was
@@ -568,6 +600,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         pendingToolResults = [];
       }
       pendingReasoning = "";
+      pendingClaudeThinking = [];
+      thinkingOrigin = null;
       result.messages.push({ role: item.role, content });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
@@ -634,13 +668,28 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Add tool result immediately; its images follow in a user message
       const { content, images } = splitToolOutputImages(item.output);
-      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content });
+      // Claude requires a tool result's cache marker on the outer block.
+      const partCache = Array.isArray(item.output) ? item.output.findLast((part) => part?.cache_control?.type === "ephemeral")?.cache_control : null;
+      const cache = partCache || (item.cache_control?.type === "ephemeral" ? item.cache_control : null);
+      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content, ...(cache && { cache_control: cache }) });
       pendingToolImages.push(...images.map((part) => ({ part, callId: item.call_id })));
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
       const txt = extractReasoningText(item);
       if (txt) pendingReasoning = pendingReasoning ? `${pendingReasoning}\n${txt}` : txt;
+      if (translationContext?.targetFormat === FORMATS.CLAUDE && isString(item.encrypted_content) && isValidClaudeSignature(item.encrypted_content)) {
+        const match = isString(item.id) ? /^rs_(.+)_(\d+)$/.exec(item.id) : null;
+        const origin = match && Number.isSafeInteger(Number(match[2])) ? { id: match[1], index: Number(match[2]) } : null;
+        const block = { type: CLAUDE_BLOCK.THINKING, thinking: txt, signature: item.encrypted_content.split("#").at(-1).trim() };
+        if (origin && thinkingOrigin && origin.id === thinkingOrigin.id && origin.index === thinkingOrigin.index) {
+          pendingClaudeThinking[pendingClaudeThinking.length - 1] = block;
+        } else {
+          if (!origin || !thinkingOrigin || origin.id !== thinkingOrigin.id || origin.index < thinkingOrigin.index) pendingClaudeThinking = [];
+          pendingClaudeThinking.push(block);
+        }
+        thinkingOrigin = origin;
+      }
       continue;
     }
   }

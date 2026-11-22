@@ -341,17 +341,17 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
 }
 
 // Convert const to enum
-function convertConstToEnum(obj) {
+function convertConstToEnum(obj, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
 
-  if (obj.const !== undefined && !obj.enum) {
+  if (!isPropertiesMap && obj.const !== undefined && !obj.enum) {
     obj.enum = [obj.const];
     delete obj.const;
   }
 
-  for (const value of Object.values(obj)) {
+  for (const [key, value] of Object.entries(obj)) {
     if (value && isObject(value)) {
-      convertConstToEnum(value);
+      convertConstToEnum(value, !isPropertiesMap && key === "properties");
     }
   }
 }
@@ -391,20 +391,20 @@ function liftNonStringEnum(obj) {
 
 // Apply the numeric/boolean enum contract in place to a schema that is not otherwise
 // cleaned (the direct Claude -> Gemini route). String enums and everything else are untouched.
-export function liftGeminiNonStringEnums(schema) {
+export function liftGeminiNonStringEnums(schema, isPropertiesMap = false) {
   if (!schema || !isObject(schema)) return schema;
-  if (Array.isArray(schema.enum)) liftNonStringEnum(schema);
-  for (const value of Object.values(schema)) {
-    if (value && isObject(value)) liftGeminiNonStringEnums(value);
+  if (!isPropertiesMap && Array.isArray(schema.enum)) liftNonStringEnum(schema);
+  for (const [key, value] of Object.entries(schema)) {
+    if (value && isObject(value)) liftGeminiNonStringEnums(value, !isPropertiesMap && key === "properties");
   }
   return schema;
 }
 
 // Convert enum values to strings (Gemini requires string enum values + explicit type:"string")
-function convertEnumValuesToStrings(obj) {
+function convertEnumValuesToStrings(obj, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
 
-  if (obj.enum && Array.isArray(obj.enum) && !liftNonStringEnum(obj)) {
+  if (!isPropertiesMap && obj.enum && Array.isArray(obj.enum) && !liftNonStringEnum(obj)) {
     obj.enum = obj.enum.map((v) => String(v));
     // Gemini API requires type:"string" when enum is present — without it returns 400
     if (!obj.type) {
@@ -412,9 +412,9 @@ function convertEnumValuesToStrings(obj) {
     }
   }
 
-  for (const value of Object.values(obj)) {
+  for (const [key, value] of Object.entries(obj)) {
     if (value && isObject(value)) {
-      convertEnumValuesToStrings(value);
+      convertEnumValuesToStrings(value, !isPropertiesMap && key === "properties");
     }
   }
 }
@@ -653,8 +653,25 @@ function ensureObjectType(obj) {
 
 // Convert prefixItems (tuple validation) to items — Gemini cannot express tuples,
 // and a type:"array" schema without items is rejected with "missing field"
-function convertPrefixItems(obj) {
+function convertPrefixItems(obj, preserveNullable = false) {
   if (!obj || !isObject(obj)) return;
+
+  // Native Gemini Schema requires a single object for items, not a tuple or boolean.
+  if (schemaTypeKey(obj.type) === "array" && Array.isArray(obj.items)) {
+    const nullable = obj.items.some((item) => item?.type === "null");
+    const variants = obj.items.filter((item) => item && isObject(item) && !Array.isArray(item) && item.type !== "null");
+    const types = [...new Set(variants.map((item) => item.type).filter(isString))];
+    obj.items = variants.length > 1 ? { anyOf: variants } : variants[0] ? { ...variants[0] } : { type: "string" };
+    if (nullable || types.length > 1) {
+      const hint = types.length > 1 ? `Accepts: ${[...types, ...(nullable ? ["null"] : [])].join(" | ")}` : "(nullable)";
+      obj.items.description = [obj.items.description, hint].filter(Boolean).join(" ");
+      if (nullable && preserveNullable) obj.items.nullable = true;
+    }
+  } else if (schemaTypeKey(obj.type) === "array" && obj.items === false) {
+    obj.description = [obj.description, Array.isArray(obj.prefixItems) && obj.prefixItems.length ? "No additional items allowed" : "No items allowed"].filter(Boolean).join(" ");
+    if (Array.isArray(obj.prefixItems) && obj.prefixItems.length) delete obj.items;
+    else obj.items = { type: "string" };
+  }
 
   if (Array.isArray(obj.prefixItems) && obj.prefixItems.length > 0) {
     const variants = obj.prefixItems.filter(s => s && s.type !== "null");
@@ -668,7 +685,7 @@ function convertPrefixItems(obj) {
 
   for (const value of Object.values(obj)) {
     if (value && isObject(value)) {
-      convertPrefixItems(value);
+      convertPrefixItems(value, preserveNullable);
     }
   }
 }
@@ -806,7 +823,7 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   mergeAllOf(cleaned);
   const nullableNodes = preserveNullable ? new Set() : null;
   if (nullableNodes) collectNullableNodes(cleaned, nullableNodes);
-  convertPrefixItems(cleaned);
+  convertPrefixItems(cleaned, preserveNullable);
   flattenAnyOfOneOf(cleaned);
   flattenTypeArrays(cleaned);
   if (nullableNodes) restoreNullableNodes(nullableNodes);

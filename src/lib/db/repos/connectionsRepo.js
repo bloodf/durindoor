@@ -502,6 +502,7 @@ export async function updateProviderConnection(id, data, {
   returnCommitResult = false,
   signal = null,
   shouldCommit = null,
+  shouldCommitConnection = null,
   // Compatibility fallback writer (#1324/#1311): re-read under the write lock
   // and refuse demoting a concurrent durable reauth marker.
   refuseIfReauth = false
@@ -523,6 +524,11 @@ export async function updateProviderConnection(id, data, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) {result = null;return;}
     const existing = rowToConn(row);
+    if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
+    if (isFunction(shouldCommitConnection) && !shouldCommitConnection(existing)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
     if (expectedUpdatedAt && existing.updatedAt !== expectedUpdatedAt) {
       const error = new Error("Provider connection changed during credential refresh");
       error.code = "PROVIDER_CONNECTION_REVISION_CONFLICT";

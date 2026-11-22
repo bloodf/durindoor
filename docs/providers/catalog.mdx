@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 386 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 392 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -103,6 +103,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Coze | `coze` | apikey | 1 | [site](https://coze.com) |
 | Crof AI | `crof` | apikey | 19 | [site](https://crof.ai) |
 | Cursor IDE | `cursor` | oauth | 14 | [site](https://cursor.com) |
+| Cursor API (key exchange, unverified) | `cursor-api` | apikey | 14 | [site](https://cursor.com/dashboard/api) |
 | Dahl | `dahl` | apikey | 0 |  |
 | DaoXE | `daoxe` | apikey | 9 | [site](https://daoxe.com) |
 | Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
@@ -116,6 +117,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Devin | `devin` | apikey | 1 | [site](https://devin.ai) |
 | Devin CLI | `devin-cli` | oauth | 0 | [site](https://cli.devin.ai) |
 | Devin CLI (Agentic) | `devin-cli-agentic` | none | 2 | [site](https://docs.devin.ai/cli) |
+| Devin Desktop | `devin-desktop` | oauth | 110 | [site](https://devin.ai) |
 | DGrid AI | `dgrid` | apikey | 1 | [site](https://dgrid.ai) |
 | Dify | `dify` | apikey | 1 | [site](https://dify.ai) |
 | DigitalOcean | `digitalocean` | apikey | 14 | [site](https://docs.digitalocean.com/products/ai-platform/) |
@@ -144,6 +146,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Fish Audio | `fish-audio` | apikey | 4 | [site](https://fish.audio) |
 | Free.ai | `free-ai` | apikey | 0 | [site](https://free.ai) |
 | FreeAIAPIKey | `freeaiapikey` | apikey | 7 | [site](https://freeaiapikey.com) |
+| Freebuff (session, opt-in) | `freebuff` | oauth, apikey | 9 | [site](https://freebuff.com) |
 | FreeInference | `freeinference` | apikey | 0 |  |
 | FreeModel.dev | `freemodel-dev` | apikey | 4 | [site](https://freemodel.dev) |
 | FreeTheAi | `freetheai` | apikey | 0 |  |
@@ -244,6 +247,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | MiMoCode | `mimocode` | none | 1 | [site](https://github.com/XiaomiMiMo/MiMo-Code) |
 | MiniMax | `minimax` | apikey | 27 | [site](https://www.minimax.io) |
 | MiniMax (China) | `minimax-cn` | apikey | 27 | [site](https://www.minimax.cn) |
+| MiniMax Code (account sign-in, guarded) | `minimax-code` | oauth | 2 | [site](https://github.com/MiniMax-AI/minimax-code) |
 | Mistral | `mistral` | apikey | 4 | [site](https://mistral.ai) |
 | Mixlayer | `mixlayer` | apikey | 1 |  |
 | MLX | `mlx` | apikey | 0 | [site](https://github.com/ml-explore/mlx-lm) |
@@ -390,6 +394,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Weights & Biases Inference | `wandb` | apikey | 3 | [site](https://wandb.ai) |
 | IBM watsonx.ai Gateway | `watsonx` | apikey | 0 | [site](https://www.ibm.com/products/watsonx-ai) |
 | Windsurf | `windsurf` | oauth | 0 | [site](https://windsurf.com) |
+| WorkBuddy | `workbuddy` | oauth | 0 | [site](https://www.workbuddy.ai) |
 | Writer | `writer` | apikey | 2 | [site](https://dev.writer.com) |
 | X5Lab | `x5lab` | apikey | 0 | [site](https://x5lab.dev) |
 | xAI (Grok) | `xai` | oauth, apikey | 20 | [site](https://x.ai) |
@@ -406,6 +411,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Z.AI | `zai` | apikey | 14 | [site](https://open.bigmodel.cn) |
 | Z.ai Web | `zai-web` | cookie | 3 | [site](https://chat.z.ai) |
 | Zed IDE | `zed` | oauth | 0 | [site](https://zed.dev) |
+| Zed Hosted Models (opt-in) | `zed-hosted` | oauth | 0 | [site](https://zed.dev) |
 | ZenMux | `zenmux` | freeTier | 9 | [site](https://zenmux.ai) |
 | ZenMux Free | `zenmux-free` | cookie | 11 | [site](https://zenmux.ai) |
 | ZeroLimit AI | `zerolimitai` | apikey | 1 | [site](https://www.zerolimitai.com) |

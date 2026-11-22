@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 import { repairChatHistory } from "./workbuddy-history.js";
 import { conversationKey, sanitizeWorkbuddyBody, withWorkbuddyHeaders } from "./workbuddy-gateway.js";
 import { DefaultExecutor } from "./default.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { clientHeaders } from "../providers/private/workbuddy.js";
+import { refreshWorkbuddyToken } from "../services/workbuddyAuth.js";
 
 // WorkBuddy device authorization and refresh are independent for each connection.
 export class WorkbuddyExecutor extends DefaultExecutor {
@@ -36,16 +35,7 @@ export class WorkbuddyExecutor extends DefaultExecutor {
     if (context) context.workbuddyBody = transformed;
     return transformed;
   }
-  async refreshCredentials(credentials, _log, proxyOptions) {
-    if (!credentials?.refreshToken) return null;
-    try {
-      const response = await proxyAwareFetch("https://www.workbuddy.ai/v2/plugin/auth/token/refresh", {
-        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", ...clientHeaders, "X-Refresh-Token": credentials.refreshToken }, body: "{}",
-      }, proxyOptions);
-      if (!response.ok) return null;
-      const payload = await response.json();
-      if (payload.code !== 0 || !payload.data?.accessToken) return null;
-      return { accessToken: payload.data.accessToken, refreshToken: payload.data.refreshToken || credentials.refreshToken, expiresIn: payload.data.expiresIn };
-    } catch { return null; }
+  async refreshCredentials(credentials, log, proxyOptions) {
+    return refreshWorkbuddyToken(credentials, log, proxyOptions);
   }
 }

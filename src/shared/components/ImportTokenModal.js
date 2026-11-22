@@ -7,7 +7,7 @@ import Button from "@/shared/ui/components/Button";
 import Input from "@/shared/ui/components/Input";
 
 /** Failed imports keep the token in private state for retry; feedback never echoes remote errors. */
-export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuccess, onClose }) {
+export default function ImportTokenModal({ isOpen, provider, providerInfo, onBrowserSignIn, onSuccess, onClose }) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -52,7 +52,9 @@ export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuc
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-3 rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 text-dd-muted">
           <span className="material-symbols-outlined text-[20px]" aria-hidden="true">vpn_key</span>
-          <p className="text-[13px] leading-relaxed">Paste your {providerInfo?.name || provider} access token to create a connection.</p>
+          <p className="text-[13px] leading-relaxed">{provider === "devin-desktop" ?
+            "Paste a Devin session token (devin-session-token$…) or an API key from an authenticated Devin session. Session tokens do not refresh; sign in again when one is rejected." :
+            `Paste your ${providerInfo?.name || provider} access token to create a connection.`}</p>
         </div>
         <Input
           label="Access token"
@@ -65,6 +67,7 @@ export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuc
         />
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button onClick={handleClose} variant="ghost">Cancel</Button>
+          {onBrowserSignIn && <Button onClick={onBrowserSignIn} variant="secondary" disabled={loading}>Sign in with browser</Button>}
           <Button onClick={handleSubmit} variant="primary" disabled={!token.trim() || loading} loading={loading} icon="link">Connect</Button>
         </div>
       </div>
@@ -76,6 +79,7 @@ ImportTokenModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   provider: PropTypes.string.isRequired,
   providerInfo: PropTypes.object,
+  onBrowserSignIn: PropTypes.func,
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
 };

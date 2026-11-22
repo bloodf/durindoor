@@ -120,6 +120,7 @@ function ProviderDetail({ providerId }) {
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
   const proxyPoolsReady = proxyPoolsReadyForProvider === providerId;
   const [showOAuthModal, setShowOAuthModal] = useState(false);
+  const [devinDesktopBrowserSignIn, setDevinDesktopBrowserSignIn] = useState(false);
   const [selectedOrcaModel, setSelectedOrcaModel] = useState("");
   // When set, the open OAuth modal replaces this existing connection in place
   // (the Reconnect flow) instead of creating a new row. Cleared on close/success.
@@ -242,6 +243,7 @@ function ProviderDetail({ providerId }) {
       setShowImportTokenModal(true);
       return;
     }
+    setDevinDesktopBrowserSignIn(false);
     setShowOAuthModal(true);
   };
 
@@ -2508,10 +2510,24 @@ function ProviderDetail({ providerId }) {
         proxyPoolsReady={proxyPoolsReady} /> :
 
       isImportToken ?
+      providerId === "devin-desktop" && devinDesktopBrowserSignIn ?
+      // Devin Desktop offers browser sign-in from its token import; switching back reopens the import.
+      <OAuthModal
+        isOpen={showOAuthModal}
+        provider={providerId}
+        providerInfo={providerInfo}
+        onPasteToken={() => setDevinDesktopBrowserSignIn(false)}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => {setShowOAuthModal(false);setReconnectConnectionId(null);}}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady}
+        connectionId={reconnectConnectionId} /> :
+
       <ImportTokenModal
         isOpen={showOAuthModal}
         provider={providerId}
         providerInfo={providerInfo}
+        onBrowserSignIn={providerId === "devin-desktop" ? () => setDevinDesktopBrowserSignIn(true) : undefined}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)} /> :
 

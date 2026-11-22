@@ -43,6 +43,9 @@ const ALIASES = {
   "zai-web": "glm",
   "cloudflare-playground": "cloudflare-ai",
   "tencent-aistudio-web": "tencent",
+  // The Cursor API key connection reuses the Cursor mark; the other opt-in session
+  // providers have no local mark yet and show the initial tile.
+  "cursor-api": "cursor",
 };
 
 // Local asset availability; provider metadata is not imported (it starts runtime services).

@@ -60,6 +60,12 @@
     "g4f-nvidia",
     "g4f-ollama",
     "g4f-pollinations",
+    "cursor-api",
+    "devin-desktop",
+    "workbuddy",
+    "minimax-code",
+    "zed-hosted",
+    "freebuff",
     "retired",
     "hetzner",
     "megabrain"

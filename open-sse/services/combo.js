@@ -1629,6 +1629,16 @@ export async function handleComboChat({
   let earliestRetryStatus = null;
   let earliestRetryError = null;
   let lastStatus = null;
+  // Status and message always come from the SAME failure (upstream 9router
+  // #3873). Pinning the status to the first failure while the message tracked
+  // the last paired one model's status with another's text. An authentication
+  // failure stays the reported cause: a later member's rate limit must not
+  // hide a credential problem the operator has to fix.
+  const recordFailure = (status, message) => {
+    if (lastStatus === 401 || lastStatus === 403) return;
+    lastStatus = status;
+    lastError = message;
+  };
   let requestScopedResult = null;
   let localPolicyRejections = 0;
 
@@ -1756,8 +1766,7 @@ export async function handleComboChat({
               _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
             }
             releaseFailedAffinity(modelStr, i);
-            lastError = "Provider returned an empty stream";
-            if (!lastStatus) lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+            recordFailure(HTTP_STATUS.SERVICE_UNAVAILABLE, "Provider returned an empty stream");
             log.warn("COMBO", `Model ${modelStr} returned an empty stream, trying next`);
             continue;
           }
@@ -1781,8 +1790,7 @@ export async function handleComboChat({
           if (!retryResult.ok || await isBodyEmpty(retryResult)) {
             if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
             releaseFailedAffinity(modelStr, i);
-            lastError = "Provider returned empty content";
-            if (!lastStatus) lastStatus = HTTP_STATUS.BAD_GATEWAY;
+            recordFailure(HTTP_STATUS.BAD_GATEWAY, "Provider returned empty content");
             log.warn("COMBO", `Model ${modelStr} still empty after retry, falling to next`);
             continue;
           }
@@ -1880,8 +1888,7 @@ export async function handleComboChat({
       if (!shouldFallback && requestScoped) {
         releaseFailedAffinity(modelStr, i);
         requestScopedResult ??= result;
-        lastError = errorText || String(result.status);
-        if (!lastStatus) lastStatus = result.status;
+        recordFailure(result.status, errorText || String(result.status));
         log.warn("COMBO", `Model ${modelStr} rejected the request (${result.status}), trying next`, { status: result.status });
         continue;
       }
@@ -1920,8 +1927,7 @@ export async function handleComboChat({
 
       // Fallback to next model
       releaseFailedAffinity(modelStr, i);
-      lastError = errorText || String(result.status);
-      if (!lastStatus) lastStatus = result.status;
+      recordFailure(result.status, errorText || String(result.status));
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
       // The provider already completed billable work. A ledger failure must not
@@ -1944,8 +1950,7 @@ export async function handleComboChat({
       }
       // Catch unexpected exceptions to ensure fallback continues
       releaseFailedAffinity(modelStr, i);
-      lastError = error.message || String(error);
-      if (!lastStatus) lastStatus = 500;
+      recordFailure(500, error.message || String(error));
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
   }

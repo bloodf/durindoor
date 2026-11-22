@@ -1,9 +1,9 @@
-import { pathToFileURL } from "node:url";
 import { readFile, access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -512,7 +512,7 @@ export async function validateRepository(cwd) {
   return validateDocumentation({ root: cwd, files });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   const issues = await validateRepository(process.cwd());
   if (issues.length) {
     console.error(issues.join("\n"));

@@ -41,7 +41,7 @@ import { existsSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFi
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -461,7 +461,7 @@ export class Migrator {
   getTargetBackupPath() { return this.targetBackupPath; }
 }
 
-if (import.meta.url && process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const targetDir = arg('--target-dir', join(homedir(), '.durindoor'));
   const legacyDir = arg('--legacy-dir',  join(homedir(), '.9router'));
   const dryRun = has('--dry-run');

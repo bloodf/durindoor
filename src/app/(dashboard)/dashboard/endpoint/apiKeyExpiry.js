@@ -9,6 +9,10 @@ export const API_KEY_EXPIRY_PRESETS = Object.freeze([
   { value: "custom", label: "Custom date and time", days: null },
 ]);
 
+export function hasDayExpiryPreset(selection) {
+  return API_KEY_EXPIRY_PRESETS.some((item) => item.value === selection && item.days != null);
+}
+
 function parseLocalDateTime(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value || "");
   if (!match) return null;
@@ -29,12 +33,24 @@ function parseLocalDateTime(value) {
   return date;
 }
 
-export function expiryFromSelection(selection, customLocalValue, now = Date.now()) {
+/** 23:59:00.000 local time on the calendar day `days` after `now`; local setters keep wall time across DST. */
+export function endOfLocalDayAfterDays(days, now = Date.now()) {
+  const end = new Date(Number(now));
+  end.setDate(end.getDate() + days);
+  end.setHours(23, 59, 0, 0);
+  return end;
+}
+
+export function expiryFromSelection(selection, customLocalValue, now = Date.now(), { endOfDay = false } = {}) {
   if (selection === "never") return null;
   const preset = API_KEY_EXPIRY_PRESETS.find((item) => item.value === selection);
   const nowTime = Number(now);
   if (!preset || !Number.isFinite(nowTime)) throw new Error("Choose a valid expiry option");
-  if (preset.days != null) return new Date(nowTime + (preset.days * 86_400_000)).toISOString();
+  if (preset.days != null) {
+    return endOfDay
+      ? endOfLocalDayAfterDays(preset.days, nowTime).toISOString()
+      : new Date(nowTime + (preset.days * 86_400_000)).toISOString();
+  }
 
   const date = parseLocalDateTime(customLocalValue);
   if (!date || date.getTime() <= nowTime) throw new Error("Expiry must be a future local date and time");

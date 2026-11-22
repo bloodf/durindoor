@@ -1,0 +1,59 @@
+---
+title: "Microsoft 365 Copilot Web"
+---
+
+`copilot-m365-web` (alias `m365copilot`, models under `m365/`) sends chat requests through a signed-in Microsoft 365 Copilot session at [m365.cloud.microsoft/chat](https://m365.cloud.microsoft/chat) over the Substrate Chathub WebSocket. It is an unofficial integration of a private endpoint and can break when Microsoft changes it. It is a different provider from Copilot Web (`copilot-web`, the personal service at `copilot.microsoft.com`); their credentials and accounts never mix.
+
+A connection is one of two kinds:
+
+| Kind | Stored as | Renews itself |
+| --- | --- | --- |
+| Pasted session | `cookie` row: the `access_token` and `chathubPath` you copied | No. Paste a new one when it expires (about 75 minutes). |
+| Native sign-in | `oauth` row: access token, refresh token and expiry | Yes, per connection. |
+
+Both kinds work side by side and serve the same models.
+
+## Native sign-in (work or school accounts)
+
+Native sign-in is an authorization-code flow with PKCE against the Microsoft identity platform. DurinDoor never sees your password or MFA code. It is available as an OAuth service under `/api/oauth/copilot-m365-web/`; the dashboard connect dialog does not drive it yet, so call the routes with your dashboard session.
+
+1. `POST /api/oauth/copilot-m365-web/authorize` with `{}` (or `{"connectionId": "<id>"}` to sign an existing native connection in again). The response has `authUrl`, `state`, `flowId` and `expiresAt`. The PKCE verifier stays on the server.
+2. Open a blank browser tab, open **DevTools → Network** and enable **Preserve log**, then open `authUrl` in that tab and finish Microsoft's account selection or MFA.
+3. In the Network log, find the request to `https://login.microsoftonline.com/common/oauth2/nativeclient` and copy its full **Request URL**. Microsoft serves nothing at that address, so the final address-bar URL is not usable.
+4. `POST /api/oauth/copilot-m365-web/exchange` with `{"code": "<that full URL>", "state": "<state>", "flowId": "<flowId>"}`. The connection is saved and the response lists its id, email and display name.
+
+An attempt is single-use and expires. DurinDoor checks the callback against the state it issued, accepts only the exact Microsoft native-client URL (no other host, port, credentials, fragment or `error` answer), and exchanges the code with the stored verifier. Nothing is sent to any other origin: the token requests never follow a redirect off `login.microsoftonline.com`. Treat the pasted URL as a one-time credential; do not post it in screenshots, logs or support messages.
+
+The sign-in uses the public client id that `m365.cloud.microsoft` itself uses; set `M365_OAUTH_CLIENT_ID` to a GUID to use a public client registered in your own tenant instead. Only work or school accounts are accepted. A personal Microsoft account (the consumer tenant) is refused. The account identity is the tenant and object id from the token, so two tenants that share an email stay separate connections, signing in again with the same identity updates the same row, and reconnecting a row with a different identity is refused.
+
+Native sign-in does not set the Copilot tier. A work account needs `providerSpecificData.tier` set to `work` (alias `enterprise`) and an education account `edu`; the individual defaults can fail on a work tenant.
+
+## Refresh
+
+A native connection renews its access token before a request when it is close to expiry, and once more after an upstream 401. Each connection redeems its own refresh token at its own tenant's token endpoint, in the same pass that serves the request, so connections never share or overwrite each other's tokens. Microsoft rotates the refresh token on use; the rotated token and the new expiry are saved together. A rejected grant (`invalid_grant` and similar) marks the connection as needing sign-in again; a temporary failure keeps the current token and tries again on a later request. A pasted session has no refresh token and is never refreshed.
+
+## Conversation continuation
+
+Copilot keeps each conversation on its side and throttles accounts that open threads quickly, so DurinDoor continues one instead of re-sending the whole history. A request continues a conversation only when:
+
+- it comes through the same connection, with the same model, tier profile and tool set;
+- its messages up to the previous reply are exactly the history that conversation was sent;
+- the next message is the reply DurinDoor returned (the same tool-call ids, or the same text up to whitespace) and something follows it;
+- the conversation has been idle less than 30 minutes and is not near Copilot's 600-message cap.
+
+A continued turn sends only the messages after the reply. Anything else (an edited history, another session with the same opener, a different reply, an expired conversation, a connection without an id, a failed earlier turn) starts a fresh conversation with the whole history. Continuations are kept in process memory, so a restart starts fresh conversations, and two connections never share one. This also covers individual (personal) tier connections. The separate personal service, Copilot Web, still opens a new conversation per request; the pinned OmniRoute source has no reuse for it either.
+
+## Images and tools
+
+- **Images.** A request may carry `image_url` parts (a data URL or a public HTTPS URL) or Responses `input_image` parts. Each image is uploaded to Copilot's `UploadFile` endpoint inside the turn's conversation, and the text marks where it sat (`[image 1]`). A fresh conversation uploads every image in the history; a continued one uploads only the new messages' images. Limits: 10 PNG, JPEG, GIF or WebP images, 10 MiB each and 40 MiB per request, with the format read from the bytes. HTTPS URLs are fetched through the public-address-only guard. A failed upload fails the request (502 `m365_image_upload_failed`, 400 `m365_image_rejected` or `m365_image_invalid`); a turn never goes ahead without an image it was given. Audio and file parts are rejected with 400.
+- **Tools.** Tools are prompt-emulated, not Microsoft function calls. A request with `tools` is one buffered turn; the model answers with a fenced block named for a declared tool and a JSON object of arguments, and only declared tools with schema-valid arguments come back as `tool_calls`. `tool_choice` and `parallel_tool_calls` are honoured. A malformed call, a missing required call or a long document with a single trailing example is reported or kept as text rather than guessed. Your application must still enforce its own tool permissions.
+
+Both work through the OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) routes, as JSON or as a stream.
+
+## Not included
+
+Image generation, citation annotations, reasoning summaries and model-specific tone profiles from OmniRoute are not ported. Token counts are gateway estimates.
+
+## Source
+
+Ported from OmniRoute (`cheaper-inference/OmniRoute`, MIT) at [`4265bb2ad5477450a07d3a43ea33a62c6c874878`](https://github.com/cheaper-inference/OmniRoute/tree/4265bb2ad5477450a07d3a43ea33a62c6c874878): the native sign-in provider and attempt store, `copilot-m365-connection.ts` refresh helpers, `m365Protocol/conversations.ts`, `images.ts` and `tools.ts`. See also the [web-cookie guide](./web-cookie.mdx) for pasting a session.

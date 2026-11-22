@@ -105,13 +105,21 @@ export function buildChatInvocation(opts) {
       traceId: opts.traceId,
       isStartOfSession: opts.isStartOfSession ?? true,
       clientInfo: {},
+      // Must match the ConversationId of the WebSocket URL when continuing a conversation.
+      ...(opts.conversationId ? { conversationId: opts.conversationId } : null),
       message: {
         author: "user",
         inputMethod: "Keyboard",
         text: opts.text,
-        messageType: "Chat"
+        messageType: "Chat",
+        ...(opts.requestId ? { requestId: opts.requestId } : null),
+        // ImageFile annotations of the images uploaded into this conversation for this message.
+        ...(opts.messageAnnotations?.length ? { messageAnnotations: [...opts.messageAnnotations] } : null)
       },
-      plugins: [],
+      // Client-declared tools ride as plugins; the fenced-block protocol is taught in customInstructions.
+      plugins: opts.plugins ?? [],
+      ...(opts.customInstructions ? { customInstructions: opts.customInstructions } : null),
+      ...(opts.toolChoice !== undefined ? { toolChoice: opts.toolChoice } : null),
       isSbsSupported: false,
       tone: opts.tone ?? "",
       renderReferencesBehindEOS: true,

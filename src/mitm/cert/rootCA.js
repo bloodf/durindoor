@@ -313,6 +313,13 @@ function isCertExpired(certPath) {
   }
 }
 
+// Generate a positive 128-bit CSPRNG serial for issued leaf certificates.
+function randomSerialNumber() {
+  const bytes = crypto.randomBytes(16);
+  bytes[0] = (bytes[0] & 0x7f) || 0x01;
+  return bytes.toString("hex");
+}
+
 function createRootCAMaterial(permittedHosts = TARGET_HOSTS) {
   // Generate RSA key pair
   const keys = forge.pki.rsa.generateKeyPair(2048);
@@ -439,7 +446,7 @@ function generateLeafCert(domain, rootCA) {
   // Create leaf certificate
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.publicKey;
-  cert.serialNumber = Math.floor(Math.random() * 1000000).toString();
+  cert.serialNumber = randomSerialNumber();
   cert.validity.notBefore = new Date();
   cert.validity.notAfter = new Date();
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);

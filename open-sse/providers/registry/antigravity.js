@@ -82,6 +82,9 @@ export default {
     { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)" },
     { id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)", upstreamModelId: "gemini-pro-agent" },
     { id: "gemini-pro-agent", name: "Gemini 3.1 Pro (High)" },
+    // Canonical Google ids sent by the Antigravity/MITM IDE (upstream 9router #2605, issue #803).
+    { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview", upstreamModelId: "gemini-pro-agent" },
+    { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", upstreamModelId: "gemini-pro-agent" },
     { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)", upstreamModelId: "gemini-3.1-pro-low(low)" },
     // Claude 5.5 tiers (upstream 9router a07ed95b).
     { id: "claude-sonnet-5-5-high", name: "Claude Sonnet 5.5 (High)", upstreamModelId: "claude-sonnet-5-5-high(high)" },

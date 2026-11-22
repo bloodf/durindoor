@@ -27,7 +27,7 @@ import { BaseExecutor } from "./base.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveProxyForRequest } from "../utils/proxyFetch.js";
 import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 import { resolvePlaywrightProxy } from "../services/browserPool.js";
 import { isFunction, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -36,6 +36,19 @@ const isObject = isRecord;
 
 export const GEMINI_WEB_URL = "https://gemini.google.com/app";
 export const GEMINI_WEB_ORIGIN = "https://gemini.google.com";
+/**
+ * Playwright proxy for the browser context, from the account's proxy options (OmniRoute #20739).
+ * An assigned proxy that cannot be turned into a Playwright proxy fails closed instead of letting
+ * the browser egress directly from the host IP.
+ */
+export function resolveGeminiWebBrowserProxy(proxyOptions) {
+  const proxyUrl = resolveProxyForRequest(GEMINI_WEB_URL, proxyOptions).proxyUrl;
+  if (!proxyUrl) return undefined;
+  const proxy = resolvePlaywrightProxy(proxyUrl);
+  if (!proxy) throw new Error("Gemini Web proxy is invalid; refusing a direct connection");
+  return proxy;
+}
+
 /** Response-label fallback when the request names no model. */
 const DEFAULT_MODEL_ID = "gemini-2.5-pro";
 const GEMINI_USER_AGENT =
@@ -588,8 +601,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       abortBrowser = () => void context?.close().catch(() => {});
       signal?.addEventListener("abort", abortBrowser, { once: true });
 
-      const proxyUrl = resolveConnectProxyForRequest(GEMINI_WEB_URL, input.proxyOptions).proxyUrl;
-      const proxy = resolvePlaywrightProxy(proxyUrl);
+      const proxy = resolveGeminiWebBrowserProxy(input.proxyOptions);
       const contextOptions = { userAgent: GEMINI_USER_AGENT, serviceWorkers: "block" };
       if (proxy) contextOptions.proxy = proxy;
       context = await browser.newContext(contextOptions);

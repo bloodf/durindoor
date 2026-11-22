@@ -16,6 +16,7 @@ import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
 import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
 import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 import { isPromptQlSessionError, promptQlSessionRequest, readPromptQlCredentials, readPromptQlExchange } from "open-sse/executors/promptql.js";
 import { CursorApiExecutor, isCursorApiKey } from "open-sse/executors/cursor-api.js";
 import { validateDevinDesktopSession } from "open-sse/executors/devin-desktop.js";
@@ -300,7 +301,7 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: getDefaultModel(provider) || "claude-3-haiku-20240307",
+          model: getDefaultModel(provider) || ANTHROPIC_VALIDATION_MODEL,
           max_tokens: 1,
           messages: [{ role: "user", content: "test" }],
         }),

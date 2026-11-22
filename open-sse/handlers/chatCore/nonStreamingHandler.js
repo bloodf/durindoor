@@ -34,7 +34,7 @@ import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/respons
 import { classifyMaskedGatewayError, hasTokenLimitCompletion, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
-import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
+import { CLAUDE_STOP, GEMINI_FINISH } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
 
@@ -183,9 +183,10 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
 // prompt_tokens: reverse projection reports full input plus cache fields.
 function normalizeClaudeCacheUsage(claudeMsg, originalBody) {
   if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
-  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens || 0;
+  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens;
   claudeMsg.usage = claudeMsg.usage || {};
-  if (cached > 0) claudeMsg.usage.cache_read_input_tokens = cached;
+  // An explicit reported zero is kept; an omitted counter is not invented.
+  if (Number.isFinite(cached) && cached >= 0) claudeMsg.usage.cache_read_input_tokens = cached;
   return claudeMsg;
 }
 
@@ -456,7 +457,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     if (!message.content && !message.tool_calls) message.content = "";
 
-    let finishReason = (candidate.finishReason || "stop").toLowerCase();
+    // Same mapping as the streaming Gemini translator (MAX_TOKENS → length, SAFETY → content_filter).
+    let finishReason = toOpenAIFinish(candidate.finishReason || GEMINI_FINISH.STOP, "gemini");
     if (finishReason === "stop" && toolCalls.length > 0) finishReason = "tool_calls";
 
     const result = {

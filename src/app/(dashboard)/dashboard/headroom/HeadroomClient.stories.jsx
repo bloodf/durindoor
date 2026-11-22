@@ -28,3 +28,7 @@ export const RunningWithEvents = { parameters: { storyFixture: { scenario: "defa
 
 /** Covers service diagnostic state while retaining settings controls and no-event DataTable state. */
 export const SetupDiagnostic = { parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/headroom", params: {}, routes: { ...routes, "GET /api/headroom/status": { body: { ok: false, diagnostic: { code: "NOT_INSTALLED", summary: "Headroom is not installed", fixes: [] } } }, "GET /api/headroom/stats": { body: { windows: {}, timeline: [], recent: [] } } } } }, play: async ({ canvasElement }) => { const canvas = within(canvasElement); const diagnostic = await canvas.findByRole("alert"); await expect(diagnostic).toHaveTextContent("Headroom is not installed"); await expect(await canvas.findByLabelText("Enable Headroom")).toHaveAttribute("disabled"); const events = await canvas.findByRole("region", { name: "Recent Headroom compression events rows" }); await expect(within(events).getByText("No events recorded")).toBeTruthy(); } };
+
+export const LoadFailure = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/headroom", routes: { ...routes, "GET /api/headroom/stats": { status: 503, body: {} } } } },
+};

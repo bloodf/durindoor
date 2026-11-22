@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import PropTypes from "prop-types";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
@@ -89,6 +90,7 @@ SummaryCard.propTypes = {
 };
 
 export default function PxpipeClient({ embedded = false }) {
+  const v5 = useUiV5();
   const [status, setStatus] = useState(null);
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
@@ -135,7 +137,7 @@ export default function PxpipeClient({ embedded = false }) {
   ], []);
 
   return (
-    <div className={`space-y-6 ${embedded ? "" : "p-4 sm:p-6"}`}>
+    <div className={`space-y-6 ${embedded ? "" : "p-4 sm:p-6"}${v5 ? " min-w-0 text-dd-text" : ""}`}>
       {!embedded ? (
         <PageHeader
           icon="image"
@@ -267,7 +269,7 @@ export default function PxpipeClient({ embedded = false }) {
       <Card padding={false} id="logs">
         <CardHeader icon="terminal" title="Transform events" subtitle="Raw events emitted by PXPIPE." />
         <CardContent>
-          {events.length ? (
+          {v5 && !loading && !logs ? <div role="alert" className="space-y-2 text-dd-text"><p>Transform events could not be loaded.</p><Button variant="secondary" onClick={refresh}>Retry</Button></div> : events.length ? (
             <>
               <pre tabIndex={0} aria-label="PXPIPE transform events" className="min-h-11 max-h-64 overflow-auto rounded-dd bg-dd-surface-2 p-3 font-mono text-xs text-dd-text whitespace-pre-wrap" role="region">
                 {eventLog.pageItems.map(formatPxpipeEvent).join("\n")}

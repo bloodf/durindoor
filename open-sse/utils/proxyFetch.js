@@ -49,15 +49,18 @@ export function __setRealIpResolverForTesting(resolver) {
   return () => {realIpResolverForTesting = previous;};
 }
 
-// Test fixtures stand in for a proxy route by identity, so failure-streak
-// eviction must not swap them for a real ProxyAgent unless a test opts in.
+// Test fixtures without close() stand in for a proxy route by identity only;
+// failure-streak eviction must not swap them for a real ProxyAgent. Fixtures
+// that model a closable dispatcher stay evictable like a real pool.
 const pinnedTestDispatchers = new WeakSet();
 
-export function __setProxyDispatcherForTesting(proxyUrl, dispatcher, { evictable = false } = {}) {
+export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
   const normalized = normalizeProxyUrl(proxyUrl);
   if (!normalized) return;
   proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
-  if (!evictable && dispatcher && typeof dispatcher === "object") pinnedTestDispatchers.add(dispatcher);
+  if (dispatcher && typeof dispatcher === "object" && typeof dispatcher.close !== "function") {
+    pinnedTestDispatchers.add(dispatcher);
+  }
 }
 
 export function __clearProxyDispatchersForTesting() {

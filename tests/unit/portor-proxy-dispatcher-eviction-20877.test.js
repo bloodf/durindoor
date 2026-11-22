@@ -55,7 +55,7 @@ describe("proxyAwareFetch evicts a repeatedly failing proxy dispatcher", () => {
 
   it("closes and drops the cached dispatcher after repeated 504s, then keeps it after a success", async () => {
     const dispatcher = { close: vi.fn().mockResolvedValue(undefined) };
-    __setProxyDispatcherForTesting(proxyUrl, dispatcher, { evictable: true });
+    __setProxyDispatcherForTesting(proxyUrl, dispatcher);
     restore = __setOriginalFetchForTesting(vi.fn(async () => new Response("gateway", { status: 504 })));
 
     for (let i = 0; i < PROXY_DISPATCHER_EVICT_THRESHOLD; i++) {
@@ -67,7 +67,7 @@ describe("proxyAwareFetch evicts a repeatedly failing proxy dispatcher", () => {
     restore();
 
     const healthy = { close: vi.fn() };
-    __setProxyDispatcherForTesting(proxyUrl, healthy, { evictable: true });
+    __setProxyDispatcherForTesting(proxyUrl, healthy);
     restore = __setOriginalFetchForTesting(vi.fn(async () => new Response("ok")));
     for (let i = 0; i < PROXY_DISPATCHER_EVICT_THRESHOLD + 2; i++) await proxyAwareFetch("https://provider.example.test/", {}, config);
     expect(healthy.close).not.toHaveBeenCalled();

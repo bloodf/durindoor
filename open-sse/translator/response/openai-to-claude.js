@@ -147,7 +147,10 @@ function toClaudeUsage(usage) {
   const reportedCacheReadTokens = [
     usage.prompt_tokens_details?.cached_tokens,
     usage.input_tokens_details?.cached_tokens,
-    usage.cache_read_input_tokens
+    // DeepSeek-style and flat aliases (OmniRoute #20279); Claude-shaped counter keeps priority.
+    usage.cache_read_input_tokens,
+    usage.prompt_cache_hit_tokens,
+    usage.cached_tokens
   ].find((value) => isNumber(value) && Number.isFinite(value) && value >= 0);
   const cacheReadTokens = reportedCacheReadTokens ?? 0;
   // Cache-write accepts the same aliases as the shared normalizer: the

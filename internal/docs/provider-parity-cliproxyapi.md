@@ -16,6 +16,21 @@ commits and records the deltas and their dispositions.
 
 [The AI Studio Build and hosted Devin follow-up](./aistudio-relay-parity-2034.md) records the verified delegation and model discovery on the merged DurinDoor base.
 
+### Devin inference continuation evidence (#2034)
+
+The pinned Devin-related delta in this work order does not add a Devin inference
+executor or reasoning translator change. Devin Desktop is a separate guarded
+hosted-dispatch surface and is outside this comparison. Operator-managed Devin
+inference is covered by [`devin-inference-provider.test.js`](../../tests/unit/devin-inference-provider.test.js),
+which exercises model discovery, account-bound routing, non-streaming and streaming
+completions, and usage accounting through closed proxy fixtures. The focused
+[`parity-cli-devin-696076.test.js`](../../tests/unit/parity-cli-devin-696076.test.js)
+asserts the uncovered continuation contract at the CLIProxyAPI executor boundary:
+reasoning, assistant tool-call identity/arguments, tool result, and the following
+assistant message reach the configured sidecar in order. The executor makes a
+wire-only copy only when consuming bridge-only tool error metadata; ordinary tool
+continuation messages remain intact.
+
 ## Revisions
 
 | Side | Revision | Note |

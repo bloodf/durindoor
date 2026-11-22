@@ -738,7 +738,7 @@ export function createTlsClientModule(config) {
     return { status: 200, headers, text: null, body: stream };
   }
 
-  async function tlsFetch(url, options = {}) {
+  async function tlsFetchOnce(url, options = {}) {
     // Resolve proxyUrl early so test overrides and the real path both see it.
     const resolvedProxyUrl = resolveProxyUrl(proxyDomainOverride ?? domain, options.proxyUrl);
     if (testOverride) return testOverride(url, { ...options, proxyUrl: resolvedProxyUrl });
@@ -757,7 +757,7 @@ export function createTlsClientModule(config) {
       body: options.body,
       tlsClientIdentifier: tlsProfile,
       timeoutMilliseconds: options.timeoutMs ?? defaultTimeoutMs,
-      followRedirects: true,
+      followRedirects: options.sameOriginRedirects !== true,
       withRandomTLSExtensionOrder: true,
       proxyUrl: resolvedProxyUrl,
     };
@@ -798,6 +798,35 @@ export function createTlsClientModule(config) {
       text: tlsResponse.body,
       body: null,
     };
+  }
+
+  /** Opt in to keeping credentialed redirects on the request origin. */
+  async function tlsFetch(url, options = {}) {
+    if (!options.sameOriginRedirects) return tlsFetchOnce(url, options);
+    let current = String(url);
+    // The streaming API exposes status only after the stream completes. Buffer guarded
+    // calls so no redirect can be mistaken for a successful stream.
+    let request = { ...options, redirect: "manual", stream: false };
+    for (let count = 0; count <= 20; count++) {
+      const result = await tlsFetchOnce(current, request);
+      if (result.status < 300 || result.status >= 400) return result;
+      const location = result.headers?.get("location");
+      if (!location && ![301, 302, 303, 307, 308].includes(result.status)) return result;
+      let next;
+      try { next = new URL(location, current); } catch { next = null; }
+      if (!location || !next || next.origin !== new URL(current).origin || count === 20) {
+        await result.body?.cancel?.();
+        return { status: 401, headers: new Headers(), text: "Session credential redirect rejected", body: null };
+      }
+      await result.body?.cancel?.();
+      if (result.status === 303 || ((result.status === 301 || result.status === 302) && request.method?.toUpperCase() === "POST")) {
+        const headers = new Headers(request.headers);
+        headers.delete("content-type");
+        headers.delete("content-length");
+        request = { ...request, method: "GET", body: undefined, headers: Object.fromEntries(headers) };
+      }
+      current = next.href;
+    }
   }
 
   const module = {

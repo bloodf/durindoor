@@ -2,24 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
 const upstream = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/chatplayground.js");
-  return { ...original, default: [...original.default.filter((row) => row.id !== entry.id), entry] };
-});
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const { ChatPlaygroundExecutor } = await import("../../open-sse/executors/chatplayground.js");
   const executor = new ChatPlaygroundExecutor(upstream.fetch);
   return { ...original, getExecutor: (id) => id === "chatplayground" || id === "cpl" ? executor : original.getExecutor(id) };
-});
-vi.mock("../../src/app/api/providers/[id]/models/modelsConfig.js", async (importOriginal) => {
-  const original = await importOriginal();
-  return { ...original, PROVIDER_MODELS_CONFIG: { ...original.PROVIDER_MODELS_CONFIG, chatplayground: {
-    url: "https://app.chatplayground.ai/api/models", method: "GET", headers: {},
-    buildHeaders: (_token, connection) => ({ Cookie: connection.apiKey }),
-    parseResponse: (data) => (data?.data || data?.models || []).filter((row) => row?.botId).map((row) => ({ id: row.botId, name: row.displayName || row.modelName || row.botId })),
-  } } };
 });
 vi.mock("@/lib/usageDb.js", () => ({
     appendRequestLog: vi.fn(async () => {}), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}),
@@ -31,7 +18,7 @@ import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { ChatPlaygroundExecutor, createChatPlaygroundSseStream, discoverChatPlaygroundModels, validateChatPlaygroundCookie } from "../../open-sse/executors/chatplayground.js";
-import provider, { chatplaygroundCookieProfile } from "../../open-sse/providers/private/chatplayground.js";
+import provider, { chatplaygroundCookieProfile } from "../../open-sse/providers/registry/chatplayground.js";
 import { getCookieImportContract, buildImportedCookieHeader } from "../../src/lib/providers/cookieImport/contract.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";

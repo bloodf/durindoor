@@ -9,8 +9,14 @@ import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
+import { validateClaudeWebSession } from "open-sse/executors/claude-web.js";
+import { validateGeminiWebSession } from "open-sse/executors/gemini-web.js";
 import { validateMaxaiSession } from "open-sse/executors/maxai.js";
 import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
+import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
+import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
+import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
+import { isPromptQlSessionError, promptQlSessionRequest, readPromptQlCredentials, readPromptQlExchange } from "open-sse/executors/promptql.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -34,8 +40,18 @@ const SPECIALTY_VALIDATORS = {
   bedrock: validateBedrockSignedProvider,
   dify: validateDifyProvider,
   "chatgpt-web": validateChatgptWebSession,
+  // Same NextAuth session exchange as chatgpt-web; the Codex lanes share its cookie.
+  "chatgpt-web-codex": validateChatgptWebSession,
+  // Read-only GETs: neither creates a conversation or sends the cookie to a chat endpoint.
+  "claude-web": validateClaudeWebSession,
+  "gemini-web": validateGeminiWebSession,
   maxai: ({ apiKey, fetcher, providerSpecificData }) => validateMaxaiSession({ apiKey, providerSpecificData }, fetcher),
   lmarena: ({ apiKey, fetcher, providerSpecificData }) => validateLmarenaSession({ apiKey, providerSpecificData }, fetcher),
+  // Read-only checks: workspace and model list, the user info GET, and the signed-challenge GET.
+  // None of them reaches a chat endpoint, so no conversation is created on the account.
+  "notion-web": ({ apiKey, fetcher, providerSpecificData }) => validateNotionWebSession({ apiKey, providerSpecificData, fetcher }),
+  "tencent-aistudio-web": ({ apiKey, fetcher }) => validateTencentAIStudioSession({ apiKey, fetcher }),
+  "tinycms-web": ({ apiKey, fetcher, providerSpecificData }) => validateTinyCmsSession({ apiKey, providerSpecificData, fetcher }),
 };
 
 const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
@@ -230,6 +246,10 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
     ? cfg.baseUrl.replace("{accountId}", normalizeAccountIdPlaceholder(provider, providerSpecificData?.accountId))
     : cfg.baseUrl;
 
+  if (provider === "promptql") {
+    const { cookie, projectId } = readPromptQlCredentials({ apiKey, providerSpecificData });
+    return { url: cfg.validateUrl, options: promptQlSessionRequest(cookie, projectId, AbortSignal.timeout(8000)), accepts: "promptql-session", projectId };
+  }
   const headers = buildProviderProbeHeaders(cfg, apiKey);
   if (cfg.noAuth && !apiKey) return { url: cfg.validateUrl || baseUrl, options: { headers }, accepts: "always" };
 
@@ -399,6 +419,9 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };
+  if (probe.accepts === "promptql-session" && !probe.options.headers.cookie) {
+    return { valid: false, status: 401, error: "Missing PromptQL playground session cookie" };
+  }
 
   // SSRF guard (#6542): provider validation hits a caller-controllable baseUrl
   // (e.g. OpenAI-compatible `${baseUrl}/models` + the chat fallback). Validate
@@ -440,6 +463,15 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
       };
     }
     if (!probe.fallback) return temporaryFailure();
+  }
+  if (probe.accepts === "promptql-session") {
+    if (isPromptQlSessionError(res.status) || res.status === 400) {
+      return { valid: false, status: 401, error: "PromptQL session expired or invalid. Re-import your playground session." };
+    }
+    if (res.ok) {
+      try { await readPromptQlExchange(res, probe.projectId); }
+      catch { return { valid: false, status: 401, error: "PromptQL session did not resolve playground credentials." }; }
+    }
   }
   if (probe.accepts === "non-auth-failure") {
     if (res.status >= 500) return temporaryFailure(res.status);

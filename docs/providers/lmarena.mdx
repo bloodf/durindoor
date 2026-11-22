@@ -1,4 +1,7 @@
-# Arena (LMArena)
+---
+title: Arena (LMArena)
+description: Import the arena.ai session cookie, numbered cookie chunks, and the pinned Direct-chat model list.
+---
 
 Arena (formerly LMArena) exposes a browser-session chat flow, not a public API-key API. DurinDoor follows OmniRoute's pinned provider: `POST https://arena.ai/nextjs-api/stream/create-evaluation` with the `arena-auth-prod-v1` Supabase session cookie. Numbered cookie chunks (`arena-auth-prod-v1.0`, `.1`, …) are reconstructed in order.
 
@@ -17,7 +20,3 @@ This is a web endpoint and can change without notice. Model IDs and routes are p
 - [OmniRoute pinned LMArena registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/lmarena/index.ts)
 - [OmniRoute pinned LMArena executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/lmarena.ts)
 - [Arena](https://arena.ai/)
-
-## Registration steps
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

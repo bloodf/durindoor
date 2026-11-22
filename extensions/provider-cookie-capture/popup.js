@@ -47,8 +47,10 @@ export function mountPopup(doc, { chrome, fetch, now = Date.now }) {
     $("out-origin").textContent = view.providerOrigin;
     $("out-dashboard").textContent = view.dashboardOrigin;
     $("out-target").textContent = view.action === "create" ? `New connection: ${view.target}` : `Replace cookies of connection ${view.target}`;
-    $("out-cookies").textContent = view.cookieNames.join(", ");
-    $("confirm-text").textContent = `I confirm: send my ${view.label} session cookies from ${view.providerOrigin} to ${view.dashboardOrigin}.`;
+    // A localStorage item is shown with its storage, so it cannot be mistaken for a cookie name.
+    $("out-cookies").textContent = [...view.cookieNames, ...view.localStorageKeys.map((key) => `localStorage ${key}`)].join(", ");
+    const what = view.cookieNames.length ? "session cookies" : "session value";
+    $("confirm-text").textContent = `I confirm: send my ${view.label} ${what} from ${view.providerOrigin} to ${view.dashboardOrigin}.`;
     confirm.checked = false;
     send.disabled = true;
     stepInput.hidden = true;
@@ -71,9 +73,10 @@ export function mountPopup(doc, { chrome, fetch, now = Date.now }) {
     confirm.disabled = false;
     if (result.ok) {
       reset();
+      const sent = result.cookieCount ? `${result.cookieCount} cookie(s)` : `${result.localStorageCount} session value(s)`;
       say(result.action === "create"
-        ? `Created connection "${result.connection?.name ?? ""}" with ${result.cookieCount} cookie(s).`
-        : `Updated the connection with ${result.cookieCount} cookie(s).`);
+        ? `Created connection "${result.connection?.name ?? ""}" with ${sent}.`
+        : `Updated the connection with ${sent}.`);
       return;
     }
     // A request that reached the dashboard spends the pairing; any other failure leaves it usable.

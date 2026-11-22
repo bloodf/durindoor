@@ -11,10 +11,13 @@ export const notrackWebCookieProfile = {
 export default {
   id: "notrack-web",
   alias: "ntw",
+  priority: 256,
   display: { name: "NoTrack Web", icon: "chat", color: "#2563EB", textIcon: "NT", website: "https://notrack.ai" },
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the Cookie header from a notrack.ai chat request (uid, si_usr_id, si_ses_id; nt_session is optional).",
+  // Import requires the three session cookies the executor needs; nt_session is optional.
+  cookieImport: { origin: "https://notrack.ai", cookieNames: ["uid", "si_usr_id", "si_ses_id"], cookiePrefixes: [], extensionCapture: true },
   webLogin: {
     startUrl: "https://notrack.ai/",
     origin: "https://notrack.ai",

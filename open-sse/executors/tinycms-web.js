@@ -11,7 +11,9 @@ import { BaseExecutor } from "./base.js";
 import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
-import { initTinyCmsWasm, generateSecurePayload } from "../providers/private/tinycms-web/signer.js";
+// The vendored signer inlines about 78 KB of WASM; it is loaded on the first request, not with the
+// executor map, so every other provider's import path stays as light as before registration.
+const loadSigner = () => import("../providers/private/tinycms-web/signer.js");
 
 export const TINYCMS_ORIGIN = "https://gov.freegpt.win";
 export const TINYCMS_CHAT_URL = `${TINYCMS_ORIGIN}/api/openai/oneapi/v1/chat/completions`;
@@ -28,6 +30,14 @@ const ipCache = new Map();
 
 export function isTinyCmsDeviceUuid(value) {
   return isString(value) && /^R[\x21-\x7e]{3,}$/.test(value.trim());
+}
+
+/** The pasted API-key value wins; an import stores the UUID as providerSpecificData["app-config-uuid"]. */
+export function tinyCmsDeviceUuid({ apiKey, uuid, providerSpecificData } = {}) {
+  for (const value of [apiKey, uuid, providerSpecificData?.["app-config-uuid"]]) {
+    if (isString(value) && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function proxyKey(proxyOptions) {
@@ -69,8 +79,8 @@ async function upstreamFailure(response, url, body) {
 }
 
 /** Validate a device UUID by asking the challenge endpoint for a challenge. */
-export async function validateTinyCmsSession({ apiKey, fetcher = proxyAwareFetch, proxyOptions, signal } = {}) {
-  const uuid = String(apiKey ?? "").trim();
+export async function validateTinyCmsSession({ apiKey, providerSpecificData, fetcher = proxyAwareFetch, proxyOptions, signal } = {}) {
+  const uuid = tinyCmsDeviceUuid({ apiKey, providerSpecificData });
   if (!isTinyCmsDeviceUuid(uuid)) return { valid: false, status: 401, error: "TinyCMS device UUID must start with R" };
   try {
     const res = await fetcher(TINYCMS_CHALLENGE_URL, { method: "GET", headers: { ...baseHeaders(uuid), Accept: "application/json" }, signal: signal ?? AbortSignal.timeout(10000) }, proxyOptions);
@@ -87,10 +97,11 @@ export class TinyCmsExecutor extends BaseExecutor {
 
   async execute(input) {
     const body = isRecord(input.body) ? input.body : {};
-    const uuid = String(input.credentials?.apiKey ?? input.credentials?.uuid ?? "").trim();
+    const uuid = tinyCmsDeviceUuid(input.credentials ?? {});
     if (!isTinyCmsDeviceUuid(uuid)) return failure(401, "TinyCMS: invalid or missing device UUID (must start with 'R')", "authentication_error", TINYCMS_CHAT_URL, input.body);
     const fetcher = (url, options) => proxyAwareFetch(url, options, input.proxyOptions);
     try {
+      const { initTinyCmsWasm, generateSecurePayload } = await loadSigner();
       await initTinyCmsWasm();
       const ip = await getPublicIp(fetcher, input.proxyOptions, input.signal);
       const challengeResponse = await fetcher(TINYCMS_CHALLENGE_URL, { method: "GET", headers: { ...baseHeaders(uuid), Accept: "application/json" }, signal: input.signal });

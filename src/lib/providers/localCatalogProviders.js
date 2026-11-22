@@ -6,4 +6,6 @@ export const LOCAL_CATALOG_WEB_PROVIDERS = new Set([
   "claude-web", "gemini-web", "deepseek-web", "doubao-web", "zai-web", "chatgpt-web-codex",
   // MaxAI and Arena expose no stable OpenAI-style /models route; Cloudflare Playground is anonymous.
   "maxai", "lmarena", "cloudflare-playground",
+  // Registration batch C (#2034): fixed vendor catalogs with no list-models endpoint for the session.
+  "notion-web", "notrack-web", "tencent-aistudio-web", "tinycms-web", "blackbox-web", "conol-web",
 ]);

@@ -6,63 +6,79 @@ import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
-import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
+import {
+  buildEndpointPreset,
+  knownKeysForSecretMatch,
+  readEndpointPresets,
+  resolveEndpointPresetSecret,
+  writeEndpointPresets,
+} from "./cliEndpointPresets";
 
-const STORAGE_KEY = "durindoor.cliToolEndpointPresets";
-
-function maskApiKey(apiKey) {
-  if (!apiKey) return "No API key";
-  if (apiKey.length <= 12) return `${apiKey.slice(0, 4)}…`;
-  return `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}`;
-}
-
-function normalizePresets(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter((preset) => preset?.name && preset?.baseUrl && preset?.apiKey);
-}
-
-function readPresets() {
-  if (!isBrowser()) return [];
-  try { return normalizePresets(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]")); } catch { return []; }
-}
-
-function writePresets(presets) {
-  if (!isBrowser()) return;
-  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizePresets(presets))); } catch { /* storage unavailable */ }
+function presetKeyLabel(preset) {
+  return preset?.maskedLabel || (preset?.apiKeyId ? "DurinDoor key" : "No API key");
 }
 
 function defaultPresetName(baseUrl) {
   try { return new URL(baseUrl).host; } catch { return baseUrl; }
 }
 
-export default function EndpointPresetControl({ baseUrl, apiKey, onBaseUrlChange, onApiKeyChange }) {
+/**
+ * Browser-local endpoint presets. Stores base URL + DurinDoor key id (and a
+ * masked label) only — never a raw API secret in localStorage (#2252).
+ */
+export default function EndpointPresetControl({
+  baseUrl,
+  apiKey,
+  apiKeys = [],
+  onBaseUrlChange,
+  onApiKeyChange,
+}) {
   const [presets, setPresets] = useState([]);
   const [selectedName, setSelectedName] = useState("");
   const [saveOpen, setSaveOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  useEffect(() => { setPresets(readPresets()); }, []);
+  useEffect(() => { setPresets(readEndpointPresets()); }, []);
 
-  const selectedPreset = useMemo(() => presets.find((preset) => preset.name === selectedName) || null, [presets, selectedName]);
-  const options = useMemo(() => [{ value: "", label: "Manual / current endpoint" }, ...presets.map((preset) => ({ value: preset.name, label: `${preset.name} — ${preset.baseUrl} (${maskApiKey(preset.apiKey)})` }))], [presets]);
+  const selectedPreset = useMemo(
+    () => presets.find((preset) => preset.name === selectedName) || null,
+    [presets, selectedName],
+  );
+  const options = useMemo(
+    () => [
+      { value: "", label: "Manual / current endpoint" },
+      ...presets.map((preset) => ({
+        value: preset.name,
+        label: `${preset.name} — ${preset.baseUrl} (${presetKeyLabel(preset)})`,
+      })),
+    ],
+    [presets],
+  );
 
-  const handleSelect = (name) => {
+  const handleSelect = async (name) => {
     setSelectedName(name);
     const preset = presets.find((item) => item.name === name);
     if (!preset) return;
     onBaseUrlChange(preset.baseUrl);
-    onApiKeyChange(preset.apiKey);
+    const secret = await resolveEndpointPresetSecret(preset);
+    onApiKeyChange(secret);
   };
 
-  const handleSaveSubmit = (name) => {
+  const handleSaveSubmit = async (name) => {
     const trimmedBaseUrl = (baseUrl || "").trim();
     const trimmedApiKey = (apiKey || "").trim();
     if (!trimmedBaseUrl || !trimmedApiKey) { setSaveOpen(false); return; }
-    const nextPreset = { name: name.trim(), baseUrl: trimmedBaseUrl, apiKey: trimmedApiKey };
-    const nextPresets = [...presets.filter((preset) => preset.name !== nextPreset.name), nextPreset].sort((a, b) => a.name.localeCompare(b.name));
+    const knownKeys = await knownKeysForSecretMatch(trimmedApiKey, apiKeys);
+    const nextPreset = buildEndpointPreset(
+      { name: name.trim(), baseUrl: trimmedBaseUrl, apiKey: trimmedApiKey },
+      knownKeys,
+    );
+    if (!nextPreset) { setSaveOpen(false); return; }
+    const nextPresets = [...presets.filter((preset) => preset.name !== nextPreset.name), nextPreset]
+      .sort((a, b) => a.name.localeCompare(b.name));
     setPresets(nextPresets);
     setSelectedName(nextPreset.name);
-    writePresets(nextPresets);
+    writeEndpointPresets(nextPresets);
     setSaveOpen(false);
   };
 
@@ -71,7 +87,7 @@ export default function EndpointPresetControl({ baseUrl, apiKey, onBaseUrlChange
     const nextPresets = presets.filter((preset) => preset.name !== selectedPreset.name);
     setPresets(nextPresets);
     setSelectedName("");
-    writePresets(nextPresets);
+    writeEndpointPresets(nextPresets);
     setConfirmDelete(false);
   };
 
@@ -87,7 +103,7 @@ export default function EndpointPresetControl({ baseUrl, apiKey, onBaseUrlChange
         size="sm"
         onClick={() => setSaveOpen(true)}
         disabled={!canSave}
-        title="Save current Base URL and API key as a browser-local preset"
+        title="Save current Base URL and API key reference as a browser-local preset"
       >Save</Button>
       {selectedPreset ? (
         <IconButton icon="delete" label={`Delete preset ${selectedPreset.name}`} size="sm" onClick={() => setConfirmDelete(true)} />

@@ -34,16 +34,20 @@ export async function POST(request) {
   }
 }
 
-// DELETE /api/models/disabled?providerAlias=xxx[&id=yyy]
+// DELETE /api/models/disabled?providerAlias=xxx[&id=yyy&id=zzz]
+// Omitting id enables every model; a supplied empty id is rejected.
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");
-    const id = searchParams.get("id");
+    const ids = searchParams.getAll("id");
     if (!providerAlias) {
       return NextResponse.json({ error: "providerAlias required" }, { status: 400 });
     }
-    await enableModels(providerAlias, id ? [id] : []);
+    if (ids.some((id) => !id.trim())) {
+      return NextResponse.json({ error: "id must not be empty" }, { status: 400 });
+    }
+    await enableModels(providerAlias, ids);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error enabling models:", error);

@@ -254,7 +254,13 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // the attachment vanished from the outgoing request with no error. Refuse instead
     // of silently dropping data — a plain Error here surfaces through chatCore's
     // executor error path (sanitizeErrorMessage) before reaching the client.
-    if (rule.flattenContent && Array.isArray(body.messages)) {
+    // Port of upstream #5811: the chat transport is the OpenAI-compatible
+    // /ai/v1/chat/completions endpoint, which accepts content-part arrays (image_url
+    // included) natively. Flattening deleted images for every vision-capable model,
+    // so content parts pass through unchanged when the model resolves vision: true.
+    // Non-vision models keep the flatten-or-refuse contract above.
+    if (rule.flattenContent && Array.isArray(body.messages) &&
+        !(caps || getCapabilitiesForModel(provider, model)).vision) {
       for (const msg of body.messages) {
         if (msg && Array.isArray(msg.content)) {
           msg.content = msg.content.

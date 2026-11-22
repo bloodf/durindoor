@@ -46,7 +46,7 @@
 import { lookup as dnsLookup } from "node:dns";
 import { isIP } from "node:net";
 import { Agent, buildConnector } from "undici";
-import { isBlockedHost } from "../../src/shared/utils/ssrfGuard.js";
+import { classifyHost } from "../../src/shared/utils/ssrfGuard.js";
 import {
   PRIVATE_PROVIDER_URLS_ENV,
   LOCAL_PROVIDER_URLS_ENV,
@@ -107,7 +107,7 @@ function embeddedIpv4Address(host, includeCompatible = false) {
 
 export function isPrivateHost(hostname) {
   const normalized = normalizeHost(hostname);
-  if (!normalized || isBlockedHost(normalized)) return true;
+  if (!normalized || classifyHost(normalized) === "blocked") return true;
   const words = ipv6ToWords(normalized);
   if (!words) return false;
   // Preserve the outbound guard's additional local-use NAT64 and documentation blocks.

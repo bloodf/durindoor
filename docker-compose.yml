@@ -8,18 +8,18 @@ services:
     volumes:
       - durindoor-data:/app/data
     env_file:
-      - .env
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:20128/api/livez || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     environment:
       DATA_DIR: /app/data
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
-      # Existing SQLite installs: leave PG_URL unset or empty, run cutover
-      # in Settings > Database, then optionally set an explicit boot URL.
-      # Fresh direct-Postgres installs: set DURINDOOR_PG_URL before boot.
-      # A nonempty URL selects Postgres before SQLite settings load.
-      # Empty values are normalized to unset; dashboard credentials live
-      # in /app/data/durindoor-secrets.json (mode 0600).
       DURINDOOR_PG_URL: ${DURINDOOR_PG_URL:-}
       DURINDOOR_PG_SSLMODE: ${DURINDOOR_PG_SSLMODE:-prefer}
       DURINDOOR_PG_PREFERRED_VERSION: ${DURINDOOR_PG_PREFERRED_VERSION:-18}
@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: durindoor
-      POSTGRES_PASSWORD: durindoor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: durindoor
       # PG 18 AIO subsystem; 2-3x sequential-scan speedup on the
       # cutover mirror.
@@ -46,15 +46,8 @@ services:
       - "wal_level=replica"
       - "-c"
       - "log_lock_waits=on"
-    ports:
-      - "5432:5432"
     volumes:
       - durindoor-pg18-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U durindoor"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   # Optional PG 17 cluster. Same usage as `postgres18` but with
   # `log_lock_waits=on` and the 17-specific tunables (parallel GIN,
@@ -66,7 +59,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: durindoor
-      POSTGRES_PASSWORD: durindoor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: durindoor
     command:
       - "postgres"
@@ -74,8 +67,6 @@ services:
       - "log_lock_waits=on"
       - "-c"
       - "wal_level=replica"
-    ports:
-      - "5432:5432"
     volumes:
       - durindoor-pg17-data:/var/lib/postgresql/data
     healthcheck:
@@ -92,10 +83,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: durindoor
-      POSTGRES_PASSWORD: durindoor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: durindoor
-    ports:
-      - "5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "log_lock_waits=on"
+      - "-c"
+      - "wal_level=replica"
     volumes:
       - durindoor-pg16-data:/var/lib/postgresql/data
     healthcheck:

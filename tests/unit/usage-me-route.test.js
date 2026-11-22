@@ -64,7 +64,7 @@ describe("GET /api/usage/me", () => {
     expect(res.status).toBe(401);
   });
 
-  it("scopes the response to only the caller's own key: no secrets, no other keys", async () => {
+  it("scopes the response to only the caller's own key and hides the unscoped connection inventory", async () => {
     mocks.resolveClientApiKey.mockResolvedValue({
       apiKey: "sk-caller-key",
       auth: { ok: true, stored: true, apiKeyId: "key-1" },
@@ -74,14 +74,13 @@ describe("GET /api/usage/me", () => {
     expect(res.body.id).toBe("key-1");
     expect(res.body.usage.lifetime.totalTokens).toBe(42);
     expect(res.body).not.toHaveProperty("key");
-    for (const connection of res.body.connections) {
-      expect(connection).not.toHaveProperty("key");
-    }
+    expect(res.body.connections).toEqual([]);
+    expect(mocks.getProviderConnections).not.toHaveBeenCalled();
     expect(mocks.getApiKeyUsageTotals).toHaveBeenCalledWith("key-1");
     expect(mocks.getApiKeyUsageLimitStatus).toHaveBeenCalledWith("sk-caller-key");
   });
 
-  it("restricts connection snapshots to the key's scoped connections, not every connection", async () => {
+  it("restricts connection snapshots to the key's scoped connections", async () => {
     mocks.resolveClientApiKey.mockResolvedValue({
       apiKey: "sk-caller-key",
       auth: { ok: true, stored: true, apiKeyId: "key-1" },

@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, CLAUDE_BLOCK, CLAUDE_STOP, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/index.js";
 import { claudeStopReasonWithToolCalls } from "../concerns/finishReason.js";

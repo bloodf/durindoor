@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createLocalJWKSet, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { fetchPublic } from "@/shared/utils/ssrfGuard.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
@@ -57,7 +58,9 @@ export async function getOidcRuntimeConfig() {
   if (!isOidcAuthMode(settings.authMode) || !isOidcConfigured(settings)) return null;
 
   const issuerUrl = trimTrailingSlashes(settings.oidcIssuerUrl);
+  warnIfOidcAllowlistEmpty(settings);
   return {
+    allowlistEmpty: isOidcAllowlistEmpty(settings),
     issuerUrl,
     clientId: settings.oidcClientId.trim(),
     clientSecret: settings.oidcClientSecret.trim(),
@@ -68,7 +71,8 @@ export async function getOidcRuntimeConfig() {
 
 /**
  * Fetch the OIDC discovery document for an issuer.
- * Rejects link-local / private / metadata targets via assertPublicUrl before any network I/O
+ * Rejects link-local / private / metadata targets (including hostnames that resolve to
+ * them) via fetchPublic, which also re-validates every redirect hop (#2196)
  * (login start, callback, and settings discovery test all share this path).
  *
  * @param {string} issuerUrl Absolute issuer URL (no trailing slash required).
@@ -76,10 +80,9 @@ export async function getOidcRuntimeConfig() {
  */
 export async function fetchOidcDiscovery(issuerUrl) {
   const base = trimTrailingSlashes(issuerUrl);
-  // SSRF guard: block internal/private/metadata issuers before discovery fetch.
-  assertPublicUrl(base);
   const discoveryUrl = `${base}/.well-known/openid-configuration`;
-  const res = await fetch(discoveryUrl, { cache: "no-store" });
+  // SSRF guard: block internal/private/metadata issuers and redirects to them.
+  const res = await fetchPublic(discoveryUrl, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Failed to load OIDC discovery document from ${discoveryUrl}`);
   }
@@ -141,7 +144,7 @@ export async function exchangeOidcCode({
     body.set("client_secret", clientSecret);
   }
 
-  const res = await fetch(tokenEndpoint, {
+  const res = await fetchPublic(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -179,7 +182,7 @@ export async function probeOidcClientSecret({
     code_verifier: "__oidc_test_invalid_verifier__",
   });
 
-  const res = await fetch(tokenEndpoint, {
+  const res = await fetchPublic(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -231,7 +234,9 @@ export async function verifyOidcIdToken({
   jwksUri,
   nonce,
 }) {
-  const jwks = createRemoteJWKSet(new URL(jwksUri));
+  const jwksRes = await fetchPublic(jwksUri, { cache: "no-store" });
+  if (!jwksRes.ok) throw new Error(`Failed to load OIDC JWKS (${jwksRes.status})`);
+  const jwks = createLocalJWKSet(await jwksRes.json());
   const { payload } = await jwtVerify(idToken, jwks, {
     issuer,
     audience,
@@ -246,4 +251,65 @@ export function pickOidcDisplayName(payload = {}) {
 
 export function pickOidcEmail(payload = {}) {
   return payload.email || "";
+}
+
+function normalizeAllowList(value) {
+  const list = Array.isArray(value) ? value : String(value || "").split(/[\s,]+/);
+  return list.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+/** Normalized OIDC allowlists from settings (#2195). */
+export function getOidcAllowlists(settings = {}) {
+  return {
+    subjects: normalizeAllowList(settings.oidcAllowedSubjects),
+    emails: normalizeAllowList(settings.oidcAllowedEmails).map((e) => e.toLowerCase()),
+    domains: normalizeAllowList(settings.oidcAllowedDomains).map((d) => d.toLowerCase().replace(/^@/, "")),
+  };
+}
+
+export function isOidcAllowlistEmpty(settings = {}) {
+  const { subjects, emails, domains } = getOidcAllowlists(settings);
+  return subjects.length === 0 && emails.length === 0 && domains.length === 0;
+}
+
+let warnedEmptyAllowlist = false;
+/** Log once per process when OIDC is enabled but no identity is allowlisted. */
+export function warnIfOidcAllowlistEmpty(settings = {}) {
+  if (warnedEmptyAllowlist) return;
+  if (!["oidc", "both"].includes(settings.authMode) || !isOidcAllowlistEmpty(settings)) return;
+  warnedEmptyAllowlist = true;
+  console.warn("[oidc] OIDC login is enabled but oidcAllowedSubjects, oidcAllowedEmails and oidcAllowedDomains are all empty; " +
+    "every OIDC login will be refused until an allowlist is configured.");
+}
+
+/**
+ * Decide whether a verified id_token identity may become an operator.
+ * Subjects match exactly; emails and domains require email_verified === true.
+ * Returns { allowed, reason } where reason is a login-page error code.
+ */
+export function checkOidcIdentityAllowed(payload = {}, settings = {}) {
+  const { subjects, emails, domains } = getOidcAllowlists(settings);
+  if (subjects.length === 0 && emails.length === 0 && domains.length === 0) {
+    return { allowed: false, reason: "oidc_allowlist_empty" };
+  }
+  const sub = isString(payload.sub) ? payload.sub : "";
+  if (sub && subjects.includes(sub)) return { allowed: true, reason: null };
+  const email = isString(payload.email) ? payload.email.trim().toLowerCase() : "";
+  if (email && payload.email_verified === true) {
+    if (emails.includes(email)) return { allowed: true, reason: null };
+    const at = email.lastIndexOf("@");
+    const domain = at > 0 ? email.slice(at + 1) : "";
+    if (domain && domains.includes(domain)) return { allowed: true, reason: null };
+  }
+  return { allowed: false, reason: "oidc_not_allowed" };
+}
+
+/** Compare two issuer URLs ignoring trailing slashes. */
+export function isSameOidcIssuer(a, b) {
+  const left = trimTrailingSlashes(a);
+  return !!left && left === trimTrailingSlashes(b);
+}
+
+export function __resetOidcWarningForTests() {
+  warnedEmptyAllowlist = false;
 }

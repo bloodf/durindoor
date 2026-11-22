@@ -3,7 +3,7 @@ import { isString, isObject, isNumber, isBoolean, isFunction, runtimeTypeName } 
 import { createHash, randomBytes } from "node:crypto";
 const WORKBUDDY_UA_VERSION = "5.5.6";
 const WORKBUDDY_USER_AGENT = `WorkBuddy/${WORKBUDDY_UA_VERSION}`;
-import { clientHeaders } from "../providers/private/workbuddy.js";
+import { clientHeaders } from "../providers/registry/workbuddy.js";
 const getWorkbuddyChatHeaders = () => ({ ...clientHeaders, "X-Agent-Intent": "craft", "X-Agent-Purpose": "conversation", "X-Agent-Type": "main" });
 const WORKBUDDY_DEFAULT_HEADERS = getWorkbuddyChatHeaders();
 const SALT = randomBytes(16).toString("hex");

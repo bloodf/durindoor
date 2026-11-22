@@ -22,7 +22,7 @@
  * the `<thinking_mode>enabled</thinking_mode>` reasoning trigger, matching
  * buildKiroPayload.
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { validateKiroOutputLimit } from "./openai-to-kiro.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";

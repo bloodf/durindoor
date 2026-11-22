@@ -14,17 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 
 vi.mock("node-machine-id", () => ({ machineIdSync: () => "synthetic-devin-desktop-machine-id" }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const provider = (await import("../../open-sse/providers/private/devin-desktop.js")).default;
-  return { ...actual, default: [...actual.default, provider] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const { DevinDesktopExecutor } = await import("../../open-sse/executors/devin-desktop.js");
-  const executor = new DevinDesktopExecutor();
-  return { ...actual, getExecutor: (id) => (id === "devin-desktop" ? executor : actual.getExecutor(id)) };
-});
 vi.mock("@/lib/usageDb.js", async (importOriginal) => ({ ...(await importOriginal()), appendRequestLog: vi.fn(() => Promise.resolve()), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), saveRequestDetail: vi.fn(() => Promise.resolve()), saveRequestUsage: vi.fn(() => Promise.resolve()) }));
 
 const AUTH_URL = "https://server.codeium.com/exa.auth_pb.AuthService/GetUserJwt";
@@ -118,7 +107,7 @@ beforeEach(async () => {
   routes = { models: await import("../../src/app/api/v1/models/route.js"), messages: await import("../../src/app/api/v1/messages/route.js") };
   mod = await import("../../open-sse/executors/devin-desktop.js");
   oauth = await import("../../src/lib/oauth/services/devin-desktop.js");
-  ({ default: provider, DEVIN_DESKTOP_CREDENTIAL_PROFILE: profile } = await import("../../open-sse/providers/private/devin-desktop.js"));
+  ({ default: provider, DEVIN_DESKTOP_CREDENTIAL_PROFILE: profile } = await import("../../open-sse/providers/registry/devin-desktop.js"));
   ({ handleChat } = await import("../../src/sse/handlers/chat.js"));
 }, 60000);
 

@@ -6,24 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // MiniMax Code account provider (#2034): device sign-in, refresh and guarded managed-gateway
 // chat. Closed mocks only: every account and gateway call below is answered by a synthetic
-// fetch, and every token is a placeholder that MiniMax never issued. The staged provider and
-// executor are composed into the registry here; they are not registered in the real tree.
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const provider = (await import("../../open-sse/providers/private/minimax-code.js")).default;
-  return { ...actual, default: [...actual.default, provider] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const { MinimaxCodeExecutor } = await import("../../open-sse/executors/minimax-code.js");
-  const executor = new MinimaxCodeExecutor();
-  const isMinimaxCode = (id) => id === "minimax-code" || id === "mmcode";
-  return {
-    ...actual,
-    getExecutor: (id) => (isMinimaxCode(id) ? executor : actual.getExecutor(id)),
-    hasSpecializedExecutor: (id) => isMinimaxCode(id) || actual.hasSpecializedExecutor(id),
-  };
-});
+// fetch, and every token is a placeholder that MiniMax never issued. The provider and executor
+// come from the production registry and executor map; nothing is composed here.
 vi.mock("@/lib/usageDb.js", async (importOriginal) => ({ ...(await importOriginal()), appendRequestLog: vi.fn(() => Promise.resolve()), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), saveRequestDetail: vi.fn(() => Promise.resolve()), saveRequestUsage: vi.fn(() => Promise.resolve()) }));
 
 const GATEWAY_URL = "https://agent.minimax.io/mavis/api/v1/llm/v1/messages";
@@ -116,7 +100,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(syntheticUpstream));
   routes = { models: await import("../../src/app/api/v1/models/route.js"), messages: await import("../../src/app/api/v1/messages/route.js") };
   ({ MinimaxCodeExecutor } = await import("../../open-sse/executors/minimax-code.js"));
-  ({ default: provider } = await import("../../open-sse/providers/private/minimax-code.js"));
+  ({ default: provider } = await import("../../open-sse/providers/registry/minimax-code.js"));
   auth = await import("../../open-sse/services/minimaxCodeAuth.js");
   ({ minimaxCodeOAuthProvider: oauthProvider } = await import("../../src/lib/oauth/services/minimax-code.js"));
   ({ handleChat } = await import("../../src/sse/handlers/chat.js"));
@@ -146,9 +130,10 @@ describe("MiniMax Code staged provider module", () => {
     expect(provider.transport).toMatchObject({ baseUrl: GATEWAY_URL, format: "claude", executor: "minimax-code", auth: { header: "Authorization", scheme: "bearer" } });
     expect(provider.models.map((model) => model.id)).toEqual(["MiniMax-M3.1-Flash", "MiniMax-M3"]);
 
-    // The real registry, imported without the composition above, stays untouched.
+    // The production registry holds exactly one entry for the identity and its alias.
     const real = (await vi.importActual("../../open-sse/providers/registry/index.js")).default;
-    expect(real.some((entry) => entry.id === "minimax-code" || entry.alias === "mmcode")).toBe(false);
+    expect(real.filter((entry) => entry.id === "minimax-code" || entry.alias === "mmcode")).toHaveLength(1);
+    expect(real.find((entry) => entry.id === "minimax-code")).toMatchObject({ alias: "mmcode", category: "oauth" });
     const minimax = real.find((entry) => entry.id === "minimax");
     const minimaxCn = real.find((entry) => entry.id === "minimax-cn");
     expect([minimax.category, minimaxCn.category]).toEqual(["apikey", "apikey"]);
@@ -157,7 +142,7 @@ describe("MiniMax Code staged provider module", () => {
   });
 
   it("exports an empty cookie profile and the connection opt-in contract", async () => {
-    const { minimaxCodeCookieProfile, minimaxCodeConnectionOptIn } = await import("../../open-sse/providers/private/minimax-code.js");
+    const { minimaxCodeCookieProfile, minimaxCodeConnectionOptIn } = await import("../../open-sse/providers/registry/minimax-code.js");
     expect(minimaxCodeCookieProfile).toMatchObject({ notApplicable: true, domains: [], cookieNames: [], validationProbe: null });
     expect(minimaxCodeConnectionOptIn).toEqual({ providerSpecificData: "enableSessionDispatch" });
   });
@@ -191,7 +176,7 @@ describe("MiniMax Code device sign-in", () => {
     expect(result).toMatchObject({ user_code: USER_CODE, verification_uri_complete: expect.stringContaining("code=ABCD-1234"), expires_in: 600, interval: 5, region: "en" });
     const [call] = accountCalls();
     expect(call.url).toBe(`${EN}/oauth2/device/code`);
-    expect(call.redirect).toBe("error");
+    expect(call.redirect).toBe("manual");
     expect(call.headers).toMatchObject({ "content-type": "application/x-www-form-urlencoded", "user-agent": "minimax-code-cli" });
     expect(call.form).toEqual({ client_id: "mcode-public", scope: "agent.default", audience: "agent-backend", code_challenge: challenge, code_challenge_method: "S256" });
   });

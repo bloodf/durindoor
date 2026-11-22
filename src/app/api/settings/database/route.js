@@ -4,6 +4,7 @@ import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { hasValidCliToken, hasValidToken } from "@/dashboardGuard";
+import { checkLock, getClientIp, recordFail, recordSuccess } from "@/lib/auth/loginLimiter";
 import { DATABASE_IMPORT_MAX_BYTES } from "@/shared/constants/quota";
 export { DATABASE_IMPORT_MAX_BYTES };
 
@@ -14,13 +15,23 @@ const DUAL_AUTH_UNAUTHORIZED = {
   error: "Unauthorized: CLI token + password or JWT session + password required",
 };
 
+function lockedDatabaseAuthResponse(lock) {
+  return NextResponse.json(
+    { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter },
+    { status: 429, headers: { "Retry-After": String(lock.retryAfter) } },
+  );
+}
+
 /**
- * Dual-factor gate for credential-bearing database export/import.
+ * Dual-auth gate for credential-bearing database export/import.
  *
  * `/api/settings/database` is ALWAYS_PROTECTED, so a valid JWT or machine-bound
  * CLI token already reaches this handler. That first factor alone must not dump
  * or replace credentials (GHSA-qvfm): require the dashboard password as the
  * second factor on both paths.
+ *
+ * Password attempts share the dashboard login lockout (issue #2297) so a stolen
+ * CLI/JWT token cannot be used to brute-force the password without limit.
  *
  * Emergency recovery is unchanged: POST `/api/auth/reset-password` remains
  * loopback-only (CLI token or trusted local origin). There is no loopback-only
@@ -34,7 +45,17 @@ export async function requireDatabaseDualAuth(request, password) {
   const cliOk = await hasValidCliToken(request);
   const jwtOk = await hasValidToken(request);
   if (!cliOk && !jwtOk) return false;
-  if (!password || !(await verifyDashboardPassword(password))) return false;
+  if (!password) return false;
+
+  const ip = getClientIp(request);
+  const lock = checkLock(ip);
+  if (lock.locked) return false;
+
+  if (!(await verifyDashboardPassword(password))) {
+    recordFail(ip);
+    return false;
+  }
+  recordSuccess(ip);
   return true;
 }
 
@@ -81,6 +102,8 @@ export async function GET(request) {
   try {
     const password = request.headers.get(PASSWORD_HEADER);
     if (!(await requireDatabaseDualAuth(request, password))) {
+      const lock = checkLock(getClientIp(request));
+      if (lock.locked) return lockedDatabaseAuthResponse(lock);
       return NextResponse.json(DUAL_AUTH_UNAUTHORIZED, { status: 401 });
     }
     // SEC-B-02: credentials are scrubbed from the portable export by default.
@@ -101,6 +124,8 @@ export async function POST(request) {
   try {
     const { password, ...payload } = await readJsonBodyWithLimit(request);
     if (!(await requireDatabaseDualAuth(request, password))) {
+      const lock = checkLock(getClientIp(request));
+      if (lock.locked) return lockedDatabaseAuthResponse(lock);
       return NextResponse.json(DUAL_AUTH_UNAUTHORIZED, { status: 401 });
     }
     await importDb(payload);

@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -24,6 +26,7 @@ export default function KiroSocialOAuthModal({
   proxyPools = [],
   proxyPoolsReady = false,
 }) {
+  const uiV5 = useUiV5();
   const [step, setStep] = useState("loading");
   const [authUrl, setAuthUrl] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
@@ -208,7 +211,8 @@ export default function KiroSocialOAuthModal({
   const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
-    <Modal open={isOpen} title={`Connect Kiro via ${providerName}`} subtitle="Complete authentication in your browser, then paste callback URL." onClose={() => { void handleClose(); }} size="lg" pending={submitting} closeOnEscape={!submitting} closeOnOverlay={!submitting}>
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title={`Connect Kiro via ${providerName}`} subtitle="Complete authentication in your browser, then paste callback URL." onClose={() => { void handleClose(); }} size="lg" pending={submitting} closeOnEscape={!submitting} closeOnOverlay={!submitting}>
+      {uiV5 ? <span className="sr-only" aria-live="polite">{copied ? "Copied to clipboard" : ""}</span> : null}
       <div className="flex flex-col gap-5">
         {!proxyPoolsReady && <LoadingState title="Loading routing options…" />}
 

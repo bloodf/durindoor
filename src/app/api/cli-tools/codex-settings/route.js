@@ -9,9 +9,10 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
-import { isRecord } from "../../../../shared/utils/typeChecks.js";
+import { isObject, isRecord } from "../../../../shared/utils/typeChecks.js";
 import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
 import { buildCodexModelCatalog, loadBundledCodexCatalog } from "@/lib/cliTools/codexModelCatalog";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -37,6 +38,17 @@ const restoreField = (obj, key, backupEntry) => {
 
 // Flatten confbox-parsed TOML into a writable object, preserving nested tables
 const parsedToWritable = (obj) => obj ?? {};
+
+const redactCodexTokens = (value) => {
+  if (Array.isArray(value)) return value.map(redactCodexTokens);
+  if (!value || !isObject(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    /token$/i.test(key) && child != null && child !== ""
+      ? "[REDACTED]"
+      : redactCodexTokens(child),
+  ]));
+};
 
 /**
  * Parse a config that must remain a keyed object when merged and serialized.
@@ -173,10 +185,13 @@ export async function GET() {
     }
 
     const config = await readConfig();
+    const redactedConfig = config
+      ? stringifyTOML(redactSecrets(redactCodexTokens(parseTOML(config))))
+      : config;
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactedConfig,
       has9Router: has9RouterConfig(config),
       configPath: getCodexConfigPath()
     });

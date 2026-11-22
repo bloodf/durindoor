@@ -1,0 +1,4 @@
+{
+  "route": "dialog/CookieImportModal",
+  "stories": ["production-providers-cookieimportmodal--open", "production-providers-cookieimportmodal--invalid-input", "production-providers-cookieimportmodal--pending"]
+}

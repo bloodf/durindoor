@@ -5,7 +5,10 @@ import PropTypes from "prop-types";
 import { marked } from "marked";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
 import { GITHUB_CONFIG } from "@/shared/constants/config";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -47,6 +50,7 @@ marked.use({
 });
 
 export default function ChangelogModal({ isOpen, onClose }) {
+  const v5 = useUiV5();
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -84,23 +88,48 @@ export default function ChangelogModal({ isOpen, onClose }) {
     };
   }, [isOpen, loaded]);
 
+  const retry = () => {
+    setHtml("");
+    setError("");
+    setLoaded(false);
+  };
+
   return (
     <Modal open={isOpen} onClose={onClose} title="Change Log" size="lg">
       <div role="status" aria-live="polite" className="sr-only">
         {loading || !loaded ? "Loading changelog" : error ? "Failed to load changelog" : "Changelog loaded"}
       </div>
       {loading || !loaded ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-dd-muted">
-          <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span>
-          Loading…
-        </div>
+        v5 ? (
+          <div className="flex min-w-0 items-center justify-center gap-2 py-10 text-[13px] text-dd-muted">
+            <MotionIcon name="progress_activity" size={18} className="animate-spin text-dd-muted" />
+            Loading…
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 py-10 text-dd-muted">
+            <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span>
+            Loading…
+          </div>
+        )
       ) : error ? (
-        <div role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-dd-danger">
-          Failed to load changelog: {error}
-        </div>
+        v5 ? (
+          <div role="alert" className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">
+            <span className="flex items-start gap-2">
+              <MotionIcon name="error" size={16} className="mt-0.5 shrink-0" />
+              <span>Failed to load changelog: {error}</span>
+            </span>
+            <Button variant="secondary" size="sm" icon="refresh" onClick={retry}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-dd-danger">
+            Failed to load changelog: {error}
+          </div>
+        )
       ) : html ? (
         <div
-          className="text-[13px] leading-relaxed text-dd-text [&_a]:rounded-dd [&_a]:text-dd-accent [&_a]:underline [&_a]:outline-none [&_a:focus-visible]:shadow-dd-focus [&_code]:rounded-dd [&_code]:bg-dd-surface-2 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-dd-text [&_h1]:mb-3 [&_h1]:mt-0 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_hr]:my-5 [&_hr]:border-dd-border-subtle [&_li]:my-1 [&_ol>li]:list-decimal [&_ul>li]:list-disc [&_p]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-dd [&_pre]:bg-dd-bg-alt [&_pre]:p-3 [&_pre]:text-dd-muted [&_strong]:font-semibold [&_strong]:text-dd-text"
+          className={`${v5 ? "min-w-0 " : ""}text-[13px] leading-relaxed text-dd-text [&_a]:rounded-dd [&_a]:text-dd-accent [&_a]:underline [&_a]:outline-none [&_a:focus-visible]:shadow-dd-focus [&_code]:rounded-dd [&_code]:bg-dd-surface-2 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-dd-text [&_h1]:mb-3 [&_h1]:mt-0 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_hr]:my-5 [&_hr]:border-dd-border-subtle [&_li]:my-1 [&_ol>li]:list-decimal [&_ul>li]:list-disc [&_p]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-dd [&_pre]:bg-dd-bg-alt [&_pre]:p-3 [&_pre]:text-dd-muted [&_strong]:font-semibold [&_strong]:text-dd-text`}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (

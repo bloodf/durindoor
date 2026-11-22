@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import Button from "./Button";
@@ -24,6 +26,7 @@ const AUTH_BASE = "https://www.orcarouter.ai";
  * response from an aborted attempt overwriting a newer one.
  */
 export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, onClose }) {
+  const uiV5 = useUiV5();
   const [tab, setTab] = useState("oauth");
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -314,19 +317,20 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
   const maskedKey = storedKey?.keyHint || "";
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={`Connect ${providerInfo?.name || "OrcaRouter"}`}>
+    <Modal {...(uiV5 ? { className: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} isOpen={isOpen} onClose={handleClose} title={`Connect ${providerInfo?.name || "OrcaRouter"}`}>
       <div className="flex flex-col gap-4">
         <p className="text-xs text-dd-muted">
           Two ways to connect: sign in with your OrcaRouter account, or paste an existing API key. Both end up as a
           normal OrcaRouter key billed to your own account.
         </p>
 
-        <div className="flex gap-2" role="tablist" aria-label="OrcaRouter authentication method">
+        <div className="flex gap-2" role={uiV5 ? "group" : "tablist"} aria-label="OrcaRouter authentication method">
           <Button
             size="sm"
             variant={tab === "oauth" ? "primary" : "secondary"}
             onClick={() => switchTab("oauth")}
-            aria-selected={tab === "oauth"}
+            aria-selected={uiV5 ? undefined : tab === "oauth"}
+            aria-pressed={uiV5 ? tab === "oauth" : undefined}
             data-testid="orca-tab-auth">
 
             OrcaRouter - Auth
@@ -335,7 +339,8 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
             size="sm"
             variant={tab === "apikey" ? "primary" : "secondary"}
             onClick={() => switchTab("apikey")}
-            aria-selected={tab === "apikey"}
+            aria-selected={uiV5 ? undefined : tab === "apikey"}
+            aria-pressed={uiV5 ? tab === "apikey" : undefined}
             data-testid="orca-tab-api">
 
             OrcaRouter - API

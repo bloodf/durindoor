@@ -7,3 +7,5 @@ const meta = { ...originalMeta, title: "V5 review/Pages/operations/QuotaPage", p
 export default meta;
 export const EmptyProviders = { ...reviewStory(original.EmptyProviders, {"source":"src/app/(dashboard)/dashboard/quota/page.stories.jsx","standalone":false}) };
 export const Loading = { ...reviewStory(original.Loading, {"source":"src/app/(dashboard)/dashboard/quota/page.stories.jsx","standalone":false}) };
+export const AccountRows = { ...reviewStory(original.AccountRows, {"source":"src/app/(dashboard)/dashboard/quota/page.stories.jsx","standalone":false}) };
+export const QuotaFailure = { ...reviewStory(original.QuotaFailure, {"source":"src/app/(dashboard)/dashboard/quota/page.stories.jsx","standalone":false}) };

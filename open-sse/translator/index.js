@@ -13,31 +13,17 @@ import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
-import { mergeHistoricalToolIdentities } from "./response/openai-responses/historyToolIdentity.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
 import { RESPONSES_ITEM } from "./schema/blocks.js";
 import { ownMessages } from "./concerns/callerMessages.js";
+import { requestRegistry, responseRegistry, register } from "./registry.js";
 
-// Registry for translators. Lazy-init guards against circular-import order:
-// translator modules call register() (side-effect) before this module's body runs.
-// var (not let): hoisted as undefined so register() can run during circular import (no TDZ).
-import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";var requestRegistry;
-var responseRegistry;
-
-// Register translator
-export function register(from, to, requestFn, responseFn) {
-  requestRegistry ??= new Map();
-  responseRegistry ??= new Map();
-  const key = `${from}:${to}`;
-  if (requestFn) {
-    requestRegistry.set(key, requestFn);
-  }
-  if (responseFn) {
-    responseRegistry.set(key, responseFn);
-  }
-}
+// Keep the registry in a leaf module so side-effect registrants never import
+// this entry point and registry initialization order is independent of it.
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+export { register };
 
 // No-op: translators self-register via the static imports at the bottom of this file.
 function ensureInitialized() {}
@@ -557,118 +543,7 @@ export function needsTranslation(sourceFormat, targetFormat) {
   return sourceFormat !== targetFormat;
 }
 
-// Initialize state for streaming response based on format
-export function initState(sourceFormat, requestBody) {
-  // Build a name → declared type map from the request tools so response
-  // translators can classify custom tools using real metadata instead of
-  // guessing from the tool name (e.g. apply_patch).
-  const toolTypes = {};
-  const toolNamespaces = {};
-  const flatToolNamespaces = new Map();
-  const plainToolNames = new Set();
-  // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
-  const chatCustomToolNames = new Set();
-  const declaredTools = [
-    ...(Array.isArray(requestBody?.tools) ? requestBody.tools : []),
-    ...(Array.isArray(requestBody?.input) ? requestBody.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
-  ];
-  if (declaredTools.length) {
-    for (const tool of declaredTools) {
-      const type = isString(tool?.type) ? tool.type : "";
-      const name = isString(tool?.function?.name) ?
-      tool.function.name :
-      isString(tool?.custom?.name) ? tool.custom.name :
-      isString(tool?.name) ? tool.name : "";
-      if (name && type) toolTypes[name] = type;
-      if (type === "custom" && name && sourceFormat === FORMATS.OPENAI) chatCustomToolNames.add(name);
-      if (type === "namespace" && name && Array.isArray(tool.tools)) {
-        for (const subtool of tool.tools) {
-          if (isString(subtool?.name) && subtool.name) {
-            // Only the dotted form is mapped. A bare subtool name (e.g. "click")
-            // can collide with an unrelated plain function tool of the same name;
-            // namespace restoration must rely on the provider-translated dotted
-            // tool name to disambiguate.
-            toolNamespaces[`${name}.${subtool.name}`] = name;
-            const namespaces = flatToolNamespaces.get(subtool.name) || new Set();
-            namespaces.add(name);
-            flatToolNamespaces.set(subtool.name, namespaces);
-          }
-        }
-      } else if (name) {
-        plainToolNames.add(name);
-      }
-    }
-    for (const [name, namespaces] of flatToolNamespaces) {
-      if (namespaces.size === 1 && !plainToolNames.has(name)) {
-        toolNamespaces[name] = namespaces.values().next().value;
-      }
-    }
-  }
-
-  // A follow-up turn that continues a conversation (previous_response_id) or
-  // simply omits `tools` still carries the namespace identity of every earlier
-  // call in its own `input` history. Recover it so the response translator
-  // restores `{namespace, name}` instead of forwarding a flat dotted name
-  // (OmniRoute #15974). Current declarations always win.
-  mergeHistoricalToolIdentities(toolNamespaces, requestBody?.input);
-
-  // Base state for all formats
-  const base = {
-    messageId: null,
-    model: null,
-    textBlockStarted: false,
-    thinkingBlockStarted: false,
-    inThinkingBlock: false,
-    currentBlockIndex: null,
-    toolCalls: new Map(),
-    finishReason: null,
-    finishReasonSent: false,
-    usage: null,
-    contentBlockIndex: -1,
-    toolTypes,
-    chatCustomToolNames,
-    toolNamespaces
-  };
-
-  // Add openai-responses specific fields
-  if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
-    return {
-      ...base,
-      seq: 0,
-      responseId: `resp_${Date.now()}`,
-      created: Math.floor(Date.now() / 1000),
-      started: false,
-      msgTextBuf: {},
-      msgItemAdded: {},
-      msgContentAdded: {},
-      msgItemDone: {},
-      reasoningId: "",
-      nextOutputIndex: 0,
-      msgOutputIndexes: {},
-      funcOutputIndexes: {},
-      reasoningIndex: -1,
-      reasoningBuf: "",
-      reasoningPartAdded: false,
-      reasoningDone: false,
-      inThinking: false,
-      funcArgsBuf: {},
-      funcNames: {},
-      funcCallIds: {},
-      funcArgsDone: {},
-      funcItemDone: {},
-      funcItemAdded: {},
-      funcPendingArgs: {},
-      funcCustomInput: {},
-      funcCustomDeltaEmitted: {},
-      awaitingTrailingUsage: false,
-      // Isolated from provider-native state.usage used by the first pivot hop.
-      responsesUsage: null,
-      completedSent: false
-    };
-  }
-
-  return base;
-}
+export { initState } from "./registry.js";
 
 // Kept for backward compatibility; translators are already registered at import time.
 export function initTranslators() {

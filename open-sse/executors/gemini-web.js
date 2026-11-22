@@ -602,7 +602,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       signal?.addEventListener("abort", abortBrowser, { once: true });
 
       const proxy = resolveGeminiWebBrowserProxy(input.proxyOptions);
-      const contextOptions = { userAgent: GEMINI_USER_AGENT };
+      const contextOptions = { userAgent: GEMINI_USER_AGENT, serviceWorkers: "block" };
       if (proxy) contextOptions.proxy = proxy;
       context = await browser.newContext(contextOptions);
       await context.addCookies(parseCookies(cookie).map(({ name, value }) => ({
@@ -610,6 +610,21 @@ export class GeminiWebExecutor extends BaseExecutor {
       })));
 
       const page = await context.newPage();
+      // Chromium follows redirects before Playwright can act on response events.
+      const redirectSession = await context.newCDPSession?.(page);
+      if (redirectSession) {
+        redirectSession.on("Fetch.requestPaused", async ({ request, requestId, responseStatusCode, responseHeaders }) => {
+          const location = responseHeaders?.find(({ name }) => name.toLowerCase() === "location");
+          const destination = location && URL.parse(location.value, request.url);
+          if (responseStatusCode >= 300 && responseStatusCode < 400 && responseStatusCode !== 304 &&
+              (!destination || destination.origin !== URL.parse(request.url)?.origin)) {
+            await redirectSession.send("Fetch.fulfillRequest", { requestId, responseCode: 401, responseHeaders: [], body: "" }).catch(() => {});
+          } else {
+            await redirectSession.send("Fetch.continueResponse", { requestId }).catch(() => {});
+          }
+        });
+        await redirectSession.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Response" }] });
+      }
       let responseText = "";
       let captured = false;
       let upstreamStatus = null;
@@ -640,10 +655,10 @@ export class GeminiWebExecutor extends BaseExecutor {
         });
       });
 
-      await page.goto(GEMINI_WEB_URL, { waitUntil: "domcontentloaded", timeout: 20_000 });
+      const navigation = await page.goto(GEMINI_WEB_URL, { waitUntil: "domcontentloaded", timeout: 20_000 });
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
       // A redirect to the Google sign-in page is an expired or missing session.
-      if (SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
+      if (AUTH_FAILURE_STATUSES.has(navigation?.status?.()) || SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
       await page.waitForSelector(COMPOSER_SELECTOR, { timeout: 10_000 });
 
       if (model) {
@@ -741,7 +756,7 @@ const AUTH_FAILURE_STATUSES = new Set([401, 403]);
  * Read-only session check: GET gemini.google.com/app with the pasted cookies. A
  * signed-in page carries the `SNlM0e` token; a signed-out landing page answers
  * 200 to any junk cookie, so a bare 200 is not enough. Redirects are not
- * followed: a ServiceLogin redirect is a dead session. No conversation is
+ * followed: a cross-origin redirect is a dead session. No conversation is
  * created. Same shape as the specialty validators in providerProbe.js.
  */
 export async function validateGeminiWebSession({ apiKey, fetcher = fetch }) {
@@ -777,14 +792,9 @@ export async function validateGeminiWebSession({ apiKey, fetcher = fetch }) {
   if (status === 429) return { valid: false, status, unavailable: true, error: "Gemini is rate limiting this session - try again later" };
   if (status >= 300 && status < 400) {
     const location = response.headers.get("location") ?? "";
-    if (/accounts\.google\.com\/.*ServiceLogin/i.test(location)) {
-      return { valid: false, status, error: "Session expired - re-capture __Secure-1PSID from gemini.google.com" };
-    }
-    if (/accounts\.google\.com/i.test(location)) {
-      return { valid: true, status, warning: "Cookie accepted. Full verification happens on the first chat." };
-    }
-    if (/^https:\/\/([a-z0-9-]+\.)*google\.com(\/|$)/i.test(location)) return { valid: true, status };
-    return { valid: false, status, error: "Unexpected redirect from gemini.google.com - cookie not verified" };
+    const destination = location && URL.parse(location, GEMINI_WEB_URL);
+    if (destination?.origin === GEMINI_WEB_ORIGIN) return { valid: true, status };
+    return { valid: false, status, error: "Gemini session redirected - re-capture __Secure-1PSID from gemini.google.com" };
   }
   if (status === 200) {
     const html = await response.text().catch(() => "");

@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_BLOCK } from "../schema/blocks.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";

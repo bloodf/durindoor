@@ -135,16 +135,16 @@ describe("#2192 /api/health exact-only and /api/health/providers management gate
     expect((await proxy(makeGuardRequest("/api/health/providers", { host: "router.example.com" }, "GET"))).status).toBe(401);
     expect((await proxy(makeGuardRequest("/api/health/providers", { host: "router.example.com" }, "DELETE"))).status).toBe(401);
 
-    // Non-admin API key can read (GET), but cannot invalidate cache (DELETE -> 403).
+    // Management reads and writes require an admin-scoped API key.
     mocks.validateApiKey.mockResolvedValue(true);
-    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: false });
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k-admin", isAdmin: true });
     const keyHeaders = { host: "router.example.com", authorization: "Bearer sk-user" };
     expect(await proxy(makeGuardRequest("/api/health/providers?force=1", keyHeaders, "GET"))).toBe(mocks.nextResponse);
-    expect((await proxy(makeGuardRequest("/api/health/providers", keyHeaders, "DELETE"))).status).toBe(403);
-
-    // Admin-scoped API key can DELETE.
-    mocks.getApiKeyByKey.mockResolvedValue({ id: "k-admin", isAdmin: true });
     expect(await proxy(makeGuardRequest("/api/health/providers", keyHeaders, "DELETE"))).toBe(mocks.nextResponse);
+
+    // A non-admin key cannot use the management read route.
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: false });
+    expect([401, 403]).toContain((await proxy(makeGuardRequest("/api/health/providers", keyHeaders, "GET"))).status);
   });
 
   it("allows session, CLI, and open-dashboard loopback while blocking foreign-Origin cookies and DNS rebinding", async () => {

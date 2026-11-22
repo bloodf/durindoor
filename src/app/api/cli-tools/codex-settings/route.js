@@ -7,7 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
-import { isRecord } from "../../../../shared/utils/typeChecks.js";
+import { isObject, isRecord } from "../../../../shared/utils/typeChecks.js";
 import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 

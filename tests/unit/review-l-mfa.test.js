@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isFunction } from "@/shared/utils/typeChecks.js";
 
 const mocks = vi.hoisted(() => ({ settings: {}, getSettings: vi.fn(), updateSettings: vi.fn(), consumeBackupCodeAtomic: vi.fn() }));
 vi.mock("@/lib/localDb", () => ({
   getSettings: async () => ({ ...mocks.settings }),
-  updateSettings: async (patch) => { mocks.settings = { ...mocks.settings, ...patch }; mocks.updateSettings(patch); },
+  updateSettings: async (patch) => {
+    const updates = isFunction(patch) ? patch(mocks.settings) : patch;
+    mocks.settings = { ...mocks.settings, ...updates };
+    mocks.updateSettings(patch);
+    return { ...mocks.settings };
+  },
 }));
 vi.mock("@/lib/db/repos/settingsRepo.js", () => ({ consumeBackupCodeAtomic: mocks.consumeBackupCodeAtomic }));
 

@@ -30,8 +30,16 @@ export async function verifySecondFactor(input) {
   // A bare 6-digit value is a TOTP; anything else can only be a backup code.
   if (/^\d{6}$/.test(candidate.replace(/\s/g, ""))) {
     const counter = findTotpCounter(settings.mfaSecret, candidate);
-    if (counter !== null && counter > (settings.mfaLastTotpCounter ?? -1)) {
-      await updateSettings({ mfaLastTotpCounter: counter });
+    if (counter !== null) {
+      let accepted = false;
+      // settingsRepo resolves updater functions inside its transaction, so two
+      // simultaneous submissions of the same code cannot both pass the check.
+      await updateSettings((current) => {
+        if (counter <= (current.mfaLastTotpCounter ?? -1)) return {};
+        accepted = true;
+        return { mfaLastTotpCounter: counter };
+      });
+      if (!accepted) return { ok: false, method: null };
       return {
         ok: true,
         method: "totp",

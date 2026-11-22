@@ -45,10 +45,12 @@ describe("verifySecondFactor", () => {
 
   it("accepts a valid TOTP code, records its counter and does not consume a backup code", async () => {
     mocks.getSettings.mockResolvedValue({ mfaEnabled: true, mfaSecret: secret, mfaBackupCodes: ["h1", "h2"] });
+    mocks.updateSettings.mockImplementation((updater) => updater({ mfaLastTotpCounter: -1 }));
     const code = generateTotpCode(secret, totpCounter());
     const result = await verifySecondFactor(code);
     expect(result).toEqual({ ok: true, method: "totp", backupCodesRemaining: 2 });
-    expect(mocks.updateSettings).toHaveBeenCalledWith({ mfaLastTotpCounter: totpCounter() });
+    expect(mocks.updateSettings).toHaveBeenCalledOnce();
+    expect(mocks.updateSettings.mock.calls[0][0]({ mfaLastTotpCounter: -1 })).toEqual({ mfaLastTotpCounter: totpCounter() });
   });
 
   it("rejects an invalid 6-digit TOTP code", async () => {

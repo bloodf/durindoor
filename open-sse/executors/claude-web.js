@@ -33,10 +33,17 @@ async function readSse(response, model, stream) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
       let boundary;
-      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
-        const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+      while ((boundary = /\r?\n\r?\n/.exec(buffer)) !== null) {
+        const frame = buffer.slice(0, boundary.index); buffer = buffer.slice(boundary.index + boundary[0].length);
         const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
         if (!data || data === "[DONE]") continue;
+        if (frame.split(/\r?\n/).some((line) => line.trim() === "event: error")) {
+          let error;
+          try { error = JSON.parse(data); } catch { error = {}; }
+          const code = error?.error?.type || error?.type || "";
+          const status = code === "rate_limit_error" || code === "overloaded_error" ? 429 : 502;
+          throw Object.assign(new Error(error?.error?.message || error?.message || "Claude Web upstream error"), { status });
+        }
         try {
           const event = JSON.parse(data);
           if (isRecord(event) && event.type === "content_block_delta" && isRecord(event.delta) && event.delta.type === "text_delta" && isString(event.delta.text)) yield event.delta.text;
@@ -104,7 +111,7 @@ export class ClaudeWebExecutor extends BaseExecutor {
       sessions.set(scope, conversationId);
       return { response, url, headers: common, transformedBody: input.body };
     } catch (error) {
-      return { response: responseError(502, error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed"), url: BASE, headers: {}, transformedBody: input.body };
+      return { response: responseError(error?.status || 502, error?.message || (error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed")), url: BASE, headers: {}, transformedBody: input.body };
     }
   }
   buildUrl(model, stream) { return PROVIDERS["claude-web"]?.baseUrl || BASE; }

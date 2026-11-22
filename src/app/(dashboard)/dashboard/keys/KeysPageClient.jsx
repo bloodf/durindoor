@@ -38,6 +38,7 @@ import {
 import {
   API_KEY_EXPIRY_PRESETS,
   expiryFromSelection,
+  hasDayExpiryPreset,
   expirySelectionFromValue,
   formatKeyExpiry,
 } from "../endpoint/apiKeyExpiry";
@@ -235,6 +236,7 @@ export default function KeysPageClient() {
   const [newKeyIsAdmin, setNewKeyIsAdmin] = useState(false);
   const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
   const [newKeyCustomExpiresAt, setNewKeyCustomExpiresAt] = useState("");
+  const [newKeyExpiryEndOfDay, setNewKeyExpiryEndOfDay] = useState(false);
   const [keyStatus, setKeyStatus] = useState(null);
   // A secret that is shown exactly once: on creation and after a rotation.
   // The modal is the only place the literal value is rendered.
@@ -253,6 +255,7 @@ export default function KeysPageClient() {
   const [editKeyDailyLimitTokens, setEditKeyDailyLimitTokens] = useState("");
   const [editKeyIsAdmin, setEditKeyIsAdmin] = useState(false);
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
+  const [editKeyExpiryEndOfDay, setEditKeyExpiryEndOfDay] = useState(false);
   const [editKeyStatus, setEditKeyStatus] = useState(null);
   const [editKeyPolicy, setEditKeyPolicy] = useState(emptyAddKeyPolicy);
   const [editKeyProviderConnectionIds, setEditKeyProviderConnectionIds] = useState([]);
@@ -429,7 +432,7 @@ export default function KeysPageClient() {
       let expiresAt;
       let policy;
       try {
-        expiresAt = expiryFromSelection(newKeyExpiryPreset, newKeyCustomExpiresAt);
+        expiresAt = expiryFromSelection(newKeyExpiryPreset, newKeyCustomExpiresAt, Date.now(), { endOfDay: newKeyExpiryEndOfDay });
         policy = apiKeyPolicyDraftToPayload(newKeyPolicy);
       } catch (error) {
         setKeyStatus({ type: "error", message: error.message });
@@ -449,7 +452,7 @@ export default function KeysPageClient() {
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
         setNewKeyIsAdmin(false);
-        setNewKeyExpiryPreset("never");
+        setNewKeyExpiryPreset("never"); setNewKeyExpiryEndOfDay(false);
         setNewKeyCustomExpiresAt("");
         setNewKeyAllowedCombos([]);
         setNewKeyProviderConnectionIds([]);
@@ -599,7 +602,7 @@ export default function KeysPageClient() {
     setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
     setEditKeyProviderConnectionIds(Array.isArray(key.providerConnectionIds) ? [...key.providerConnectionIds] : []);
     setEditKeyGroupIds(Array.isArray(key.groupIds) ? [...key.groupIds] : []);
-    setEditKeyExpiryPreset(expiry.selection);
+    setEditKeyExpiryPreset(expiry.selection); setEditKeyExpiryEndOfDay(false);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
     setEditKeyDailyLimitTokens(key.dailyLimitTokens == null ? "" : String(key.dailyLimitTokens));
     setEditKeyIsAdmin(key.isAdmin === true);
@@ -614,7 +617,7 @@ export default function KeysPageClient() {
     setNewKeyName("");
     setNewKeyDailyLimitTokens("");
     setNewKeyIsAdmin(false);
-    setNewKeyExpiryPreset("never");
+    setNewKeyExpiryPreset("never"); setNewKeyExpiryEndOfDay(false);
     setNewKeyCustomExpiresAt("");
     setNewKeyAllowedCombos([]);
     setNewKeyPolicy(emptyApiKeyPolicyDraft());
@@ -625,7 +628,7 @@ export default function KeysPageClient() {
   const resetEditModal = () => {
     setEditKey(null);
     setEditKeyAllowedCombos([]);
-    setEditKeyExpiryPreset("never");
+    setEditKeyExpiryPreset("never"); setEditKeyExpiryEndOfDay(false);
     setEditKeyCustomExpiresAt("");
     setEditKeyDailyLimitTokens("");
     setEditKeyProviderConnectionIds([]);
@@ -857,6 +860,14 @@ export default function KeysPageClient() {
               aria-label="Expiry preset"
             />
           </Field>
+          {hasDayExpiryPreset(newKeyExpiryPreset) ? (
+            <Checkbox
+              label="Expire at end of day"
+              hint="Ends the key at 23:59 local time on its last day instead of at this time of day."
+              checked={newKeyExpiryEndOfDay}
+              onChange={setNewKeyExpiryEndOfDay}
+            />
+          ) : null}
           {newKeyExpiryPreset === "custom" ? (
             <Input
               label="Custom expiry (local time)"
@@ -1010,6 +1021,14 @@ export default function KeysPageClient() {
               aria-label="Expiry preset"
             />
           </Field>
+          {hasDayExpiryPreset(editKeyExpiryPreset) ? (
+            <Checkbox
+              label="Expire at end of day"
+              hint="Ends the key at 23:59 local time on its last day instead of at this time of day."
+              checked={editKeyExpiryEndOfDay}
+              onChange={setEditKeyExpiryEndOfDay}
+            />
+          ) : null}
           {editKeyExpiryPreset === "custom" ? (
             <Input
               label="Custom expiry (local time)"
@@ -1163,7 +1182,7 @@ export default function KeysPageClient() {
                 let expiresAt;
                 let policy;
                 try {
-                  expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt);
+                  expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt, Date.now(), { endOfDay: editKeyExpiryEndOfDay });
                   policy = apiKeyPolicyPatchFromDraft(editKeyPolicy, editKeyPolicyDirty);
                 } catch (error) {
                   setEditKeyStatus({ type: "error", message: error.message });

@@ -93,6 +93,13 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 // Declared upstream formats for a model. Null keeps providers with no per-model
 // endpoint restriction on their existing transport-selection path.
 export function getModelSupportedFormats(aliasOrId, modelId) {
+  // ParalonCloud's live GPU catalog is not in the seed. Chat and native
+  // Responses both accept those ids; embeddings stay off the chat transports.
+  if (aliasOrId === "paraloncloud" || aliasOrId === "paralon") {
+    const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS.paraloncloud;
+    const model = findModel(models, modelId, aliasOrId);
+    if (!model || !model.kind || model.kind === "llm") return ["openai", "openai-responses"];
+  }
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.supportedFormats || null;
   // The Kimi Platform exposes both APIs for platform model IDs, including
   // IDs discovered after the bundled catalog was published.

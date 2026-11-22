@@ -1,10 +1,17 @@
 import { Readable } from "node:stream";
-import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
+import net from "node:net";
+import { Agent, Pool, ProxyAgent, setGlobalDispatcher } from "undici";
+import {
+  __resetProxyDispatcherFailuresForTest,
+  recordProxyDispatcherFailure,
+  recordProxyDispatcherSuccess } from
+"./proxyDispatcherFailures.js";
 import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import {
   assertGuardedProbeDispatcherAddressAllowed,
   isGuardedProbeDispatcher,
+  MAX_RESPONSE_HEADER_SIZE,
   OutboundUrlGuardError } from
 "./outboundUrlGuard.js";
 import { digestMemoryKey } from "./memoryKey.js";
@@ -42,13 +49,23 @@ export function __setRealIpResolverForTesting(resolver) {
   return () => {realIpResolverForTesting = previous;};
 }
 
+// Test fixtures without close() stand in for a proxy route by identity only;
+// failure-streak eviction must not swap them for a real ProxyAgent. Fixtures
+// that model a closable dispatcher stay evictable like a real pool.
+const pinnedTestDispatchers = new WeakSet();
+
 export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
   const normalized = normalizeProxyUrl(proxyUrl);
-  if (normalized) proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+  if (!normalized) return;
+  proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+  if (dispatcher && !dispatcher.close) {
+    pinnedTestDispatchers.add(dispatcher);
+  }
 }
 
 export function __clearProxyDispatchersForTesting() {
   proxyDispatchers.clear();
+  __resetProxyDispatcherFailuresForTest();
 }
 
 export function __getProxyDispatcherCacheSnapshotForTesting() {
@@ -60,7 +77,7 @@ export function __getProxyDispatcherCacheSnapshotForTesting() {
 }
 
 // Happy Eyeballs (RFC 8305) for direct egress — avoids 30s+ stalls on broken-IPv6 hosts.
-setGlobalDispatcher(new Agent({ connect: { autoSelectFamily: true } }));
+setGlobalDispatcher(new Agent({ maxHeaderSize: MAX_RESPONSE_HEADER_SIZE, connect: { autoSelectFamily: true } }));
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -222,26 +239,89 @@ function raceWithSignal(promise, signal) {
   });
 }
 
-/** Resolve every IPv4 answer through Google DNS (bypass system DNS). */
-async function resolveRealIPs(hostname) {
+// Bound on the UDP resolver. Where UDP/53 to Google DNS is filtered the OS-level
+// timeout is ~30s, which stalls the very request this lookup is unblocking.
+const UDP_RESOLVE_TIMEOUT_MS = 2000;
+const DOH_TIMEOUT_MS = 3000;
+// DNS-over-HTTPS (port 443) fallbacks for networks that block UDP/53.
+const DOH_ENDPOINTS = [
+(hostname) => `https://1.1.1.1/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+(hostname) => `https://dns.google/resolve?name=${encodeURIComponent(hostname)}&type=A`];
+
+/** A usable real answer: public-looking IPv4, never the loopback the spoof points at. */
+function isUsableRealIPv4(address) {
+  return net.isIPv4(address) && !address.startsWith("127.") && address !== "0.0.0.0";
+}
+
+async function resolveViaUdp(hostname, timeoutMs) {
+  const dns = await import("dns");
+  const resolver = new dns.Resolver();
+  resolver.setServers(GOOGLE_DNS_SERVERS);
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {resolver.cancel();} catch {/* resolver already settled */}
+      reject(new Error("queryA ETIMEOUT"));
+    }, timeoutMs);
+    resolver.resolve4(hostname, (error, addresses) => {
+      clearTimeout(timer);
+      if (error) reject(error);else resolve(addresses);
+    });
+  });
+}
+
+async function resolveViaDoh(hostname, fetchImpl) {
+  for (const buildUrl of DOH_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DOH_TIMEOUT_MS);
+    try {
+      const response = await fetchImpl(buildUrl(hostname), {
+        headers: { accept: "application/dns-json" },
+        signal: controller.signal
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const addresses = (Array.isArray(data?.Answer) ? data.Answer : []).
+      filter((answer) => answer?.type === 1 && isString(answer.data) && isUsableRealIPv4(answer.data)).
+      map((answer) => answer.data);
+      if (addresses.length) return addresses;
+    } catch {/* try the next endpoint */} finally {clearTimeout(timer);}
+  }
+  return [];
+}
+
+/**
+ * Resolve every IPv4 answer through Google DNS (bypass system DNS). UDP is tried
+ * first with a short bound; DNS-over-HTTPS is the fallback when UDP/53 is blocked.
+ */
+async function resolveRealIPs(hostname, {
+  udpResolve = resolveViaUdp,
+  dohFetch = (...args) => originalFetch(...args),
+  udpTimeoutMs = UDP_RESOLVE_TIMEOUT_MS
+} = {}) {
   const cached = DNS_CACHE.get(hostname);
   if (cached && Date.now() < cached.expiry) return cached.ips;
 
   try {
     if (realIpResolverForTesting) return await realIpResolverForTesting(hostname);
-    const dns = await import("dns");
-    const { promisify } = await import("util");
-    const resolver = new dns.Resolver();
-    resolver.setServers(GOOGLE_DNS_SERVERS);
-    const resolve4 = promisify(resolver.resolve4.bind(resolver));
-    const addresses = await resolve4(hostname);
-    DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    let addresses = [];
+    try {
+      addresses = await udpResolve(hostname, udpTimeoutMs);
+    } catch (error) {
+      logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
+    }
+    if (!addresses.length) addresses = await resolveViaDoh(hostname, dohFetch);
+    if (addresses.length) {
+      DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    }
     return addresses;
   } catch (error) {
     logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
     return [];
   }
 }
+
+export const __resolveRealIPsForTesting = resolveRealIPs;
+export const __clearRealIpCacheForTesting = () => DNS_CACHE.clear();
 
 /**
  * Check if request should bypass MITM DNS redirect
@@ -544,6 +624,64 @@ export function resolveWebSocketProxyRoute(wsUrl, proxyOptions = null) {
   return { enabled: Boolean(url), url: url || "", strict: proxyOptions?.strictProxy === true };
 }
 
+function stripIpv6Brackets(hostname) {
+  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+}
+
+// undici's ProxyAgent sends the proxy hostname as TLS SNI on its CONNECT hop,
+// even for an IP literal. Node 26 rejects an IP servername, so an https:// proxy
+// addressed by IP cannot connect. Drop the servername for IP literals only;
+// the connector still verifies the proxy certificate against the IP address.
+// Port of OmniRoute #20880.
+export function createIpProxyClient(origin, options) {
+  const { connect } = options;
+  if (!isFunction(connect)) return new Pool(origin, options);
+  return new Pool(origin, {
+    ...options,
+    connect(parameters, callback) {
+      const { servername } = parameters;
+      const isIpServername = isString(servername) && net.isIP(stripIpv6Brackets(servername)) !== 0;
+      connect({ ...parameters, servername: isIpServername ? undefined : servername }, callback);
+    }
+  });
+}
+
+function usesIpHttpsProxy(normalizedProxyUrl) {
+  try {
+    const parsed = new URL(normalizedProxyUrl);
+    return parsed.protocol === "https:" && net.isIP(stripIpv6Brackets(parsed.hostname)) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+// Drop one proxy's cached dispatcher after repeated failures so the next request
+// builds a fresh pool. close() waits for active streams, so it is not awaited.
+export function evictProxyDispatcher(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (!normalized) return false;
+  const cacheKey = proxyDispatcherKey(normalized);
+  const dispatcher = proxyDispatchers.get(cacheKey);
+  if (!dispatcher || pinnedTestDispatchers.has(dispatcher)) return false;
+  proxyDispatchers.delete(cacheKey);
+  try {
+    Promise.resolve(dispatcher.close?.()).catch(() => {});
+  } catch {
+    // Already detached from the cache; cleanup must not block replacement.
+  }
+  return true;
+}
+
+function noteProxyDispatcherFailure(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized && recordProxyDispatcherFailure(normalized)) evictProxyDispatcher(normalized);
+}
+
+function noteProxyDispatcherSuccess(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized) recordProxyDispatcherSuccess(normalized);
+}
+
 /**
  * Create and cache one bounded undici proxy pool per selected proxy URL.
  * Reusing the dispatcher preserves proxy affinity while limiting connections
@@ -578,18 +716,21 @@ async function getDispatcher(proxyUrl) {
     // idle-body deadline so a streaming response can run indefinitely.
     const connectTimeout = parseInt(process.env.PROXY_CONNECT_TIMEOUT_MS, 10) || 90000;
     const headersTimeout = parseInt(process.env.PROXY_HEADERS_TIMEOUT_MS, 10) || 300000;
-    proxyDispatchers.set(cacheKey, new ProxyAgent({
+    const proxyAgentOptions = {
       uri: normalized,
       proxyTunnel: true,
       connectTimeout,
       headersTimeout,
       bodyTimeout: 0,
+      maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
       connections: PROXY_FETCH_POOL_CONFIG.proxyConnectionsPerOrigin,
       keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
       keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
       maxCachedSessions: PROXY_FETCH_POOL_CONFIG.proxyMaxCachedSessions,
       pipelining: PROXY_FETCH_POOL_CONFIG.pipelining
-    }));
+    };
+    if (usesIpHttpsProxy(normalized)) proxyAgentOptions.clientFactory = createIpProxyClient;
+    proxyDispatchers.set(cacheKey, new ProxyAgent(proxyAgentOptions));
   }
 
   return proxyDispatchers.get(cacheKey);
@@ -607,6 +748,7 @@ export function parseEyeballsTimeoutMs(raw) {
  */
 export function getDirectDispatcherOptionsForTest() {
   return {
+    maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
     connections: PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin,
     keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
     keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
@@ -941,10 +1083,15 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const nonReplayable = hasNonReplayableBody(url, options.body);
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+      const response = await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+      // 504 is the proxy's own gateway timeout, not an upstream answer.
+      if (response?.status === 504) noteProxyDispatcherFailure(proxyUrl);else
+      noteProxyDispatcherSuccess(proxyUrl);
+      return response;
     } catch (proxyError) {
       if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
       rethrowTransportAbort(proxyError, options.signal);
+      noteProxyDispatcherFailure(proxyUrl);
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");

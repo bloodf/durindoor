@@ -15,7 +15,7 @@ export function isProviderConfigured(connections, providerId, noAuth = false) {
 
 export const OAUTH_AUTH_TYPES = ["oauth", "access_token"];
 
-export const OAUTH_STATUS_AUTH_TYPES = ["oauth", "access_token", "apikey", "api_key"];
+export const OAUTH_STATUS_AUTH_TYPES = ["oauth", "access_token", "apikey", "api_key", "auth_token"];
 
 /**
  * Returns auth scopes used to render a free-provider card. Registry rows that

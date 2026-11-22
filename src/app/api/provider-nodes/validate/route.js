@@ -263,7 +263,7 @@ export async function POST(request) {
             body: JSON.stringify({
               model: modelId,
               messages: [{ role: "user", content: "ping" }],
-              max_tokens: 1
+              max_tokens: 10
             })
           });
         } catch (err) {
@@ -316,7 +316,7 @@ export async function POST(request) {
           body: JSON.stringify({
             model: modelId,
             messages: [{ role: "user", content: "ping" }],
-            max_tokens: 1
+            max_tokens: 10
           })
         });
       } catch (err) {

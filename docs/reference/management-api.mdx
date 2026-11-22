@@ -29,6 +29,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 ### Providers
 
+`GET /api/providers` accepts `provider` and `q` filters. Optional `page` and `pageSize` return a page and `total`, `page`, and `pageSize` metadata; page sizes are capped at 200. Without these parameters the original connection-list response is unchanged. Search matches names, email addresses, and IDs without exposing credentials.
+
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
 | GET, POST | `/api/providers` | List connections (GET) or create an API-key/cookie connection (POST) | session, CLI, key, loop |

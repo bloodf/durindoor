@@ -34,6 +34,12 @@ function shouldInject(message, scope) {
   if (message?.role !== "assistant") return false;
   const rc = message.reasoning_content;
   if (isString(rc) && rc.length > 0) return false;
+  if (Array.isArray(rc) && rc.length > 0) return false;
+  // Idempotence (decolua/9router#4881): the `reasoning` alias counts as a carrier too;
+  // serde upstreams reject a second field with "duplicate field `reasoning_content`".
+  const rg = message.reasoning;
+  if (isString(rg) && rg.length > 0) return false;
+  if (Array.isArray(rg) && rg.length > 0) return false;
   if (scope === "toolCalls") return Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
   return true;
 }

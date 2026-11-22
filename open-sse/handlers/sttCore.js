@@ -4,6 +4,7 @@ import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/err
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { transcribeCodex } from "./codexStt.js";
 import { deepgramToVerboseJson, parseDeepgramOptions } from "./deepgramStt.js";
+import { cloudflareEnvelopeError, cloudflareResultToDeepgram } from "./cloudflareStt.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -124,6 +125,60 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log, proxyO
   if (options.responseFormat === "text") return textResponse(text, billingData, duration ?? UNKNOWN_DURATION);
   if (options.responseFormat === "verbose_json") {
     return jsonResponse(deepgramToVerboseJson(data, text, options, duration), billingData, duration ?? UNKNOWN_DURATION);
+  }
+  return jsonResponse({ text }, billingData, duration ?? UNKNOWN_DURATION);
+}
+
+// Cloudflare Workers AI (Deepgram Nova-3): raw binary POST to {baseUrl}/{model}
+// with the account id in the path. Options and verbose_json follow the Deepgram path.
+async function transcribeCloudflareWorkersAI(cfg, file, model, token, formData, credentials, log, proxyOptions, signal) {
+  const options = parseDeepgramOptions(formData);
+  if (options.error) return { ...createErrorResult(HTTP_STATUS.BAD_REQUEST, options.error), local: true };
+  const rawAccountId = credentials?.providerSpecificData?.accountId;
+  const accountId = isString(rawAccountId) ? rawAccountId.trim() : "";
+  if (!accountId) {
+    return { ...createErrorResult(HTTP_STATUS.BAD_REQUEST, "cloudflare-ai STT requires accountId in the connection's providerSpecificData"), local: true };
+  }
+  if (options.ignored.length) log?.warn?.("STT", `Cloudflare STT ignored fields: ${JSON.stringify(options.ignored.slice(0, 20).map((name) => name.slice(0, 64)))}`);
+  const base = String(cfg.baseUrl).replace("{accountId}", encodeURIComponent(accountId)).replace(/\/+$/, "");
+  const url = new URL(`${base}/${model}`);
+  url.searchParams.set("punctuate", "true");
+  const lang = formData.get("language");
+  if (isString(lang) && lang.trim()) url.searchParams.set("language", lang.trim());
+  // Segments are derived from words, so only the diarization switch is forwarded.
+  for (const key of ["diarize", "diarize_model"]) if (options.query[key]) url.searchParams.set(key, options.query[key]);
+
+  const res = await proxyAwareFetch(url, {
+    method: "POST",
+    headers: { ...buildAuthHeaders(cfg, token), "Content-Type": resolveAudioContentType(file) },
+    body: await file.arrayBuffer(),
+    signal
+  }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
+  const parsed = await res.json().catch((error) => {
+    if (!(error instanceof SyntaxError)) throw error;
+    return null;
+  });
+  const data = isObject(parsed) && !Array.isArray(parsed) ? parsed : {};
+  // Cloudflare reports failures as HTTP 200 with success:false.
+  const envelopeError = cloudflareEnvelopeError(data);
+  if (envelopeError) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(envelopeError, [token]));
+  const result = isObject(data.result) && !Array.isArray(data.result) ? data.result : {};
+  const usage = result.usage;
+  const billingData = usage !== undefined && (usage === null || !isObject(usage) || Array.isArray(usage)) ? {} : result;
+  const deepgramBody = cloudflareResultToDeepgram(result);
+  const transcript = deepgramBody.results.channels[0]?.alternatives?.[0]?.transcript;
+  const text = isString(transcript) ? transcript : "";
+  const rawDuration = result.metadata?.duration;
+  const duration = isNumber(rawDuration) && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : undefined;
+  if (options.responseFormat === "text") return textResponse(text, billingData, duration ?? UNKNOWN_DURATION);
+  if (options.responseFormat === "verbose_json") {
+    const lastEnd = deepgramBody.results.utterances.at(-1)?.end;
+    return jsonResponse(
+      deepgramToVerboseJson(deepgramBody, text, options, duration ?? lastEnd),
+      billingData,
+      duration ?? UNKNOWN_DURATION
+    );
   }
   return jsonResponse({ text }, billingData, duration ?? UNKNOWN_DURATION);
 }
@@ -423,6 +478,7 @@ export async function handleSttCore({ provider, model, formData, credentials, st
     const proxyOptions = resolveCredentialProxyOptions(credentials);
     switch (cfg.format) {
       case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData, log, proxyOptions, signal);
+      case "cloudflare-workers-ai":return await transcribeCloudflareWorkersAI(cfg, file, model, token, formData, credentials, log, proxyOptions, signal);
       case "assemblyai":return await transcribeAssemblyAI(cfg, file, model, token, formData, proxyOptions, signal);
       case "nvidia-asr":return await transcribeNvidia(cfg, file, model, token, formData, proxyOptions, signal);
       case "huggingface-asr":return await transcribeHuggingFace(cfg, file, model, token, proxyOptions, signal);

@@ -465,6 +465,10 @@ export function normalizeKiroUpstreamModelId(model) {
  * @returns {{ upstream: string, agentic: boolean, thinking: boolean }}
  */
 export function resolveKiroModel(model) {
+  // Kiro cannot use Anthropic's direct-provider context beta.
+  if (/\[1m\]/i.test(model)) {
+    throw new Error("Kiro does not support the [1m] context suffix; use a direct Anthropic provider");
+  }
   let upstream = model;
   let agentic = false;
   let thinking = false;

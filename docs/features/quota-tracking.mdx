@@ -62,3 +62,5 @@ If both are exhausted and no other combo member remains, the client sees the exi
 ## Recover missing or stale limits
 
 Refresh the account and read the reported error. Reauthorize expired OAuth credentials, or check provider availability and proxy connectivity. A provider without a quota API cannot produce a live snapshot through this tracker. Resetting local usage does not replenish the upstream account.
+
+Codex quota windows can report a relative reset time. DurinDoor converts it to a timestamp. If Codex returns no quota windows, the usage response reports that explicitly.

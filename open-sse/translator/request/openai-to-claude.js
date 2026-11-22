@@ -350,6 +350,17 @@ function convertToolResultContent(content) {
         parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { type: "url", url }, ...cache });
       }
     } else if (part?.type === CLAUDE_BLOCK.IMAGE) {
+      if (isString(part.image)) {
+        const parsed = parseDataUri(part.image);
+        if (parsed?.mimeType.startsWith("image/")) {
+          parts.push({
+            type: CLAUDE_BLOCK.IMAGE,
+            source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) },
+            ...cache
+          });
+        }
+        continue;
+      }
       const source = part.source;
       if (!source || !isObject(source) || Array.isArray(source)) continue;
       if (source.type === "url" && isToolResultImageUrl(source.url)) {
@@ -412,6 +423,14 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
           }
         } else if (part.type === OPENAI_BLOCK.IMAGE && part.source) {
           blocks.push({ type: CLAUDE_BLOCK.IMAGE, source: part.source });
+        } else if (part.type === OPENAI_BLOCK.IMAGE && part.image) {
+          const parsed = parseDataUri(part.image);
+          if (parsed) {
+            blocks.push({
+              type: CLAUDE_BLOCK.IMAGE,
+              source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) }
+            });
+          }
         } else if (part.type === OPENAI_BLOCK.FILE || part.type === CLAUDE_BLOCK.DOCUMENT) {
           const source = claudePdfDocumentSource(part);
           if (source) blocks.push({ type: CLAUDE_BLOCK.DOCUMENT, source });

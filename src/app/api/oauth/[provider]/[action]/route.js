@@ -59,6 +59,9 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "ghe-copilot",
 "amazon-q",
 "muse-code",
+// WorkBuddy and Freebuff sign in with their own login state, not a PKCE pair.
+"workbuddy",
+"freebuff",
 // Codex device flow: auth.openai.com issues the PKCE pair together with the
 // device authorization code, so the client never sends a challenge of its own.
 // Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
@@ -80,6 +83,8 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set([
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
 "muse-code",
+"workbuddy",
+"freebuff",
 "kilocode",
 "codebuddy-cn"]
 );
@@ -294,7 +299,10 @@ function oauthErrorResponse(error, operation) {
 }
 
 async function beginAuthorization(provider, input) {
-  requireOAuthProvider(provider);
+  const providerData = requireOAuthProvider(provider);
+  if (provider === "devin-cli" && !providerData.supportsBrowserPkce) {
+    throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Devin CLI requires the import-token action");
+  }
   const intent = beginOAuthFlowIntent(provider, input.ownerId);
   // Anthropic only accepts its own registered redirect for the Claude OAuth
   // client, so a caller that omits one must not fall back to the generic
@@ -329,8 +337,10 @@ async function beginAuthorization(provider, input) {
     kind: "authorization",
     payload: {
       codeVerifier: authData.codeVerifier,
-      redirectUri,
-      meta,
+      // A provider may report the redirect it needs (Devin Desktop's fixed
+      // loopback, Zed's native-app port); the exchange must reuse that value.
+      redirectUri: authData.redirectUri || redirectUri,
+      meta: authData.meta ? { ...meta, ...authData.meta } : meta,
       proxySelection: resolvedProxy.selection,
       ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : null),
       ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : null)
@@ -377,6 +387,9 @@ async function beginDeviceCode(provider, input) {
       );
     }
     deviceOptions = { gheUrl };
+  } else if (provider === "minimax-code") {
+    // The account region picks the host that issues the device code.
+    deviceOptions = input.region ? { region: input.region } : undefined;
   }
   const deviceData = await callOAuthUpstream(() => requestDeviceCode(
     provider,
@@ -454,9 +467,9 @@ async function completeAuthorization(provider, input) {
 
   const claim = claimBoundOAuthFlow({ flowId, state, provider, kind: "authorization" });
   try {
-    // OrcaRouter and Openference codes must be exchanged, including JWT-shaped
-    // codes; treating one as a token would bypass the authorization grant.
-    if (provider !== ORCAROUTER_ID && provider !== "openference" && code.startsWith("eyJ") && code.includes(".")) {
+    // These flows require provider exchange even when the input looks like a JWT.
+    const requiresExchange = [ORCAROUTER_ID, "openference", "devin-desktop", "zed-hosted"].includes(provider);
+    if (!requiresExchange && code.startsWith("eyJ") && code.includes(".")) {
       const resolvedProxy = await resolveOAuthProxySelection(claim.payload.proxySelection);
       // Await before finally consumes the claim so the DB's shouldCommit guard
       // remains active through the actual write.

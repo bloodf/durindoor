@@ -343,6 +343,8 @@ export class PlaywrightChatGptWebBrowserSession {
   selection;
   closePageOnCleanup;
   executePageRequest;
+  sameOriginRedirects = false;
+  redirectRejected = false;
   constructor(page, options = {}) {
     this.page = page;
     if (isString(options)) {
@@ -351,6 +353,7 @@ export class PlaywrightChatGptWebBrowserSession {
       this.closePageOnCleanup = false;
       this.executePageRequest = executeChatGptWebFirstPartyTurn;
     } else {
+      this.sameOriginRedirects = options.sameOriginRedirects === true;
       this.pageUrl = options.pageUrl ?? "https://chatgpt.com/?temporary-chat=true";
       this.selection = options.selection;
       this.closePageOnCleanup = options.closePageOnCleanup === true;
@@ -365,10 +368,29 @@ export class PlaywrightChatGptWebBrowserSession {
   async start(handlers) {
     void handlers;
     requireFirstPartyUrl(this.pageUrl);
+    let redirectSession;
     const cleanup = async () => {
+      await redirectSession?.detach().catch(() => {});
       if (this.closePageOnCleanup) await this.page.close().catch(() => {});
     };
     try {
+      if (this.sameOriginRedirects) {
+        redirectSession = await this.page.context().newCDPSession(this.page);
+        redirectSession.on("Fetch.requestPaused", async ({ request, requestId, responseStatusCode, responseHeaders }) => {
+          const location = responseHeaders?.find(({ name }) => name.toLowerCase() === "location")?.value;
+          let destination;
+          try { destination = location && new URL(location, request.url); } catch { destination = null; }
+          if (responseStatusCode >= 300 && responseStatusCode < 400 &&
+              (location || [301, 302, 303, 307, 308].includes(responseStatusCode)) &&
+              (!destination || destination.origin !== new URL(request.url).origin)) {
+            this.redirectRejected = true;
+            await redirectSession.send("Fetch.fulfillRequest", { requestId, responseCode: 401, responseHeaders: [], body: "" });
+          } else {
+            await redirectSession.send("Fetch.continueResponse", { requestId });
+          }
+        });
+        await redirectSession.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Response" }] });
+      }
       let currentIsFirstParty = false;
       try {
         currentIsFirstParty = new URL(this.page.url()).origin === CHATGPT_WEB_ORIGIN;
@@ -378,10 +400,12 @@ export class PlaywrightChatGptWebBrowserSession {
       if (!currentIsFirstParty) {
         await this.page.goto(this.pageUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
       }
+      if (this.redirectRejected) throw new Error("ChatGPT Web session cookie redirect rejected");
       requireFirstPartyUrl(this.page.url());
       return cleanup;
     } catch (error) {
       await cleanup();
+      if (this.redirectRejected) throw new Error("ChatGPT Web session cookie redirect rejected");
       throw error;
     }
   }
@@ -389,14 +413,21 @@ export class PlaywrightChatGptWebBrowserSession {
   async submitPrompt(request) {
     if (!this.selection) throw new Error("ChatGPT Web direct request requires a model selection");
     requireFirstPartyUrl(this.page.url());
-    return this.executePageRequest(
-      this.page,
-      {
-        prompt: requirePrompt(request.prompt),
-        attachments: request.attachments,
-        selection: this.selection,
-      },
-      { signal: request.signal }
-    );
+    try {
+      const result = await this.executePageRequest(
+        this.page,
+        {
+          prompt: requirePrompt(request.prompt),
+          attachments: request.attachments,
+          selection: this.selection,
+        },
+        { signal: request.signal }
+      );
+      if (this.redirectRejected) throw new Error("ChatGPT Web session cookie redirect rejected");
+      return result;
+    } catch (error) {
+      if (this.redirectRejected) throw new Error("ChatGPT Web session cookie redirect rejected");
+      throw error;
+    }
   }
 }

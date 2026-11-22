@@ -1,11 +1,9 @@
 /**
  * Issue #1187: offline acceptance boundary, not account-backed provider proof.
  * Installed NVIDIA NIM uses native HTTPS + Bearer auth; g4f/web/app-server is
- * a distinct, unregistered identity, not an alias. Mocked catalogs, tool calls,
+ * a separately registered identity. Mocked catalogs, tool calls,
  * SSE bytes and errors prove local dispatch only, never live capabilities.
- * Keep candidate capabilities hidden until authorized account-backed evidence
- * verifies endpoint, authentication, models, tools, streaming and failures.
- * Authorized shared executor isolation preserves explicit custom transports.
+ * The suite covers candidate dispatch and unsupported provider rejection.
  * HTTP dispatch evidence uses only a mocked active connection and fake key.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +44,8 @@ const model = "meta/llama-3.1-8b-instruct";
 const credentials = { apiKey: "offline-fixture-not-a-credential" };
 const modelsUrl = "https://integrate.api.nvidia.com/v1/models";
 const chatUrl = "https://integrate.api.nvidia.com/v1/chat/completions";
+const candidateChatUrl = "https://g4f.space/api/nvidia/v1/chat/completions";
+const candidateModelsUrl = "https://g4f.space/api/nvidia/v1/models";
 const connection = { id: "offline-nvidia", provider: "nvidia", ...credentials };
 const catalog = { object: "list", data: [{ id: model, object: "model", owned_by: "meta" }] };
 let fetchMock;
@@ -75,19 +75,28 @@ afterEach(() => {
 });
 
 describe("#1187 g4f-nvidia versus installed native NVIDIA", () => {
-  it("keeps candidate identity and capabilities unregistered rather than borrowing NVIDIA metadata", async () => {
+  it("registers the candidate as its own identity without borrowing NVIDIA metadata", async () => {
     expect(normalizeProviderId("NVIDIA NIM")).toBe("nvidia");
     expect(normalizeProviderId(candidate)).toBe(candidate);
-    expect(AI_PROVIDERS[candidate]).toBeUndefined();
-    expect(PROVIDERS[candidate]).toBeUndefined();
-    expect(PROVIDER_MODELS[candidate]).toBeUndefined();
-    const response = await POST(validationRequest(candidate));
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "Provider validation not supported" });
-    await expect(fetchConnectionModels({ ...connection, provider: candidate })).resolves.toEqual({
-      error: "Provider g4f-nvidia does not support models listing", status: 400,
-    });
+    expect(AI_PROVIDERS[candidate]).toMatchObject({ name: "g4f NVIDIA" });
+    expect(PROVIDERS[candidate]).toMatchObject({ baseUrl: candidateChatUrl, format: "openai" });
+    expect(PROVIDERS.nvidia.baseUrl).toBe(chatUrl);
+    expect(PROVIDER_MODELS.g4fnv.map((entry) => entry.id)).toEqual(["nvidia/nemotron-3-nano-30b-a3b", "z-ai/glm-5.2", "minimaxai/minimax-m2.7"]);
+    expect(PROVIDER_MODELS.nvidia.some((entry) => entry.id === model)).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("validates and discovers the candidate against g4f.space only, never NVIDIA", async () => {
+    fetchMock.mockImplementation(async () => Response.json(catalog));
+    const response = await POST(validationRequest(candidate));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ valid: true, error: null });
+    await expect(fetchConnectionModels({ ...connection, provider: candidate })).resolves.toMatchObject({ models: catalog.data });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url, options] of fetchMock.mock.calls) {
+      expect(url).toBe(candidateModelsUrl);
+      expect(new Headers(options.headers).get("authorization")).toBe(`Bearer ${credentials.apiKey}`);
+    }
   });
 
   it("uses native catalog endpoint and Bearer auth for validator and account model discovery", async () => {
@@ -187,30 +196,64 @@ describe("#1187 g4f-nvidia versus installed native NVIDIA", () => {
     expect(new DefaultExecutor("cc").buildUrl(model, false)).toBe(`${PROVIDERS.claude.baseUrl}${PROVIDERS.claude.urlSuffix || ""}`);
   });
 
-  it("blocks direct DefaultExecutor construction from restoring implicit vendor dispatch", async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
-    await expect(new DefaultExecutor(candidate).execute({ model, body: { model, messages: [] }, stream: false, credentials })).rejects.toThrow(/unsupported|not supported|unknown provider/i);
+  it("rejects an unknown stored connection across discovery and both executor entry points", async () => {
+    const provider = "fleet-unregistered-provider-1187";
+    expect(AI_PROVIDERS[provider]).toBeUndefined();
+    expect(PROVIDERS[provider]).toBeUndefined();
+    expect(PROVIDER_MODELS[provider]).toBeUndefined();
+    const validation = await POST(validationRequest(provider));
+    expect(validation.status).toBe(400);
+    await expect(validation.json()).resolves.toEqual({ error: "Provider validation not supported" });
+    await expect(fetchConnectionModels({ ...connection, provider })).resolves.toEqual({
+      error: `Provider ${provider} does not support models listing`, status: 400,
+    });
+    fetchMock.mockResolvedValue(Response.json({ choices: [] }));
+    const body = { model, stream: false, messages: [{ role: "user", content: "fixture" }] };
+    await expect(new DefaultExecutor(provider).execute({
+      model, body, stream: false, credentials,
+    })).rejects.toMatchObject({ status: 400 });
+    await expect(execute(provider, body)).rejects.toMatchObject({ status: 400 });
+    getProviderConnections.mockResolvedValueOnce([{ ...connection, provider, isActive: true }]);
+    const response = await send(new Request("http://localhost:20127/api/translator/send", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, model, body }),
+    }));
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false, error: `Unknown provider "${provider}": no supported transport endpoint`,
+      request_id: expect.any(String),
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("does not dispatch unknown stored connection credentials through translator send HTTP handler", async () => {
+  it("dispatches a directly constructed candidate executor to g4f.space with its own key", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
+    const result = await new DefaultExecutor(candidate).execute({ model, body: { model, messages: [] }, stream: false, credentials });
+    expect(result.url).toBe(candidateChatUrl);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(candidateChatUrl);
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("authorization")).toBe(`Bearer ${credentials.apiKey}`);
+  });
+
+  it("sends a stored candidate connection through the translator HTTP handler to g4f.space only", async () => {
     getProviderConnections.mockResolvedValueOnce([{ ...connection, provider: candidate, isActive: true }]);
     fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
     const response = await send(new Request("http://localhost:20127/api/translator/send", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: candidate, model, body: { model, stream: false, messages: [{ role: "user", content: "fixture" }] } }),
     }));
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({
-      success: false, error: 'Unknown provider "g4f-nvidia": no supported transport endpoint',
-      request_id: expect.any(String),
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(candidateChatUrl);
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("authorization")).toBe(`Bearer ${credentials.apiKey}`);
   });
 
-  it("rejects unsupported candidate transport before credentials can dispatch to an unrelated vendor", async () => {
+  it("resolves the candidate executor to its own transport, not an unrelated vendor", async () => {
     fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
-    await expect(execute(candidate, { model, messages: [{ role: "user", content: "fixture" }] })).rejects.toThrow(/unsupported|not supported|unknown provider/i);
-    expect(fetchMock).not.toHaveBeenCalled();
+    const result = await execute(candidate, { model, messages: [{ role: "user", content: "fixture" }] });
+    expect(result.url).toBe(candidateChatUrl);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).not.toContain("nvidia.com");
+    expect(fetchMock.mock.calls[0][0]).not.toContain("openai.com");
   });
 });

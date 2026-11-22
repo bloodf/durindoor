@@ -21,7 +21,7 @@ import {
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import {
   getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus,
-  getProviderConnections, getQuotaReservationPressure, getApiKeyProviderConnectionIds, getComboForModel } from
+  getProviderConnections, updateProviderConnection, getQuotaReservationPressure, getApiKeyProviderConnectionIds, getComboForModel } from
 "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
@@ -1448,9 +1448,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // kimi-web returns a new token pair plus `providerSpecificPatch`; keep it
         // in the encrypted token columns so the next request and a restart start
         // from it. Web-cookie executors (chatgpt-web) hand back a rotated session
-        // cookie as `apiKey`; persist only that, only for cookie connections.
+        // cookie as `apiKey`. PromptQL saves its derived credentials against the
+        // sending cookie so a concurrent re-import cannot receive a stale token.
         ...(activeConnection && activeConnection.authType !== "oauth" ? {
           onCredentialsRefreshed: async (next) => {
+            if (provider === "promptql" && cookieRefreshContext && next?.promptqlSession) {
+              return updateProviderConnection(credentials.connectionId, {
+                accessToken: next.accessToken,
+                providerSpecificData: next.promptqlSession
+              }, { expectedRefreshContext: cookieRefreshContext });
+            }
             if (next?.providerSpecificPatch) {
               await updateProviderCredentials(credentials.connectionId, {
                 accessToken: next.accessToken,

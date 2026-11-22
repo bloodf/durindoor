@@ -1,19 +1,24 @@
 "use strict";
 
 /**
- * Locating 9router's own leftover processes — safely.
+ * Locating DurinDoor's (and legacy 9router's) own leftover processes — safely.
  *
- * Two rules the previous implementations broke:
+ * Three rules the previous implementations broke:
  *
  * 1. A pid must come from the pid *column*. We used to scan `ps aux` line by line
  *    and take the second whitespace-separated token as the pid. `ps` wraps long
  *    command lines, and a wrapped continuation line still contains the strings we
- *    match on ("9router", "next-server", …), so the "pid" could be any number in
- *    the command text and `kill -9` then hit an unrelated process. That is how a
- *    supervisor which had merely started the CLI got killed.
- * 2. Never kill a process we descend from. The parent of a 9router process is
+ *    match on ("durindoor", "9router", "next-server", …), so the "pid" could be
+ *    any number in the command text and `kill -9` then hit an unrelated process.
+ *    That is how a supervisor which had merely started the CLI got killed.
+ * 2. Never kill a process we descend from. The parent of a launcher process is
  *    whoever launched it — a supervisor, a shell, a service manager — never a
  *    stale copy of us. Killing it takes down the thing keeping us running.
+ * 3. Shared/generic binaries (`next-server`, `cloudflared`, `tray_*`) must be
+ *    verified to belong to this installation before killing (fail closed):
+ *    - `next-server`: cwd (or Windows command line) inside `appDir`
+ *    - `cloudflared`: PID recorded in `cloudflared.pid` or `--url` targeting `appPort`
+ *    - `tray_*`: binary path inside this installation's directory (`installDir`/`dataDir`/`appDir`)
  *
  * Every candidate is re-checked (alive, and still matching) right before the
  * kill, so a recycled pid cannot be hit either.
@@ -25,28 +30,88 @@ const fs = require("fs");
 
 const PS_TIMEOUT_MS = 5000;
 const MAX_ANCESTORS = 32;
+/** Package names recognized for DurinDoor and legacy 9router launcher processes. */
+const APP_PROCESS_IDENTIFIERS = Object.freeze(["durindoor", "9router"]);
+const TRAY_BIN_NAME_RE = /^tray_(?:darwin|linux|windows)[^\s"']*$/i;
+
+/** Extract the executable token from a command line, preserving quoted paths. */
+function extractExecutable(command) {
+  const trimmed = String(command || "").trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/^(?:"([^"]+)"|'([^']+)'|(\S+))/);
+  return match ? (match[1] ?? match[2] ?? match[3] ?? "") : "";
+}
 
 /** True when the executable is a node binary (so a shell that merely mentions node is not one). */
 function looksLikeNode(executable) {
-  const exe = String(executable || "").replace(/^"|"$/g, "").toLowerCase();
+  const exe = String(executable || "").replace(/^["']|["']$/g, "").toLowerCase();
   return exe === "node" || exe === "node.exe" || /[\\/]node(\.exe)?$/.test(exe);
 }
 
-/** Command lines that mean "a process of ours". Matched against a verified command line. */
+/** True when a command line represents a Next.js worker process. */
+function isNextServerProcess(command) {
+  return String(command || "").toLowerCase().includes("next-server");
+}
+
+/** True when the executable is a cloudflared binary. */
+function isCloudflaredProcess(command) {
+  const exe = extractExecutable(command).toLowerCase();
+  if (exe === "cloudflared" || exe === "cloudflared.exe" || /[\\/]cloudflared(\.exe)?$/.test(exe)) {
+    return true;
+  }
+  const trimmed = String(command || "").trim();
+  if (!trimmed.startsWith('"') && !trimmed.startsWith("'")) {
+    return /^(?:[a-z]:[\\/]|[\\/])(?:[^"'\s]|\s+(?![\\/\-]))*?[\\/]cloudflared(?:\.exe)?(?=\s|$)/i.test(trimmed);
+  }
+  return false;
+}
+
+/** Extract the tray binary path when the executable is a systray helper binary. */
+function extractTrayBinaryPath(command) {
+  const trimmed = String(command || "").trim();
+  if (!trimmed) return null;
+  const exe = extractExecutable(trimmed);
+  const exeBase = exe.split(/[\\/]/).pop() || "";
+  if (TRAY_BIN_NAME_RE.test(exeBase)) return exe;
+  if (!trimmed.startsWith('"') && !trimmed.startsWith("'")) {
+    const match = trimmed.match(
+      /^((?:[a-z]:[\\/]|[\\/])(?:[^"'\s]|\s+(?![\\/\-]))*?[\\/]tray_(?:darwin|linux|windows)[^\s"']*)(?=\s|$)/i,
+    );
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/** True when the executable is a systray helper binary (`tray_darwin*`, `tray_linux*`, `tray_windows*`). */
+function isTrayProcess(command) {
+  return extractTrayBinaryPath(command) !== null;
+}
+
+/** True when a node process is running the DurinDoor or legacy 9router CLI/app. */
+function isLauncherProcess(command) {
+  const cmd = String(command || "");
+  if (!cmd.trim()) return false;
+  if (!looksLikeNode(extractExecutable(cmd))) return false;
+  const lower = cmd.toLowerCase();
+  const hasCliEntry = /(?:^|[\\/])cli\.js(?=$|[\s"'])/.test(lower);
+  return APP_PROCESS_IDENTIFIERS.some((id) => {
+    if (!lower.includes(id)) return false;
+    if (hasCliEntry) return true;
+    return new RegExp(`[\\\\/]${id}(?:[\\\\/\\s"']|$)`).test(lower);
+  });
+}
+
+/** Command lines that mean "a candidate process of ours". Ownership is enforced by `collectAppPids`. */
 function isAppProcess(command) {
   const cmd = String(command || "");
   if (!cmd.trim()) return false;
-  const lower = cmd.toLowerCase();
-  if (lower.includes("next-server")) return true;
-  if (lower.includes("cloudflared")) return true;
-  if (lower.includes("tray_darwin") || lower.includes("tray_linux") || lower.includes("tray_windows")) return true;
+  if (isNextServerProcess(cmd)) return true;
+  if (isCloudflaredProcess(cmd)) return true;
+  if (isTrayProcess(cmd)) return true;
   // A node process running the CLI or started from the package directory. The
   // executable itself has to be node: a shell or editor that merely mentions
   // these strings in its command line is not one of our processes.
-  const [executable = ""] = cmd.trim().split(/\s+/);
-  return looksLikeNode(executable)
-    && lower.includes("9router")
-    && (lower.includes("cli.js") || lower.includes("/9router") || lower.includes("\\9router"));
+  return isLauncherProcess(cmd);
 }
 
 /**
@@ -177,11 +242,113 @@ function ownsNextServer(pid, appDir, command, platform = process.platform) {
   } catch { return false; }
 }
 
+/** Read a canonical positive PID from a pid file, or return null. */
+function readPidFile(pidFile) {
+  if (!pidFile) return null;
+  try {
+    const raw = String(fs.readFileSync(pidFile, "utf8")).trim();
+    if (!/^[1-9]\d*$/.test(raw)) return null;
+    const pid = Number(raw);
+    return Number.isSafeInteger(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Pids of this app's leftovers, verified: the pid is alive and its command line
- * still looks like ours (so a recycled pid is not mistaken for one of them).
+ * Fail closed when a cloudflared process cannot be tied to this installation.
+ * Owned only when its PID matches this install's `cloudflared.pid` file (or
+ * explicit `cloudflaredPid`) or its `--url` targets `appPort` on loopback.
+ */
+function ownsCloudflared(pid, command, options = {}) {
+  if (!isCloudflaredProcess(command)) return false;
+  const numericPid = Number(pid);
+  if (Number.isSafeInteger(numericPid) && numericPid > 0) {
+    if (Number.isSafeInteger(Number(options.cloudflaredPid)) && Number(options.cloudflaredPid) === numericPid) {
+      return true;
+    }
+    const pidFile = options.cloudflaredPidFile
+      || (options.dataDir ? path.join(options.dataDir, "tunnel", "cloudflared.pid") : null);
+    if (pidFile) {
+      const readPid = options.readPidFile || readPidFile;
+      if (readPid(pidFile) === numericPid) return true;
+    }
+  }
+  const portStr = options.appPort == null ? "" : String(options.appPort).trim();
+  if (/^[1-9]\d*$/.test(portStr)) {
+    const urlPattern = new RegExp(
+      `(?:^|\\s)--url(?:=|\\s+)["']?(?:https?:\\/\\/)?(?:localhost|127\\.0\\.0\\.1|\\[::1\\]):${portStr}(?:\\/|["'\\s]|$)`,
+      "i",
+    );
+    if (urlPattern.test(String(command || ""))) return true;
+  }
+  return false;
+}
+
+function normalizePathForCompare(value, platform) {
+  const pathImpl = platform === "win32" ? path.win32 : path.posix;
+  const raw = String(value || "").trim().replace(/^["']|["']$/g, "");
+  if (!raw) return "";
+  const normalized = pathImpl.normalize(platform === "win32" ? raw.replace(/\//g, "\\") : raw);
+  const root = pathImpl.parse(normalized).root;
+  const trimmed = normalized === root ? normalized : normalized.replace(/[\\/]+$/, "");
+  return platform === "win32" ? trimmed.toLowerCase() : trimmed;
+}
+
+function isPathWithin(target, baseDir, platform) {
+  const effectivePlatform = platform
+    || (/^[a-z]:[\\/]/i.test(String(target || "")) || /^[a-z]:[\\/]/i.test(String(baseDir || ""))
+      ? "win32"
+      : process.platform);
+  const pathImpl = effectivePlatform === "win32" ? path.win32 : path.posix;
+  const check = (candidatePath, dirPath) => {
+    const normTarget = normalizePathForCompare(candidatePath, effectivePlatform);
+    const normBase = normalizePathForCompare(dirPath, effectivePlatform);
+    if (!normTarget || !normBase) return false;
+    if (!pathImpl.isAbsolute(normTarget) || !pathImpl.isAbsolute(normBase)) return false;
+    const rel = pathImpl.relative(normBase, normTarget);
+    return rel === "" || (!rel.startsWith(".." + pathImpl.sep) && rel !== ".." && !pathImpl.isAbsolute(rel));
+  };
+  if (check(target, baseDir)) return true;
+  if (effectivePlatform === process.platform) {
+    try {
+      return check(fs.realpathSync(target), fs.realpathSync(baseDir));
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Fail closed when a systray helper binary cannot be tied to this installation.
+ * Owned only when the tray executable lives under this installation's directory
+ * (`installDir`, `dataDir`, `appDir`, or explicit `trayDirs`).
+ */
+function ownsTrayProcess(command, options = {}, platform) {
+  const trayPath = extractTrayBinaryPath(command);
+  if (!trayPath) return false;
+  const allowedDirs = [
+    ...(Array.isArray(options.trayDirs) ? options.trayDirs : []),
+    options.installDir,
+    options.dataDir,
+    options.appDir,
+  ].filter(Boolean);
+  if (allowedDirs.length === 0) return false;
+  const effectivePlatform = platform || options.platform;
+  return allowedDirs.some((dir) => isPathWithin(trayPath, dir, effectivePlatform));
+}
+
+/**
+ * Pids of this app's leftovers, verified: the pid is alive, its command line
+ * still looks like ours (so a recycled pid is not mistaken for one of them),
+ * and shared/generic binaries (`next-server`, `cloudflared`, `tray_*`) pass
+ * installation ownership checks.
  *
- * `options` exists for tests: `processes`, `readCommand` and `exclude`.
+ * `options` supports ownership bounds (`appDir`, `installDir`, `dataDir`,
+ * `appPort`, `cloudflaredPid`, `cloudflaredPidFile`, `trayDirs`) and test
+ * overrides (`processes`, `readCommand`, `exclude`, `ownsNextServer`,
+ * `ownsCloudflared`, `ownsTrayProcess`, `readPidFile`, `platform`).
  */
 function collectAppPids(options = {}) {
   const readCommandImpl = options.readCommand || readCommand;
@@ -198,8 +365,12 @@ function collectAppPids(options = {}) {
     if (!isAppProcess(row.command) || exclude.has(row.pid)) continue;
     const live = readCommandImpl(row.pid);
     if (live === null || !isAppProcess(live)) continue;
-    if (live.toLowerCase().includes("next-server") &&
+    if (isNextServerProcess(live) &&
         !(options.ownsNextServer || ownsNextServer)(row.pid, options.appDir, live)) continue;
+    if (isCloudflaredProcess(live) &&
+        !(options.ownsCloudflared || ownsCloudflared)(row.pid, live, options)) continue;
+    if (isTrayProcess(live) &&
+        !(options.ownsTrayProcess || ownsTrayProcess)(live, options)) continue;
     pids.push(row.pid);
   }
   return pids;
@@ -238,13 +409,20 @@ function killAppPids(pids) {
 }
 
 module.exports = {
+  APP_PROCESS_IDENTIFIERS,
   isAppProcess,
+  isCloudflaredProcess,
+  isTrayProcess,
+  isLauncherProcess,
   ownsNextServer,
+  ownsCloudflared,
+  ownsTrayProcess,
   looksLikeNode,
   parseProcessTable,
   parseWindowsProcessTable,
   readProcessTable,
   readCommand,
+  readPidFile,
   ownProcessChain,
   portOccupantToKill,
   collectAppPids,

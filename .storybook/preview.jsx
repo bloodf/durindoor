@@ -4,6 +4,7 @@ import { loader } from "@monaco-editor/react";
 import "./material-symbols.css";
 import "../src/shared/ui/tokens.css";
 import "../src/app/globals.css";
+import "../src/shared/ui/v5/production/v5-tokens.css";
 import "./preview.css";
 
 import { LOCALES, LOCALE_NAMES, DEFAULT_LOCALE } from "../src/i18n/config.js";
@@ -93,6 +94,15 @@ export async function setupStoryLifecycle(context) {
     cleanups.push(() => {
       if (previousReview === null) document.documentElement.removeAttribute("data-v5-review");
       else document.documentElement.setAttribute("data-v5-review", previousReview);
+    });
+    // The review frame renders V5, so migrated production sources see both the
+    // legacy review marker and the production switch attribute.
+    const previousUi = document.documentElement.getAttribute("data-ui");
+    if (context.parameters.v5Review) document.documentElement.dataset.ui = "v5";
+    else document.documentElement.removeAttribute("data-ui");
+    cleanups.push(() => {
+      if (previousUi === null) document.documentElement.removeAttribute("data-ui");
+      else document.documentElement.setAttribute("data-ui", previousUi);
     });
     if (context.parameters.v5Review) cleanups.push(installReviewInteractions());
     const teardownTheme = setupStoryThemeScope(context);

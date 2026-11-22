@@ -6,6 +6,13 @@ import { retryWithBackoff } from "./retry";
 import { isRecord } from "./guards";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
+// Child processes receive only basic execution, locale and proxy settings.
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    /^(PATH|HOME|USER|LANG|LC_.*|TMPDIR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SystemRoot|ComSpec)$/i.test(key)
+  ));
+}
+
 const STDIO_KEY = "__9routerGatewayStdio";
 const STDIO_PROTOCOL_VERSION = "2025-06-18";
 const STDIO_TIMEOUT_MS = 60_000;
@@ -109,7 +116,7 @@ class StdioEntry {
     try {
       proc = spawn(command, argv, {
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ...extraEnv }
+        env: Object.fromEntries(Object.entries({ ...childEnv(), ...extraEnv }).filter(([key]) => !/^(JWT_SECRET|API_KEY_SECRET)$/i.test(key)))
       });
     } catch (e) {
       const err = new Error(`failed to spawn ${command}: ${e instanceof Error ? e.message : String(e)}`);

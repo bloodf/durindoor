@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDisabledModels, disableModels, enableModels } from "@/lib/disabledModelsDb";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,10 @@ export async function POST(request) {
     if (!providerAlias || !Array.isArray(ids)) {
       return NextResponse.json({ error: "providerAlias and ids[] required" }, { status: 400 });
     }
-    await disableModels(providerAlias, ids);
+    await disableModels(providerAlias, ids.filter((id) => isString(id) && id.trim() !== "").map((id) => id.trim()));
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.log("Error disabling models:", error);
     return NextResponse.json({ error: "Failed to disable models" }, { status: 500 });
   }

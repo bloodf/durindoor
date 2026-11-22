@@ -7,17 +7,43 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
-import { isObject } from "../../../../shared/utils/typeChecks.js";
+import { isRecord } from "../../../../shared/utils/typeChecks.js";
 import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
 const getCodexDir = () => path.join(os.homedir(), ".codex");
 const getCodexConfigPath = () => path.join(getCodexDir(), "config.toml");
 const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
+const getCodexBackupPath = () => path.join(getCodexDir(), ".durindoor-backup.json");
+
+const captureField = (obj, key) =>
+  isRecord(obj) && Object.hasOwn(obj, key)
+    ? { had: true, value: obj[key] }
+    : { had: false };
+
+const restoreField = (obj, key, backupEntry) => {
+  if (backupEntry?.had) {
+    obj[key] = backupEntry.value;
+  } else {
+    delete obj[key];
+  }
+};
 
 // Flatten confbox-parsed TOML into a writable object, preserving nested tables
 const parsedToWritable = (obj) => obj ?? {};
+
+const redactCodexTokens = (value) => {
+  if (Array.isArray(value)) return value.map(redactCodexTokens);
+  if (!value || !isObject(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    /token$/i.test(key) && child != null && child !== ""
+      ? "[REDACTED]"
+      : redactCodexTokens(child),
+  ]));
+};
 
 /**
  * Parse a config that must remain a keyed object when merged and serialized.
@@ -25,7 +51,7 @@ const parsedToWritable = (obj) => obj ?? {};
  */
 const parseConfigObject = (raw, parse) => {
   const parsed = parse(raw);
-  if (parsed === null || parsed === undefined || !isObject(parsed) || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new Error("expected an object");
   }
   return parsed;
@@ -36,7 +62,7 @@ const setNestedSection = (obj, dottedKey, value) => {
   const keys = dottedKey.split(".");
   let cur = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    if (cur[keys[i]] == null || !isObject(cur[keys[i]])) {
+    if (!isRecord(cur[keys[i]])) {
       cur[keys[i]] = {};
     }
     cur = cur[keys[i]];
@@ -107,10 +133,13 @@ export async function GET() {
     }
 
     const config = await readConfig();
+    const redactedConfig = config
+      ? stringifyTOML(redactSecrets(redactCodexTokens(parseTOML(config))))
+      : config;
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactedConfig,
       has9Router: has9RouterConfig(config),
       configPath: getCodexConfigPath()
     });
@@ -132,42 +161,88 @@ export async function POST(request) {
     const codexDir = getCodexDir();
     const configPath = getCodexConfigPath();
     const authPath = getCodexAuthPath();
+    const backupPath = getCodexBackupPath();
 
     // Ensure directory exists
     await fs.mkdir(codexDir, { recursive: true });
 
-    // Parse both existing files before either write. Otherwise a bad auth.json
+    // Parse existing files before any write. Otherwise a bad auth.json
     // could reject the request only after config.toml had already been replaced.
-    const [existingConfig, existingAuth] = await Promise.all([
+    const [existingConfig, existingAuth, existingBackup] = await Promise.all([
       readExistingConfig(
         configPath,
         (raw) => parseConfigObject(raw, (value) => parsedToWritable(parseTOML(value))),
       ),
       readExistingConfig(authPath, (raw) => parseConfigObject(raw, JSON.parse)),
+      readExistingConfig(backupPath, (raw) => parseConfigObject(raw, JSON.parse)),
     ]);
     const parsed = existingConfig ?? {};
     const authData = existingAuth ?? {};
+
+    const effectiveSubagentModel = subagentModel || model;
+
+    // Remember user-owned values on first apply so reset restores them instead of deleting them.
+    const backupBase = existingBackup ?? (
+      existingConfig?.model_provider === "9router"
+        ? {
+            config: {
+              model: { had: false },
+              model_provider: { had: false },
+              subagentModel: { had: false },
+            },
+            auth: {
+              OPENAI_API_KEY: { had: false },
+              auth_mode: { had: false },
+            },
+          }
+        : {
+            config: {
+              model: captureField(existingConfig, "model"),
+              model_provider: captureField(existingConfig, "model_provider"),
+              subagentModel: captureField(existingConfig?.agents?.subagent, "model"),
+            },
+            auth: {
+              OPENAI_API_KEY: captureField(existingAuth, "OPENAI_API_KEY"),
+              auth_mode: captureField(existingAuth, "auth_mode"),
+            },
+          }
+    );
+
+    const nextBackup = {
+      config: backupBase.config,
+      auth: backupBase.auth,
+      written: {
+        model,
+        model_provider: "9router",
+        subagentModel: effectiveSubagentModel,
+        OPENAI_API_KEY: apiKey,
+        auth_mode: "apikey",
+      },
+    };
 
     // Update only DurinDoor related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
     parsed.model_provider = "9router";
 
     // Update or create 9router provider section (display name DurinDoor) (no api_key - Codex reads from auth.json)
-    // Ensure /v1 suffix is added only once
-    const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+    // Normalize trailing slashes so we always end with a single /v1
+    const trimmedBaseUrl = baseUrl.replace(/\/+$/, "");
+    const normalizedBaseUrl = trimmedBaseUrl.endsWith("/v1") ? trimmedBaseUrl : `${trimmedBaseUrl}/v1`;
     setNestedSection(parsed, "model_providers.9router", {
       name: "DurinDoor",
       base_url: normalizedBaseUrl,
       wire_api: "responses"
     });
 
-    // Add subagent configuration
-    const effectiveSubagentModel = subagentModel || model;
+    // Add subagent configuration while preserving unrelated keys under [agents.subagent]
+    const existingSubagent = isRecord(parsed.agents?.subagent) ? parsed.agents.subagent : {};
     setNestedSection(parsed, "agents.subagent", {
+      ...existingSubagent,
       model: effectiveSubagentModel
     });
 
-    // Both destinations passed preflight above; now write their merged values.
+    // Persist backup first, then write the merged config.toml and auth.json
+    await fs.writeFile(backupPath, JSON.stringify(nextBackup, null, 2), { mode: 0o600 });
     const configContent = stringifyTOML(parsed);
     await fs.writeFile(configPath, configContent);
 
@@ -191,57 +266,102 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove DurinDoor settings only (keep other settings)
+// DELETE - Remove DurinDoor settings only (restore backed-up user values, keep other settings)
 export async function DELETE() {
   try {
     const configPath = getCodexConfigPath();
+    const authPath = getCodexAuthPath();
+    const backupPath = getCodexBackupPath();
 
-    // Read and parse existing config
-    let parsed = {};
-    try {
-      const existingConfig = await fs.readFile(configPath, "utf-8");
-      parsed = parsedToWritable(parseTOML(existingConfig));
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({
-          success: true,
-          message: "No config file to reset"
-        });
-      }
-      throw error;
+    // Read and parse existing config, auth, and backup safely
+    const [existingConfig, existingAuth, existingBackup] = await Promise.all([
+      readExistingConfig(
+        configPath,
+        (raw) => parseConfigObject(raw, (value) => parsedToWritable(parseTOML(value))),
+      ),
+      readExistingConfig(authPath, (raw) => parseConfigObject(raw, JSON.parse)),
+      readExistingConfig(backupPath, (raw) => parseConfigObject(raw, JSON.parse)),
+    ]);
+
+    if (!existingConfig) {
+      return NextResponse.json({
+        success: true,
+        message: "No config file to reset"
+      });
     }
 
-    // Remove DurinDoor related root fields only if they point to 9router
-    if (parsed.model_provider === "9router") {
-      delete parsed.model;
-      delete parsed.model_provider;
-    }
+    const parsed = existingConfig;
 
-    // Remove 9router provider section
+    // Remove 9router provider section and clean up empty [model_providers]
     deleteNestedSection(parsed, "model_providers.9router");
+    if (isRecord(parsed.model_providers) && Object.keys(parsed.model_providers).length === 0) {
+      delete parsed.model_providers;
+    }
 
-    // Remove subagent configuration
-    deleteNestedSection(parsed, "agents.subagent");
+    if (existingBackup) {
+      const written = isRecord(existingBackup.written) ? existingBackup.written : {};
+
+      if (parsed.model === written.model || parsed.model_provider === "9router") {
+        restoreField(parsed, "model", existingBackup.config?.model);
+      }
+      if (parsed.model_provider === (written.model_provider || "9router")) {
+        restoreField(parsed, "model_provider", existingBackup.config?.model_provider);
+      }
+
+      if (isRecord(parsed.agents?.subagent) && parsed.agents.subagent.model === written.subagentModel) {
+        restoreField(parsed.agents.subagent, "model", existingBackup.config?.subagentModel);
+        if (Object.keys(parsed.agents.subagent).length === 0) {
+          delete parsed.agents.subagent;
+        }
+      }
+      if (isRecord(parsed.agents) && Object.keys(parsed.agents).length === 0) {
+        delete parsed.agents;
+      }
+
+      if (existingAuth) {
+        if (existingAuth.OPENAI_API_KEY === written.OPENAI_API_KEY) {
+          restoreField(existingAuth, "OPENAI_API_KEY", existingBackup.auth?.OPENAI_API_KEY);
+        }
+        if (existingAuth.auth_mode === written.auth_mode) {
+          restoreField(existingAuth, "auth_mode", existingBackup.auth?.auth_mode);
+        }
+
+        if (Object.keys(existingAuth).length === 0) {
+          await fs.unlink(authPath);
+        } else {
+          await fs.writeFile(authPath, JSON.stringify(existingAuth, null, 2));
+        }
+      }
+
+      await fs.unlink(backupPath).catch((err) => {
+        if (err?.code !== "ENOENT") throw err;
+      });
+    } else {
+      // No backup (legacy or user-only config): only remove fields when DurinDoor owns model_provider.
+      const ownedByDurinDoor = parsed.model_provider === "9router";
+      if (ownedByDurinDoor) {
+        delete parsed.model;
+        delete parsed.model_provider;
+        deleteNestedSection(parsed, "agents.subagent");
+        if (isRecord(parsed.agents) && Object.keys(parsed.agents).length === 0) {
+          delete parsed.agents;
+        }
+
+        if (existingAuth) {
+          delete existingAuth.OPENAI_API_KEY;
+          delete existingAuth.auth_mode;
+          if (Object.keys(existingAuth).length === 0) {
+            await fs.unlink(authPath);
+          } else {
+            await fs.writeFile(authPath, JSON.stringify(existingAuth, null, 2));
+          }
+        }
+      }
+    }
 
     // Write updated config
     const configContent = stringifyTOML(parsed);
     await fs.writeFile(configPath, configContent);
-
-    // Remove OPENAI_API_KEY from auth.json
-    const authPath = getCodexAuthPath();
-    try {
-      const existingAuth = await fs.readFile(authPath, "utf-8");
-      const authData = JSON.parse(existingAuth);
-      delete authData.OPENAI_API_KEY;
-      delete authData.auth_mode;
-
-      // Write back or delete if empty
-      if (Object.keys(authData).length === 0) {
-        await fs.unlink(authPath);
-      } else {
-        await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
-      }
-    } catch {/* No auth file */}
 
     return NextResponse.json({
       success: true,
@@ -249,6 +369,10 @@ export async function DELETE() {
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);
-    return NextResponse.json({ error: "Failed to reset codex settings" }, { status: 500 });
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    return NextResponse.json(
+      { error: refusedToClobber ? error.message : "Failed to reset codex settings" },
+      { status: 500 },
+    );
   }
 }

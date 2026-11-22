@@ -242,13 +242,8 @@ export function getClientIp(request) {
     const realIp = request.headers.get("x-9r-real-ip");
     if (realIp) return toLimiterBucket(realIp);
   }
-  // Behind a trusted reverse proxy that overwrites XFF with the real client IP.
-  // TRUST_PROXY configures proxy semantics; wrapper proof establishes header provenance.
-  if (process.env.TRUST_PROXY === "true" && hasTrustedPeerHeaders(request)) {
-    const xff = request.headers.get("x-forwarded-for");
-    if (xff) return toLimiterBucket(xff.split(",")[0].trim());
-  }
   // Direct exposure without custom-server: single bucket so spoofed XFF
-  // rotation cannot escape the limiter.
+  // rotation cannot escape the limiter. TRUST_PROXY no longer reads XFF here
+  // (#2175 / #2312); only wrapper-stamped x-9r-real-ip is trusted.
   return "unknown";
 }

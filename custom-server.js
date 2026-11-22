@@ -78,7 +78,12 @@ function canonicalizeRuntimePaths() {
 }
 
 function isMitmMutation(req) {
-  const pathname = new URL(req.url || "/", "http://localhost").pathname;
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url || "/", "http://localhost").pathname);
+  } catch {
+    return false;
+  }
   const method = String(req.method || "GET").toUpperCase();
   return ((pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) && method !== "GET") ||
   (pathname === REALTIME_NATIVE_CONTROL_PATH && method === "POST");
@@ -375,11 +380,17 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
     });
 
     try {
+      // Upgrades bypass the HTTP peer wrapper. Carry remote classification over
+      // every loopback hop using the wrapper's existing proxy convention.
+      const peerIp = socket.remoteAddress || "";
+      const remotePeer = !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(peerIp) ||
+        Boolean(req.headers?.["x-forwarded-for"] || req.headers?.["x-real-ip"]);
+      const peerHeaders = remotePeer ? { "x-forwarded-for": "0.0.0.0" } : {};
       const { key } = extractRealtimeKey(req);
       const cliToken = isString(req.headers?.["x-9r-cli-token"]) ?
       req.headers["x-9r-cli-token"] :
       null;
-      const auth = await probeApiKey({ key, cliToken, authUrl: loopbackAuthUrl(port) });
+      const auth = await probeApiKey({ key, cliToken, remotePeer, authUrl: loopbackAuthUrl(port) });
       if (closed) return;
       if (!auth.ok) {
         queue.length = 0; // discard anything the optimistic client already sent
@@ -422,7 +433,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
       const nativeRequest = await fetch(loopbackNativeRealtimeUrl(port), {
         method: "POST",
         signal: AbortSignal.any([setupAbort.signal, AbortSignal.timeout(10_000)]),
-        headers: { "content-type": "application/json", ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt: operatorExpiresAt }) } : null) },
+        headers: { "content-type": "application/json", ...peerHeaders, ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt: operatorExpiresAt }) } : null) },
         body: JSON.stringify({ model: nativeModel, path: nativePath, operatorExpiresAt, query: [...nativeUrl.searchParams], ...(connectionId ? { connectionId } : null) })
       });
       if (nativeRequest.status === 200) {
@@ -433,7 +444,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
           const expiresAt = Date.now() + 5000;
           const checked = await fetch(loopbackNativeRealtimeUrl(port), {
             method: "POST", signal: AbortSignal.timeout(5000),
-            headers: { "content-type": "application/json", ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt }) } : null) },
+            headers: { "content-type": "application/json", ...peerHeaders, ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt }) } : null) },
             body: JSON.stringify({ model: nativeModel, path: nativePath, operatorExpiresAt: expiresAt, authorizeModel: value, ...(connectionId ? { connectionId } : null) })
           });
           if (checked.status !== 204) throw new Error("Native realtime model access denied");
@@ -470,7 +481,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
         return;
       }
       const session = { id: `sess_${crypto.randomUUID()}`, model: nativeModel, instructions: "", modalities: ["text"], temperature: undefined, maxOutputTokens: undefined, items: [] };
-      const headers = { ...(key ? { Authorization: `Bearer ${key}` } : null), ...(cliToken ? { "x-9r-cli-token": cliToken } : null) };
+      const headers = { ...peerHeaders, ...(key ? { Authorization: `Bearer ${key}` } : null), ...(cliToken ? { "x-9r-cli-token": cliToken } : null) };
       const chat = async ({ body, headers: h, signal }) => fetch(loopbackChatUrl(port), { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body), signal });
       rt = createRealtimeSession({ ws, session, chat, headers });
       ws.send(JSON.stringify({ type: "session.created", event_id: `evt_${crypto.randomUUID()}`, session: publicRealtimeSession(session) }));

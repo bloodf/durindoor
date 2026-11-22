@@ -62,6 +62,7 @@ import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } 
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { isCursorProvider } from "../providers/cursorProviders.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
@@ -342,7 +343,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   rawCredentials;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
-  if (provider === "cursor" || provider === "cu") {
+  if (isCursorProvider(provider)) {
     try {
       validateCursorImages(body);
     } catch (error) {
@@ -703,7 +704,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // A stack rtk step is fidelity-gated like every stack step; the plain RTK
   // toggle alone keeps its ungated behavior.
   const rtkGate = rtkInStack ? { textInvariants: compressionFidelityGate === true } : null;
-  const preTranslateRtk = provider === "cursor" ?
+  const preTranslateRtk = isCursorProvider(provider) ?
   compressRtkGated(body, runRtk, rtkGate, log) :
   null;
 

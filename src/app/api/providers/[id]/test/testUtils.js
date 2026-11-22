@@ -126,6 +126,13 @@ export const OAUTH_TEST_CONFIG = {
   // A minted Muse key has no expiry; presence is the check, and a dca-only
   // login is reminted on first use.
   "muse-code": { tokenExists: true },
+  // Opt-in session providers (#2034). The test never calls their gateways: a stored
+  // credential is the check, and a token with an expiry is checked locally.
+  "devin-desktop": { tokenExists: true },
+  freebuff: { tokenExists: true },
+  "zed-hosted": { tokenExists: true },
+  "minimax-code": { checkExpiry: true, refreshable: false },
+  workbuddy: { checkExpiry: true, refreshable: false },
   qoder: {
     // Test by hitting Qoder's userinfo endpoint with the device token.
     // refreshable: false because the device-flow refresh endpoint returns

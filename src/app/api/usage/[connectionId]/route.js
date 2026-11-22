@@ -24,6 +24,20 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "adapta-web": "Adapta Web",
   "t3-web": "T3 Chat Web",
   "yuanbao-web": "Yuanbao Web",
+  "claude-web": "Claude Web",
+  "gemini-web": "Gemini Web",
+  "doubao-web": "Doubao Web",
+  "zai-web": "Z.ai Web",
+  "chatgpt-web-codex": "ChatGPT Web Codex",
+  chatplayground: "ChatPlayground",
+  lmarena: "Arena",
+  maxai: "MaxAI",
+  promptql: "PromptQL",
+  "notion-web": "Notion AI Web",
+  "notrack-web": "NoTrack Web",
+  "tencent-aistudio-web": "Tencent AI Studio Web",
+  "blackbox-web": "Blackbox Web",
+  "conol-web": "Conol Web",
 };
 
 // Detect auth-expired messages returned by usage providers instead of throwing

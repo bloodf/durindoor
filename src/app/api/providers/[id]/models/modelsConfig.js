@@ -26,6 +26,9 @@ import {
   parseAntigravityCatalogModels
 } from "open-sse/services/antigravityCatalog.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
+import { discoverCursorApiModels, isCursorApiDispatchEnabled } from "open-sse/executors/cursor-api.js";
+import { discoverDevinDesktopModels, isDevinDesktopDispatchEnabled } from "open-sse/executors/devin-desktop.js";
+import { modelsConfig as workbuddyModelsConfig } from "open-sse/providers/registry/workbuddy.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
@@ -416,6 +419,12 @@ export async function persistCopilotEndpointContract(connection, rows) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  // ChatPlayground's catalog is read with the session Cookie header and lists each bot by `botId`.
+  chatplayground: {
+    url: "https://app.chatplayground.ai/api/models", method: "GET", headers: {},
+    buildHeaders: (_token, connection) => ({ Cookie: connection.apiKey }),
+    parseResponse: (data) => (data?.data || data?.models || []).filter((row) => row?.botId).map((row) => ({ id: row.botId, name: row.displayName || row.modelName || row.botId })),
+  },
   empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {
@@ -743,6 +752,50 @@ export const PROVIDER_MODELS_CONFIG = {
       };
     }
   },
+  // Cursor API key connection: discovery exchanges the key for a session token, so a
+  // connection that has not opted in to dispatch never reaches the exchange.
+  "cursor-api": {
+    customResolver: async (connection, proxyOptions = null) => {
+      if (!isCursorApiDispatchEnabled(connection)) {
+        return { error: "Cursor API dispatch is disabled for this connection", status: 403 };
+      }
+      if (!connection.apiKey) return { error: "No valid token found", status: 401 };
+      try {
+        // Lazy: a static import of the executor map forms a cycle through the provider config.
+        const { getExecutor } = await import("open-sse/executors/index.js");
+        return await discoverCursorApiModels(connection, {
+          proxyOptions,
+          executor: getExecutor("cursor-api"),
+          staticModels: getStaticProviderModels("cursor-api")
+        });
+      } catch (error) {
+        return { error: sanitizeErrorMessage(error?.message || "Cursor API model discovery failed"), status: Number.isInteger(error?.status) ? error.status : 502 };
+      }
+    }
+  },
+  // Devin Desktop lists models over a Connect protobuf call. Live ids win membership;
+  // the registry catalog answers when discovery fails or returns nothing.
+  "devin-desktop": {
+    customResolver: async (connection, proxyOptions = null) => {
+      if (!isDevinDesktopDispatchEnabled(connection)) {
+        return { error: "Devin Desktop dispatch is disabled for this connection", status: 403 };
+      }
+      const token = connection.accessToken || connection.apiKey;
+      if (!token) return { error: "No valid token found", status: 401 };
+      const fallback = (warning) => ({ models: getStaticProviderModels("devin-desktop"), warning, source: "local_catalog" });
+      try {
+        const live = await discoverDevinDesktopModels(token, {
+          fetchImpl: (url, init) => guardedProbeFetch(url, init, getProviderValidationGuard(), (target, options) => proxyAwareFetch(target, options, proxyOptions))
+        });
+        if (live.length) return { models: live };
+        return fallback("Devin returned no live models; falling back to the static catalog.");
+      } catch {
+        return fallback("Devin model discovery failed; falling back to the static catalog.");
+      }
+    }
+  },
+  // WorkBuddy reads the authenticated /v3/config catalog.
+  workbuddy: workbuddyModelsConfig,
   cursor: {
     customResolver: async (connection, proxyOptions = null) => {
       const result = await resolveCursorModels({

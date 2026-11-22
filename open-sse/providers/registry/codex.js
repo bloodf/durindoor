@@ -78,6 +78,11 @@ export default {
     // 2026-10-14 (HTTP 400). Saved configs get a 410 with a replacement from modelLifecycle.js.
     { id: "gpt-5.4", name: "GPT 5.4" },
     { id: "gpt-5.4-review", name: "GPT 5.4 Review", upstreamModelId: "gpt-5.4", quotaFamily: "review" },
+    // Upstream #865: named effort choices and their review quota aliases.
+    ...["xhigh", "high", "medium", "low"].flatMap((effort) => [
+      { id: `gpt-5.4-${effort}`, name: `GPT 5.4 (${effort})` },
+      { id: `gpt-5.4-${effort}-review`, name: `GPT 5.4 (${effort}) Review`, upstreamModelId: `gpt-5.4-${effort}`, quotaFamily: "review" },
+    ]),
     { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
     /** Live Codex catalog 2026-08-13 exposes this dedicated automatic-review base model. */
     { id: "codex-auto-review", name: "Codex Auto Review", quotaFamily: "review" },

@@ -29,6 +29,7 @@ export default meta;
 /** Enabled schedule with named fields and a deterministic slot preview. */
 export const Open = {
   play: async () => {
+    await within(document.body).findByRole("dialog");
     const view = within(document.body);
     await expect(view.getByRole("checkbox", { name: "Enable scheduled pings" })).toBeChecked();
     await expect(view.getByLabelText("Anchor time")).toHaveValue("09:30");
@@ -42,6 +43,7 @@ export const Open = {
 export const Empty = {
   args: { schedule: null },
   play: async () => {
+    await within(document.body).findByRole("dialog");
     const view = within(document.body);
     await expect(view.getByRole("checkbox", { name: "Enable scheduled pings" })).not.toBeChecked();
     await expect(view.queryByLabelText("Anchor time")).not.toBeInTheDocument();
@@ -53,6 +55,7 @@ export const Empty = {
 export const ValidationError = {
   args: { schedule: { ...schedule, anchor: "bad" } },
   play: async () => {
+    await within(document.body).findByRole("dialog");
     const view = within(document.body);
     const anchor = view.getByLabelText("Anchor time");
     await expect(anchor).toHaveAttribute("aria-invalid", "true");
@@ -65,6 +68,7 @@ export const ValidationError = {
 export const Loading = {
   args: { onSave: () => new Promise(() => {}) },
   play: async () => {
+    await within(document.body).findByRole("dialog");
     const view = within(document.body);
     await userEvent.click(view.getByRole("button", { name: "Save" }));
     await expect(view.getByRole("button", { name: "Saving..." })).toBeDisabled();
@@ -77,6 +81,7 @@ export const Loading = {
 export const SaveError = {
   args: { onSave: () => Promise.reject(new Error("Schedule save failed")) },
   play: async () => {
+    await within(document.body).findByRole("dialog");
     const view = within(document.body);
     await userEvent.click(view.getByRole("button", { name: "Save" }));
     await expect(await view.findByRole("alert")).toHaveTextContent("Schedule save failed");

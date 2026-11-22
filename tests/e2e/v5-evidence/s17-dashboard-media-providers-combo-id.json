@@ -1,0 +1,8 @@
+{
+  "route": "/dashboard/media-providers/combo/[id]",
+  "stories": [
+    "production-media-combodetail--default",
+    "production-media-combodetail--empty-providers",
+    "production-media-combodetail--delete-error"
+  ]
+}

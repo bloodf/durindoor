@@ -1,0 +1,9 @@
+{
+  "route": "dialog/AddSystemoneCompatibleModal",
+  "stories": [
+    "production-shared-config-addsystemonecompatiblemodal--add-and-discover",
+    "production-shared-config-addsystemonecompatiblemodal--discovery-error",
+    "production-shared-config-addsystemonecompatiblemodal--edit-and-register",
+    "production-shared-config-addsystemonecompatiblemodal--save-pending"
+  ]
+}

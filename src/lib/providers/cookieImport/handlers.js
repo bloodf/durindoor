@@ -17,7 +17,7 @@ import { createProvider } from "@/lib/providerRouteHandlers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { isIsolatedLoginRequest, ownerBinding } from "@/lib/webLoginSession";
 import { isString, isRecord } from "@/shared/utils/typeChecks";
-import { getCookieImportContract, describeCookieImportContract, buildImportedCookieHeader } from "./contract";
+import { getCookieImportContract, describeCookieImportContract, buildImportedCookieHeader, validateImportedLocalStorage } from "./contract";
 import { issuePairing, consumePairing, isWellFormedPairingToken, PAIRING_TTL_MS } from "./pairing";
 
 export const PAIRING_HEADER = "x-durindoor-pairing-token";
@@ -109,7 +109,7 @@ export async function handleCookieImportPairing(request) {
     if (!isString(body.connectionId) || !body.connectionId || body.name !== undefined) return json({ error: "An update pairing needs a connectionId and no name" }, 400);
     const existing = await getProviderConnectionById(body.connectionId);
     if (!existing) return json({ error: "Connection not found" }, 404);
-    if (existing.provider !== provider || existing.authType !== "cookie") return json({ error: "Connection does not belong to this provider" }, 409);
+    if (existing.provider !== provider || existing.authType !== contract.authType) return json({ error: "Connection does not belong to this provider" }, 409);
     target = { action: "update", connectionId: existing.id };
   } else {
     return json({ error: "action must be create or update" }, 400);
@@ -126,7 +126,7 @@ export async function handleCookieImportPairing(request) {
       provider,
       ...target,
       importUrl: `${reachedOrigin(request).origin}/api/providers/cookie-import`,
-      contract: describeCookieImportContract(contract),
+      contract: { ...describeCookieImportContract(contract), ...(contract.optionalCookies?.length ? { optionalCookies: [...contract.optionalCookies] } : null) },
     },
   }, 201);
 }
@@ -156,13 +156,23 @@ export async function handleCookieImport(request) {
   if (body.origin !== contract.origin) return json({ error: "Origin is not approved for this provider" }, 400);
   const built = buildImportedCookieHeader(contract, body.cookies);
   if (!built.ok) return json({ error: built.error }, 400);
+  // Named localStorage values (TinyCMS `app-config-uuid`) travel beside the cookies and are
+  // stored in providerSpecificData under their own key, never in the cookie header.
+  const stored = validateImportedLocalStorage(contract, body.localStorage);
+  if (!stored.ok) return json({ error: stored.error }, 400);
+  const hasStoredValues = Object.keys(stored.values).length > 0;
 
   try {
     if (target.action === "create") {
       const response = await createProvider(new NextRequest(new URL("/api/providers", request.url), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider: pairing.provider, name: target.name, apiKey: built.header }),
+        body: JSON.stringify({
+          provider: pairing.provider,
+          name: target.name,
+          ...(built.header ? { apiKey: built.header } : null),
+          ...(hasStoredValues ? { providerSpecificData: stored.values } : null),
+        }),
       }), { requireNewCookieName: true });
       if (response.status === 409) return json({ error: "A connection with this name already exists" }, 409);
       if (!response.ok) return json({ error: "Could not save the connection" }, 500);
@@ -171,10 +181,15 @@ export async function handleCookieImport(request) {
     }
     const existing = await getProviderConnectionById(target.connectionId);
     if (!existing) return json({ error: "Connection not found" }, 404);
-    if (existing.provider !== pairing.provider || existing.authType !== "cookie") return json({ error: "Connection does not belong to this provider" }, 409);
+    if (existing.provider !== pairing.provider || existing.authType !== contract.authType) return json({ error: "Connection does not belong to this provider" }, 409);
     // `provider` makes the repository refuse the write inside its transaction if the row changed identity.
     // An explicit active status is what clears a pending reauthentication marker on credential replacement.
-    const updated = await updateProviderConnection(target.connectionId, { provider: pairing.provider, apiKey: built.header, testStatus: "active" });
+    // A localStorage-only import replaces the stored value and clears a pasted key, which would otherwise win.
+    const update = { provider: pairing.provider, testStatus: "active" };
+    if (contract.cookieNames.length) update.apiKey = built.header;
+    else update.apiKey = null;
+    if (hasStoredValues) update.providerSpecificData = { ...(existing.providerSpecificData || {}), ...stored.values };
+    const updated = await updateProviderConnection(target.connectionId, update);
     if (!updated) return json({ error: "Connection not found" }, 404);
     return json({ ok: true, action: "update", connection: { id: updated.id, provider: updated.provider, name: updated.name } });
   } catch (error) {

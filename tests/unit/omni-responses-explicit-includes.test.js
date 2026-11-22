@@ -58,7 +58,9 @@ describe("Chat to Responses explicit include fields", () => {
   });
 
   it("exposes the supported include vocabulary from the translator schema", () => {
-    expect(RESPONSES_INCLUDE_ENTRIES).toEqual([ENCRYPTED, LOGPROBS, SOURCES]);
+    expect(RESPONSES_INCLUDE_ENTRIES).toEqual([ENCRYPTED, LOGPROBS, SOURCES,
+      "web_search_call.results", "output.encrypted_content", "file_search_call.results",
+      "message.input_image.image_url", "computer_call_output.output.image_url", "code_interpreter_call.outputs"]);
   });
 });
 

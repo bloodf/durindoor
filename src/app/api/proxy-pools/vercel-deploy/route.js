@@ -1,59 +1,16 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import {
+  buildRelayFunctionCode,
+  generateRelaySecret,
+} from "../relaySource.js";
+import { sanitizePoolResponse } from "../sanitizePoolResponse.js";
+import { isOperatorRequest } from "@/dashboardGuard";
 
 const VERCEL_API = "https://api.vercel.com";
 
-// Relay function source code deployed to Vercel
-// Forwards requests to target URL specified in x-relay-target header
-export const RELAY_FUNCTION_CODE = `
-export const config = { runtime: "edge" };
-
-export default async function handler(req) {
-  const target = req.headers.get("x-relay-target");
-  const relayPath = req.headers.get("x-relay-path") || "/";
-  if (!target) {
-    return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
-  }
-
-  const targetUrl = target.replace(/\\/$/, "") + relayPath;
-
-  // Build headers from entries() into a plain object instead of
-  // new Headers(req.headers): the Vercel edge runtime normalizes casing
-  // and duplicate keys on a Headers instance, which some providers reject.
-  const rawHeaders = {};
-  for (const [key, value] of req.headers.entries()) rawHeaders[key] = value;
-  delete rawHeaders["x-relay-target"];
-  delete rawHeaders["x-relay-path"];
-  delete rawHeaders["host"];
-
-  try {
-    /** Keep redirect handling explicit instead of relying on runtime-specific fetch errors. */
-    const response = await fetch(targetUrl, {
-      method: req.method,
-      headers: rawHeaders,
-      body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-      redirect: "manual",
-      duplex: "half",
-    });
-    if (response.status >= 300 && response.status < 400) {
-      throw new Error("Upstream redirects are not allowed");
-    }
-
-    return new Response(response.body, {
-      status: response.status,
-      headers: response.headers,
-    });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 502,
-      headers: { "content-type": "application/json" },
-    });
-  }
-}
-`;
+// Empty-secret fixture for unit tests and pre-secret behavioural parity.
+export const RELAY_FUNCTION_CODE = buildRelayFunctionCode("");
 
 async function pollDeployment(deploymentId, token, maxMs = 120000) {
   const start = Date.now();
@@ -82,6 +39,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "Vercel API token is required" }, { status: 400 });
     }
 
+    const relaySecret = generateRelaySecret();
+    const functionCode = buildRelayFunctionCode(relaySecret);
+
     // Deploy relay function to Vercel
     const deployRes = await fetch(`${VERCEL_API}/v13/deployments`, {
       method: "POST",
@@ -94,7 +54,7 @@ export async function POST(request) {
         files: [
           {
             file: "api/relay.js",
-            data: RELAY_FUNCTION_CODE,
+            data: functionCode,
           },
           {
             file: "package.json",
@@ -125,7 +85,8 @@ export async function POST(request) {
     const deployment = await deployRes.json();
     const deploymentId = deployment.id || deployment.uid;
 
-    // Disable deployment protection (Vercel Authentication)
+    // Keep disabling Vercel Authentication: the per-deployment relaySecret now
+    // gates the worker (x-relay-secret), so platform SSO is not the access control.
     const projectId = deployment.projectId || projectName;
     await fetch(`${VERCEL_API}/v9/projects/${projectId}`, {
       method: "PATCH",
@@ -148,9 +109,14 @@ export async function POST(request) {
       noProxy: "",
       isActive: true,
       strictProxy: false,
+      relaySecret,
     });
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    const privileged = await isOperatorRequest(request);
+    return NextResponse.json(
+      { proxyPool: sanitizePoolResponse(proxyPool, privileged), deployUrl },
+      { status: 201 }
+    );
   } catch (error) {
     console.log("Error deploying Vercel relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });

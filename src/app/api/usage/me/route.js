@@ -48,13 +48,12 @@ export async function GET(request) {
     getApiKeyProviderConnectionIds(record.id)
   ]);
 
-  // Empty relation rows mean the key is unrestricted (see
-  // apiKeyProviderConnectionsRepo.js) — the snapshot list then covers every
-  // active connection instead of only the explicitly scoped ones.
-  const allConnections = await getProviderConnections({ isActive: true });
-  const visibleConnections = scopedConnectionIds.length === 0 ?
-  allConnections :
-  allConnections.filter((connection) => scopedConnectionIds.includes(connection.id));
+  // An unrestricted inference key has no owner-specific provider connection
+  // scope, so it must not receive the operator-wide connection inventory.
+  const visibleConnections = scopedConnectionIds.length === 0
+    ? []
+    : (await getProviderConnections({ isActive: true }))
+      .filter((connection) => scopedConnectionIds.includes(connection.id));
 
   const connections = await Promise.all(
     visibleConnections.map(async (connection) => ({

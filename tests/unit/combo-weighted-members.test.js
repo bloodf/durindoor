@@ -154,7 +154,7 @@ describe("weighted combo member persistence", () => {
       models: ["p/a", "p/b"],
       members: [{ id: "p/a", weight: 4 }, { id: "p/b", weight: 0.25 }],
     });
-    const snapshot = await ctx.exportDb();
+    const snapshot = await ctx.exportDb({ includeSecrets: true });
     snapshot.combos.push({ id: "legacy", name: "backup-legacy", models: ["p/c", "p/c", "p/d"], members: null });
     await ctx.importDb(snapshot);
     expect((await ctx.getComboById(weighted.id)).members).toEqual([{ id: "p/a", weight: 4 }, { id: "p/b", weight: 0.25 }]);
@@ -165,7 +165,7 @@ describe("weighted combo member persistence", () => {
     const ctx = await setupDb();
     cleanup = ctx.cleanup;
     const kept = await ctx.createCombo({ name: "kept-before-invalid-import", models: ["p/kept"] });
-    const invalid = await ctx.exportDb();
+    const invalid = await ctx.exportDb({ includeSecrets: true });
     invalid.combos = [{ id: "invalid", name: "invalid", models: ["p/a"], members: [{ id: "p/b", weight: 0 }] }];
     await expect(ctx.importDb(invalid)).rejects.toThrow(ctx.ComboMemberError);
     expect((await ctx.getCombos()).map((combo) => combo.id)).toEqual([kept.id]);

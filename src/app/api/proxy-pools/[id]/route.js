@@ -7,9 +7,10 @@ import {
 "@/models";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
-import { sanitizeProxyPool } from "@/shared/utils/proxyUrlRedaction.js";
+import { sanitizePoolResponse } from "../sanitizePoolResponse.js";
+import { isRelayProxyType, validateRelayProxyUrl } from "../relayUrlGuard.js";
 
-function normalizeProxyPoolUpdate(body = {}) {
+function normalizeProxyPoolUpdate(body = {}, existing = null) {
   const updates = {};
 
   if (Object.prototype.hasOwnProperty.call(body, "name")) {
@@ -45,6 +46,18 @@ function normalizeProxyPoolUpdate(body = {}) {
     updates.type = validTypes.includes(body?.type) ? body.type : "http";
   }
 
+  const effectiveType = updates.type ?? existing?.type ?? "http";
+  if (
+    isRelayProxyType(effectiveType) &&
+    (updates.type !== undefined || updates.proxyUrl !== undefined)
+  ) {
+    const effectiveProxyUrl = updates.proxyUrl ?? existing?.proxyUrl ?? "";
+    const relayCheck = validateRelayProxyUrl(effectiveProxyUrl);
+    if (relayCheck.error) {
+      return { error: relayCheck.error };
+    }
+  }
+
   return { updates };
 }
 
@@ -63,7 +76,7 @@ export async function GET(request, { params }) {
     }
 
     const privileged = await isOperatorRequest(request);
-    return NextResponse.json({ proxyPool: sanitizeProxyPool(proxyPool, privileged) });
+    return NextResponse.json({ proxyPool: sanitizePoolResponse(proxyPool, privileged) });
   } catch (error) {
     console.log("Error fetching proxy pool:", error);
     return NextResponse.json({ error: "Failed to fetch proxy pool" }, { status: 500 });
@@ -81,7 +94,7 @@ export async function PUT(request, { params }) {
     }
 
     const body = await request.json();
-    const normalized = normalizeProxyPoolUpdate(body);
+    const normalized = normalizeProxyPoolUpdate(body, existing);
 
     if (normalized.error) {
       return NextResponse.json({ error: normalized.error }, { status: 400 });
@@ -91,7 +104,7 @@ export async function PUT(request, { params }) {
     // A mutation response is also a read: without this an API-key caller could
     // PUT an unrelated field and get the stored credential back.
     const privileged = await isOperatorRequest(request);
-    return NextResponse.json({ proxyPool: sanitizeProxyPool(updated, privileged) });
+    return NextResponse.json({ proxyPool: sanitizePoolResponse(updated, privileged) });
   } catch (error) {
     console.log("Error updating proxy pool:", error);
     return NextResponse.json({ error: "Failed to update proxy pool" }, { status: 500 });

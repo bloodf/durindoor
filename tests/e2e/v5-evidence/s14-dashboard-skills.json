@@ -1,0 +1,7 @@
+{
+  "route": "/dashboard/skills",
+  "stories": [
+    "production-operations-skillspage--default",
+    "production-operations-skillspage--copy-instruction-failure"
+  ]
+}

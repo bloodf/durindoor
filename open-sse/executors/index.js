@@ -1,3 +1,5 @@
+import { TwinmindExecutor } from "./twinmind.js";
+import { HyperAgentExecutor } from "./hyperagent.js";
 import { AdaptaWebExecutor } from "./adapta-web.js";
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
@@ -22,6 +24,12 @@ import { KimiWebExecutor } from "./kimi-web.js";
 import { CodexExecutor } from "./codex.js";
 import { CodexAppServerExecutor } from "./codex-app-server.js";
 import { CursorExecutor } from "./cursor.js";
+import { CursorApiExecutor } from "./cursor-api.js";
+import { DevinDesktopExecutor } from "./devin-desktop.js";
+import { FreebuffExecutor } from "./freebuff.js";
+import { MinimaxCodeExecutor } from "./minimax-code.js";
+import { WorkbuddyExecutor } from "./workbuddy.js";
+import { ZedHostedExecutor } from "./zed-hosted.js";
 import { VertexExecutor } from "./vertex.js";
 import { QwenExecutor } from "./qwen.js";
 import { OpenCodeExecutor } from "./opencode.js";
@@ -31,6 +39,23 @@ import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
+import { ClaudeWebExecutor } from "./claude-web.js";
+import { DeepSeekWebExecutor } from "./deepseek-web.js";
+import { DoubaoWebExecutor } from "./doubao-web.js";
+import { GeminiWebExecutor } from "./gemini-web.js";
+import { ZaiWebExecutor } from "./zai-web.js";
+import { PromptQlExecutor } from "./promptql.js";
+import { NotionWebExecutor } from "./notion-web.js";
+import { NotrackWebExecutor } from "./notrack-web.js";
+import { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.js";
+import { TinyCmsExecutor } from "./tinycms-web.js";
+import { BlackboxWebExecutor } from "./blackbox-web.js";
+import { ConolWebExecutor } from "./conol-web.js";
+import { ChatPlaygroundExecutor } from "./chatplayground.js";
+import { CloudflarePlaygroundExecutor } from "./cloudflare-playground.js";
+import { LmarenaExecutor } from "./lmarena.js";
+import { MaxaiExecutor } from "./maxai.js";
+import { PoeExecutor } from "./poe.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { PollinationsExecutor } from "./pollinations.js";
@@ -68,10 +93,37 @@ import REGISTRY from "../providers/registry/index.js";
 import { resolveProviderAlias } from "../services/model.js";
 
 import { OpenCodeServerExecutor } from "./opencode-server.js";
+import { ZcodeExecutor } from "./zcode.js";
 
 const chatGptWebExecutor = new ChatGptWebExecutor();
+const chatGptWebCodexExecutor = new ChatGptWebCodexExecutor();
+const claudeWebExecutor = new ClaudeWebExecutor();
+const deepSeekWebExecutor = new DeepSeekWebExecutor();
+const geminiWebExecutor = new GeminiWebExecutor();
+const zaiWebExecutor = new ZaiWebExecutor();
+const chatPlaygroundExecutor = new ChatPlaygroundExecutor();
+const cloudflarePlaygroundExecutor = new CloudflarePlaygroundExecutor();
+const lmarenaExecutor = new LmarenaExecutor();
+const maxaiExecutor = new MaxaiExecutor();
+const promptQlExecutor = new PromptQlExecutor();
+const notionWebExecutor = new NotionWebExecutor();
+const notrackWebExecutor = new NotrackWebExecutor();
+const tencentAIStudioWebExecutor = new TencentAIStudioWebExecutor();
+const tinyCmsExecutor = new TinyCmsExecutor();
+const blackboxWebExecutor = new BlackboxWebExecutor();
+const conolWebExecutor = new ConolWebExecutor();
+// One instance per identity: the per-key session cache (cursor-api) and the
+// per-connection state (minimax-code, zed-hosted, freebuff) live on the instance.
+const cursorApiExecutor = new CursorApiExecutor();
+const minimaxCodeExecutor = new MinimaxCodeExecutor();
+const zedHostedExecutor = new ZedHostedExecutor();
+const freebuffExecutor = new FreebuffExecutor();
+const workbuddyExecutor = new WorkbuddyExecutor();
+const zcodeExecutor = new ZcodeExecutor();
 
 const executors = {
+  twinmind: new TwinmindExecutor(),
+  hyperagent: new HyperAgentExecutor(),
   "adapta-web": new AdaptaWebExecutor(),
   "adp-web": new AdaptaWebExecutor(),
   antigravity: new AntigravityExecutor(),
@@ -106,6 +158,19 @@ const executors = {
   codex: new CodexExecutor(),
   cursor: new CursorExecutor(),
   cu: new CursorExecutor(), // Alias for cursor
+  "cursor-api": cursorApiExecutor,
+  cua: cursorApiExecutor,
+  "devin-desktop": new DevinDesktopExecutor(),
+  zcode: zcodeExecutor,
+  zc: zcodeExecutor,
+  workbuddy: workbuddyExecutor,
+  wb: workbuddyExecutor,
+  "minimax-code": minimaxCodeExecutor,
+  mmcode: minimaxCodeExecutor,
+  "zed-hosted": zedHostedExecutor,
+  zdh: zedHostedExecutor,
+  freebuff: freebuffExecutor,
+  fb: freebuffExecutor,
   vertex: new VertexExecutor("vertex"),
   "vertex-partner": new VertexExecutor("vertex-partner"),
   qwen: new QwenExecutor(),
@@ -117,8 +182,40 @@ const executors = {
   "perplexity-web": new PerplexityWebExecutor(),
   "chatgpt-web": chatGptWebExecutor,
   "cgpt-web": chatGptWebExecutor,
-  "chatgpt-web-codex": new ChatGptWebCodexExecutor(),
-  "cgpt-codex": new ChatGptWebCodexExecutor(),
+  "chatgpt-web-codex": chatGptWebCodexExecutor,
+  "cgpt-codex": chatGptWebCodexExecutor,
+  "claude-web": claudeWebExecutor,
+  cw: claudeWebExecutor,
+  "deepseek-web": deepSeekWebExecutor,
+  "ds-web": deepSeekWebExecutor,
+  "doubao-web": new DoubaoWebExecutor(),
+  "gemini-web": geminiWebExecutor,
+  gweb: geminiWebExecutor,
+  "zai-web": zaiWebExecutor,
+  zw: zaiWebExecutor,
+  promptql: promptQlExecutor,
+  pql: promptQlExecutor,
+  "notion-web": notionWebExecutor,
+  nw: notionWebExecutor,
+  "notrack-web": notrackWebExecutor,
+  ntw: notrackWebExecutor,
+  "tencent-aistudio-web": tencentAIStudioWebExecutor,
+  tasw: tencentAIStudioWebExecutor,
+  "tinycms-web": tinyCmsExecutor,
+  tcw: tinyCmsExecutor,
+  "blackbox-web": blackboxWebExecutor,
+  "bb-web": blackboxWebExecutor,
+  "conol-web": conolWebExecutor,
+  cnl: conolWebExecutor,
+  chatplayground: chatPlaygroundExecutor,
+  cpl: chatPlaygroundExecutor,
+  "cloudflare-playground": cloudflarePlaygroundExecutor,
+  cfp: cloudflarePlaygroundExecutor,
+  lmarena: lmarenaExecutor,
+  lma: lmarenaExecutor,
+  maxai: maxaiExecutor,
+  mx: maxaiExecutor,
+  poe: new PoeExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),
@@ -209,6 +306,7 @@ export function hasSpecializedExecutor(provider) {
 }
 
 export { BaseExecutor } from "./base.js";
+export { HyperAgentExecutor, HYPERAGENT_FALLBACK_MODELS } from "./hyperagent.js";
 export { AntigravityExecutor } from "./antigravity.js";
 export { AuggieExecutor } from "./auggie.js";
 export { AzureExecutor } from "./azure.js";
@@ -228,6 +326,13 @@ export { KimchiExecutor } from "./kimchi.js";
 export { KimiWebExecutor } from "./kimi-web.js";
 export { CodexExecutor } from "./codex.js";
 export { CursorExecutor } from "./cursor.js";
+export { CursorApiExecutor } from "./cursor-api.js";
+export { DevinDesktopExecutor } from "./devin-desktop.js";
+export { FreebuffExecutor } from "./freebuff.js";
+export { MinimaxCodeExecutor } from "./minimax-code.js";
+export { WorkbuddyExecutor } from "./workbuddy.js";
+export { ZcodeExecutor } from "./zcode.js";
+export { ZedHostedExecutor } from "./zed-hosted.js";
 export { VertexExecutor } from "./vertex.js";
 export { DefaultExecutor } from "./default.js";
 export { QwenExecutor } from "./qwen.js";
@@ -237,6 +342,19 @@ export { OpenCodeGoExecutor } from "./opencode-go.js";
 export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
+export { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
+export { ClaudeWebExecutor } from "./claude-web.js";
+export { DeepSeekWebExecutor } from "./deepseek-web.js";
+export { DoubaoWebExecutor } from "./doubao-web.js";
+export { GeminiWebExecutor } from "./gemini-web.js";
+export { ZaiWebExecutor } from "./zai-web.js";
+export { PromptQlExecutor } from "./promptql.js";
+export { NotionWebExecutor } from "./notion-web.js";
+export { NotrackWebExecutor } from "./notrack-web.js";
+export { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.js";
+export { TinyCmsExecutor } from "./tinycms-web.js";
+export { BlackboxWebExecutor } from "./blackbox-web.js";
+export { ConolWebExecutor } from "./conol-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { PollinationsExecutor } from "./pollinations.js";

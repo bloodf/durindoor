@@ -13,7 +13,7 @@
  * Registered on the direct route by ../index.js; reached only when source
  * format is Claude and target is Kiro.
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 

@@ -6,7 +6,7 @@
  * with partial schema mismatches. For stability, tool outputs are represented as
  * structured text blocks in user messages.
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";

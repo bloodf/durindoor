@@ -976,12 +976,34 @@ async function scheduleMitmRestart(apiKey) {
   }
 }
 
+/**
+ * Remove system and NSS trust when the MITM feature is disabled by the user.
+ * Process-only stops (preserveDesiredState) must not call this. Missing sudo
+ * credentials log a warning and continue so disable still completes.
+ */
+async function removeTrustOnFeatureDisable(sudoPassword = null) {
+  const certPath = path.join(MITM_DIR, "rootCA.crt");
+  if (!fs.existsSync(certPath)) return;
+  const password = await getInMemoryPassword(sudoPassword);
+  if (!password && !IS_WIN && isSudoPasswordRequired()) {
+    log("⚠️ No cached sudo password available; removing MITM Root CA trust without elevated system-store access");
+  }
+  try {
+    await withRootCALock(async () => {
+      await uninstallCert(password, certPath);
+    });
+  } catch (error) {
+    err(`Failed to remove MITM Root CA trust on disable: ${error.message}`);
+  }
+}
+
 async function cleanupRestartTerminalState(reason) {
   return startGate.runAfterIdle(async () => {
     // Persist the terminal state before removing the live recovery surface.
     // If persistence fails, retain every ownership artifact for a safe retry.
     await saveMitmSettings(false);
     await killLeftoverMitm(getCachedPassword(), { preserveRedirectForRestart: false });
+    await removeTrustOnFeatureDisable(getCachedPassword());
     setCachedPassword(null);
     log(`MITM disabled after terminal restart state: ${reason}`);
   });
@@ -1822,6 +1844,11 @@ async function stopServer(sudoPassword, { preserveDesiredState = false } = {}) {
         removePidFileIfMatches(persistedRecord) :
         removeFileIfUnchanged(PID_FILE, persistedSnapshot);
         if (!removed) throw new Error("MITM PID metadata changed during stop cleanup");
+      }
+      // Feature disable (not process-only stop): drop system/NSS trust while the
+      // in-memory sudo credential may still be available.
+      if (!preserveDesiredState) {
+        await removeTrustOnFeatureDisable(sudoPassword || getCachedPassword());
       }
       serverProcess = null;
       serverPid = null;

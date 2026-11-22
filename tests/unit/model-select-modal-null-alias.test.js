@@ -8,7 +8,7 @@ import path from "node:path";
 // ModelSelectModal with `typeof fullModel === "string" &&` BEFORE `.startsWith`.
 //
 // No DOM test stack is installed, so this asserts the exact guarded chains as a
-// source contract — it fails if any of the three filters drops the type guard or
+// source contract — it fails if either filter drops the type guard or
 // reorders it after .startsWith (which would reintroduce the crash).
 
 const MODAL_PATH = path.resolve(
@@ -20,10 +20,10 @@ describe("ModelSelectModal null modelAliases guard (#2247)", () => {
   it("every Object.entries(modelAliases) filter type-checks the value before .startsWith", () => {
     const src = fs.readFileSync(MODAL_PATH, "utf8");
 
-    // There are exactly three filter callbacks over Object.entries(modelAliases):
-    // alias models, provider-node models, and custom-alias models.
+    // 9router #485 moved passthrough alias models to a helper, leaving the
+    // provider-node and custom-alias filters here.
     const entriesCalls = src.match(/Object\.entries\(modelAliases\)/g) || [];
-    expect(entriesCalls.length).toBe(3);
+    expect(entriesCalls.length).toBe(2);
 
     // Each must be paired with a guarded predicate that checks isString()
     // AND calls .startsWith, with the isString check lexically preceding .startsWith

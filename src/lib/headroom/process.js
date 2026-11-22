@@ -7,6 +7,13 @@ import { ensureManagedVenv, managedVenvBinary } from "./pythonEnv.js";
 import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 import { isNumber } from "../../shared/utils/typeChecks.js";
 
+// Child processes receive only basic execution, locale and proxy settings.
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    /^(PATH|HOME|USER|LANG|LC_.*|TMPDIR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SystemRoot|ComSpec)$/i.test(key)
+  ));
+}
+
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
 const LOG_FILE = path.join(HEADROOM_DIR, "proxy.log");
@@ -130,7 +137,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
     child = spawn(binary, ["proxy", "--port", String(safePort), ...(kompress ? [] : ["--disable-kompress"])], {
       stdio: ["ignore", outFd, outFd],
       windowsHide: true,
-      env: { ...process.env }
+      env: childEnv()
     });
   } catch (error) {
     try { fs.closeSync(outFd); } catch {/* already closed */}
@@ -306,7 +313,7 @@ export async function installHeadroomExtras(extras) {
       child = spawn(python, args, {
         stdio: ["ignore", outFd, outFd],
         windowsHide: true,
-        env: { ...process.env, TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") }
+        env: { ...childEnv(), TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") }
       });
     } catch (error) {
       try { fs.closeSync(outFd); } catch {/* already closed */}
@@ -480,7 +487,8 @@ function getPythonVersion(python) {
   try {
     return `Python ${execFileSync(python, ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"], {
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true
+      windowsHide: true,
+      env: childEnv()
     }).toString().trim()}`;
   } catch {
     return python;

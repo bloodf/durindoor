@@ -42,7 +42,7 @@ async function resolveChatPlaygroundHeaders(raw, fetcher) {
   let minted;
   try {
     minted = await fetcher(url, {
-      method: "POST",
+      method: "POST", redirect: "manual",
       headers: { accept: "*/*", "content-type": "application/x-www-form-urlencoded", origin: WEB, referer: `${WEB}/`, cookie: `__client=${parsed.__client}` },
       body: "organization_id=&token=",
     });
@@ -55,11 +55,15 @@ async function resolveChatPlaygroundHeaders(raw, fetcher) {
 
 export async function validateChatPlaygroundCookie(raw, fetcher = fetch) {
   const auth = await resolveChatPlaygroundHeaders(raw, fetcher);
-  if (!auth.ok) return { valid: false, status: auth.status };
+  if (!auth.ok) {
+    const result = { valid: false, status: auth.status };
+    if (auth.status >= 300 && auth.status < 400) result.error = "ChatPlayground session was rejected";
+    return result;
+  }
   let response;
   try {
     response = await fetcher(`${API}/user`, {
-      method: "GET",
+      method: "GET", redirect: "manual",
       headers: {
         Accept: "application/json",
         Origin: WEB,
@@ -70,6 +74,7 @@ export async function validateChatPlaygroundCookie(raw, fetcher = fetch) {
   } catch {
     return { valid: false, status: 502 };
   }
+  if (response.status >= 300 && response.status < 400) return { valid: false, status: response.status, error: "ChatPlayground session was rejected" };
   return { valid: response.ok, status: response.status };
 }
 
@@ -82,9 +87,13 @@ function toCatalog(data) {
 export async function discoverChatPlaygroundModels(credentials, fetcher = fetch) {
   const raw = cookieOrJwt(credentials);
   const auth = await resolveChatPlaygroundHeaders(raw, fetcher);
-  if (!auth.ok) return { error: `Failed to validate ChatPlayground session: ${auth.status}`, status: auth.status };
+  if (!auth.ok) {
+    if (auth.status >= 300 && auth.status < 400) return { error: "ChatPlayground session was rejected", status: 401 };
+    return { error: `Failed to validate ChatPlayground session: ${auth.status}`, status: auth.status };
+  }
   const headers = { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers };
-  const response = await fetcher(`${API}/models`, { method: "GET", headers });
+  const response = await fetcher(`${API}/models`, { method: "GET", headers, redirect: "manual" });
+  if (response.status >= 300 && response.status < 400) return { error: "ChatPlayground session was rejected", status: 401 };
   if (!response.ok) return { error: `Failed to fetch ChatPlayground models: ${response.status}`, status: response.status };
   return { models: toCatalog(await response.json()) };
 }
@@ -148,10 +157,11 @@ export class ChatPlaygroundExecutor extends BaseExecutor {
     const auth = await resolveChatPlaygroundHeaders(raw, this.fetcher);
     if (!auth.ok) return makeErrorResult(auth.status === 403 ? 403 : auth.status === 429 ? 429 : 401,
       "ChatPlayground session is missing or expired", body, `${API}/user`);
-    const validation = await this.fetcher(`${API}/user`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers }, signal });
+    const validation = await this.fetcher(`${API}/user`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers }, redirect: "manual", signal });
     if (!validation.ok) return makeErrorResult(validation.status === 403 ? 403 : validation.status === 429 ? 429 : 401,
       "ChatPlayground session is missing or expired", body, `${API}/user`);
-    const catalogResponse = await this.fetcher(`${API}/models`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/` }, signal });
+    const catalogResponse = await this.fetcher(`${API}/models`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/` }, redirect: "manual", signal });
+    if (catalogResponse.status >= 300 && catalogResponse.status < 400) return makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/models`);
     if (!catalogResponse.ok) return makeErrorResult(catalogResponse.status, `ChatPlayground model discovery failed (${catalogResponse.status})`, body, `${API}/models`);
     let catalog;
     try { catalog = await catalogResponse.json(); } catch { return makeErrorResult(502, "Invalid ChatPlayground model catalog", body, `${API}/models`); }
@@ -174,9 +184,10 @@ export class ChatPlaygroundExecutor extends BaseExecutor {
         ? { messages, model: modelData.modelName || row.id, botId: row.id }
         : { messages, model: modelData.provider ? `${modelData.provider.toLowerCase()}/${modelData.modelName || row.id}` : (modelData.modelName || row.id), chatId: "", isRegenerate: false, promptTemplate: null, fileUrl: null, botId: row.id, submissionId: randomUUID(), noSave: true };
     const response = await this.fetcher(`${API}/chat/${endpoint}`, {
-      method: "POST", signal, headers: { Accept: stream ? "text/event-stream" : "*/*", "Content-Type": "application/json", Origin: WEB, Referer: `${WEB}/`,
+      method: "POST", redirect: "manual", signal, headers: { Accept: stream ? "text/event-stream" : "*/*", "Content-Type": "application/json", Origin: WEB, Referer: `${WEB}/`,
         ...auth.headers }, body: JSON.stringify(payload),
     });
+    if (response.status >= 300 && response.status < 400) return makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/chat/${endpoint}`);
     if (!response.ok) return makeErrorResult(response.status, `ChatPlayground API error (${response.status})`, body, `${API}/chat/${endpoint}`);
     if (stream && endpoint !== "perplexity" && response.body) {
       return { response: new Response(createChatPlaygroundSseStream(response.body, model), { headers: { "Content-Type": "text/event-stream" } }), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload };

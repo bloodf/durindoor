@@ -53,6 +53,12 @@ export default {
     clientSecret: ANTIGRAVITY_OAUTH_CLIENT.clientSecret, // Set via env var — see SECRETS_AND_CONFIG.md
   },
   models: [
+    // XHigh uses the base Neon model with an explicit thinking preset.
+    { id: "gemini-4-neon-xhigh", name: "Gemini 4 Neon (XHigh)", upstreamModelId: "gemini-4-neon(xhigh)" },
+    { id: "gemini-4-neon-high", name: "Gemini 4 Neon (High)", upstreamModelId: "gemini-4-neon-high(high)" },
+    { id: "gemini-4-neon-medium", name: "Gemini 4 Neon (Medium)", upstreamModelId: "gemini-4-neon-medium(medium)" },
+    { id: "gemini-4-neon-low", name: "Gemini 4 Neon (Low)", upstreamModelId: "gemini-4-neon-low(low)" },
+    { id: "gemini-4-neon", name: "Gemini 4 Neon", upstreamModelId: "gemini-4-neon-medium(medium)" },
     { id: "gemini-4-hydrogen-xhigh", name: "Gemini 4 Hydrogen (XHigh)", upstreamModelId: "gemini-4-hydrogen-xhigh(xhigh)" },
     { id: "gemini-4-hydrogen-high", name: "Gemini 4 Hydrogen (High)", upstreamModelId: "gemini-4-hydrogen-high(high)" },
     { id: "gemini-4-hydrogen-medium", name: "Gemini 4 Hydrogen (Medium)", upstreamModelId: "gemini-4-hydrogen-medium(medium)" },
@@ -82,6 +88,9 @@ export default {
     { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)" },
     { id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)", upstreamModelId: "gemini-pro-agent" },
     { id: "gemini-pro-agent", name: "Gemini 3.1 Pro (High)" },
+    // Canonical Google ids sent by the Antigravity/MITM IDE (upstream 9router #2605, issue #803).
+    { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview", upstreamModelId: "gemini-pro-agent" },
+    { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", upstreamModelId: "gemini-pro-agent" },
     { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)", upstreamModelId: "gemini-3.1-pro-low(low)" },
     // Claude 5.5 tiers (upstream 9router a07ed95b).
     { id: "claude-sonnet-5-5-high", name: "Claude Sonnet 5.5 (High)", upstreamModelId: "claude-sonnet-5-5-high(high)" },

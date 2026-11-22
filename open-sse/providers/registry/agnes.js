@@ -20,6 +20,8 @@ export default {
     { id: "agnes-2.0-flash", name: "Agnes 2.0 Flash", contextLength: 262144, supportsVision: true },
     { id: "agnes-2.5-flash", name: "Agnes 2.5 Flash", contextLength: 524288, supportsVision: true },
     { id: "agnes-3.0-flash", name: "Agnes 3.0 Flash", contextLength: 524288, supportsVision: true },
+    // Announced 2026-10-05; vendor docs list it as coming soon, seeded so the id is ready when it ships.
+    { id: "agnes-3.0-pro", name: "Agnes 3.0 Pro", contextLength: 524288, supportsVision: true },
   ],
   modelsFetcher: { url: "https://apihub.agnes-ai.com/v1/models", type: "openai" },
   serviceKinds: ["llm"],

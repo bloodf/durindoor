@@ -1,0 +1,7 @@
+import React from "react";
+import { expect, userEvent, within } from "storybook/test";
+import Component from "./AddCustomModelModal";
+export default { title: "Production/providers/AddCustomModelModal", component: Component, args: { isOpen: true, providerAlias: "openai", onSave: async () => {}, onClose: () => {} }, parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers/openai", routes: {} } } };
+export const Open = { play: async () => { await expect(await within(document.body).findByRole("dialog", { name: "Add Custom Model" })).toBeVisible(); } };
+export const Pending = { args: { onSave: () => new Promise(() => {}) }, play: async () => { const dialog = within(await within(document.body).findByRole("dialog")); await userEvent.type(dialog.getByLabelText("Model ID"), "example-model"); await userEvent.click(dialog.getByRole("button", { name: "Add Model" })); await expect(dialog.getByRole("button", { name: "Adding..." })).toBeDisabled(); } };
+export const SaveError = { args: { onSave: async () => { throw new Error("Model save failed"); } }, play: async () => { const dialog = within(await within(document.body).findByRole("dialog")); await userEvent.type(dialog.getByLabelText("Model ID"), "example-model"); await userEvent.click(dialog.getByRole("button", { name: "Add Model" })); await expect(await dialog.findByRole("alert")).toHaveTextContent("Model save failed"); } };

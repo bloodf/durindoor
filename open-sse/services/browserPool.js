@@ -477,6 +477,7 @@ export async function acquireBrowserContext(key, options) {
         timezoneId: options.timezone || "America/New_York",
         viewport: { width: 1280, height: 800 },
       };
+      if (options.blockServiceWorkers) contextOptions.serviceWorkers = "block";
       if (options.storageState) contextOptions.storageState = options.storageState;
       if (proxy) contextOptions.proxy = proxy;
       context = await browser.newContext(contextOptions);

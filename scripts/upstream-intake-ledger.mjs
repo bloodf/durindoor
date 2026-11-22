@@ -14,7 +14,7 @@
 
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 export const GITHUB_MAX_BYTES = 65536;
 export const DEFAULT_PAGE_BYTES = 60000;
@@ -492,7 +492,7 @@ Usage:
   return 1;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+const isMain = isMainModule(import.meta.url);
 if (isMain) {
   const exitCode = runCli(process.argv);
   if (exitCode !== 0) {

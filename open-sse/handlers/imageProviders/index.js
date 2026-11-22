@@ -16,6 +16,7 @@ import minimax from "./minimax.js";
 import together from "./together.js";
 import magnific from "./magnific.js";
 import deepai from "./deepai.js";
+import copilotM365 from "./copilotM365.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const ADAPTERS = {
@@ -49,6 +50,8 @@ const ADAPTERS = {
   magnific,
   deepai,
   "cloudflare-ai": cloudflareAi,
+  // One chat turn plus a Designer artifact download; needs a native sign-in connection.
+  "copilot-m365-web": copilotM365,
 };
 
 export function getImageAdapter(provider) {

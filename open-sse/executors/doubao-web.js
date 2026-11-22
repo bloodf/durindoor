@@ -23,8 +23,9 @@ export class DoubaoWebExecutor extends BaseExecutor {
     const url = `${CHAT}?${query}`;
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Cookie: cookie, Origin: BASE, Referer: `${BASE}/chat/`, "Agw-Js-Conv": "str", "User-Agent": "Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36" };
     let upstream;
-    try { upstream = await this.fetch(url, { method: "POST", headers, body: JSON.stringify(payload), signal: input.signal }); }
+    try { upstream = await this.fetch(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }); }
     catch (e) { return { response: errorResponse(502, e.message || "Dola request failed"), url, headers, transformedBody: payload }; }
+    if (upstream.status >= 300 && upstream.status < 400) return { response: errorResponse(401, "Dola session was rejected"), url, headers, transformedBody: payload };
     if (!upstream.ok) return { response: errorResponse(upstream.status, `Dola error: ${await upstream.text()}`), url, headers, transformedBody: payload };
     const extract = (obj) => { const out = []; const blocks = [...(obj?.content?.content_block || obj?.data?.content?.content_block || [])]; for (const op of obj?.patch_op || obj?.data?.patch_op || []) blocks.push(...(op?.patch_value?.content_block || [])); for (const b of blocks) if (b?.content?.text_block?.text) out.push(b.content.text_block.text); return out; };
     const chunk = (content) => `data: ${JSON.stringify({ id: "chatcmpl-dola", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`;

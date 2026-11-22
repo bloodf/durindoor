@@ -14,6 +14,25 @@ const profiles = [
   ["muse-spark-web", "https://www.meta.ai", ["ecto_1_sess"], true],
   ["adapta-web", "https://clerk.agent.adapta.one", ["__client"], false],
   ["yuanbao-web", "https://yuanbao.tencent.com", ["hy_user", "hy_token"], true],
+  ["chatgpt-web-codex", "https://chatgpt.com", [session], true, [`${session}.`]],
+  ["claude-web", "https://claude.ai", ["sessionKey"], true],
+  ["gemini-web", "https://gemini.google.com", ["__Secure-1PSID", "__Secure-1PSIDTS"], true],
+  ["doubao-web", "https://www.dola.com", ["sessionid", "s_v_web_id"], true],
+  ["zai-web", "https://chat.z.ai", ["token"], true],
+  ["chatplayground", "https://app.chatplayground.ai", ["__client", "__session"], true],
+  ["lmarena", "https://arena.ai", ["arena-auth-prod-v1"], true, ["arena-auth-prod-v1."]],
+  ["maxai", "https://www.maxai.co", ["access_token", "device_id", "user_id"], true],
+  ["promptql", "https://prompt.ql.app", ["__Host-next-auth.csrf-token", "next-auth.session-token"], true],
+  ["notion-web", "https://app.notion.com", ["token_v2"], true],
+  ["notrack-web", "https://notrack.ai", ["uid", "si_usr_id", "si_ses_id"], true],
+  ["tencent-aistudio-web", "https://aistudio.tencent.ai", ["sessionid"], true],
+  ["blackbox-web", "https://app.blackbox.ai", ["next-auth.session-token"], true],
+  ["conol-web", "https://conol.ai", ["__Secure-better-auth.session_token"], true],
+];
+// Profiles of providers outside the web-cookie category whose credential is a localStorage item.
+const localStorageProfiles = [
+  ["tinycms-web", "https://site.tinycms.xyz", ["app-config-uuid"]],
+  ["deepseek-web", "https://chat.deepseek.com", ["userToken"]],
 ];
 const manual = [
   "copilot-web", "copilot-m365-web", "huggingchat", "kimi-web",
@@ -25,7 +44,7 @@ describe("web cookie import profiles", () => {
     expect(REGISTRY.filter((entry) => entry.category === "webCookie").map((entry) => entry.id).sort())
       .toEqual([...profiles.map(([id]) => id), ...manual].sort());
     expect(Object.keys(EXTENSION_PROVIDERS).sort())
-      .toEqual(profiles.filter(([, , , capture]) => capture).map(([id]) => id).sort());
+      .toEqual([...profiles.filter(([, , , capture]) => capture).map(([id]) => id), ...localStorageProfiles.map(([id]) => id)].sort());
   });
 
   it.each(profiles)("filters credentials for %s", (id, origin, cookieNames, extensionCapture, cookiePrefixes = []) => {

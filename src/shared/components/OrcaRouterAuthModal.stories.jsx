@@ -6,6 +6,8 @@ const fixture = (routes) => ({ storyFixture: { scenario: "default", pathname: "/
 const args = { isOpen: true, providerInfo: { name: "OrcaRouter" }, onClose: () => {}, onSuccess: () => {} };
 export default { title: "Production/shared-auth/OrcaRouterAuthModal", component: OrcaRouterAuthModal };
 
+export const Default = { args, parameters: fixture() };
+
 export const OAuthCodeFlow = {
   args,
   parameters: fixture({

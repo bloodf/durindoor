@@ -1,3 +1,4 @@
+import { TwinmindExecutor } from "./twinmind.js";
 import { AdaptaWebExecutor } from "./adapta-web.js";
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
@@ -120,6 +121,7 @@ const workbuddyExecutor = new WorkbuddyExecutor();
 const zcodeExecutor = new ZcodeExecutor();
 
 const executors = {
+  twinmind: new TwinmindExecutor(),
   "adapta-web": new AdaptaWebExecutor(),
   "adp-web": new AdaptaWebExecutor(),
   antigravity: new AntigravityExecutor(),

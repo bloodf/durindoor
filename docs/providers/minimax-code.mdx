@@ -40,6 +40,22 @@ Cookie capture: **not applicable.** The credential is an OAuth token pair from t
 - **Models.** The catalog is static: `MiniMax-M3.1-Flash` and `MiniMax-M3`, with the unprefixed ids the gateway expects. Both `mmcode/` and `minimax-code/` prefixes resolve. Any other id, or one starting with `-`, is refused with HTTP 400. MiniMax publishes no model-list endpoint for this gateway, and a catalog id is not proof that your account may use the model.
 - **Token counting.** The pre-flight `count_tokens` call is skipped, because the gateway documents no such endpoint and the call would send the prompt and token upstream before the opt-in guard runs. Input is estimated locally.
 
+## Gateway budgets and retry
+
+DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`), with the same names and defaults. They are read on every request, so a change takes effect without a restart. Set them in the environment of the DurinDoor process.
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `MINIMAX_CODE_MAX_TOKENS` | `8192` | `max_tokens` sent when the request carries none. A request's own `max_tokens` always wins. A value that is not a positive number is ignored. |
+| `MINIMAX_CODE_CONTEXT_WINDOW` | `1000000` | The window the gateway answers in. Only `512000` (the window the model catalog declares as the default) changes anything: it is sent as `context_window`, so the plan counts less of the request, and it lowers the input ceiling to 512000. Any other value is ignored. |
+| `MINIMAX_CODE_MAX_INPUT_TOKENS` | the window | Lowers the input ceiling for a stricter refusal. It cannot raise the ceiling above the window. |
+| `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` | `100000` | Budget of the whole call: the attempt, the backoff and the retry. It stops at the response headers, so a stream that is already flowing is not cut. Zero, negative or non-numeric values use the default. |
+| `MINIMAX_CODE_GATEWAY_RETRIES` | `1` | Retries of a 429, a 5xx or a dropped connection. `0` turns the retry off; values above `3` are capped at `3`; a non-numeric value keeps the default. |
+
+- **Input ceiling.** Before sending, DurinDoor estimates the input tokens of the messages, the system prompt and the tool catalog, weighing CJK at one token per character, Cyrillic at two characters and other text at three. The estimate is deliberately pessimistic. A request over the ceiling is refused with HTTP 413 `context_length_exceeded` ("too large for the managed gateway transport", with the estimate and the limit) and nothing is sent to MiniMax. The status is 413, not 400, so the refusal is not read as an outage of the model.
+- **Call budget.** A call that outlives `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` is stopped and answers HTTP 500 `gateway_timeout`. It is not a 504, so a slow answer does not take the model out of fallback combos.
+- **Retry with backoff.** A gateway 429 or 5xx, or a dropped connection, is retried once after a 1 second backoff (exponential if you raise the retry count: 1 s, 2 s, 4 s, up to 30 s). `Retry-After` does not lengthen the wait, so the retry stays inside the call budget; it is still passed to the client when the retry fails too. If the retry fails the last error is returned with its own status. A 4xx other than 429, including the 413 above, is never retried, and a 401 keeps its separate refresh-and-retry path.
+
 ## Errors
 
 | Situation | Result |
@@ -49,6 +65,8 @@ Cookie capture: **not applicable.** The credential is an OAuth token pair from t
 | `gatewayUrl` not on a MiniMax host, or `cn` without one | 400 `minimax_code_gateway_unavailable` |
 | No access token stored | 401 `minimax_code_not_signed_in` |
 | Gateway 401 after a failed refresh, or a revoked sign-in | 401 `invalid_credentials`, "sign in again". The token is never echoed |
+| Request over the input ceiling | 413 `context_length_exceeded`, no upstream call |
+| Call outlives the time budget | 500 `gateway_timeout` |
 | Gateway 429, or a 200 body with a rate-limit, quota or overloaded error | 429 `quota_exceeded`, with `Retry-After` when the gateway sends it |
 | Context-window refusal (gateway 400, or in a 200 body) | 413 `context_length_exceeded`, so it is not read as a model outage |
 | Other error inside a 200 body | 500 |
@@ -60,8 +78,9 @@ A 4xx that belongs to the request keeps a request-scoped status so it does not l
 
 - No live behavior is verified: the gateway URL, its error shapes and status codes, the account service's device-code and refresh responses, token lifetime and rotation, the CN gateway, and whether an account can use each catalog model are all taken from source.
 - The account service returns no account identity, so connections are labelled "MiniMax Code account". Two sign-ins to the same account create two rows that rotate independently, and the service may revoke the older refresh token.
-- Upstream retries a 429 or 5xx once with a backoff; DurinDoor leaves retry and fallback to its own routing.
-- The call budget, input-size ceiling, context-window and max-token settings that OmniRoute adds around its local gateway transport (`MINIMAX_CODE_*` settings) are not ported. The gateway's own refusals are mapped as above.
+- The budgets and the single retry above are ported from OmniRoute's transport. Their defaults, including the 1000000 window and the 100000 ms call budget, come from that source and are not verified against a live gateway.
+- OmniRoute's other `MINIMAX_CODE_*` settings (`MINIMAX_CODE_REGION`, `MINIMAX_CODE_AUTH_FILE`, `MINIMAX_CODE_PROFILE_DIR`, `MINIMAX_CODE_AUTH_RECORD`, `MINIMAX_CODE_GATEWAY_URL`) belong to its local `~/.minimax` profile and are not ported. Region and gateway URL are per-connection fields here.
+- A 429 or 5xx is retried by this executor, and DurinDoor's own routing and fallback still apply after it gives up.
 
 ## Sources
 

@@ -1,13 +1,13 @@
 ---
 title: TwinMind
-description: Experimental TwinMind app API with Firebase tokens; the provider is registered but chat dispatch is not ported yet.
+description: Experimental TwinMind app API with Firebase token refresh and chat dispatch.
 ---
 
-The pinned OmniRoute integration uses TwinMind's app API rather than an OpenAI-compatible API. Chat is a provider-specific envelope at `https://api2.twinmind.com/api/v3/chat`; credentials are Firebase ID tokens and may require refresh. DurinDoor registers the provider so a connection can be saved, but its executor is not ported yet: a chat request returns HTTP 501 with `type: "provider_port_pending"`, and Validate and Test Connection never send the saved token to TwinMind.
+TwinMind uses its app API rather than an OpenAI-compatible API. DurinDoor sends a private chat envelope to `https://api2.twinmind.com/api/v3/chat` and translates its text stream for OpenAI and Anthropic clients. Provide a Firebase refresh token as the connection API key, or a current Firebase ID token. Refresh tokens are exchanged with Firebase and ID tokens are cached per connection until shortly before expiry. A rotated refresh token is saved with the connection credentials. Validate and Test Connection remain guarded and do not send the saved credential.
 
 ## Setup and limits
 
-The app API is experimental and the provider-specific authentication lifecycle is not covered by a vendor public API contract. The pinned integration uses fallback models and attempts authenticated model discovery. Do not treat this entry as a generally supported API-key connection.
+The app API is experimental and the provider-specific authentication lifecycle is not covered by a vendor public API contract. The model list is a curated fallback catalog; `auto` maps to `gpt-5.6-sol-thinking`. Tool calls and non-text content are not supported by this integration. Do not treat this entry as a generally supported API-key connection.
 
 ## Cookie capture
 

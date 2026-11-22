@@ -23,7 +23,7 @@ Scope: `copilot-web` and `copilot-m365-web` saved credentials, from creation to 
 ## Behaviour confirmed, no change
 
 - Saving: both providers save as `authType: "cookie"` with the pasted text stored verbatim and never echoed. Cookie rows are not name-keyed, so a second paste creates a second account row.
-- Discovery: static catalog only (`copilot/copilot-pro`, `copilot/gpt-4-turbo`, `copilot/gpt-4`, `m365/copilot-m365`); the per-connection models route reports no listing support.
+- Discovery: static catalog only (`copilot/copilot-pro`, `copilot/gpt-4-turbo`, `copilot/gpt-4`, `m365/copilot-m365`, plus the image model `m365/copilot-m365-image`); the per-connection models route reports no listing support.
 - Dispatch through `handleChat`: JSON and SSE for both providers; a personal connection never serves an M365 model and the reverse; a rejected account falls back to the next one and is not retried while cooled down.
 - Usage: token counts are gateway estimates; neither provider reports quota or usage.
 - Hashcash: the existing bounded proof-of-work answer for personal Copilot stays; no other attestation is attempted.
@@ -39,22 +39,39 @@ Ported from OmniRoute `cheaper-inference/OmniRoute` (MIT) at [`4265bb2ad5477450a
 | `m365Protocol/conversations.ts` | `open-sse/executors/copilot-m365-conversations.js` | Per-connection, per-model/profile/tool-set continuation keyed by a sha256 history chain. Process memory only. |
 | `m365Protocol/images.ts` | `open-sse/executors/copilot-m365-images.js` | `UploadFile` plus `ImageFile` annotation; the upload is a credentialed `credentialFetch`; HTTPS URLs use the existing public-only guarded media fetch. |
 | `m365Protocol/tools.ts`, `parseFencedToolCalls`, `toolArgumentSchema.ts` | `open-sse/executors/copilot-m365-tools.js` | Fenced-block tool calls, one buffered turn. |
-| `m365ExecutorOutput.ts` | `open-sse/executors/copilot-m365-output.js` | Text and tool-call output only. |
+| `m365ExecutorOutput.ts` | `open-sse/executors/copilot-m365-output.js` | Text and tool-call output; citations, reasoning and typed errors were added in the later port below. |
 | `m365Identity.ts` and the identity merge in the connection store | `open-sse/utils/m365Identity.js`, the `copilot-m365-web` branches in `connectionsRepo.js` and `flowCompletion.js` | Rows are the same account only for the same `oid@tid`; two tenants sharing an email stay separate, and a reconnect with another identity is refused. |
 
 "Personal conversation reuse" has no separate OmniRoute implementation at the pin: `copilot-web.ts` opens a conversation per request. The reuse ported here is the per-connection M365 store, which serves individual-tier (personal) M365 connections. `copilot-web` itself is unchanged.
 
 Manual session entry is unchanged and still saves a `cookie` row. A native sign-in saves an `oauth` row beside it.
 
+## Ported: image generation, turn composer, connect dialog and automatic tier
+
+Ported from OmniRoute `cheaper-inference/OmniRoute` (MIT) at [`5ffa68e835442a12ed1204a2eebf4076c298aecb`](https://github.com/cheaper-inference/OmniRoute/tree/5ffa68e835442a12ed1204a2eebf4076c298aecb) (release/v3.8.55). CLIProxyAPI at `6960763455c4` has no Copilot Web or M365 file, so nothing was taken from it. The user-facing description is [docs/providers/copilot-m365-web.mdx](../../docs/providers/copilot-m365-web.mdx).
+
+| OmniRoute | DurinDoor | Notes |
+| --- | --- | --- |
+| `m365Protocol/citations.ts` | `open-sse/executors/copilot-m365-citations.js` | Private-use citation markers become numbered Markdown links plus `url_citation` annotations; a source that never arrives is dropped. Only `http(s)` targets are kept. |
+| `m365Protocol/composer.ts` | `open-sse/executors/copilot-m365-composer.js` | Replaces the old snapshot accumulator in the executor. Message snapshots by id, cursor writes, hidden control and tool messages, and the reasoning summary (`contentOrigin: "ChainOfThoughtSummary"` or `addToChainOfThought`). Streaming stays append-only; a rewrite still fails a stream with `m365_stream_rewritten`. |
+| `m365Turn.ts` (error table, `M365TurnError`, final-result classification) | `open-sse/executors/copilot-m365-turn.js` | Licence codes, `Throttled`/`PerUserThrottled`, `OutOfCredits` (priority access and `ReasoningTurnExhausted`), `Disengaged`, `InternalError`, and a 429 upgrade refusal. The transport is not ported: DurinDoor keeps its own socket loop (`runM365Socket` in `copilot-m365-web.js`) and calls `m365FrameError` on each frame. Unlike OmniRoute, an unknown final `result.value` is not an error, so existing completion handling is unchanged. The `InternalError` retry in a fresh conversation is not ported. |
+| `m365ExecutorOutput.ts` (`m365Failure`, annotations, `reasoning_content`) | `open-sse/executors/copilot-m365-output.js` | Public codes `m365_model_not_licensed`, `m365_account_not_licensed`, `m365_throttled`, `priority_access_exhausted`, `reasoning_turns_exhausted`, `provider_safety_rejection`; `m365_error_code` carries only an allow-listed licence code; 429 always has a bounded `Retry-After`. A stream holds its HTTP status until the first text, so a refusal before any text answers with its own status. |
+| `disableMemory=1` in `copilot-m365-web.ts` | `buildWsUrl({ disableMemory })`, set by the executor | Every turn is a temporary chat. `providerSpecificData.temporaryChat: false` opts a connection out; temporary and history turns never share a continuation. |
+| `m365Protocol/profile.ts` | `open-sse/executors/copilot-m365-profile.js` | Documented model ids select a tone and, for some, a scenario and licence; explicit connection fields win. `copilot-m365` has no profile and keeps the previous empty tone and tier defaults. OmniRoute's enterprise option sets and extra message types are not ported. |
+| `m365ImageGeneration.ts`, `m365Protocol/imageGeneration.ts`, `M365_IMAGE_ARTIFACT_SCOPE`, `refreshM365ScopedToken` | `open-sse/executors/copilot-m365-image-generation.js`, `open-sse/handlers/imageProviders/copilotM365.js`, `M365_IMAGE_ARTIFACT_SCOPE` in `open-sse/config/copilotM365.js`, `mintM365ScopedToken` in `open-sse/services/tokenRefresh/copilotM365.js` | `/v1/images/generations` with `m365/copilot-m365-image`. One temporary turn with the image option sets and the `GenerateGraphicArt` message type; artifacts are fetched only from `https://designerapp.officeapps.live.com` with a Designer token minted from the connection's refresh token at its own tenant. Both requests use `credentialFetch`, so a redirect to another origin is an error. The rotated refresh token is persisted through the image handler's `onCredentialsRefreshed` (now passed to executor adapters). A pasted session is refused before the turn. |
+| (no upstream counterpart) | `src/shared/components/CopilotM365AuthModal.js`, "Microsoft sign-in" on the provider page | Calls the existing `authorize` and `exchange` routes; the verifier stays on the server. |
+| (no upstream counterpart) | `resolveM365Tier` in `open-sse/executors/copilot-m365-connection.js` | A native sign-in without `tier`, `scenario`, `licenseType`, `agent` or `isEdu` routes as `enterprise`, because sign-in already refuses the consumer tenant. `tier: "individual"` (or `personal`) opts out. Pasted sessions keep the individual defaults. Education accounts are not detected and still set `tier: "edu"`. |
+
 ## Not ported
 
-- OmniRoute's image generation (`m365ImageGeneration.ts`, the Designer token mint and `M365_IMAGE_ARTIFACT_SCOPE`).
-- The native turn transport and composer (`m365Turn.ts`, `composer.ts`, `citations.ts`): DurinDoor keeps its own socket loop, so there are no citation annotations, reasoning summaries, typed licence/throttle error codes, `disableMemory` temporary chats or documented-model tone profiles.
-- The dashboard connect dialog for native sign-in. The OAuth routes are the interface until a dialog is added.
-- Automatic `tier` selection: a native work account still needs `providerSpecificData.tier`.
+- OmniRoute's native turn transport (`runM365Turn`): its frame-size limits, stop frame on abort and metrics frame. DurinDoor's socket loop keeps its own timeouts.
+- The one-shot retry of a content-less `InternalError` in a fresh conversation.
+- OmniRoute's `unauthorized_client` refresh circuit breaker (unchanged from the sign-in port).
 
 ## Tests
 
 `tests/unit/provider-cookie-lifecycle-copilot.test.js` covers both providers end to end against the real DB layer, route handlers and gateway chat handler with closed mocks.
 
 `tests/unit/copilot-m365-signin.test.js` covers the native sign-in, refresh and continuation port: the PKCE URL and exchange, single-use attempts, refresh rotation, per-connection isolation, continuation reuse, an image round and a tool round, and JSON and streamed chat through the OpenAI and Anthropic routes, all with closed mocks.
+
+`tests/unit/copilot-m365-remaining.test.js` covers image generation through `/v1/images/generations` (temporary turn, Designer token at the account's tenant, artifact host allow-list, no cross-origin redirect, rotated refresh token persisted, pasted session refused, quota answer), citations in OpenAI JSON and streams and in Anthropic output, the reasoning summary as `reasoning_content` and as an Anthropic thinking block, licence, throttle, credit and safety error mapping (JSON, stream and upgrade refusal), account fallback after a licence refusal, temporary chats, tone profiles, automatic tier selection, and the connect dialog starting the PKCE flow and exchanging the pasted callback, all with closed mocks.

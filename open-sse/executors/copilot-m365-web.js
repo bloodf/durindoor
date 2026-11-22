@@ -10,10 +10,8 @@ import {
   resolveConnectionParams } from
 "./copilot-m365-connection.js";
 import {
-  accumulateBotContent,
   buildChatInvocation,
   encodeFrame,
-  extractBotText,
   extractFinalResultMessage,
   handshakeError,
   handshakeFrame,
@@ -26,7 +24,10 @@ import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { webSocketAuthStatus } from "../utils/webSessionExpiry.js";
 import { m365Conversations, m365ReplyFingerprint } from "./copilot-m365-conversations.js";
 import { M365ImageResolver, uploadM365Image } from "./copilot-m365-images.js";
-import { M365ExecutorError, m365ErrorResponse, m365Output } from "./copilot-m365-output.js";
+import { M365ExecutorError, m365ErrorResponse, m365Failure, m365Output } from "./copilot-m365-output.js";
+import { M365TurnComposer } from "./copilot-m365-composer.js";
+import { M365TurnError, m365FrameError, m365UpgradeThrottle } from "./copilot-m365-turn.js";
+import { resolveM365Profile } from "./copilot-m365-profile.js";
 import {
   M365_MAX_TEXT_LENGTH,
   buildM365ToolInstructions,
@@ -45,14 +46,9 @@ export function __setCopilotM365WebSocketForTesting(ctor) {
   };
 }
 
-function makeSseChunk(model, delta, finishReason = null) {
-  return `data: ${JSON.stringify({
-    id: `chatcmpl-copilot-m365-${Date.now()}`,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model,
-    choices: [{ index: 0, delta, finish_reason: finishReason }]
-  })}\n\n`;
+/** The WebSocket constructor in use (tests substitute a fake). */
+export function m365WebSocketCtor() {
+  return WebSocketCtor;
 }
 
 function jsonError(message, status = 502) {
@@ -68,6 +64,140 @@ function sseErrorResponse(error, status = 502) {
   return jsonError(sanitizeErrorMessage(message), upstreamStatus);
 }
 
+/** A typed failure becomes its typed response; anything else keeps the message-and-status shape. */
+function failureResponse(error, model) {
+  if (error instanceof M365TurnError || error instanceof M365ExecutorError) return m365ErrorResponse(error, model);
+  return sseErrorResponse(error);
+}
+
+/** The SSE `error` envelope of a failure that happens after the stream was committed. */
+function failureEnvelope(error, model) {
+  if (error instanceof M365TurnError || error instanceof M365ExecutorError) {
+    const failure = m365Failure(error, model);
+    return { ...failure.body.error, status: failure.status };
+  }
+  const envelope = { message: sanitizeErrorMessage(error?.message || "Microsoft 365 Copilot stream error") };
+  if (error?.status === 401 || error?.status === 403) envelope.status = error.status;
+  return envelope;
+}
+
+/**
+ * Run one Chathub turn: handshake, send `invocation`, hand every later frame to `onFrame`, and
+ * resolve on the completion frame. Rejects with an `M365TurnError` for a typed refusal (licence,
+ * throttling, credits, safety stop) or an `Error` carrying a sanitized message and, for a refused
+ * upgrade, the 401/403 status. An exception thrown by `onFrame` ends the turn with that error.
+ */
+export function runM365Socket({ wsUrl, invocation, signal, onFrame }) {
+  return new Promise((resolve, reject) => {
+    let ws = null;
+    let settled = false;
+    let buffer = "";
+    let handshakeComplete = false;
+    let completionReceived = false;
+    let timeout = null;
+
+    const onAbort = () => fail("Request aborted");
+    const cleanup = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      if (ws) {
+        try {ws.close();} catch {/* ignore */}
+        ws = null;
+      }
+    };
+    const done = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);else
+      resolve();
+    };
+    function fail(message, status) {
+      const error = new Error(sanitizeErrorMessage(message));
+      if (status) error.status = status;
+      done(error);
+    }
+    const resetStallTimer = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fail("Microsoft 365 Copilot WebSocket stall timeout"), FETCH_CONNECT_TIMEOUT_MS);
+    };
+
+    if (signal?.aborted) {
+      fail("Request aborted");
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timeout = setTimeout(() => fail("Microsoft 365 Copilot WebSocket timeout"), FETCH_CONNECT_TIMEOUT_MS);
+
+    try {
+      ws = new WebSocketCtor(wsUrl, {
+        headers: {
+          Origin: "https://m365.cloud.microsoft",
+          "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        }
+      });
+      ws.on("open", () => ws?.send(handshakeFrame()));
+      // A refused upgrade: only the status and Retry-After are read, never the body.
+      ws.on("unexpected-response", (_request, response) => {
+        response?.resume?.();
+        const throttled = m365UpgradeThrottle(response);
+        if (throttled) return done(throttled);
+        const status = Number(response?.statusCode) || 0;
+        fail(`Unexpected server response: ${status}`, status === 401 || status === 403 ? status : undefined);
+      });
+      ws.on("message", (data) => {
+        if (settled) return;
+        buffer += data.toString();
+        const split = splitFrames(buffer);
+        buffer = split.rest;
+        for (const rawFrame of split.frames) {
+          if (settled) return;
+          const frame = parseFrame(rawFrame);
+          if (!handshakeComplete) {
+            const error = handshakeError(frame);
+            if (error) return fail(`Microsoft 365 Copilot handshake failed: ${error}`);
+            handshakeComplete = true;
+            resetStallTimer();
+            ws?.send(keepaliveFrame());
+            ws?.send(encodeFrame(invocation));
+            continue;
+          }
+          if (!frame || frame.type === 6) continue;
+          const typed = m365FrameError(frame);
+          if (typed) return done(typed);
+          if (isCompletionFrame(frame) && frame.error) {
+            return fail(`Microsoft 365 Copilot completion error: ${frame.error}`);
+          }
+          resetStallTimer();
+          try {
+            onFrame?.(frame);
+          } catch (error) {
+            return done(error);
+          }
+          if (frame.type === 2) completionReceived = true;
+          if (isCompletionFrame(frame)) {
+            completionReceived = true;
+            return done();
+          }
+        }
+      });
+      ws.on("error", (err) => {
+        fail(err instanceof Error ? err.message : "Microsoft 365 Copilot WebSocket error", webSocketAuthStatus(err));
+      });
+      ws.on("close", () => {
+        if (settled) return;
+        if (completionReceived) done();else
+        fail(handshakeComplete ?
+        "Microsoft 365 Copilot WebSocket closed before completion" :
+        "Microsoft 365 Copilot WebSocket closed before handshake");
+      });
+    } catch (err) {
+      fail(err instanceof Error ? err.message : "Failed to connect to Microsoft 365 Copilot");
+    }
+  });
+}
+
 export class CopilotM365WebExecutor extends BaseExecutor {
   constructor() {
     super("copilot-m365-web", { id: "copilot-m365-web", baseUrl: "wss://substrate.office.com" });
@@ -79,150 +209,6 @@ export class CopilotM365WebExecutor extends BaseExecutor {
    */
   async refreshCredentials(credentials, log, proxyOptions = null) {
     return refreshProviderCredentials("copilot-m365-web", credentials, log, proxyOptions);
-  }
-
-  async wsChat(input) {
-    return new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder();
-        let ws = null;
-        let settled = false;
-        let buffer = "";
-        let previousText = "";
-        let finalResultMessage = "";
-        let handshakeComplete = false;
-        let completionReceived = false;
-
-        const cleanup = () => {
-          clearTimeout(timeout);
-          if (ws) {
-            try {ws.close();} catch {/* ignore */}
-            ws = null;
-          }
-        };
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          const finalText = previousText || finalResultMessage;
-          // A completed turn: the executor commits its conversation for continuation only now.
-          input.onDone?.(finalText);
-          if ((!input.stream || !previousText) && finalText) {
-            controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: finalText })));
-          }
-          controller.enqueue(encoder.encode(makeSseChunk(input.model, {}, "stop")));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        };
-        const abort = (reason, status) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          const envelope = { message: sanitizeErrorMessage(reason) };
-          if (status) envelope.status = status;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: envelope })}\n\n`));
-          controller.close();
-        };
-
-        input.signal?.addEventListener("abort", () => abort("Request aborted"), { once: true });
-        let timeout = setTimeout(() => abort("Microsoft 365 Copilot WebSocket timeout"), FETCH_CONNECT_TIMEOUT_MS);
-
-        const resetStallTimer = () => {
-          clearTimeout(timeout);
-          timeout = setTimeout(() => abort("Microsoft 365 Copilot WebSocket stall timeout"), FETCH_CONNECT_TIMEOUT_MS);
-        };
-
-        try {
-          const wsUrlParts = new URL(input.wsUrl);
-          const traceId = wsUrlParts.searchParams.get("clientrequestid") ?? crypto.randomUUID().replace(/-/g, "");
-          const sessionId = wsUrlParts.searchParams.get("X-SessionId") ?? crypto.randomUUID();
-
-          ws = new WebSocketCtor(input.wsUrl, {
-            headers: {
-              Origin: "https://m365.cloud.microsoft",
-              "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-            }
-          });
-
-          const sendChat = () => {
-            ws?.send(keepaliveFrame());
-            ws?.send(encodeFrame(buildChatInvocation({
-              traceId,
-              sessionId,
-              isStartOfSession: true,
-              ...input.invocation
-            })));
-          };
-
-          ws.on("open", () => ws?.send(handshakeFrame()));
-          ws.on("message", (data) => {
-            if (settled) return;
-            buffer += data.toString();
-            const split = splitFrames(buffer);
-            buffer = split.rest;
-
-            for (const rawFrame of split.frames) {
-              const frame = parseFrame(rawFrame);
-              if (!handshakeComplete) {
-                const error = handshakeError(frame);
-                if (error) {
-                  clearTimeout(timeout);
-                  abort(`Microsoft 365 Copilot handshake failed: ${error}`);
-                  return;
-                }
-                handshakeComplete = true;
-                resetStallTimer();
-                sendChat();
-                continue;
-              }
-
-              const snapshot = extractBotText(frame);
-              if (input.stream && snapshot && previousText && !snapshot.startsWith(previousText)) {
-                abort("Microsoft 365 Copilot rewrote streamed content; retry without streaming.");
-                return;
-              }
-              const { delta, next } = accumulateBotContent(previousText, frame);
-              previousText = next;
-              if (delta) {
-                resetStallTimer();
-                if (input.stream) controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: delta })));
-              }
-
-              const finalMessage = extractFinalResultMessage(frame);
-              if (finalMessage) finalResultMessage = finalMessage;
-
-              if (isCompletionFrame(frame)) {
-                if (frame.error) {
-                  clearTimeout(timeout);
-                  abort(`Microsoft 365 Copilot completion error: ${frame.error}`);
-                  return;
-                }
-                completionReceived = true;
-                clearTimeout(timeout);
-                finish();
-                return;
-              }
-            }
-          });
-          ws.on("error", (err) => {
-            clearTimeout(timeout);
-            abort(err instanceof Error ? err.message : "Microsoft 365 Copilot WebSocket error", webSocketAuthStatus(err));
-          });
-          ws.on("close", () => {
-            clearTimeout(timeout);
-            if (settled) return;
-            if (completionReceived) finish();else
-            abort(handshakeComplete ?
-            "Microsoft 365 Copilot WebSocket closed before completion" :
-            "Microsoft 365 Copilot WebSocket closed before handshake");
-          });
-        } catch (err) {
-          clearTimeout(timeout);
-          abort(err instanceof Error ? err.message : "Failed to connect to Microsoft 365 Copilot");
-        }
-      }
-    }, { highWaterMark: 16384 });
   }
 
   async execute(input) {
@@ -263,10 +249,31 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     // Tool calls are parsed from the whole answer, so a tool-enabled request is one buffered turn.
     const buffered = !stream || instructions.length > 0;
 
+    // Tone, scenario, licence and agent: explicit connection fields, then the requested model's
+    // documented profile, then the tier (explicit or chosen from the account).
+    const psd = isRecord(input.credentials?.providerSpecificData) ? input.credentials.providerSpecificData : {};
+    const field = (key) => isString(psd[key]) && psd[key] ? psd[key] : undefined;
+    const profile = resolveM365Profile({
+      model,
+      tier: connectionParams.tier,
+      tone: field("tone"),
+      scenario: field("scenario"),
+      licenseType: field("licenseType"),
+      agent: field("agent")
+    });
+    // Every turn is a temporary chat unless the connection opts out with `temporaryChat: false`.
+    const routeParams = {
+      ...connectionParams,
+      scenario: profile.scenario,
+      licenseType: profile.licenseType,
+      agent: profile.agent,
+      disableMemory: psd.temporaryChat !== false
+    };
+
     // Continue this connection's conversation when the request extends our previous reply: only
     // the messages after it are sent. Anything else opens a fresh conversation with the whole history.
     const conversations = m365Conversations();
-    const scope = conversationScope(input.credentials, model, connectionParams, tools);
+    const scope = conversationScope(input.credentials, model, profile, routeParams.disableMemory, tools);
     const claimed = scope ? conversations.claim(scope, messages) : null;
     const delta = claimed ? promptFromMessages(claimed.delta) : null;
     const resume = claimed && delta?.text.trim() ? claimed : null;
@@ -279,7 +286,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     }
     const imageRefs = resume ? delta.imageRefs : history.imageRefs;
 
-    const wsUrl = buildWsUrl(connectionParams, resume?.ids);
+    const wsUrl = buildWsUrl(routeParams, resume?.ids);
+    const redactedUrl = redactWsUrl(wsUrl);
     const urlParts = new URL(wsUrl);
     const ids = {
       conversationId: urlParts.searchParams.get("ConversationId"),
@@ -301,110 +309,155 @@ export class CopilotM365WebExecutor extends BaseExecutor {
       }
     } catch (error) {
       if (!(error instanceof M365ExecutorError)) throw error;
-      return wrap(m365ErrorResponse(error, model), redactWsUrl(wsUrl), logged);
+      return wrap(m365ErrorResponse(error, model), redactedUrl, logged);
     }
 
-    const turns = (resume?.turns ?? 0) + 1;
-    let completed = "";
-    const wsStream = await this.wsChat({
-      wsUrl,
-      model,
-      signal: input.signal,
-      stream: stream && !buffered,
-      invocation: {
-        text: turnText,
-        conversationId: ids.conversationId,
-        requestId: urlParts.searchParams.get("chatsessionid"),
-        isStartOfSession: !resume,
-        messageAnnotations,
-        ...(instructions ? { plugins: clientPlugins(tools), toolChoice, customInstructions: instructions } : null)
-      },
-      // A failed turn is never committed, so a broken conversation is not resumed.
-      onDone: (answer) => {
-        completed = answer;
-      }
+    const invocation = buildChatInvocation({
+      traceId: urlParts.searchParams.get("clientrequestid") ?? crypto.randomUUID().replace(/-/g, ""),
+      sessionId: ids.sessionId,
+      conversationId: ids.conversationId,
+      requestId: urlParts.searchParams.get("chatsessionid"),
+      isStartOfSession: !resume,
+      text: turnText,
+      tone: profile.tone,
+      messageAnnotations,
+      ...(instructions ? { plugins: clientPlugins(tools), toolChoice, customInstructions: instructions } : null)
     });
+    const turns = (resume?.turns ?? 0) + 1;
+    // A failed turn is never committed, so a broken conversation is not resumed.
     const commit = (reply) => {
       if (scope) conversations.commit(scope, messages, ids, m365ReplyFingerprint(reply), turns);
     };
+    const composer = new M365TurnComposer();
+    let finalResultMessage = "";
+    const absorbFinal = (frame) => {
+      const message = extractFinalResultMessage(frame);
+      if (message) finalResultMessage = message;
+    };
+    const output = m365Output(model);
 
-    if (stream && !buffered) {
-      // Commit once the relayed stream reaches its end without error.
-      const reader = wsStream.getReader();
-      const relay = new ReadableStream({
-        async pull(controller) {
-          const { done, value } = await reader.read();
-          if (done) {
-            if (completed) commit({ text: completed, calls: [] });
-            controller.close();
-            return;
-          }
-          controller.enqueue(value);
-        },
-        cancel(reason) {
-          return reader.cancel(reason);
-        }
+    if (!buffered) {
+      // Hold the HTTP commitment until the first published text or a failure, so a licence or
+      // throttling refusal answers with its own status instead of a 200 stream.
+      let ready;
+      const first = new Promise((resolve) => {
+        ready = resolve;
       });
+      const controller = new AbortController();
+      const signal = input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal;
+      const encoder = new TextEncoder();
+      let cancelled = false;
+      const relay = new ReadableStream({
+        start(sink) {
+          const send = (text) => {
+            if (!cancelled) sink.enqueue(encoder.encode(text));
+          };
+          runM365Socket({
+            wsUrl,
+            invocation,
+            signal,
+            onFrame(frame) {
+              absorbFinal(frame);
+              const update = composer.push(frame);
+              if (update.streamingDiverged) {
+                throw new M365ExecutorError(
+                  502,
+                  "m365_stream_rewritten",
+                  "Microsoft 365 Copilot rewrote streamed content; retry without streaming."
+                );
+              }
+              // Reasoning first: it describes the work behind the text that follows it.
+              if (update.reasoningDelta) send(output.chunk({ reasoning_content: update.reasoningDelta }));
+              if (update.delta) {
+                send(output.chunk({
+                  content: update.delta,
+                  ...(update.annotations.length ? { annotations: update.annotations } : null)
+                }));
+              }
+              if (update.delta || update.reasoningDelta) ready();
+            }
+          }).then(
+            () => {
+              const answer = composer.text || finalResultMessage;
+              if (!composer.text && finalResultMessage) send(output.chunk({ content: finalResultMessage }));
+              if (answer) commit({ text: answer, calls: [] });
+              send(output.chunk({}, "stop") + "data: [DONE]\n\n");
+              if (!cancelled) sink.close();
+              ready();
+            },
+            (error) => {
+              ready(error);
+              send(`data: ${JSON.stringify({ error: failureEnvelope(error, model) })}\n\n`);
+              if (!cancelled) sink.close();
+            }
+          );
+        },
+        cancel() {
+          cancelled = true;
+          controller.abort();
+        }
+      }, { highWaterMark: 16384 });
+      const earlyError = await first;
+      if (earlyError) {
+        await relay.cancel().catch(() => {});
+        return wrap(failureResponse(earlyError, model), redactedUrl, logged);
+      }
       return wrap(new Response(relay, {
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
-      }), redactWsUrl(wsUrl), logged);
+      }), redactedUrl, logged);
     }
 
-    const reader = wsStream.getReader();
-    const decoder = new TextDecoder();
-    let fullText = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.error) {
-            return wrap(sseErrorResponse(parsed.error), redactWsUrl(wsUrl), logged);
-          }
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (isString(content)) fullText += content;
-        } catch {
-
-          // Skip malformed SSE lines.
-        }}
+    try {
+      await runM365Socket({
+        wsUrl,
+        invocation,
+        signal: input.signal,
+        onFrame(frame) {
+          absorbFinal(frame);
+          composer.push(frame);
+        }
+      });
+    } catch (error) {
+      return wrap(failureResponse(error, model), redactedUrl, logged);
     }
 
-    const output = m365Output(model);
-    const parsed = parseM365ToolOutput(fullText, tools, toolOptions);
+    const answer = composer.text || finalResultMessage;
+    const parsed = parseM365ToolOutput(answer, tools, toolOptions);
     if (parsed.constraintViolation) {
       return wrap(m365ErrorResponse(
         new M365ExecutorError(502, "m365_tool_constraint", "Microsoft 365 Copilot did not satisfy the requested tool contract."),
         model
-      ), redactWsUrl(wsUrl), logged);
+      ), redactedUrl, logged);
     }
-    if (completed) commit(parsed);
+    if (answer) commit(parsed);
+    // Citation offsets index the composed answer; they hold only while it is returned as is.
+    const cited = !parsed.calls.length && parsed.text === composer.text;
+    const result = { ...parsed, annotations: cited ? composer.annotations : [], reasoning: composer.reasoning };
     const response = stream ?
-    new Response(output.bufferedSse(parsed), {
+    new Response(output.bufferedSse(result), {
       headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }
     }) :
-    output.json(parsed);
-    return wrap(response, redactWsUrl(wsUrl), logged);
+    output.json(result);
+    return wrap(response, redactedUrl, logged);
   }
 }
 
 /**
  * Which conversations a request may continue: same connection (Copilot keeps conversations per
- * account), same model, request profile and tool set. Null without a connection identity, so the
+ * account), same model, request profile (scenario, licence, agent, tone, temporary chat) and tool set. Null without a connection identity, so the
  * request stays stateless, and two connections can never share a conversation.
  */
-function conversationScope(credentials, model, params, tools) {
+function conversationScope(credentials, model, profile, temporary, tools) {
   const connectionId = isRecord(credentials) ? credentials.connectionId : undefined;
   if (!isString(connectionId) || !connectionId) return null;
   return [
   connectionId,
   model,
-  params.scenario ?? "",
-  params.licenseType ?? "",
-  params.agent ?? "",
+  profile.scenario ?? "",
+  profile.licenseType ?? "",
+  profile.agent ?? "",
+  profile.tone ?? "",
+  temporary ? "temporary" : "",
   tools.map((tool) => tool.name).sort().join(",")].
   join("|");
 }

@@ -46,8 +46,11 @@ export function normalizeAnthropicHeaders(headers) {
     const keys = Object.keys(headers).filter((key) => key.toLowerCase() === name);
     if (!keys.length) continue;
     const values = [...new Set(keys.flatMap((key) => String(headers[key] ?? "").split(",")).map((value) => value.trim()).filter(Boolean))];
-    for (const key of keys) delete headers[key];
-    if (values.length) headers[name] = name === "anthropic-version" ? values[0] : values.join(",");
+    // Keep the first spelling: callers and tests read the canonical key as set.
+    const [kept, ...duplicates] = keys;
+    for (const key of duplicates) delete headers[key];
+    if (values.length) headers[kept] = name === "anthropic-version" ? values[0] : values.join(",");
+    else delete headers[kept];
   }
 }
 

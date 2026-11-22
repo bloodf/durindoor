@@ -1,7 +1,11 @@
 import { Readable } from "node:stream";
 import net from "node:net";
 import { Agent, Pool, ProxyAgent, setGlobalDispatcher } from "undici";
-import { recordProxyDispatcherFailure, recordProxyDispatcherSuccess } from "./proxyDispatcherFailures.js";
+import {
+  __resetProxyDispatcherFailuresForTest,
+  recordProxyDispatcherFailure,
+  recordProxyDispatcherSuccess } from
+"./proxyDispatcherFailures.js";
 import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import {
@@ -45,13 +49,23 @@ export function __setRealIpResolverForTesting(resolver) {
   return () => {realIpResolverForTesting = previous;};
 }
 
+// Test fixtures without close() stand in for a proxy route by identity only;
+// failure-streak eviction must not swap them for a real ProxyAgent. Fixtures
+// that model a closable dispatcher stay evictable like a real pool.
+const pinnedTestDispatchers = new WeakSet();
+
 export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
   const normalized = normalizeProxyUrl(proxyUrl);
-  if (normalized) proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+  if (!normalized) return;
+  proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+  if (dispatcher && !dispatcher.close) {
+    pinnedTestDispatchers.add(dispatcher);
+  }
 }
 
 export function __clearProxyDispatchersForTesting() {
   proxyDispatchers.clear();
+  __resetProxyDispatcherFailuresForTest();
 }
 
 export function __getProxyDispatcherCacheSnapshotForTesting() {
@@ -648,7 +662,7 @@ export function evictProxyDispatcher(proxyUrl) {
   if (!normalized) return false;
   const cacheKey = proxyDispatcherKey(normalized);
   const dispatcher = proxyDispatchers.get(cacheKey);
-  if (!dispatcher) return false;
+  if (!dispatcher || pinnedTestDispatchers.has(dispatcher)) return false;
   proxyDispatchers.delete(cacheKey);
   try {
     Promise.resolve(dispatcher.close?.()).catch(() => {});

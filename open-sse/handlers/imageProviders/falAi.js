@@ -1,22 +1,24 @@
 // Fal.ai — async submit + queue polling
 import { sleep, nowSec, sizeToAspectRatio, fetchJobStatus, jobOutcomeUnknown, readJobBody, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
+import { prepareFalOutputOptions } from "./outputFormat.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const BASE_URL = PROVIDER_MEDIA["fal-ai"]?.imageConfig?.baseUrl;
 
 export default {
   async: true,
+  reportOutputFormat: true,
   buildUrl: (model) => `${BASE_URL}/${model}`,
   buildHeaders: (creds) => {
     const key = creds?.apiKey || creds?.accessToken;
     return { "Content-Type": "application/json", "Authorization": `Key ${key}` };
   },
-  buildBody: (_model, body) => {
+  buildBody: (model, body) => {
     const req = { prompt: body.prompt, num_images: body.n || 1 };
     if (body.size) req.image_size = sizeToAspectRatio(body.size);
     if (body.image) req.image_url = body.image;
-    // Fal endpoints decide which output formats they support.
-    if (body.output_format !== undefined) req.output_format = body.output_format;
+    // Fal endpoints decide which output formats they support; frame controls are forwarded as-is.
+    Object.assign(req, prepareFalOutputOptions(body, model));
     return req;
   },
   async parseResponse(response, { headers, signal }) {

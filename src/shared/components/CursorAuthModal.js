@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -12,6 +14,7 @@ import Textarea from "@/shared/ui/components/Textarea.jsx";
  * Auto-detect and import token from Cursor IDE's local SQLite database
  */
 export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
+  const uiV5 = useUiV5();
   const [accessToken, setAccessToken] = useState("");
   const [machineId, setMachineId] = useState("");
   const [error, setError] = useState(null);
@@ -105,7 +108,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
   };
 
   return (
-    <Modal open={isOpen} title="Connect Cursor IDE" subtitle="Detect or paste tokens from Cursor IDE." onClose={onClose} pending={importing} closeOnEscape={!importing} closeOnOverlay={!importing}>
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title="Connect Cursor IDE" subtitle="Detect or paste tokens from Cursor IDE." onClose={onClose} pending={importing} closeOnEscape={!importing} closeOnOverlay={!importing}>
       <div className="flex flex-col gap-4">
         {autoDetecting ? <LoadingState title="Auto-detecting tokens…" message="Reading from Cursor IDE database" /> : <>
           {autoDetected ? <Notice tone="success" icon="check_circle" message="Tokens auto-detected from Cursor IDE successfully." /> : null}

@@ -2084,6 +2084,29 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/usage/UsageLayout.stories.jsx",
+    "title": "V5 review/Pages/usage/Layout",
+    "storyId": "v5-review-pages-usage-layout--overview-widgets",
+    "states": [
+      "OverviewWidgets",
+      "LayoutCancelRestoresOrder",
+      "LayoutSaveAndResetConfirm",
+      "LayoutStorageBlocked",
+      "UsageStatsUnavailable"
+    ],
+    "storyIds": [
+      "v5-review-pages-usage-layout--overview-widgets",
+      "v5-review-pages-usage-layout--layout-cancel-restores-order",
+      "v5-review-pages-usage-layout--layout-save-and-reset-confirm",
+      "v5-review-pages-usage-layout--layout-storage-blocked",
+      "v5-review-pages-usage-layout--usage-stats-unavailable"
+    ],
+    "pathname": "/dashboard/usage",
+    "routePattern": "/dashboard/usage",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.stories.jsx",
     "title": "V5 review/Pages/usage/Monitoring widgets",
     "storyId": "v5-review-pages-usage-monitoring-widgets--default",

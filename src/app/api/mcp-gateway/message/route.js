@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { handleJsonRpc } from "@/lib/mcp/gateway/handler";
 import { getSession } from "@/lib/mcp/gateway/sseSessions";
+import { validateGatewayKey } from "@/lib/localDb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +13,14 @@ export async function POST(request) {
   const url = new URL(request.url);
   const sid = url.searchParams.get("sessionId");
   if (!sid) return NextResponse.json({ error: "missing sessionId" }, { status: 400 });
+  const authorization = request.headers.get("Authorization");
+  const rawKey = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : request.headers.get("x-api-key") || request.headers.get("x-goog-api-key") || url.searchParams.get("key");
+  const key = rawKey ? await validateGatewayKey(rawKey) : null;
+  if (!key) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const session = getSession(sid);
-  if (!session) return NextResponse.json({ error: "session not found" }, { status: 404 });
+  if (!session || session.keyId !== key.id) return NextResponse.json({ error: "session not found" }, { status: 404 });
 
   let body;
   try {

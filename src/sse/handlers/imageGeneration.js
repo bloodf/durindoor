@@ -81,6 +81,7 @@ async function handleImageGenerationHandler(request) {
     const route = await resolveMediaRoute("image", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId }),
@@ -108,6 +109,7 @@ async function handleImageGenerationHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("IMAGE", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting }),

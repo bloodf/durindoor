@@ -256,6 +256,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const resolvedTranslationContext = Object.freeze({
     ...(translationContext || {}),
     provider,
+    targetFormat,
     preserveCacheControl,
     thinkingIntent,
     clientSessionId
@@ -425,7 +426,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
      * sends mid-session. Hoist them before the Claude wire is prepared.
      */
     if (provider === "kimi") result = normalizeDeferredTools(result);
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole);
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole,
+      sourceFormat === FORMATS.OPENAI_RESPONSES && !PROVIDERS[provider]?.quirks?.dropClaudeCacheControl && provider !== "ollama" && provider !== "ollama-local");
     /**
      * Forced tool choice is rejected by every thinking model, so this must run
      * on the TRANSLATED path too — not just native Claude passthrough. An

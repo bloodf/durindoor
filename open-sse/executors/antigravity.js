@@ -5,7 +5,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS } from "../config/appConstants.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
-import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
 import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
@@ -13,7 +13,7 @@ import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } 
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString, isNumber } from "../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
 
 // Native provider declarations bypass the shared OpenAI tool-schema normalization.
@@ -167,6 +167,45 @@ function filterThoughtParts(parts) {
     return true;
   });
 }
+
+// Cloud Code expects proto-JSON camelCase media keys, including nested tool results.
+function normalizeMediaParts(parts) {
+  if (!Array.isArray(parts)) return parts;
+  return parts.map((part) => {
+    if (!part || !isObject(part)) return part;
+    const result = { ...part };
+    for (const [snake, camel] of [["inline_data", "inlineData"], ["file_data", "fileData"]]) {
+      const media = result[camel] ?? result[snake];
+      delete result[snake];
+      if (media !== undefined) result[camel] = media;
+      if (!media || !isObject(media)) continue;
+      result[camel] = { ...media };
+      for (const [oldKey, newKey] of [["mime_type", "mimeType"], ["file_uri", "fileUri"]]) {
+        if (result[camel][newKey] === undefined && result[camel][oldKey] !== undefined) result[camel][newKey] = result[camel][oldKey];
+        delete result[camel][oldKey];
+      }
+    }
+    if (result.functionResponse?.parts) result.functionResponse = { ...result.functionResponse, parts: normalizeMediaParts(result.functionResponse.parts) };
+    return result;
+  });
+}
+
+// FNV-1a with signed 64-bit formatting matches the Hub session wire format.
+function antigravitySessionId(body, credentials) {
+  const incoming = body.request?.sessionId;
+  const account = String(credentials?.connectionId || "").trim();
+  if (incoming != null && String(incoming).trim() && !account) return String(incoming).trim();
+  const identity = credentials?._clientSessionId || incoming || resolveSessionId({
+    headers: credentials?.rawHeaders, body, connectionId: account || credentials?.email, scope: "antigravity"
+  });
+  const child = credentials?._antigravitySubagentId || body.metadata?.subagent_id || body.metadata?.agent_id || body.subagent_id || credentials?.rawHeaders?.["x-subagent-id"] || "";
+  const escapeAgentDelimiter = (value) => String(value).replaceAll("%", "%25").replaceAll(":agent:", "%3Aagent%3A");
+  const scopedIdentity = child ? `${escapeAgentDelimiter(identity)}:agent:${escapeAgentDelimiter(child)}` : escapeAgentDelimiter(identity);
+  const input = [scopedIdentity, account, "explicit-session", "antigravity", "cli-proxy-api"].join("\0");
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(input)) hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+  return BigInt.asIntN(64, hash).toString();
+}
 // Image generation model name patterns
 const IMAGE_MODEL_PATTERNS = [
 /image/i,
@@ -267,7 +306,7 @@ export class AntigravityExecutor extends BaseExecutor {
       if (body.request.systemInstruction?.parts) {
         body.request.systemInstruction = {
           ...body.request.systemInstruction,
-          parts: body.request.systemInstruction.parts.map((part) =>
+          parts: normalizeMediaParts(body.request.systemInstruction.parts).map((part) =>
             isObject(part) && part !== null && !Array.isArray(part) ? { ...part } : part
           )
         };
@@ -290,7 +329,7 @@ export class AntigravityExecutor extends BaseExecutor {
       const srcContents = body.request?.contents || body.contents || [];
       for (const c of srcContents) {
         // Keep text and inline image parts; normalize snake_case inline_data (#4724).
-        const validParts = (c.parts || []).
+        const validParts = normalizeMediaParts(c.parts || []).
         filter((p) => p.text !== undefined || p.inlineData !== undefined || p.inline_data !== undefined).
         map((p) => {
           const inline = p.inlineData || p.inline_data;
@@ -301,12 +340,8 @@ export class AntigravityExecutor extends BaseExecutor {
         }
       }
 
-      const sessionId = resolveSessionId({
-        headers: credentials?.rawHeaders,
-        body,
-        connectionId: credentials?.email || credentials?.connectionId,
-        scope: "antigravity"
-      });
+      const sessionId = (body.request?.sessionId || credentials?._clientSessionId) && !credentials?._clientSessionIsGenerated
+        ? antigravitySessionId(body, credentials) : undefined;
 
       this._lastSessionId = sessionId;
       const request = {
@@ -332,8 +367,7 @@ export class AntigravityExecutor extends BaseExecutor {
       };
     }
 
-    const rawSessionId = body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" });
-    const sessionId = toNumericSessionId(rawSessionId) || rawSessionId;
+    const sessionId = antigravitySessionId(body, credentials);
 
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
@@ -348,7 +382,7 @@ export class AntigravityExecutor extends BaseExecutor {
         role = "user";
       }
       // Strip thought-only parts, keep thoughtSignature on functionCall parts (Gemini 3+ requires it)
-      const parts = filterThoughtParts(c.parts);
+      const parts = normalizeMediaParts(filterThoughtParts(c.parts));
       // Gemini 3+ rejects functionCall parts without thoughtSignature. Clients (Claude Code, IDE)
       // don't persist thoughtSignature in their history, so backfill from cache or default signature.
       // In parallel function calls, only the first call needs a signature; siblings stay unsigned.
@@ -405,7 +439,8 @@ export class AntigravityExecutor extends BaseExecutor {
     let tools = body.request?.tools;
     const { alias: sanitizeFunctionName, aliases: toolNameMap } = createGeminiToolNameAliaser();
 
-    if (tools && tools.length > 0) {
+    const isSearch = body.requestType === "web_search" && tools?.length === 1 && tools[0]?.googleSearch;
+    if (tools && tools.length > 0 && !isSearch) {
       // Merge all groups into a single functionDeclarations group (Gemini expects 1 group)
       const seenToolNames = new Set();
       const allDeclarations = [];
@@ -458,7 +493,9 @@ export class AntigravityExecutor extends BaseExecutor {
 
       const bodyEstimate = JSON.stringify(allDeclarations).length;
       dbg("TOOLS", `Processed ${allDeclarations.length} tool declarations for Antigravity (~${Math.round(bodyEstimate / 1024)}KB): [${Array.from(seenToolNames).slice(0, 10).join(", ")}${seenToolNames.size > 10 ? "..." : ""}]`);
-      tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
+      tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : tools
+        .map((group) => ({ ...(group.codeExecution && { codeExecution: group.codeExecution }), ...(group.urlContext && { urlContext: group.urlContext }) }))
+        .filter((group) => Object.keys(group).length > 0);
     }
     for (const content of contents || []) {
       for (const part of content.parts || []) {
@@ -467,11 +504,14 @@ export class AntigravityExecutor extends BaseExecutor {
       }
     }
 
-    const functionCallingConfig = body.request?.toolConfig?.functionCallingConfig;
+    const rawToolConfig = body.request?.toolConfig || body.request?.tool_config;
+    const functionCallingConfig = rawToolConfig?.functionCallingConfig || rawToolConfig?.function_calling_config;
     const toolConfig = functionCallingConfig ? {
-      ...body.request.toolConfig,
+      ...rawToolConfig,
+      function_calling_config: undefined,
       functionCallingConfig: {
         ...functionCallingConfig,
+        ...(String(functionCallingConfig.mode || "").trim().toUpperCase() === "NONE" && { mode: "NONE" }),
         ...(Array.isArray(functionCallingConfig.allowedFunctionNames) && {
           allowedFunctionNames: functionCallingConfig.allowedFunctionNames.map(sanitizeFunctionName)
         })
@@ -480,7 +520,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
 
     // Strip contents/tools/toolConfig (handled separately) and blacklisted fields that Google rejects
-    const { contents: _originalContents, tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
+    const { contents: _originalContents, tools: _originalTools, toolConfig: _originalToolConfig, tool_config: _originalSnakeToolConfig, ...requestWithoutTools } = body.request || {};
     stripBlacklisted(requestWithoutTools);
 
     // Rewrite competitive system prompts only after translation reaches the Antigravity
@@ -501,8 +541,27 @@ export class AntigravityExecutor extends BaseExecutor {
       }
     }
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
+    if (isString(generationConfig.thinkingConfig?.thinkingLevel)) {
+      generationConfig.thinkingConfig = { ...generationConfig.thinkingConfig, thinkingLevel: generationConfig.thinkingConfig.thinkingLevel.trim().toUpperCase() };
+    }
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+    }
+    if (signatureFamily(model) === "claude") {
+      const thinking = generationConfig.thinkingConfig || generationConfig.thinking_config;
+      const budget = thinking?.thinkingBudget ?? thinking?.thinking_budget;
+      if (isNumber(budget) && Number.isFinite(budget)) {
+        const max = generationConfig.maxOutputTokens || MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+        const bounded = budget >= max ? max - 1 : budget;
+        if (bounded >= 0 && bounded < 1024) {
+          delete generationConfig.thinkingConfig;
+          delete generationConfig.thinking_config;
+        } else {
+          generationConfig.thinkingConfig = { ...thinking, thinkingBudget: bounded };
+          delete generationConfig.thinkingConfig.thinking_budget;
+          delete generationConfig.thinking_config;
+        }
+      }
     }
     // Gemini 4 request rules apply at the provider boundary so every source
     // format (OpenAI, Claude, native Gemini) is covered (upstream eb373017).
@@ -519,11 +578,12 @@ export class AntigravityExecutor extends BaseExecutor {
       generationConfig: finalGenerationConfig,
       ...(finalContents.length > 0 && { contents: finalContents }),
       ...(tools && { tools }),
-      sessionId,
       safetySettings: undefined,
-      ...(tools?.length > 0 && { toolConfig: toolConfig || { functionCallingConfig: { mode: "VALIDATED" } } })
+      ...(!isSearch && (tools?.some((group) => group.functionDeclarations?.length) || toolConfig?.functionCallingConfig?.mode === "NONE") && { toolConfig: toolConfig || { functionCallingConfig: { mode: "VALIDATED" } } })
 
     };
+    if (body.requestType !== "web_search" || ((body.request?.sessionId || credentials?._clientSessionId) && !credentials?._clientSessionIsGenerated)) transformedRequest.sessionId = sessionId;
+    else delete transformedRequest.sessionId;
 
     // Large system prompts exhaust the systemInstruction limit; preserve them in user content.
     const sysInstr = transformedRequest.systemInstruction;
@@ -564,7 +624,7 @@ export class AntigravityExecutor extends BaseExecutor {
     // bucket the request and return a detail-free 429 RESOURCE_EXHAUSTED even
     // with quota available (oh-my-pi #11689 / PR #11742). `image_gen` and
     // `search` buckets are unaffected and keep their own requestType.
-    delete body.requestType;
+    if (!isSearch) delete body.requestType;
 
     const cleanedRequest = stripHarnessTelemetry(transformedRequest);
     const transformedBody = stripHarnessTelemetry({

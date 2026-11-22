@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
@@ -29,6 +29,8 @@ const VIEWPORTS = [{ width: 1440, height: 900 }, { width: 360, height: 800 }];
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const BLOCKING = new Set(["serious", "critical"]);
 const STORY_TIMEOUT = 20_000;
+const evidenceReport = process.env.V5_EVIDENCE_REPORT ? resolve(root, process.env.V5_EVIDENCE_REPORT) : null;
+const evidenceRows = [];
 
 const slug = (value) => value.replace(/^\/+/, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "root";
 
@@ -76,6 +78,8 @@ async function installStoryResult(page) {
 
 async function checkStory(browser, baseURL, route, id, theme, viewport) {
   const failures = [];
+  const axeCounts = { minor: 0, moderate: 0, serious: 0, critical: 0 };
+  let overflowPx = 0;
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
   const consoleErrors = [];
@@ -98,9 +102,11 @@ async function checkStory(browser, baseURL, route, id, theme, viewport) {
       innerWidth: window.innerWidth,
     }));
     if (state.ui !== "v5") failures.push(`html data-ui is ${JSON.stringify(state.ui)}, expected "v5"`);
-    if (viewport.width === 360 && state.scrollWidth > state.innerWidth) failures.push(`horizontal overflow at 360: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
+    overflowPx = Math.max(0, state.scrollWidth - state.innerWidth);
+    if (viewport.width === 360 && overflowPx > 0) failures.push(`horizontal overflow at 360: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
 
     const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    for (const violation of axe.violations) axeCounts[violation.impact] = (axeCounts[violation.impact] || 0) + 1;
     for (const violation of axe.violations.filter((entry) => BLOCKING.has(entry.impact))) {
       failures.push(`axe ${violation.impact} ${violation.id}: ${violation.nodes.slice(0, 3).map((node) => node.target.join(" ")).join(" | ")}`);
     }
@@ -115,6 +121,7 @@ async function checkStory(browser, baseURL, route, id, theme, viewport) {
   } finally {
     await context.close();
   }
+  evidenceRows.push({ route, story: id, theme, width: viewport.width, pass: failures.length === 0, axeViolationsByImpact: axeCounts, consoleErrorCount: consoleErrors.length, overflowPx });
   return failures.map((failure) => `[${theme} ${viewport.width}px] ${failure}`);
 }
 
@@ -137,6 +144,10 @@ describe.skipIf(!enabled)("v5 production route evidence", () => {
   afterAll(async () => {
     await browser?.close();
     await server?.close();
+    if (evidenceReport) {
+      mkdirSync(resolve(evidenceReport, ".."), { recursive: true });
+      writeFileSync(evidenceReport, `${JSON.stringify({ candidate: "31cfbb7d70c1", generatedAt: new Date().toISOString(), cases: evidenceRows }, null, 2)}\n`);
+    }
   });
 
   it("has a registry entry with stories for every selected route", () => {

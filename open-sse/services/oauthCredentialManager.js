@@ -93,7 +93,7 @@ export function shouldRefreshCredentials(provider, credentials, nowMs = Date.now
   if (!credentials) return false;
 
   const expiresAtMs = getCredentialExpiryMs(credentials);
-  if (expiresAtMs !== null && expiresAtMs - nowMs < getRefreshLeadMs(provider)) {
+  if (expiresAtMs !== null && expiresAtMs - nowMs < getRefreshLeadMs(provider, credentials.providerSpecificData)) {
     return true;
   }
 

@@ -35,7 +35,7 @@ import {
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
-import { rankQuotaConnections, pickQuotaWeightedConnection } from "@/shared/services/quotaSelection";
+import { rankQuotaConnections, pickQuotaWeightedConnection, pickEarliestResetConnection } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
@@ -1104,6 +1104,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       connection = (await updateProviderConnection(connection.id, {
         lastUsedAt: new Date().toISOString()
       })) || connection;
+    } else if (strategy === "earliest-reset") {
+      connection = pickEarliestResetConnection(availableConnections, quotaDecisions, selectionNow);
     } else if (quotaRanked) {
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.

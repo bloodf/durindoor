@@ -168,7 +168,8 @@ function routingWindow(row) {
     resourceKey: row.identity.resourceKey,
     dimensionKey: row.identity.dimensionKey,
     unit: row.amounts.unit || namespaceOf(row.identity.dimensionKey) || null,
-    ratio
+    ratio,
+    resetAt: row.timing?.resetAt || null
   };
 }
 

@@ -56,7 +56,7 @@ describe("provider quota normalization primitives", () => {
   it("locks stable provider coverage and explicit non-persistence dispositions", () => {
     expect(Object.keys(PROVIDER_QUOTA_CONFIG)).toEqual([
       "gemini-cli", "antigravity", "agy", "codex", "claude", "github", "cursor", "kiro",
-      "kimi-coding", "kimi-coding-apikey", "glm", "glm-cn", "zai", "glmt", "minimax", "minimax-cn",
+      "zed-hosted", "kimi-coding", "kimi-coding-apikey", "glm", "glm-cn", "zai", "glmt", "minimax", "minimax-cn",
       "codebuddy-cn", "bailian-coding-plan", "qoder", "qoder-cn", "vercel-ai-gateway", "crof", "deepseek",
     ]);
     expect(Object.keys(PROVIDER_QUOTA_CONFIG).filter((provider) => Object.hasOwn(PROVIDER_QUOTA_UNSUPPORTED, provider))).toEqual([]);

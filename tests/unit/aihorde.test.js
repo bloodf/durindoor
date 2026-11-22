@@ -59,6 +59,7 @@ import { getProviderCredentials } from "../../src/sse/services/auth.js";
 import { handleChat } from "../../src/sse/handlers/chat.js";
 
 const LIVE_MODEL_ID = "koboldcpp/Llama-3.2-3B";
+const IMAGE_LIKE_MODEL_ID = "koboldcpp/Qwen-Image-2.1-Turbo-Uncensored-AD-Q2_K";
 const CHAT_FIXTURE = {
   id: "3c5d11fa-2ca8-4f6b-ab83-41fc9e4b7813",
   choices: [{ finish_reason: "stop", index: 0, message: { role: "assistant", content: "OK." } }],
@@ -178,6 +179,22 @@ describe("AI Horde provider", () => {
         headers: expect.objectContaining({ Authorization: "Bearer 0000000000" }),
       }),
     );
+  });
+
+  it("does not publish chat-only Horde discoveries in image catalogs", async () => {
+    const fetchSpy = vi.fn(async (url) => {
+      expect(url).toBe("https://oai.aihorde.net/v1/models");
+      return Response.json({ data: [{ id: LIVE_MODEL_ID }, { id: IMAGE_LIKE_MODEL_ID }] });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const images = await buildModelsList(["image"]);
+    expect(images.filter((model) => model.owned_by === "horde")).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    const combined = await buildModelsList([LLM_KIND, "image"]);
+    expect(combined.filter((model) => model.owned_by === "horde").map((model) => model.id))
+      .toEqual([`horde/${LIVE_MODEL_ID}`]);
   });
 
   it("routes the anonymous facade with selector-produced credentials and preserves saved keys", async () => {

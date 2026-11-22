@@ -4,9 +4,14 @@ const fs = require("fs");
 const forge = require("node-forge");
 const { MITM_DIR } = require("../paths");
 const { ensureWindowsPrivateDirectorySync } = require("../windowsAcl");
+const { TARGET_HOSTS } = require("../config");
+const { isString } = require("../../shared/utils/typeChecks.cjs");
 
 const ROOT_CA_KEY_PATH = path.join(MITM_DIR, "rootCA.key");
 const ROOT_CA_CERT_PATH = path.join(MITM_DIR, "rootCA.crt");
+const NAME_CONSTRAINTS_OID = "2.5.29.30";
+const ROOT_CA_VALIDITY_YEARS = 2;
+const ROOT_CA_SERIAL_BYTES = 16;
 
 function fsyncMitmDirectory() {
   if (process.platform === "win32") return;
@@ -59,7 +64,56 @@ function hasValidRootCA() {
   return fs.existsSync(ROOT_CA_KEY_PATH)
     && fs.existsSync(ROOT_CA_CERT_PATH)
     && !isCertExpired(ROOT_CA_CERT_PATH)
-    && rootCAFilesMatch();
+    && rootCAFilesMatch()
+    && rootCACoversTargetHosts(ROOT_CA_CERT_PATH);
+}
+
+/**
+ * Random 16-byte positive INTEGER serial (MSB cleared so DER INTEGER stays positive).
+ * @returns {string} lowercase hex
+ */
+function randomPositiveSerialHex(byteLength = ROOT_CA_SERIAL_BYTES) {
+  const bytes = crypto.randomBytes(byteLength);
+  bytes[0] &= 0x7f;
+  if (bytes[0] === 0) bytes[0] = 1;
+  return bytes.toString("hex");
+}
+
+/**
+ * Build a critical id-ce-nameConstraints value with permittedSubtrees dNSName entries.
+ * node-forge parses this OID but does not encode it via setExtensions helpers.
+ * @param {string[]} hosts
+ */
+function buildNameConstraintsValue(hosts) {
+  const asn1 = forge.asn1;
+  const subtrees = hosts.map((host) =>
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(asn1.Class.CONTEXT_SPECIFIC, 2, false, host),
+    ])
+  );
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, subtrees),
+  ]);
+}
+
+/**
+ * Legacy unconstrained CAs remain valid until natural rotation. Constrained CAs
+ * must permit every current MITM target host; otherwise ensureRootCA regenerates.
+ */
+function rootCACoversTargetHosts(certPath) {
+  try {
+    const cert = forge.pki.certificateFromPem(fs.readFileSync(certPath, "utf8"));
+    const nc = cert.getExtension({ id: NAME_CONSTRAINTS_OID });
+    if (!nc) return true;
+    const permitted = new Set(
+      (nc.permittedSubtrees || [])
+        .filter((subtree) => subtree.type === 2 && isString(subtree.value))
+        .map((subtree) => subtree.value.toLowerCase())
+    );
+    return TARGET_HOSTS.every((host) => permitted.has(String(host).toLowerCase()));
+  } catch {
+    return false;
+  }
 }
 
 function writeExclusiveTemp(filePath, content, mode, token) {
@@ -259,17 +313,17 @@ function isCertExpired(certPath) {
   }
 }
 
-function createRootCAMaterial() {
+function createRootCAMaterial(permittedHosts = TARGET_HOSTS) {
   // Generate RSA key pair
   const keys = forge.pki.rsa.generateKeyPair(2048);
 
   // Create Root CA certificate
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.publicKey;
-  cert.serialNumber = "01";
+  cert.serialNumber = randomPositiveSerialHex();
   cert.validity.notBefore = new Date();
   cert.validity.notAfter = new Date();
-  cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10);
+  cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + ROOT_CA_VALIDITY_YEARS);
 
   const attrs = [
     { name: "commonName", value: "9Router MITM Root CA" },
@@ -280,6 +334,7 @@ function createRootCAMaterial() {
   cert.setSubject(attrs);
   cert.setIssuer(attrs); // Self-signed
 
+  const hosts = [...new Set(permittedHosts.map((host) => String(host).toLowerCase()))];
   cert.setExtensions([
     {
       name: "basicConstraints",
@@ -294,7 +349,13 @@ function createRootCAMaterial() {
     },
     {
       name: "subjectKeyIdentifier"
-    }
+    },
+    {
+      id: NAME_CONSTRAINTS_OID,
+      name: "nameConstraints",
+      critical: true,
+      value: buildNameConstraintsValue(hosts),
+    },
   ]);
 
   // Self-sign the certificate
@@ -441,8 +502,14 @@ module.exports = {
   ensureRootCASync,
   loadRootCA,
   generateLeafCert,
+  createRootCAMaterial,
+  buildNameConstraintsValue,
+  rootCACoversTargetHosts,
+  randomPositiveSerialHex,
   isCertExpired,
   ROOT_CA_CERT_PATH,
   ROOT_CA_KEY_PATH,
+  NAME_CONSTRAINTS_OID,
+  ROOT_CA_VALIDITY_YEARS,
   hasValidRootCA,
 };

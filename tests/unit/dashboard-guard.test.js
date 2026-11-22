@@ -694,6 +694,7 @@ describe("dashboard guard management API auth", () => {
     });
     it(`allows API-key remote GET ${path}`, async () => {
       mocks.validateApiKey.mockResolvedValue(true);
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
       const response = await proxy(request(path, {
         host: "router.example.com",
         authorization: "Bearer sk-valid",
@@ -831,6 +832,7 @@ describe("dashboard guard management API auth", () => {
 
   it("allows remote management API with a valid application API key", async () => {
     mocks.validateApiKey.mockResolvedValue(true);
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
     for (const path of ["/api/combos", "/api/keys", "/api/providers", "/api/settings"]) {
       const response = await proxy(request(path, {
         host: "router.example.com",
@@ -1142,8 +1144,15 @@ describe("dashboard guard API-key admin scope", () => {
     });
   }
 
-  it("keeps management reads open to any active key", async () => {
-    for (const path of ["/api/providers", "/api/combos", "/api/keys", "/api/usage/me"]) {
+  it("requires admin scope for management reads but keeps self-usage available", async () => {
+    for (const path of ["/api/providers", "/api/combos", "/api/keys", "/api/usage/stats", "/api/cli-tools/codex-settings"]) {
+      expect((await proxy(request(path, remoteKey))).status).toBe(401);
+    }
+    for (const path of ["/api/usage/me"]) {
+      expect(await proxy(request(path, remoteKey))).toBe(mocks.nextResponse);
+    }
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+    for (const path of ["/api/providers", "/api/combos", "/api/keys", "/api/usage/stats", "/api/cli-tools/codex-settings"]) {
       expect(await proxy(request(path, remoteKey))).toBe(mocks.nextResponse);
     }
   });
@@ -1166,7 +1175,7 @@ describe("dashboard guard API-key admin scope", () => {
     expect(await isAdminScopedKey(queryKey("POST"))).toBe(false);
     expect(await canManageAccessConfig(queryKey("POST"))).toBe(false);
     expect((await proxy(queryKey("POST"))).status).toBe(403);
-    expect(await proxy(queryKey("GET"))).toBe(mocks.nextResponse);
+    expect((await proxy(queryKey("GET"))).status).toBe(401);
   });
 
   it("canManageAccessConfig accepts operators and admin-scoped keys only", async () => {

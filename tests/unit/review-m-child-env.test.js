@@ -14,6 +14,7 @@ vi.mock("../../src/lib/headroom/pythonEnv.js", () => ({ ensureManagedVenv: async
 vi.mock("../../src/lib/headroom/detect.js", () => ({ findHeadroomBinary: () => "/headroom", HEADROOM_COMPRESSION_EXTRAS: ["code"], getInstalledHeadroomExtras: () => ({}) }));
 
 const realFs = await vi.importActual("node:fs");
+const actualHeadroomDetect = await vi.importActual("../../src/lib/headroom/detect.js");
 const { __test__ } = await import("../../src/lib/mcp/gateway/stdioClient.js");
 const { startHeadroomProxy, installHeadroomExtras } = await import("../../src/lib/headroom/process.js");
 
@@ -23,8 +24,10 @@ function child() {
   proc.stdin = { write: vi.fn() }; proc.pid = 1234; proc.unref = vi.fn();
   return proc;
 }
-function checkEnv(env) {
-  expect(env).toMatchObject({ PATH: "/test/path", HOME: "/test/home", LC_TEST: "locale", https_proxy: "proxy" });
+function checkEnv(env, { extendedPath = false } = {}) {
+  expect(env).toMatchObject({ HOME: "/test/home", LC_TEST: "locale", https_proxy: "proxy" });
+  if (extendedPath) expect(env.PATH).toContain("/usr/local/bin");
+  else expect(env.PATH).toBe("/test/path");
   expect(env).not.toHaveProperty("JWT_SECRET");
   expect(env).not.toHaveProperty("API_KEY_SECRET");
   expect(env).not.toHaveProperty("OTHER_PRIVATE_TOKEN");
@@ -72,9 +75,17 @@ it("limits Headroom proxy, installer and version probe environments", async () =
   checkEnv(options.env);
   expect(options.env.TMPDIR).toContain("pip-tmp");
   expect(options.env.PIP_CACHE_DIR).toContain("pip-tmp/cache");
+  // The failed install's wheel diagnostic runs getPythonVersion in process.js.
   mocks.execFileSync.mockReturnValue(Buffer.from("3.13"));
   mocks.spawn.mock.results[1].value.emit("exit", 1);
   await expect(installing).rejects.toMatchObject({ code: "EXTRA_WHEEL_UNAVAILABLE" });
   expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
   checkEnv(mocks.execFileSync.mock.calls[0][2].env);
+
+  // Status uses detect.js's importlib version/extras probe; observe that real
+  // call too, since it is separate from process.js's install diagnostic.
+  mocks.execFileSync.mockReset().mockReturnValue(Buffer.from(JSON.stringify({ version: "1.2.3", extras: { code: true } })));
+  actualHeadroomDetect.getInstalledHeadroomExtras("/python");
+  expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
+  checkEnv(mocks.execFileSync.mock.calls[0][2].env, { extendedPath: true });
 });

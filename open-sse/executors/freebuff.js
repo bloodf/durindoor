@@ -17,6 +17,7 @@
 import { randomInt } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { buildErrorBody } from "../utils/error.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
@@ -102,7 +103,7 @@ export async function validateFreebuffToken({ apiKey }, { fetch: fetcher = proxy
   const token = freebuffToken({ apiKey });
   if (!token) return { valid: false, error: "Freebuff Auth Token required", unsupported: false };
   try {
-    const res = await fetcher(FREEBUFF_SESSION_URL, {
+    const res = await credentialFetch((url, init) => fetcher(url, init, proxyOptions), FREEBUFF_SESSION_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -112,7 +113,7 @@ export async function validateFreebuffToken({ apiKey }, { fetch: fetcher = proxy
       },
       body: JSON.stringify({}),
       signal: AbortSignal.timeout(15000),
-    }, proxyOptions);
+    });
     if (res.ok || res.status === 409) return { valid: true, error: null };
     if (res.status === 401 || res.status === 403) {
       return { valid: false, error: "Invalid or expired Freebuff Auth Token", unsupported: false };
@@ -152,7 +153,7 @@ export class FreebuffExecutor extends BaseExecutor {
 
   #call(url, init, proxyOptions) {
     if (this.fetchImpl) return this.fetchImpl(url, init, proxyOptions);
-    return proxyAwareFetch(url, init, proxyOptions);
+    return credentialFetch((target, request) => proxyAwareFetch(target, request, proxyOptions), url, init);
   }
 
   async execute(input) {

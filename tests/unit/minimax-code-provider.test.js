@@ -176,7 +176,7 @@ describe("MiniMax Code device sign-in", () => {
     expect(result).toMatchObject({ user_code: USER_CODE, verification_uri_complete: expect.stringContaining("code=ABCD-1234"), expires_in: 600, interval: 5, region: "en" });
     const [call] = accountCalls();
     expect(call.url).toBe(`${EN}/oauth2/device/code`);
-    expect(call.redirect).toBe("error");
+    expect(call.redirect).toBe("manual");
     expect(call.headers).toMatchObject({ "content-type": "application/x-www-form-urlencoded", "user-agent": "minimax-code-cli" });
     expect(call.form).toEqual({ client_id: "mcode-public", scope: "agent.default", audience: "agent-backend", code_challenge: challenge, code_challenge_method: "S256" });
   });

@@ -356,6 +356,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     if (isObject(result)) repairDisplacedToolResults(result);
     result = filterToOpenAIFormat(result, {
       preserveCacheControl,
+      preserveDeveloperRole: provider === "openai" && sourceFormat === FORMATS.OPENAI,
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||
         getCapabilitiesForModel(provider, translationModel).videoInput === true
     });

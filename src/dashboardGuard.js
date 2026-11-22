@@ -344,6 +344,9 @@ async function canAccessPublicLlmApi(request) {
  */
 export async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
+  // Tunnel controls accept an authenticated dashboard session on its own origin.
+  if (["/api/tunnel/enable", "/api/tunnel/disable"].includes(request.nextUrl.pathname) &&
+      hasExactRequestOrigin(request) && await hasValidToken(request)) return true;
   if (!isLocalRequest(request)) return false;
 
   const pathname = request.nextUrl.pathname;

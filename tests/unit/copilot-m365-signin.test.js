@@ -173,6 +173,8 @@ beforeAll(async () => {
     handleChat: (await import("../../src/sse/handlers/chat.js")).handleChat,
     testSingleConnection: (await import("../../src/app/api/providers/[id]/test/testUtils.js")).testSingleConnection,
     refreshM365Token: (await import("../../open-sse/services/tokenRefresh/copilotM365.js")).refreshM365Token,
+    resetM365RefreshCircuit: (await import("../../open-sse/services/tokenRefresh/copilotM365.js")).resetM365RefreshCircuit,
+    resetM365RefreshCircuits: (await import("../../open-sse/services/tokenRefresh/copilotM365.js")).__resetM365RefreshCircuitsForTesting,
     getAccessToken: (await import("../../open-sse/services/tokenRefresh.js")).getAccessToken,
     Executor: m365.CopilotM365WebExecutor,
     images,
@@ -202,6 +204,7 @@ beforeEach(async () => {
   sockets.length = 0;
   replies.length = 0;
   tokenCalls.length = 0;
+  api.resetM365RefreshCircuits();
   otherCalls.length = 0;
   uploads.length = 0;
   fakeFetch.mockClear();
@@ -432,6 +435,24 @@ describe("M365 refresh-token renewal", () => {
     expect(otherCalls).toEqual([]);
     // A tenant that is not a GUID is refused rather than spliced into the token URL.
     expect(await api.refreshM365Token({ refreshToken: "rt-bad", providerSpecificData: { chathubPath: "oid@evil.example/../x" } })).toMatchObject({ error: "unrecoverable_refresh_error" });
+  });
+
+  it("opens the unauthorized_client refresh circuit after three failures and resets it on sign-in", async () => {
+    const connection = await seedOAuthConnection(ACCOUNT_A, { refreshToken: "rt-client" });
+    const credentials = { connectionId: connection.id, refreshToken: "rt-client", providerSpecificData: { chathubPath: pathOf(ACCOUNT_A) } };
+    tokenHandler = () => tokenResponse({ error: "unauthorized_client" }, 400);
+    expect(await api.refreshM365Token(credentials)).toBeNull();
+    expect(await api.refreshM365Token(credentials)).toBeNull();
+    expect(await api.refreshM365Token(credentials)).toMatchObject({ error: "unrecoverable_refresh_error", code: "unauthorized_client" });
+    expect(tokenCalls).toHaveLength(3);
+    expect(await api.refreshM365Token(credentials)).toMatchObject({ error: "unrecoverable_refresh_error", code: "unauthorized_client" });
+    expect(tokenCalls).toHaveLength(3);
+
+    tokenHandler = () => grant(ACCOUNT_A, { tag: "after-signin", refresh_token: "rt-after-signin" });
+    await signIn(ACCOUNT_A, { tag: "after-signin", refresh_token: "rt-after-signin", extra: { connectionId: connection.id } });
+    tokenHandler = () => tokenResponse({ error: "unauthorized_client" }, 400);
+    expect(await api.refreshM365Token({ ...credentials, refreshToken: "rt-after-signin" })).toBeNull();
+    expect(tokenCalls).toHaveLength(5);
   });
 });
 

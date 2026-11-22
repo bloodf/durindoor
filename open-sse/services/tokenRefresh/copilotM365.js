@@ -17,6 +17,12 @@ import { dedupRefresh } from "./dedup.js";
 import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const M365_REFRESH_TIMEOUT_MS = 30_000;
+export const M365_CLIENT_CONFIG_REFRESH_MAX_ATTEMPTS = 3;
+export const M365_CLIENT_CONFIG_REFRESH_COOLDOWN_MS = 30 * 60 * 1000;
+const clientConfigRefreshFailures = new Map();
+export function resetM365RefreshCircuit(connectionId) {
+  if (isString(connectionId) && connectionId) clientConfigRefreshFailures.delete(connectionId);
+}
 // Microsoft rejects a refresh grant with these codes when the grant itself is dead.
 const PERMANENT_CODES = new Set(["invalid_grant", "invalid_token", "expired_token", "access_denied"]);
 
@@ -39,6 +45,10 @@ export async function refreshM365Token(credentials, log, proxyOptions = null) {
   if (!isString(refreshToken) || !refreshToken) return null;
   const tenant = m365RefreshTenant(credentials);
   if (tenant === null) return { error: "unrecoverable_refresh_error", code: "invalid_tenant" };
+  const connectionId = credentials?.connectionId;
+  const breaker = isString(connectionId) && connectionId ? clientConfigRefreshFailures.get(connectionId) : null;
+  if (breaker && breaker.until > Date.now()) return { error: "unrecoverable_refresh_error", code: "unauthorized_client" };
+  if (breaker?.until > 0 && breaker.until <= Date.now()) clientConfigRefreshFailures.delete(connectionId);
   return dedupRefresh("copilot-m365-web", refreshToken, async () => {
     try {
       const fetcher = (url, init) => proxyAwareFetch(url, init, proxyOptions);
@@ -61,6 +71,13 @@ export async function refreshM365Token(credentials, log, proxyOptions = null) {
         // Only the OAuth error code is read; the description can carry credentials.
         const code = isString(body.error) ? body.error : "m365_refresh_failed";
         log?.warn?.("TOKEN_REFRESH", sanitizeErrorMessage(`M365 refresh rejected: ${code}`));
+        if (code === "unauthorized_client" && connectionId) {
+          const failures = (clientConfigRefreshFailures.get(connectionId)?.failures || 0) + 1;
+          if (failures >= M365_CLIENT_CONFIG_REFRESH_MAX_ATTEMPTS) {
+            clientConfigRefreshFailures.set(connectionId, { failures, until: Date.now() + M365_CLIENT_CONFIG_REFRESH_COOLDOWN_MS });
+          } else clientConfigRefreshFailures.set(connectionId, { failures, until: 0 });
+          return failures >= M365_CLIENT_CONFIG_REFRESH_MAX_ATTEMPTS ? { error: "unrecoverable_refresh_error", code } : null;
+        }
         return PERMANENT_CODES.has(code) ? { error: "unrecoverable_refresh_error", code } : null;
       }
       log?.info?.("TOKEN_REFRESH", "M365 access token refreshed");
@@ -79,6 +96,8 @@ export async function refreshM365Token(credentials, log, proxyOptions = null) {
     }
   }, log, proxyOptions);
 }
+
+export function __resetM365RefreshCircuitsForTesting() { clientConfigRefreshFailures.clear(); }
 
 /**
  * Mint an access token for another `scope` (the Designer artifact service) from a connection's

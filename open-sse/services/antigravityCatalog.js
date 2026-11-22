@@ -178,6 +178,13 @@ export function antigravityCapabilityRouteFingerprint(proxyURL, userAgent) {
   return createHash("sha256").update(material).digest("hex");
 }
 
+/** Resolve an account-specific probe identity before calculating its route fingerprint. */
+export function antigravityCatalogUserAgent(connection) {
+  const data = connection?.providerSpecificData || {};
+  const candidate = [connection?.attributes?.user_agent, data.attributes?.user_agent, data.user_agent, connection?.metadata?.user_agent, connection?.user_agent].find((value) => isString(value) && value.trim());
+  return isString(candidate) && candidate.trim() ? candidate.trim() : ANTIGRAVITY_IDE_USER_AGENT;
+}
+
 /**
  * Proxy URL used for the catalog probe's route fingerprint.
  * @param {object|null} [proxyOptions]

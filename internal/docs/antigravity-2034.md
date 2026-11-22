@@ -1,5 +1,29 @@
 # Antigravity contract comparison for #2034
 
+## CLIProxyAPI request envelope comparison at 6eb8554
+
+Compared [CLIProxyAPI 6960763455c4..6eb8554f0ede](https://github.com/router-for-me/CLIProxyAPI/compare/6960763455c4...6eb8554f0ede).
+Catalog probes use a per-connection `providerSpecificData.user_agent` (or
+`attributes.user_agent`) and bind persisted hints to that user agent. Catalog
+publication checks the connection snapshot and abort signal under the database
+write lock; disabled or changed connections cannot publish a stale probe. The
+catalog already omitted an empty project and sign-in already rejects a missing
+project.
+
+The executor emits signed FNV-1a session IDs scoped to the connection and child
+identity, preserves anonymous incoming IDs, normalizes media aliases in content,
+system and function-response parts, preserves Claude tool mode `NONE`, emits
+uppercase thinking levels and removes invalid Claude budgets without leaving
+`includeThoughts`. Supported search-only OpenAI chat requests use a separate
+native search envelope; function tools take precedence in mixed requests. The
+reverted `X-Goog-User-Project` header is not added.
+
+DurinDoor has no Antigravity native CountTokens request: its count-token handler
+uses a local estimate for this provider. Consequently the upstream CountTokens
+model, stream, cooldown, 429 and schema changes have no corresponding request
+path to port. Synthetic outbound tests exercise the envelope; they do not prove
+live provider acceptance.
+
 Compared on 2026-11-20, without provider credentials or account traffic. These are source comparisons, not evidence that Google currently accepts any particular client, model, or account.
 
 ## Revisions

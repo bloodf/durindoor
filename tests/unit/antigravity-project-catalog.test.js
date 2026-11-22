@@ -94,6 +94,28 @@ async function getModels(connectionId) {
 }
 
 describe("Antigravity account-scoped catalog discovery", () => {
+  it("binds probes and persisted hints to the account user agent", async () => {
+    providerFetch.mockResolvedValue(catalogResponse({ "gemini-3-flash": {} }));
+    const connection = await addConnection({ email: "custom-ua@example.test", providerSpecificData: { user_agent: " custom-agent/1 " } });
+    expect((await getModels(connection.id)).response.status).toBe(200);
+    expect(lastProbe().headers.get("user-agent")).toBe("custom-agent/1");
+    await db.updateProviderConnection(connection.id, { providerSpecificData: { user_agent: "custom-agent/2" } });
+    providerFetch.mockResolvedValueOnce(catalogResponse({ "gemini-3-flash": {} }));
+    expect((await getModels(connection.id)).response.status).toBe(200);
+    expect(lastProbe().headers.get("user-agent")).toBe("custom-agent/2");
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish a probe after the account is disabled during the request", async () => {
+    const connection = await addConnection({ email: "disabled-during-probe@example.test" });
+    providerFetch.mockImplementationOnce(async () => {
+      await db.updateProviderConnection(connection.id, { isActive: false });
+      return catalogResponse({ "gemini-3-flash": {} });
+    });
+    expect((await getModels(connection.id)).response.status).toBe(409);
+    const current = await db.getProviderConnectionById(connection.id);
+    expect(current.providerSpecificData?.antigravity_capability_hints).toBeUndefined();
+  });
   it("sends each account's own project and bearer to the pinned provider endpoint", async () => {
     providerFetch.mockImplementation(async () => catalogResponse({
       "gemini-3-flash": { displayName: "Flash" }
@@ -189,6 +211,9 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(rotated).toMatchObject({ status: 403, classification: "forbidden" });
     expect(providerFetch).toHaveBeenCalledTimes(1);
     providerFetch.mockResolvedValueOnce(catalogResponse({ other: {} }));
+    await db.updateProviderConnection(connection.id, { projectId: "another-project" });
+    const current = await db.getProviderConnectionById(connection.id);
+    Object.assign(connection, current);
     expect((await fetchConnectionModels({ ...connection, projectId: "another-project" })).models[0].id).toBe("other");
   });
 

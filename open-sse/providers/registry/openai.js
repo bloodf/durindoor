@@ -41,7 +41,7 @@ export default {
     // with reasoning_effort, so tools require Responses (OmniRoute #20811).
     { id: "gpt-6.2-sol", name: "GPT-6.2 Sol", targetFormat: "openai-responses" },
     { id: "gpt-6-astra", name: "GPT-6 Astra", targetFormat: "openai-responses" },
-    { id: "gpt-6.1-terra", name: "GPT-6.1 Terra", targetFormat: "openai-responses" },
+    { id: "gpt-6.1-terra", name: "GPT-6.1 Terra", targetFormat: "openai-responses", supportedThinkingEfforts: ["none", "low", "medium", "high", "xhigh", "max"] },
     { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", targetFormat: "openai-responses" },
     { id: "gpt-6-sol", name: "GPT-6 Sol", targetFormat: "openai-responses" },
     { id: "gpt-6-luna", name: "GPT-6 Luna", targetFormat: "openai-responses" },

@@ -470,6 +470,17 @@ export async function resetGeminiBrowserLeaseForTests() {
   if (previous) await previous.close().catch(() => {});
 }
 
+// Playwright is imported once per process and shared: concurrent first requests never race two
+// module loads (a test runner's module mock could otherwise answer only one of them).
+let playwrightModule = null;
+function loadPlaywright() {
+  playwrightModule ??= import("playwright").catch((error) => {
+    playwrightModule = null;
+    throw error;
+  });
+  return playwrightModule;
+}
+
 // One launcher per Playwright launch function, so repeated requests share lease identity.
 const launchers = new WeakMap();
 function stableLauncher(chromium) {
@@ -585,7 +596,7 @@ export class GeminiWebExecutor extends BaseExecutor {
     let abortBrowser = null;
     try {
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
-      const { chromium } = await import("playwright");
+      const { chromium } = await loadPlaywright();
       browser = await acquireBrowser(stableLauncher(chromium));
       abortBrowser = () => void context?.close().catch(() => {});
       signal?.addEventListener("abort", abortBrowser, { once: true });

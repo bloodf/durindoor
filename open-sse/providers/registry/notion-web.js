@@ -10,7 +10,7 @@ export const cookieCaptureProfile = Object.freeze({
 
 export default {
   id: "notion-web",
-  priority: 238,
+  priority: 255,
   alias: "nw",
   display: { name: "Notion AI Web", icon: "notion", color: "#000000", textIcon: "N", website: "https://www.notion.so" },
   category: "webCookie",

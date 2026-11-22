@@ -225,3 +225,12 @@ export const G4fGeminiConnection = webSessionStory("g4f-gemini");
 export const G4fNvidiaConnection = webSessionStory("g4f-nvidia");
 export const G4fOllamaConnection = webSessionStory("g4f-ollama");
 export const G4fPollinationsConnection = webSessionStory("g4f-pollinations");
+
+// Registration batch C (#2034): web-session providers.
+export const PromptqlConnection = webSessionStory("promptql");
+export const NotionWebConnection = webSessionStory("notion-web");
+export const NotrackWebConnection = webSessionStory("notrack-web");
+export const TencentAistudioWebConnection = webSessionStory("tencent-aistudio-web");
+export const TinycmsWebConnection = webSessionStory("tinycms-web");
+export const BlackboxWebConnection = webSessionStory("blackbox-web");
+export const ConolWebConnection = webSessionStory("conol-web");

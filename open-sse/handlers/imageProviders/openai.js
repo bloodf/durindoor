@@ -1,5 +1,6 @@
 // OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft)
 import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const imageCfg = (id) => PROVIDER_MEDIA[id]?.imageConfig || {};
 const imageUrl = (id) => imageCfg(id).baseUrl;
@@ -9,7 +10,7 @@ const imageUrl = (id) => imageCfg(id).baseUrl;
 function appendOpenAIImageOptions(full, body) {
   if (body.complexity !== undefined) full.complexity = body.complexity;
   if (body.output_compression === undefined) return;
-  const format = typeof body.output_format === "string" ? body.output_format.trim().toLowerCase() : "";
+  const format = isString(body.output_format) ? body.output_format.trim().toLowerCase() : "";
   if (format === "jpeg" || format === "webp") {
     full.output_format = format;
     full.output_compression = body.output_compression;

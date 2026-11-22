@@ -900,14 +900,16 @@ function chatCustomToolInput(tc) {
 
 /**
  * Normalize Chat Completions output limits at the shared Responses wire seam.
- * Native max_output_tokens wins when both fields are present.
+ * Native max_output_tokens wins, followed by max_completion_tokens and max_tokens.
  */
 function normalizeResponsesOutputLimit(source, target) {
   if (target.max_output_tokens === undefined) {
     if (source.max_output_tokens !== undefined) target.max_output_tokens = source.max_output_tokens;else
+    if (source.max_completion_tokens !== undefined) target.max_output_tokens = source.max_completion_tokens;else
     if (source.max_tokens !== undefined) target.max_output_tokens = source.max_tokens;
   }
   delete target.max_tokens;
+  delete target.max_completion_tokens;
   return target;
 }
 

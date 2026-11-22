@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { isString } from "../../../../shared/utils/typeChecks.js";
@@ -253,7 +254,7 @@ export async function POST(request) {
     toml = upsertModelSection(toml, buildModelSection(model, normalizedBaseUrl, keyToWrite));
     toml = setModelsDefault(toml, MODEL_SLOT);
 
-    await fs.writeFile(getGrokConfigPath(), toml);
+    await writeConfigAtomic(getGrokConfigPath(), toml);
 
     return NextResponse.json({
       success: true,
@@ -282,7 +283,7 @@ export async function DELETE() {
 
     toml = removeModelSection(toml);
     toml = clearModelsDefaultIfOurs(toml);
-    await fs.writeFile(configPath, toml);
+    await writeConfigAtomic(configPath, toml);
 
     return NextResponse.json({
       success: true,

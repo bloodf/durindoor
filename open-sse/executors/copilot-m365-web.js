@@ -3,6 +3,7 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import {
   buildWsUrl,
   promptFromMessages,
@@ -35,6 +36,20 @@ import {
   extractToolSpec,
   parseM365ToolOutput } from
 "./copilot-m365-tools.js";
+
+async function proxyAgentForWebSocket(proxyUrl) {
+  try {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyUrl);
+  } catch {
+    try {
+      const { SocksProxyAgent } = await import("socks-proxy-agent");
+      return new SocksProxyAgent(proxyUrl);
+    } catch {
+      return null;
+    }
+  }
+}
 
 let WebSocketCtor = WebSocket;
 
@@ -87,7 +102,7 @@ function failureEnvelope(error, model) {
  * throttling, credits, safety stop) or an `Error` carrying a sanitized message and, for a refused
  * upgrade, the 401/403 status. An exception thrown by `onFrame` ends the turn with that error.
  */
-export function runM365Socket({ wsUrl, invocation, signal, onFrame }) {
+export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions }) {
   return new Promise((resolve, reject) => {
     let ws = null;
     let settled = false;
@@ -129,8 +144,14 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame }) {
     signal?.addEventListener("abort", onAbort, { once: true });
     timeout = setTimeout(() => fail("Microsoft 365 Copilot WebSocket timeout"), FETCH_CONNECT_TIMEOUT_MS);
 
+    (async () => {
     try {
+      const proxyRoute = resolveWebSocketProxyRoute(wsUrl, proxyOptions);
+      const agent = proxyRoute.enabled && proxyRoute.url ? await proxyAgentForWebSocket(proxyRoute.url) : null;
+      if (proxyRoute.strict && !agent) throw new Error("WebSocket proxy required but unavailable");
+      if (settled) return;
       ws = new WebSocketCtor(wsUrl, {
+        ...(agent ? { agent } : null),
         headers: {
           Origin: "https://m365.cloud.microsoft",
           "User-Agent":
@@ -195,6 +216,7 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame }) {
     } catch (err) {
       fail(err instanceof Error ? err.message : "Failed to connect to Microsoft 365 Copilot");
     }
+    })();
   });
 }
 
@@ -210,6 +232,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
   async refreshCredentials(credentials, log, proxyOptions = null) {
     return refreshProviderCredentials("copilot-m365-web", credentials, log, proxyOptions);
   }
+
 
   async execute(input) {
     const body = input.body || {};
@@ -304,7 +327,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           accessToken: connectionParams.accessToken,
           conversationId: ids.conversationId,
           image,
-          signal: input.signal
+          signal: input.signal,
+          proxyOptions: input.proxyOptions
         }));
       }
     } catch (error) {
@@ -322,6 +346,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
       tone: profile.tone,
       messageAnnotations,
       ...(instructions ? { plugins: clientPlugins(tools), toolChoice, customInstructions: instructions } : null)
+
     });
     const turns = (resume?.turns ?? 0) + 1;
     // A failed turn is never committed, so a broken conversation is not resumed.
@@ -354,6 +379,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           };
           runM365Socket({
             wsUrl,
+            proxyOptions: input.proxyOptions,
             invocation,
             signal,
             onFrame(frame) {
@@ -410,6 +436,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     try {
       await runM365Socket({
         wsUrl,
+        proxyOptions: input.proxyOptions,
         invocation,
         signal: input.signal,
         onFrame(frame) {

@@ -25,7 +25,7 @@ const GQL = "https://data.prompt.ql.app/promptql/playground-v2-hge/v1/graphql";
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 const routedFetch = vi.hoisted(() => vi.fn());
-vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: routedFetch }));
+vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: async (url, options, proxyOptions) => { const { directFetch, ...init } = options; if (directFetch) return directFetch(url, init); const response = await routedFetch(url, init, proxyOptions); return response ?? globalThis.fetch(url, init); } }));
 const gqlEventData = { type: "AgentMessage", content: "PromptQL says hello", final_response_sent: true };
 const credentials = (apiKey, cookie) => ({ id: "pql-test", apiKey, authType: "cookie", providerSpecificData: { token: apiKey, cookie, projectId: PROJECT } });
 afterEach(() => { vi.restoreAllMocks(); });

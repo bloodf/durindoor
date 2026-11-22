@@ -3,6 +3,9 @@ import { digestMemoryKey } from "../../utils/memoryKey.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const refreshDedupCache = new Map();
+const permanentRefreshErrors = new Set([
+  "unrecoverable_refresh_error", "refresh_token_reused", "invalid_request", "invalid_grant"
+]);
 
 function normalizeRouteValue(value) {
   if (value === undefined || value === null) return "";
@@ -96,7 +99,8 @@ export function proxyRouteFingerprint(proxyOptions = null) {
 /**
  * De-duplicate a provider refresh only within the same proxy route.
  *
- * Completed results expire automatically after a short reuse window. In-flight
+ * Successful results expire automatically after a short reuse window; null
+ * results are discarded so retries reach the provider. In-flight
  * entries also have a stale deadline, and the cache is capped so a stuck or
  * adversarial refresh stream cannot retain unbounded credential-derived state.
  *
@@ -136,9 +140,12 @@ export async function dedupRefresh(provider, oldToken, fn, log, proxyOptions = n
   then((result) => {
     if (refreshDedupCache.get(key) === entry) {
       deleteEntry(key, entry);
-      const resultEntry = { result, expiresAt: 0, timer: null };
-      refreshDedupCache.set(key, resultEntry);
-      scheduleEntryExpiry(key, resultEntry, MEMORY_CONFIG.refreshDedupResultTtlMs);
+      if (result != null && result !== false &&
+        (!isObject(result) || !result.error || permanentRefreshErrors.has(result.error))) {
+        const resultEntry = { result, expiresAt: 0, timer: null };
+        refreshDedupCache.set(key, resultEntry);
+        scheduleEntryExpiry(key, resultEntry, MEMORY_CONFIG.refreshDedupResultTtlMs);
+      }
     }
     return result;
   }).

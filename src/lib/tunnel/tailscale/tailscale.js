@@ -3,7 +3,7 @@ import path from "path";
 import os from "os";
 import crypto from "crypto";
 import { createRequire } from "node:module";
-import { execSync, exec, spawn } from "child_process";
+import { execSync, execFileSync, exec, spawn } from "child_process";
 import { promisify } from "util";
 import { execWithPassword } from "@/mitm/dns/dnsConfig";
 import { DATA_DIR } from "@/lib/dataDir.js";
@@ -411,53 +411,118 @@ async function installTailscaleMac(sudoPassword, log) {
     return;
   }
 
-  // No brew: download .pkg and install via sudo installer
+  // No brew: download .pkg into a private dir, verify the Apple signature, then sudo installer
   const pkgUrl = "https://pkgs.tailscale.com/stable/tailscale-latest.pkg";
-  const pkgPath = path.join(os.tmpdir(), "tailscale.pkg");
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "tailscale-pkg-"));
+  fs.chmodSync(workDir, 0o700);
+  const pkgPath = path.join(workDir, "tailscale.pkg");
+  const cleanupDir = () => {try {fs.rmSync(workDir, { recursive: true, force: true });} catch {/* ignore */}};
 
-  log("Downloading Tailscale package...");
-  await new Promise((resolve, reject) => {
-    const child = spawn("curl", ["-fL", "--progress-bar", pkgUrl, "-o", pkgPath], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
+  try {
+    log("Downloading Tailscale package...");
+    await downloadToFile("curl", ["-fL", "--proto", "=https", "--tlsv1.2", "--progress-bar", pkgUrl, "-o", "-"], pkgPath, (line) => log(line));
+
+    log("Verifying package signature...");
+    verifyTailscalePkgSignature(pkgPath);
+
+    log("Installing package...");
+    const sudoBin = resolveTrustedUnixBinary("sudo");
+    await new Promise((resolve, reject) => {
+      const child = spawn(sudoBin, ["-S", "installer", "-pkg", pkgPath, "-target", "/"], {
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true
+      });
+      let stderr = "";
+      child.stderr.on("data", (d) => {stderr += d.toString();});
+      child.stdout.on("data", (d) => {
+        const line = d.toString().trim();
+        if (line) log(line);
+      });
+      child.on("close", (c) => {
+        if (c === 0) resolve();else
+        {
+          const msg = stderr.includes("incorrect password") || stderr.includes("Sorry") ?
+          "Wrong sudo password" :
+          stderr || `Exit code ${c}`;
+          reject(new Error(msg));
+        }
+      });
+      child.on("error", reject);
+      child.stdin.write(`${sudoPassword}\n`);
+      child.stdin.end();
+    });
+  } finally {
+    cleanupDir();
+  }
+}
+
+// Pinned SHA-256 of https://tailscale.com/install.sh. The script is run as root, so it must match
+// a known digest. When Tailscale publishes a new script, review it and bump this value (or set
+// TAILSCALE_INSTALL_SCRIPT_SHA256 after reviewing the script yourself).
+export const TAILSCALE_INSTALL_SCRIPT_SHA256 =
+"4207f322e10ad26b3054abe7c99dfb54da09843c8d0a50d0a82f8eff4972a0d1";
+
+export function verifyTailscaleInstallScript(content) {
+  const expected = (process.env.TAILSCALE_INSTALL_SCRIPT_SHA256 || TAILSCALE_INSTALL_SCRIPT_SHA256).trim().toLowerCase();
+  const actual = crypto.createHash("sha256").update(content).digest("hex");
+  if (actual !== expected) {
+    throw new Error(
+      `Tailscale install script SHA-256 mismatch (got ${actual}); refusing to run it as root. ` +
+      "Install Tailscale manually from https://tailscale.com/download or review the script and set TAILSCALE_INSTALL_SCRIPT_SHA256."
+    );
+  }
+}
+
+// `pkgutil --check-signature` output must show a signed package whose leaf certificate is the
+// Tailscale Developer ID Installer identity.
+export function assertTailscalePkgSignature(output) {
+  const text = isString(output) ? output : "";
+  const signed = /^\s*Status:\s*signed/m.test(text);
+  const signer = /^\s*1\.\s*Developer ID Installer: Tailscale Inc\./m.test(text);
+  if (!signed || !signer) {
+    throw new Error("Tailscale package signature check failed (expected Developer ID Installer: Tailscale Inc.); refusing to install");
+  }
+}
+
+function verifyTailscalePkgSignature(pkgPath) {
+  let output;
+  try {
+    output = execFileSync("/usr/sbin/pkgutil", ["--check-signature", pkgPath], { encoding: "utf8", windowsHide: true });
+  } catch (error) {
+    throw new Error(`Tailscale package is not signed: ${error.stderr || error.message}`);
+  }
+  assertTailscalePkgSignature(output);
+}
+
+// Stream a download (curl writing to stdout) into a file created exclusively (O_EXCL) with mode 0600.
+function downloadToFile(cmd, args, destPath, onStderrLine) {
+  return new Promise((resolve, reject) => {
+    let fd;
+    try {
+      fd = fs.openSync(destPath, "wx", 0o600);
+    } catch (e) {
+      return reject(e);
+    }
+    let writeError = null;
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    child.stdout.on("data", (d) => {
+      if (writeError) return;
+      try {fs.writeSync(fd, d);} catch (e) {writeError = e;child.kill();}
     });
     child.stderr.on("data", (d) => {
       const line = d.toString().trim();
-      if (line) log(line);
+      if (line && onStderrLine) onStderrLine(line);
     });
     child.on("close", (c) => {
+      try {fs.closeSync(fd);} catch {/* ignore */}
+      if (writeError) return reject(new Error(`Failed to write download: ${writeError.message}`));
       if (c === 0) resolve();else
       reject(new Error("Download failed"));
     });
-    child.on("error", reject);
-  });
-
-  log("Installing package...");
-  const sudoBin = resolveTrustedUnixBinary("sudo");
-  await new Promise((resolve, reject) => {
-    const child = spawn(sudoBin, ["-S", "installer", "-pkg", pkgPath, "-target", "/"], {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
+    child.on("error", (e) => {
+      try {fs.closeSync(fd);} catch {/* ignore */}
+      reject(e);
     });
-    let stderr = "";
-    child.stderr.on("data", (d) => {stderr += d.toString();});
-    child.stdout.on("data", (d) => {
-      const line = d.toString().trim();
-      if (line) log(line);
-    });
-    child.on("close", (c) => {
-      try {execSync(`rm -f ${pkgPath}`, { stdio: "ignore", windowsHide: true });} catch {/* ignore */}
-      if (c === 0) resolve();else
-      {
-        const msg = stderr.includes("incorrect password") || stderr.includes("Sorry") ?
-        "Wrong sudo password" :
-        stderr || `Exit code ${c}`;
-        reject(new Error(msg));
-      }
-    });
-    child.on("error", reject);
-    child.stdin.write(`${sudoPassword}\n`);
-    child.stdin.end();
   });
 }
 
@@ -467,98 +532,124 @@ async function installTailscaleLinux(sudoPassword, log) {
     throw new Error("Invalid sudo password");
   }
   log("Downloading install script...");
-  return new Promise((resolve, reject) => {
-    const curlChild = spawn("curl", ["-fsSL", "https://tailscale.com/install.sh"], {
+  const scriptContent = await new Promise((resolve, reject) => {
+    const curlChild = spawn("curl", ["-fsSL", "--proto", "=https", "--tlsv1.2", "https://tailscale.com/install.sh"], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
-    let scriptContent = "";
+    const chunks = [];
     let curlErr = "";
-    curlChild.stdout.on("data", (d) => {scriptContent += d.toString();});
+    curlChild.stdout.on("data", (d) => {chunks.push(d);});
     curlChild.stderr.on("data", (d) => {curlErr += d.toString();});
     curlChild.on("exit", (code) => {
       if (code !== 0) return reject(new Error(`Failed to download install script: ${curlErr}`));
-      log("Running install script...");
-      // Persist script to temp file → exec by path (NOT via stdin) → sh never reads attacker-controlled stdin
-      const tmpScript = path.join(os.tmpdir(), `tailscale-install-${crypto.randomBytes(8).toString("hex")}.sh`);
-      try {
-        fs.writeFileSync(tmpScript, scriptContent, { mode: 0o700 });
-      } catch (e) {
-        return reject(new Error(`Failed to write install script: ${e.message}`));
-      }
-      const cleanup = () => {try {fs.unlinkSync(tmpScript);} catch {}};
-      let sudoBin;
-      try {
-        sudoBin = resolveTrustedUnixBinary("sudo");
-      } catch (error) {
-        cleanup();
-        return reject(new Error(`Cannot run Tailscale installer: ${error.message}`));
-      }
-      const child = spawn(sudoBin, ["-S", "sh", tmpScript], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-      let stderr = "";
-      child.stdout.on("data", (d) => {
-        const line = d.toString().trim();
-        if (line) log(line);
-      });
-      child.stderr.on("data", (d) => {stderr += d.toString();});
-      child.on("close", (c) => {
-        cleanup();
-        if (c === 0) resolve();else
-        {
-          const msg = stderr.includes("incorrect password") || stderr.includes("Sorry") ?
-          "Wrong sudo password" :
-          stderr || `Exit code ${c}`;
-          reject(new Error(msg));
-        }
-      });
-      child.on("error", (e) => {cleanup();reject(e);});
-      child.stdin.write(`${sudoPassword}\n`);
-      child.stdin.end();
+      resolve(Buffer.concat(chunks));
     });
     curlChild.on("error", reject);
   });
+
+  // Never run an unverified script as root
+  log("Verifying install script...");
+  verifyTailscaleInstallScript(scriptContent);
+
+  log("Running install script...");
+  // Persist script to a private (0700) temp dir → exec by path (NOT via stdin) → sh never reads attacker-controlled stdin
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "tailscale-install-"));
+  const cleanup = () => {try {fs.rmSync(workDir, { recursive: true, force: true });} catch {/* ignore */}};
+  const tmpScript = path.join(workDir, "install.sh");
+  try {
+    fs.chmodSync(workDir, 0o700);
+    fs.writeFileSync(tmpScript, scriptContent, { mode: 0o700, flag: "wx" });
+  } catch (e) {
+    cleanup();
+    throw new Error(`Failed to write install script: ${e.message}`);
+  }
+  let sudoBin;
+  try {
+    sudoBin = resolveTrustedUnixBinary("sudo");
+  } catch (error) {
+    cleanup();
+    throw new Error(`Cannot run Tailscale installer: ${error.message}`);
+  }
+  await new Promise((resolve, reject) => {
+    const child = spawn(sudoBin, ["-S", "sh", tmpScript], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      const line = d.toString().trim();
+      if (line) log(line);
+    });
+    child.stderr.on("data", (d) => {stderr += d.toString();});
+    child.on("close", (c) => {
+      cleanup();
+      if (c === 0) resolve();else
+      {
+        const msg = stderr.includes("incorrect password") || stderr.includes("Sorry") ?
+        "Wrong sudo password" :
+        stderr || `Exit code ${c}`;
+        reject(new Error(msg));
+      }
+    });
+    child.on("error", (e) => {cleanup();reject(e);});
+    child.stdin.write(`${sudoPassword}\n`);
+    child.stdin.end();
+  });
 }
+
+// PowerShell snippet: MSI must carry a Valid Authenticode signature from Tailscale Inc.
+export const WINDOWS_MSI_SIGNATURE_SCRIPT =
+"$s = Get-AuthenticodeSignature -LiteralPath $env:TS_MSI_PATH; " +
+"if ($s.Status -ne 'Valid') { Write-Error \"Signature status: $($s.Status)\"; exit 2 }; " +
+"if ($null -eq $s.SignerCertificate -or $s.SignerCertificate.Subject -notmatch '(^|, )O=Tailscale Inc\\.(,|$)') { Write-Error 'Signer is not Tailscale Inc.'; exit 3 }";
 
 async function installTailscaleWindows(log) {
   const msiUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi";
-  const msiPath = path.join(os.tmpdir(), "tailscale-setup.msi");
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "tailscale-msi-"));
+  const msiPath = path.join(workDir, "tailscale-setup.msi");
+  const cleanupDir = () => {try {fs.rmSync(workDir, { recursive: true, force: true });} catch {/* ignore */}};
 
-  // Download MSI via curl.exe (built-in on Win10+) — no PowerShell window, streams progress
-  log("Downloading Tailscale installer...");
-  await new Promise((resolve, reject) => {
-    const child = spawn("curl.exe", ["-L", "-#", "-o", msiPath, msiUrl], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
-    });
-    // curl outputs progress to stderr with -# flag
+  try {
+    // Download MSI via curl.exe (built-in on Win10+) into an exclusively created file
+    log("Downloading Tailscale installer...");
     let lastPct = "";
-    child.stderr.on("data", (d) => {
-      const text = d.toString();
+    await downloadToFile("curl.exe", ["-fL", "--proto", "=https", "--tlsv1.2", "-#", "-o", "-", msiUrl], msiPath, (text) => {
       const match = text.match(/(\d+\.\d)%/);
       if (match && match[1] !== lastPct) {
         lastPct = match[1];
         log(`Downloading... ${lastPct}%`);
       }
     });
-    child.on("close", (c) => c === 0 ? resolve() : reject(new Error("Download failed")));
-    child.on("error", reject);
-  });
 
-  // Install MSI with UAC elevation via PowerShell Start-Process -Verb RunAs
-  log("Installing Tailscale (UAC prompt may appear)...");
-  await new Promise((resolve, reject) => {
-    const args = `'/i','${msiPath}','TS_NOLAUNCH=true','/quiet','/norestart'`;
-    const child = spawn("powershell", [
-    "-NoProfile", "-NonInteractive", "-Command",
-    `Start-Process msiexec -ArgumentList ${args} -Verb RunAs -Wait`],
-    { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-    child.stderr.on("data", (d) => {const l = d.toString().trim();if (l) log(l);});
-    child.on("close", (c) => {
-      try {fs.unlinkSync(msiPath);} catch {/* ignore */}
-      c === 0 ? resolve() : reject(new Error(`msiexec failed (code ${c})`));
+    // Verify Authenticode signature before anything runs elevated
+    log("Verifying installer signature...");
+    await new Promise((resolve, reject) => {
+      const child = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_MSI_SIGNATURE_SCRIPT], {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env: { ...process.env, TS_MSI_PATH: msiPath }
+      });
+      let stderr = "";
+      child.stderr.on("data", (d) => {stderr += d.toString();});
+      child.on("close", (c) => c === 0 ? resolve() : reject(new Error(`Tailscale installer signature check failed: ${stderr.trim() || `code ${c}`}`)));
+      child.on("error", reject);
     });
-    child.on("error", reject);
-  });
+
+    // Install MSI with UAC elevation via PowerShell Start-Process -Verb RunAs
+    log("Installing Tailscale (UAC prompt may appear)...");
+    await new Promise((resolve, reject) => {
+      const args = `'/i','${msiPath.replace(/'/g, "''")}','TS_NOLAUNCH=true','/quiet','/norestart'`;
+      const child = spawn("powershell", [
+      "-NoProfile", "-NonInteractive", "-Command",
+      `Start-Process msiexec -ArgumentList ${args} -Verb RunAs -Wait`],
+      { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+      child.stderr.on("data", (d) => {const l = d.toString().trim();if (l) log(l);});
+      child.on("close", (c) => {
+        c === 0 ? resolve() : reject(new Error(`msiexec failed (code ${c})`));
+      });
+      child.on("error", reject);
+    });
+  } finally {
+    cleanupDir();
+  }
 
   // Verify tailscale.exe exists after install
   log("Verifying installation...");

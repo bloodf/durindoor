@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 
@@ -32,17 +33,9 @@ const checkInstalled = async () => {
   }
 };
 
-const readJson = async (filePath) => {
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    // Tolerate JSONC (trailing commas) and treat unparseable files as "no config"
-    // rather than throwing a 500 that the UI misreads as "tool not installed".
-    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
-    return JSON.parse(stripped);
-  } catch (error) {
-    return null;
-  }
-};
+const readJson = (filePath) => readExistingConfig(filePath, (content) =>
+  JSON.parse(content.replace(/,(\s*[}\]])/g, "$1"))
+);
 
 const has9RouterConfig = (globalState) => {
   if (!globalState) return false;
@@ -72,7 +65,7 @@ export async function GET() {
     });
   } catch (error) {
     console.log("Error checking cline settings:", error);
-    return NextResponse.json({ error: "Failed to check cline settings" }, { status: 500 });
+    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to check cline settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
   }
 }
 
@@ -94,16 +87,17 @@ export async function POST(request) {
     globalState.openAiBaseUrl = normalizedBaseUrl;
     globalState.openAiModelId = model;
     globalState.planModeOpenAiModelId = model;
-    await fs.writeFile(getGlobalStatePath(), JSON.stringify(globalState, null, 2));
+    await readJson(getSecretsPath());
+    await writeConfigAtomic(getGlobalStatePath(), JSON.stringify(globalState, null, 2));
 
     const secrets = (await readJson(getSecretsPath())) || {};
     secrets.openAiApiKey = apiKey;
-    await fs.writeFile(getSecretsPath(), JSON.stringify(secrets, null, 2));
+    await writeConfigAtomic(getSecretsPath(), JSON.stringify(secrets, null, 2));
 
     return NextResponse.json({ success: true, message: "Cline settings applied successfully!", globalStatePath: getGlobalStatePath() });
   } catch (error) {
     console.log("Error updating cline settings:", error);
-    return NextResponse.json({ error: "Failed to update cline settings" }, { status: 500 });
+    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to update cline settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
   }
 }
 
@@ -121,15 +115,16 @@ export async function DELETE() {
       globalState.actModeApiProvider = "cline";
       globalState.planModeApiProvider = "cline";
     }
-    await fs.writeFile(getGlobalStatePath(), JSON.stringify(globalState, null, 2));
+    await readJson(getSecretsPath());
+    await writeConfigAtomic(getGlobalStatePath(), JSON.stringify(globalState, null, 2));
 
     const secrets = (await readJson(getSecretsPath())) || {};
     delete secrets.openAiApiKey;
-    await fs.writeFile(getSecretsPath(), JSON.stringify(secrets, null, 2));
+    await writeConfigAtomic(getSecretsPath(), JSON.stringify(secrets, null, 2));
 
     return NextResponse.json({ success: true, message: "DurinDoor settings removed from Cline" });
   } catch (error) {
     console.log("Error resetting cline settings:", error);
-    return NextResponse.json({ error: "Failed to reset cline settings" }, { status: 500 });
+    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to reset cline settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
   }
 }

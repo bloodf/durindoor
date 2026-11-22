@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { promptqlCookieProfile } from "../providers/registry/promptql.js";
 import { BaseExecutor } from "./base.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const GQL = "https://data.prompt.ql.app/promptql/playground-v2-hge/v1/graphql";
 const { origin: ORIGIN, validationProbe: { url: REFRESH } } = promptqlCookieProfile;
@@ -92,7 +93,7 @@ function response(content, model, stream) {
 }
 
 export class PromptQlExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("promptql", { id: "promptql", baseUrl: GQL }); this.fetch = deps.fetch || ((...args) => fetch(...args)); }
+  constructor(deps = {}) { super("promptql", { id: "promptql", baseUrl: GQL }); this.fetch = deps.fetch || ((...args) => globalThis.fetch(...args)); }
   async execute(input) {
     const body = input.body || {};
     let { token, projectId, cookie, sessionHash } = readPromptQlCredentials(input.credentials);
@@ -100,7 +101,8 @@ export class PromptQlExecutor extends BaseExecutor {
     try {
       const expiresAt = Number(jwtPayload(token).exp) * 1000;
       if (cookie && (!token || !projectId || (expiresAt && expiresAt < Date.now() + 30000))) {
-        const refreshed = await this.fetch(REFRESH, promptQlSessionRequest(cookie, projectId, input.signal));
+        const refreshOptions = { ...promptQlSessionRequest(cookie, projectId, input.signal), directFetch: this.fetch };
+        const refreshed = await proxyAwareFetch(REFRESH, refreshOptions, input.proxyOptions);
         if (isPromptQlSessionError(refreshed.status) || refreshed.status === 400) throw sessionError();
         if (!refreshed.ok) throw Object.assign(new Error("PromptQL token exchange failed"), { status: refreshed.status });
 
@@ -112,7 +114,8 @@ export class PromptQlExecutor extends BaseExecutor {
       if (!projectId) return error(400, "Missing PromptQL projectId", body);
       const headers = { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}`, origin: ORIGIN, referer: `${ORIGIN}/` };
       const gql = async (query, variables, operationName) => {
-        const r = await this.fetch(GQL, { method: "POST", headers, body: JSON.stringify({ query, variables, operationName }), redirect: "manual", signal: input.signal });
+        const request = { method: "POST", headers, body: JSON.stringify({ query, variables, operationName }), redirect: "manual", signal: input.signal, directFetch: this.fetch };
+        const r = await proxyAwareFetch(GQL, request, input.proxyOptions);
         if (isPromptQlSessionError(r.status)) throw sessionError();
         if (r.status === 429) throw Object.assign(new Error("PromptQL quota or rate limit exceeded"), { status: 429 });
         const j = await r.json(); if (!r.ok || j.errors?.length) throw Object.assign(new Error(j.errors?.map((e) => e.message).join("; ") || `PromptQL HTTP ${r.status}`), { status: r.status }); return j.data;

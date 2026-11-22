@@ -50,11 +50,11 @@ describe("l-guard regressions", () => {
   beforeEach(() => { state.valid = false; state.locked = false; state.fails = []; state.lookedUp = []; });
 
   it("throttles failed remote API-key authentication", async () => {
-    const denied = await proxy(request("/v1/chat/completions", { authorization: "Bearer bad" }, "POST"));
+    const denied = await proxy(request("/v1/chat/completions", { authorization: "Bearer sk-12345678" }, "POST"));
     expect(denied.status).toBe(401);
     expect(state.fails).toEqual(["198.51.100.2"]);
     state.locked = true;
-    expect((await proxy(request("/v1/chat/completions", { authorization: "Bearer bad" }, "POST"))).status).toBe(429);
+    expect((await proxy(request("/v1/chat/completions", { authorization: "Bearer sk-12345678" }, "POST"))).status).toBe(429);
   });
 
   it("uses the credential resolved by auth for model filtering and discovery", async () => {

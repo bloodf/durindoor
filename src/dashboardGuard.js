@@ -676,19 +676,23 @@ export async function proxy(request) {
     const method = String(request.method || "GET").toUpperCase();
     const isModelListRead = (method === "GET" || method === "HEAD") &&
       (routePath === "/api/models" || routePath === "/api/v1/models" || routePath.startsWith("/api/v1/models/"));
-    const hasKeyCandidate = extractApiKeyCandidates(request).length > 0;
-    if (!isLocalRequest(request) && hasKeyCandidate && !(await hasValidCliToken(request)) &&
+    const hasLegacyKeyCandidate = extractApiKeyCandidates(request)
+      .some((apiKey) => /^sk-[0-9a-f]{8}$/i.test(apiKey));
+    if (!isLocalRequest(request) && hasLegacyKeyCandidate && !(await hasValidCliToken(request)) &&
         !(isModelListRead && await hasValidToken(request))) {
       const ip = getClientIp(request);
-      const lock = checkLock(ip);
-      if (lock.locked) {
-        return NextResponse.json({ error: "Too many failed API key attempts" }, {
-          status: 429,
-          headers: { "Retry-After": String(lock.retryAfter) },
-        });
+      if (await hasValidApiKey(request)) {
+        recordSuccess(ip);
+      } else {
+        const lock = checkLock(ip);
+        if (lock.locked) {
+          return NextResponse.json({ error: "Too many failed API key attempts" }, {
+            status: 429,
+            headers: { "Retry-After": String(lock.retryAfter) },
+          });
+        }
+        recordFail(ip);
       }
-      if (await hasValidApiKey(request)) recordSuccess(ip);
-      else recordFail(ip);
     }
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     if (routePath.includes("/v1/messages")) {

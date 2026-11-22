@@ -29,6 +29,16 @@ export async function POST(request) {
 
     const body = await request.json().catch(() => ({}));
     const settings = await getSettings();
+    // #2196: the stored client secret may only be sent to the saved issuer.
+    // When the body names a different issuer and supplies no secret of its
+    // own, probe without a secret instead of leaking the stored one.
+    const normalizeIssuer = (value) => String(value || "").trim().replace(/\/+$/, "");
+    const savedIssuer = normalizeIssuer(settings.oidcIssuerUrl);
+    const requestedIssuer = normalizeIssuer(body.issuerUrl || savedIssuer);
+    if (!Object.prototype.hasOwnProperty.call(body, "clientSecret") &&
+        (!savedIssuer || requestedIssuer !== savedIssuer)) {
+      body.clientSecret = "";
+    }
 
     const issuerUrl = String(body.issuerUrl || settings.oidcIssuerUrl || "").trim();
     const clientId = String(body.clientId || settings.oidcClientId || "").trim();

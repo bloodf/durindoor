@@ -4,6 +4,7 @@ import { loader } from "@monaco-editor/react";
 import "./material-symbols.css";
 import "../src/shared/ui/tokens.css";
 import "../src/app/globals.css";
+import "../src/shared/ui/v5/production/v5-tokens.css";
 import "./preview.css";
 
 import { LOCALES, LOCALE_NAMES, DEFAULT_LOCALE } from "../src/i18n/config.js";
@@ -94,6 +95,17 @@ export async function setupStoryLifecycle(context) {
       if (previousReview === null) document.documentElement.removeAttribute("data-v5-review");
       else document.documentElement.setAttribute("data-v5-review", previousReview);
     });
+    // The review frame renders V5, so migrated production sources see both the
+    // legacy review marker and the production switch attribute.
+    // `globals.ui === "v5"` turns the production switch on for evidence runs
+    // (`&globals=ui:v5`); the default leaves the attribute off.
+    const previousUi = document.documentElement.getAttribute("data-ui");
+    if (context.parameters.v5Review || context.globals.ui === "v5") document.documentElement.dataset.ui = "v5";
+    else document.documentElement.removeAttribute("data-ui");
+    cleanups.push(() => {
+      if (previousUi === null) document.documentElement.removeAttribute("data-ui");
+      else document.documentElement.setAttribute("data-ui", previousUi);
+    });
     if (context.parameters.v5Review) cleanups.push(installReviewInteractions());
     const teardownTheme = setupStoryThemeScope(context);
     cleanups.push(teardownTheme);
@@ -155,6 +167,19 @@ const preview = {
         dynamicTitle: true,
       },
     },
+    ui: {
+      name: "UI version",
+      description: "Production V5 switch (data-ui=\"v5\" on the root element)",
+      defaultValue: "default",
+      toolbar: {
+        icon: "paintbrush",
+        items: [
+          { value: "default", title: "Default" },
+          { value: "v5", title: "V5 switch on" },
+        ],
+        dynamicTitle: true,
+      },
+    },
     locale: {
       name: "Locale",
       description: "Durin DS runtime locale (SB3 applies html lang/dir)",
@@ -168,6 +193,7 @@ const preview = {
   },
   initialGlobals: {
     theme: "dark",
+    ui: "default",
     locale: DEFAULT_LOCALE,
   },
 };

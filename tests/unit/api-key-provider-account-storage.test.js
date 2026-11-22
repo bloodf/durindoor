@@ -40,7 +40,7 @@ describe("API-key provider-account storage", () => {
   it("round-trips relation rows through export and a fresh DATA_DIR import", async () => {
     const ctx = await setup();
     const created = await ctx.createApiKey("Round trip", "machine", [], null, null, { providerConnectionIds: [ctx.conn.id] });
-    const dump = await ctx.exportDb();
+    const dump = await ctx.exportDb({ includeSecrets: true });
     const importDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-scope-storage-import-"));
     const reimport = await switchTo(importDir);
     await reimport.importDb(dump);

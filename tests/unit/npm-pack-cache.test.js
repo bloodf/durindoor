@@ -12,7 +12,7 @@ let root, seed, tarball, temporary;
 const payload = Buffer.from([0, 255, 13, 10]);
 beforeEach(() => {
   vi.clearAllMocks();
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "pack-cache-test-"));
+  root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "pack-cache-test-"));
   seed = path.join(root, "seed");
   fs.mkdirSync(path.join(seed, "_cacache/content"), { recursive: true });
   fs.writeFileSync(path.join(seed, "_cacache/content/value"), payload);
@@ -55,12 +55,34 @@ describe("packed CLI private npm cache", () => {
     if (status) await expect(smokeNpmPack(tarball)).rejects.toThrow("npm install of tarball failed: 23");
     else {
       await smokeNpmPack(tarball);
-      expect(mocks.smoke).toHaveBeenCalledExactlyOnceWith(path.join(temporary[0], "prefix/node_modules/durindoor/app/custom-server.js"));
+      expect(mocks.smoke).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(path.dirname(temporary[0])), path.basename(temporary[0]), "prefix/node_modules/durindoor/app/custom-server.js"));
     }
     expect(fs.readFileSync(path.join(seed, "_cacache/content/value"))).toEqual(payload);
     expect(temporary).toHaveLength(1);
     expect(fs.existsSync(temporary[0])).toBe(false);
     if (status) expect(mocks.smoke).not.toHaveBeenCalled();
+  });
+
+  it("accepts a seed through a symlinked ancestor and copies its data", async () => {
+    const real = path.join(root, "real");
+    fs.mkdirSync(real);
+    fs.renameSync(seed, path.join(real, "seed"));
+    fs.symlinkSync(real, path.join(root, "link"));
+    vi.stubEnv("npm_config_cache", path.join(root, "link/seed"));
+    mocks.install.mockImplementation((binary, args, options) => {
+      expect(fs.readFileSync(path.join(options.env.npm_config_cache, "_cacache/content/value"))).toEqual(payload);
+      return { status: 23 };
+    });
+    await expect(smokeNpmPack(tarball)).rejects.toThrow("npm install of tarball failed: 23");
+    expect(mocks.install).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a seed that is itself a symlink", async () => {
+    const alias = path.join(root, "seed-link");
+    fs.symlinkSync(seed, alias);
+    vi.stubEnv("npm_config_cache", alias);
+    await expect(smokeNpmPack(tarball)).rejects.toThrow(`Cache symlink rejected: ${alias}`);
+    expect(mocks.install).not.toHaveBeenCalled();
   });
 
   it("keeps default online behavior without reading the seed", async () => {

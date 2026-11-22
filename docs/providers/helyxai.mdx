@@ -1,4 +1,7 @@
-# Helyx AI
+---
+title: Helyx AI
+description: Connect Helyx AI with an API key, the documented model examples, and its 401, 402 and 429 errors.
+---
 
 Create an API key from the [Helyx dashboard](https://helyxai.space/), then select **Helyx AI** in DurinDoor's provider settings and save it. The key is sent as a Bearer token to Helyx's OpenAI-compatible Chat Completions API.
 
@@ -7,5 +10,3 @@ The documented API supports JSON and server-sent event streaming. Responses may 
 No cookie is needed for this API-key provider. If importing a key manually, paste only the key value, not the `Bearer ` prefix. The API documentation's examples and model list are available at [Helyx API docs](https://helyx-ai.vercel.app/); key management is at [helyxai.space](https://helyxai.space/).
 
 The API docs advertise OpenAI compatibility and token accounting. DurinDoor's closed-mock unit fixtures validate local routing only; they do not verify Helyx account access, billing, quotas, or live model availability.
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories. -->

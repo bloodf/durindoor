@@ -1,10 +1,12 @@
-# HuggingChat
+---
+title: "HuggingChat"
+---
 
 HuggingChat (`huggingchat`) uses a session from your own signed-in `huggingface.co/chat` account. It is not a Hugging Face inference token; those belong to the separate `huggingface` provider.
 
 ## Guarded by default
 
-Chat requests to a HuggingChat connection return HTTP 501 with `type: "provider_port_pending"` and send nothing upstream. Public Hugging Face sources do not authorize an external client to reuse the hosted web session, so dispatch is opt-in per connection.
+Chat requests dispatch through the saved HuggingChat session only when explicitly enabled on that connection. Without the opt-in they return HTTP 501 with `type: "provider_port_pending"` and send nothing upstream. Dispatch is opt-in per connection.
 
 To enable it, set this on the connection's provider-specific data:
 
@@ -12,7 +14,7 @@ To enable it, set this on the connection's provider-specific data:
 { "enableSessionDispatch": true }
 ```
 
-The value must be the boolean `true`. A missing flag, `false`, or any other value (including the string `"true"`) keeps the guard and its 501 unchanged. The flag is read from the connection that is serving the request, so enabling one connection never opens another one, and the guarded connection's cookie is never sent.
+The value must be the boolean `true`. A missing flag, `false`, or any other value (including the string `"true"`) keeps the guard and its 501 unchanged. The flag is read from the connection that is serving the request, so enabling one connection never opens another one; a guarded connection's cookie is never sent.
 
 ### Risk
 

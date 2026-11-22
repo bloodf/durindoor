@@ -18,6 +18,7 @@ export default {
   category: "oauth",
   authModes: ["oauth", "apikey"],
   hasOAuth: true,
+  naiveResetTimezone: "+08:00",
   transport: {
     baseUrl: "https://copilot.tencent.com/v2/chat/completions",
     forceStream: true,

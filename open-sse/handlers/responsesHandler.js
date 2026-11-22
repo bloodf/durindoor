@@ -5,6 +5,7 @@
 
 import { handleChatCore } from "./chatCore.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
+import { isCursorProvider } from "../providers/cursorProviders.js";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb.js";
@@ -42,7 +43,7 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
 
   // Conversion stringifies tool-output arrays and removes input, so validate
   // Cursor images while their protocol block types are still available.
-  if (modelInfo?.provider === "cursor" || modelInfo?.provider === "cu") {
+  if (isCursorProvider(modelInfo?.provider)) {
     try {
       validateCursorImages(body);
     } catch (error) {

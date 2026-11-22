@@ -9,6 +9,7 @@ import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import SecurityWarning from "./components/SecurityWarning";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const ACCESS_OPTIONS = [
   { value: "all", label: "All models" },
@@ -23,6 +24,7 @@ const MAX_PATTERNS = 200;
  * catalog, offered as suggestions.
  */
 export default function ApiKeyModelAccessModal({ apiKey, catalog = [], onClose, onSave }) {
+  const uiV5 = useUiV5();
   const current = apiKey?.policy?.modelAccess;
   const [mode, setMode] = useState(() => (ACCESS_OPTIONS.some((o) => o.value === current?.mode) ? current.mode : "all"));
   const [patterns, setPatterns] = useState(() => (Array.isArray(current?.patterns) ? current.patterns : []));
@@ -103,6 +105,7 @@ export default function ApiKeyModelAccessModal({ apiKey, catalog = [], onClose, 
                 No rules yet. {mode === "allow" ? "An empty allowlist blocks every model." : "An empty blocklist blocks nothing."}
               </p>
             ) : (
+              <RuleListRegion enabled={uiV5} label={mode === "allow" ? "Allow list" : "Block list"}>
               <ul className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-dd border border-dd-border p-2" aria-label="Model rules">
                 {patterns.map((pattern) => (
                   <li key={pattern} className="flex items-center">
@@ -117,6 +120,7 @@ export default function ApiKeyModelAccessModal({ apiKey, catalog = [], onClose, 
                   </li>
                 ))}
               </ul>
+              </RuleListRegion>
             )}
             <div className="flex items-end gap-2">
               <Input
@@ -149,6 +153,12 @@ export default function ApiKeyModelAccessModal({ apiKey, catalog = [], onClose, 
       </div>
     </Modal>
   );
+}
+
+/** V5: the rule list is a named, focusable region; otherwise the list renders bare. */
+function RuleListRegion({ enabled, label, children }) {
+  if (!enabled) return children;
+  return <div role="region" aria-label={label} tabIndex={0} className="rounded-dd outline-none focus-visible:shadow-dd-focus">{children}</div>;
 }
 
 ApiKeyModelAccessModal.propTypes = {

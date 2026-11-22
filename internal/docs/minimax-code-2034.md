@@ -1,7 +1,12 @@
 # MiniMax Code account inference investigation (#2034)
 
-Status: blocked; no MiniMax Code provider is registered. This is a source review,
-not a live account test or a claim that MiniMax cannot support another client.
+Status: registered behind a guard (registration batch D). The owner's work
+order for #2034 builds it with mocked-contract tests instead of leaving it blocked: see
+`docs/providers/minimax-code.mdx`, `open-sse/providers/registry/minimax-code.js` and
+`tests/unit/minimax-code-provider.test.js`. The authorization question below is not
+resolved by that work, which is why dispatch stays off unless a connection sets
+`providerSpecificData.enableSessionDispatch === true`. This is a source review, not a
+live account test or a claim that MiniMax cannot support another client.
 
 ## Pinned evidence
 

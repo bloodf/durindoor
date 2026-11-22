@@ -15,6 +15,36 @@ import {
 import { getModelInfo } from "@/sse/services/model.js";
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
+import { isString } from "@/shared/utils/typeChecks.js";
+
+const REDACTED = "[REDACTED]";
+const AUTH_HEADER_NAME = /authori[sz]ation|api[-_]?key|cookie|token|secret|credential|session|^x-auth/i;
+
+function collectCredentialValues(values) {
+  return new Set(values.filter((value) => isString(value) && value.length >= 8));
+}
+
+/** Step 3 mirrors the upstream request; its auth headers carry the live provider credential. */
+function redactAuthHeaders(headers, credentials) {
+  const secrets = [...collectCredentialValues([
+    credentials.apiKey, credentials.accessToken, credentials.refreshToken, credentials.copilotToken,
+  ])];
+  const safe = {};
+  for (const [name, value] of Object.entries(headers || {})) {
+    const carriesSecret = isString(value) && secrets.some((secret) => value.includes(secret));
+    safe[name] = AUTH_HEADER_NAME.test(name) || carriesSecret ? REDACTED : value;
+  }
+  return safe;
+}
+
+function redactUrlSecrets(url, credentials) {
+  if (!isString(url)) return url;
+  let safe = url;
+  for (const secret of collectCredentialValues([credentials.apiKey, credentials.accessToken, credentials.copilotToken])) {
+    safe = safe.split(secret).join(REDACTED);
+  }
+  return safe;
+}
 
 function resolveRequestModel(provider, requestedModel) {
   // Provider-scoped: only OpenAI and Codex read `fast`/`standard` as a service
@@ -158,8 +188,8 @@ export async function POST(request) {
         if (runtimeTransport) credentials.runtimeTransport = runtimeTransport;
 
         const executor = getExecutor(provider);
-        const url = executor.buildUrl(resolvedModel.upstreamModel, stream, 0, credentials);
-        const headers = executor.buildHeaders(credentials, stream);
+        const url = redactUrlSecrets(executor.buildUrl(resolvedModel.upstreamModel, stream, 0, credentials), credentials);
+        const headers = redactAuthHeaders(executor.buildHeaders(credentials, stream), credentials);
         const finalBody = executor.transformRequest(
           resolvedModel.upstreamModel,
           translated,

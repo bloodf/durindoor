@@ -89,9 +89,9 @@ it("rejects old chat callbacks after import but commits newly admitted usage onc
   await Promise.all(writes);
   expect(await database.getApiKeyUsageTotals(keyId)).toMatchObject({ totalRequests: 1, totalTokens: 10 });
 
-  const { usageEventReceiptsVersion, usageEventReceipts, billingCutoverVersion, billingEpoch, ...legacy } = await database.exportDb();
+  const { usageEventReceiptsVersion, usageEventReceipts, billingCutoverVersion, billingEpoch, ...legacy } = await database.exportDb({ includeSecrets: true });
   await database.importDb(legacy);
-  const cutover = await database.exportDb();
+  const cutover = await database.exportDb({ includeSecrets: true });
   expect(cutover.billingEpoch).toEqual(expect.any(String));
   expect(cutover.billingEpoch).not.toBe(old.auth.billingEpoch);
   const before = adapter.all("SELECT * FROM usageHistory");
@@ -193,9 +193,9 @@ it.each(["json", "responses-sse", "chat-sse", "stream-success", "stream-error", 
       const finishOld = startCompletion(kind, old, `old-${cycle}`);
       // Remove all modern billing metadata, including the previous cutover
       // marker, which requires receipts and would not describe a legacy backup.
-      const { usageEventReceiptsVersion, usageEventReceipts, billingCutoverVersion, billingEpoch, ...legacy } = await database.exportDb();
+      const { usageEventReceiptsVersion, usageEventReceipts, billingCutoverVersion, billingEpoch, ...legacy } = await database.exportDb({ includeSecrets: true });
       await database.importDb(legacy);
-      const cutover = await database.exportDb();
+      const cutover = await database.exportDb({ includeSecrets: true });
       expect(cutover.billingEpoch).toEqual(expect.any(String));
       expect(cutover.billingEpoch).not.toBe(old.billingEpoch);
       const before = adapter.all("SELECT * FROM usageHistory");

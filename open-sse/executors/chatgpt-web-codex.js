@@ -22,7 +22,7 @@ export class ChatGptWebCodexExecutor extends ChatGptWebExecutor {
 
   execute(input) {
     const model = MODEL_LANES[input.model] ?? input.model;
-    return super.execute({ ...input, model });
+    return super.execute({ ...input, model, sameOriginRedirects: true });
   }
 }
 

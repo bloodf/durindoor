@@ -2,6 +2,9 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import CapabilityIcons from "@/shared/ui/v5/combos/CapabilityIcons.jsx";
+import "@/shared/ui/v5/combos/combos.css";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
@@ -52,7 +55,7 @@ const KIND_TO_SLUG = {
 // `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
 const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
 
-/** Keeps empty-search feedback available to screen readers without moving keyboard focus. */
+/** V5 presents the same catalog and selection callbacks as rows; empty-search feedback remains announced. */
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -88,6 +91,10 @@ export default function ModelSelectModal({
     [activeProviders]
   );
   const orcaCatalog = useOrcaRouterCatalog(isOpen, orcaConnectionIds, orcaCapability, null);
+  const v5 = useUiV5();
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [discoveryPending, setDiscoveryPending] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [planKey, setPlanKey] = useState("");
   const [planConnection, setPlanConnection] = useState("");
@@ -189,6 +196,8 @@ export default function ModelSelectModal({
   }, [isOpen]);
 
   const fetchProviderNodes = async () => {
+    setDiscoveryPending(true);
+    setCatalogError("");
     try {
       const res = await fetch("/api/provider-nodes");
       if (!res.ok) throw new Error(`Failed to fetch provider nodes: ${res.status}`);
@@ -197,6 +206,9 @@ export default function ModelSelectModal({
     } catch (error) {
       console.error("Error fetching provider nodes:", error);
       setProviderNodes([]);
+      setCatalogError("Provider details could not load. Reopen to retry.");
+    } finally {
+      setDiscoveryPending(false);
     }
   };
 
@@ -782,11 +794,13 @@ export default function ModelSelectModal({
         setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
       }}
       title={title}
-      size="md"
+      size={v5 ? "xl" : "md"}
+      surfaceClassName={v5 ? "v5-model-picker" : undefined}
       className="p-0!"
       footer={null}
     >
       <div className="flex flex-col gap-4 px-1">
+        {v5 && catalogError ? <p role="alert">{catalogError}</p> : null}
         <div role="status" className="flex items-center gap-2 rounded-dd-lg border border-dd-accent/30 bg-dd-accent-soft px-3 py-2 text-xs text-dd-text">
           <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">info</span>
           <span>Click to add, click again to remove. Changes are saved automatically.</span>
@@ -824,7 +838,24 @@ export default function ModelSelectModal({
           placeholder="Search..."
           aria-label="Search models"
         />
-        <div className="max-h-[400px] space-y-3 overflow-y-auto pr-1">
+        {v5 ? <>
+          <label>Filter provider <select aria-label="Filter provider" value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}><option value="all">All providers</option><option value="combos">Nested combos</option>{Object.entries(groupedModels).map(([id, group]) => <option key={id} value={id}>{group.name}</option>)}</select></label>
+          <div className={`v5-model-picker-layout ${closeOnSelect ? "v5-model-picker-single" : ""}`}>
+            <div className="v5-model-picker-catalog" role="region" aria-label="Available model catalog" tabIndex={0}>
+              <div className="v5-model-picker-results" role="status">{discoveryPending || !visibleCatalogReady ? "Loading models…" : "Available models"}</div>
+              {(providerFilter === "all" || providerFilter === "combos") && filteredCombos.length > 0 ? <section aria-label="Combos"><h3>Nested combos <span>{filteredCombos.length}</span></h3>{filteredCombos.map((combo) => <button key={combo.id} type="button" className="v5-model-picker-row" aria-pressed={addedModelValues.includes(combo.name) || selectedModel === combo.name} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}>{combo.name}</button>)}</section> : null}
+              {Object.entries(filteredGroups).filter(([id]) => providerFilter === "all" || providerFilter === id).map(([id, group]) => <section key={id} aria-label={group.name}><h3><ProviderLogo provider={id} size={18} />{group.name}<span>{group.models.length}</span></h3>{group.models.map((model) => {
+                const custom = customModels.find((item) => item.id === model.id && (item.providerAlias === id || item.providerAlias === group.alias));
+                const caps = { ...getCaps(model.value) };
+                if (!Array.isArray(model.capabilities)) Object.assign(caps, model.capabilities);
+                Object.assign(caps, custom?.capabilities);
+                return <button key={model.value} type="button" className="v5-model-picker-row" aria-label={model.name === model.value ? model.name : `${model.name} (${model.value})`} aria-pressed={addedModelValues.includes(model.value) || selectedModel === model.value} onClick={() => handleSelect(model)}><span className="v5-model-check" aria-hidden="true">{addedModelValues.includes(model.value) || selectedModel === model.value ? "✓" : ""}</span><span className="v5-model-picker-identity"><strong>{model.name}</strong>{model.value !== model.name ? <code>{model.value}</code> : null}<CapabilityIcons caps={caps} />{model.isPlaceholder ? <span>Custom ID</span> : null}</span></button>;
+              })}</section>)}
+              {visibleCatalogReady && !discoveryPending && !Object.entries(filteredGroups).some(([id, group]) => (providerFilter === "all" || providerFilter === id) && group.models.length) && !((providerFilter === "all" || providerFilter === "combos") && filteredCombos.length) ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+            </div>
+            {!closeOnSelect ? <aside className="v5-model-picker-selection" aria-label="Selected models"><h3>Selected <span>{addedModelValues.length}</span></h3>{addedModelValues.length === 0 ? <p>Select models from the catalog.</p> : <ol>{addedModelValues.map((value, index) => <li key={`${value}-${index}`}><span>{index + 1}</span><code>{value}</code>{onDeselect ? <button type="button" aria-label={`Remove ${value} from selection`} onClick={() => onDeselect({ id: value, name: value, value })}>×</button> : null}</li>)}</ol>}</aside> : null}
+          </div>
+        </> : <div className="max-h-[400px] space-y-3 overflow-y-auto pr-1">
           {filteredCombos.length > 0 ? <section aria-label="Combos"><header className="sticky top-0 z-10 flex items-center gap-1.5 bg-dd-surface py-1"><span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">layers</span><span className="text-xs font-semibold text-dd-accent">Combos</span><span className="text-[10px] text-dd-muted">({filteredCombos.length})</span></header><div className="mt-2 flex flex-wrap gap-1.5">{filteredCombos.map((combo) => {
             const isSelected = selectedModel === combo.name;
             const isAdded = addedModelValues.includes(combo.name);
@@ -842,7 +873,7 @@ export default function ModelSelectModal({
           <div role="status" aria-atomic="true">
             {visibleCatalogReady && Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
           </div>
-        </div>
+        </div>}
       </div>
     </Modal>);
 

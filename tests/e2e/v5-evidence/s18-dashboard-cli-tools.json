@@ -1,0 +1,10 @@
+{
+  "route": "/dashboard/cli-tools",
+  "stories": [
+    "v5-review-pages-cli-tools-clitoolspageclient--catalog",
+    "v5-review-pages-cli-tools-clitoolspageclient--loading",
+    "v5-review-pages-cli-tools-clitoolspageclient--fetch-error",
+    "v5-review-pages-cli-tools-clitoolspageclient--fetch-error-retry",
+    "v5-review-pages-cli-tools-clitoolspageclient--mitm-section-visible"
+  ]
+}

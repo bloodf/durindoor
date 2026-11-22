@@ -476,6 +476,9 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "opencode-go" && credentials) {
         credentials._openCodeGoSession = openCodeGoSessionHeader(credentials, transformed);
+        // buildHeaders() never sees the body; record whether the Claude lane carries
+        // context_management so the paired beta flag can travel with it (#4876).
+        credentials._openCodeGoContextManagement = Boolean(transformed.context_management);
       }
       if (this.provider?.startsWith("openai-compatible-") &&
         !this.provider.startsWith("openai-compatible-responses-") &&
@@ -790,6 +793,18 @@ export class DefaultExecutor extends BaseExecutor {
       const modelBeta = selectAnthropicBeta(model, { firstParty: firstPartyHost });
       const runtimeBeta = officialApiKey && rt?.headers ? new Headers(rt.headers).get("anthropic-beta") : null;
       headers["Anthropic-Beta"] = [modelBeta, runtimeBeta].filter(Boolean).join(",");
+    }
+    // OpenCode Go's Claude lane is a strict Anthropic proxy: context_management is
+    // rejected (400) unless its paired beta flag is on the request. Forward the client's
+    // flags (minus Claude Code identity flags) and add the pair when the body needs it.
+    // Port of decolua/9router#4876; other opencode-go models keep no beta header.
+    if (this.provider === "opencode-go" && isClaudeModel) {
+      const clientBeta = withoutClaudeCodeIdentityBetas(
+        requestContext?.clientHeaders?.["anthropic-beta"] ?? requestContext?.clientHeaders?.["Anthropic-Beta"]
+      );
+      const flags = new Set([clientBeta, credentials?._openCodeGoContextManagement ? "context-management-2025-06-27" : null]
+        .filter(Boolean).flatMap((v) => v.split(",")).map((f) => f.trim()).filter(Boolean));
+      if (flags.size > 0) headers["Anthropic-Beta"] = Array.from(flags).join(",");
     }
     if (this.provider === "claude" || (this.provider === "anthropic" && officialApiKey) || compatibleClaudeModel) {
       mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });

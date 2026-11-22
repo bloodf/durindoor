@@ -19,6 +19,16 @@ const HOSTED_IMAGE_MODELS = new Set([
   "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"
 ]);
 
+const HOSTED_MAIN_MODEL = "gpt-6-sol";
+const FALLBACK_MAIN_MODEL = "gpt-5.6-terra";
+
+// Responses model that drives the hosted image_generation tool. Operators can
+// override it with CODEX_IMAGE_RESPONSES_MODEL (decolua/9router#4866); blank
+// values keep the default.
+function hostedMainModel() {
+  return process.env.CODEX_IMAGE_RESPONSES_MODEL?.trim() || HOSTED_MAIN_MODEL;
+}
+
 function stripImageSuffix(model) {
   return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
 }
@@ -272,7 +282,7 @@ export default {
     if (body.quality && body.quality !== "") imgTool.quality = body.quality;
     if (body.background && body.background !== "") imgTool.background = body.background;
     return {
-      model: hostedImageModel ? "gpt-6-sol" : stripImageSuffix(model),
+      model: hostedImageModel ? hostedMainModel() : stripImageSuffix(model),
       instructions: "",
       input: [{ type: "message", role: "user", content: buildContent(body.prompt, refs, detail) }],
       tools: [imgTool],
@@ -285,10 +295,11 @@ export default {
     };
   },
   buildFallbackBody(requestBody, status, message) {
-    if (status !== 400 || requestBody?.model !== "gpt-6-sol" ||
+    if (status !== 400 || requestBody?.model !== hostedMainModel() ||
+      requestBody.model === FALLBACK_MAIN_MODEL ||
       !HOSTED_IMAGE_MODELS.has(requestBody.tools?.[0]?.model) ||
       !/model is not supported when using Codex/i.test(message)) return null;
-    return { ...requestBody, model: "gpt-5.6-terra" };
+    return { ...requestBody, model: FALLBACK_MAIN_MODEL };
   },
   // Reuse the core's buffered settlement for native JSON, and its streaming
   // settlement for Responses SSE.

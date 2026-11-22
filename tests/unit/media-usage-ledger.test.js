@@ -205,7 +205,8 @@ describe("media usage in the existing usageHistory ledger", () => {
     const usage = { ...event(), apiKey: secret, strict: true };
     await database.saveRequestUsage(usage);
     await database.resetUsageHistory("all");
-    const backup = await database.exportDb();
+    // SEC-B-02 / #2208: secret-preserving restore needs includeSecrets.
+    const backup = await database.exportDb({ includeSecrets: true });
     // This fixture contains every historical receipt, unlike a legacy export.
     backup.usageEventReceiptsVersion = 1;
     // Simulate restoring into storage with no local deduplication state.
@@ -233,7 +234,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     expect(admission.auth).toMatchObject({ ok: true, apiKeyId: keyId, billingEpoch: null });
     expect(concurrent.auth.billingEpoch).toBeNull();
     await policy.recordApiKeyUsage(secret, event({ billingEpoch: admission.auth.billingEpoch }));
-    const backup = await database.exportDb();
+    const backup = await database.exportDb({ includeSecrets: true });
     // A charged legacy backup cannot prove complete historical receipt coverage.
     const { usageEventReceiptsVersion, usageEventReceipts, ...legacy } = backup;
     await database.importDb(legacy);
@@ -265,7 +266,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     expect(await database.getApiKeyUsageTotals(keyId)).toMatchObject({ totalRequests: 2, totalCost: 0.5 });
     // Restoring a cutover backup rotates the fence again; a once-valid event
     // must not be upgraded or replayed into the new generation.
-    await database.importDb(await database.exportDb());
+    await database.importDb(await database.exportDb({ includeSecrets: true }));
     await expect(policy.recordApiKeyUsage(secret, current)).rejects.toMatchObject({
       code: "USAGE_ACCOUNTING_FAILED", message: "Stale or missing billing epoch",
     });
@@ -279,7 +280,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     const pricing = await import("@/lib/db/repos/pricingRepo.js");
     const { getBillingEpoch } = await import("@/lib/db/repos/usageRepo.js");
     await database.saveRequestUsage({ ...event(), apiKey: secret, strict: true });
-    const snapshot = await database.exportDb();
+    const snapshot = await database.exportDb({ includeSecrets: true });
     let release;
     let entered;
     const blocked = new Promise((resolve) => { release = resolve; });

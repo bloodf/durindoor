@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { isDurinDoorDroidModel } from "@/shared/utils/droidConfig";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -60,7 +61,7 @@ const readSettings = async () => {
 // Check if settings has DurinDoor customModels
 const has9RouterConfig = (settings) => {
   if (!settings || !settings.customModels) return false;
-  return settings.customModels.some((m) => m.id?.startsWith("custom:9Router"));
+  return settings.customModels.some((m) => isDurinDoorDroidModel(m));
 };
 
 // GET - Check droid CLI and read current settings
@@ -80,7 +81,10 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      settings: redactSecrets(settings),
+      settings: redactSecrets(settings && Array.isArray(settings.customModels) ? {
+        ...settings,
+        customModels: settings.customModels.map((model) => isDurinDoorDroidModel(model) ? { ...model, durinDoorManaged: true } : model)
+      } : settings),
       has9Router: has9RouterConfig(settings),
       settingsPath: getDroidSettingsPath()
     });
@@ -115,10 +119,11 @@ export async function POST(request) {
     await fs.mkdir(droidDir, { recursive: true });
 
     const existingCustomModels = Array.isArray(settings.customModels) ? settings.customModels : [];
-    const existingKey = existingCustomModels.find((m) => m?.id?.startsWith("custom:9Router"))?.apiKey;
+    const managedModels = existingCustomModels.filter(isDurinDoorDroidModel);
+    const existingKey = managedModels.find((m) => m.apiKey && m.apiKey !== "sk_9router")?.apiKey || managedModels[0]?.apiKey;
 
     // Remove all existing DurinDoor configs while keeping the user's own customModels
-    const preservedModels = existingCustomModels.filter((m) => !m?.id?.startsWith("custom:9Router"));
+    const preservedModels = existingCustomModels.filter((m) => !isDurinDoorDroidModel(m));
 
     // Normalize baseUrl to ensure a single /v1 suffix
     const trimmedBaseUrl = baseUrl.replace(/\/+$/, "");
@@ -131,14 +136,14 @@ export async function POST(request) {
       if (!m || !isString(m)) continue;
       addedEntries.push({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `custom:DurinDoor-${i}`,
         index: i,
         baseUrl: normalizedBaseUrl,
         apiKey: keyToUse,
         displayName: m,
         maxOutputTokens: 131072,
         noImageSupport: false,
-        provider: "openai"
+        provider: "generic-chat-completion-api"
       });
     }
 
@@ -197,7 +202,7 @@ export async function DELETE() {
 
     // Remove DurinDoor customModels
     if (Array.isArray(settings.customModels)) {
-      const remaining = settings.customModels.filter((m) => !m?.id?.startsWith("custom:9Router"));
+      const remaining = settings.customModels.filter((m) => !isDurinDoorDroidModel(m));
       const nextCustomModels = remaining.length > 0 ? remaining : undefined;
       const nextContent = applyEdits(
         existingRaw,

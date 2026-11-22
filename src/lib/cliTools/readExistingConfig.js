@@ -37,8 +37,33 @@ export async function readExistingConfig(filePath, parse) {
   }
 }
 
-/** Atomically replace a CLI config, retaining one private backup of its previous contents. */
+/** Atomically replace the resolved config target, retaining one private backup beside it. */
 export async function writeConfigAtomic(filePath, content) {
+  // realpath follows existing links; readlink also handles a missing link target.
+  const seen = new Set();
+  while (true) {
+    try {
+      filePath = await fs.realpath(filePath);
+      break;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      let target;
+      try {
+        target = await fs.readlink(filePath);
+      } catch (linkError) {
+        if (linkError?.code === "ENOENT" || linkError?.code === "EINVAL") break;
+        throw linkError;
+      }
+      const resolved = path.resolve(path.dirname(filePath), target);
+      if (seen.has(resolved)) {
+        const cycle = new Error(`Symlink cycle resolving CLI config: ${filePath}`);
+        cycle.code = "ELOOP";
+        throw cycle;
+      }
+      seen.add(resolved);
+      filePath = resolved;
+    }
+  }
   const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
   const backupTemp = `${tempPath}.bak`;
   try {

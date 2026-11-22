@@ -175,6 +175,16 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
       });
     }
 
+    if (isString(part.fileData?.fileUri) && part.fileData.fileUri) {
+      // Translate Gemini fileData URI into an OpenAI image_url part (#2185).
+      parts.push({
+        type: OPENAI_BLOCK.IMAGE_URL,
+        image_url: {
+          url: part.fileData.fileUri
+        }
+      });
+    }
+
     if (part.functionCall) {
       // Gemini lacks a native call id; derive a deterministic one from the name so the
       // matching functionResponse maps to the same tool_call_id (providers require pairing).
@@ -189,10 +199,16 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
     }
 
     if (part.functionResponse) {
+      // Return string response.result directly (avoid double-encoding), JSON-stringify
+      // defined non-string response.result (including 0/false/null), else JSON of response (#2185).
+      const resp = part.functionResponse.response;
+      const toolContent = resp && resp.result !== undefined
+        ? (isString(resp.result) ? resp.result : JSON.stringify(resp.result))
+        : JSON.stringify(resp ?? {});
       toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: responseCallId(ids, part.functionResponse),
-        content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
+        content: toolContent
       });
     }
   }

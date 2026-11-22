@@ -19,6 +19,7 @@
 
 import { maskText, normalizeMaskingMode } from "./contentMasking.js";
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+import { MAX_PENDING_SSE_LINE_BYTES } from "../utils/pendingSseLine.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 // Raw text held back per stream key. 128 chars covers the length at which
@@ -302,7 +303,9 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   const io = createIo(opts, counts, mask);
-  let buffer = "";
+  let pendingChunks = [];
+  let scanTail = "";
+  let pendingBytes = 0;
   const toBytes = (frames) => encoder.encode(frames.map((f) => `${f}${f.includes("\r\n") ? "\r\n\r\n" : "\n\n"}`).join(""));
   // Warn mode never alters bytes, so a scanning failure only stops counting.
   const scan = (fn) => {
@@ -315,8 +318,11 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
   };
   // Remaining partial frame plus every held carry, masked.
   const tail = () => scan(() => {
-    const frames = buffer ? processFrame(buffer, io) : [];
-    buffer = "";
+    const pending = pendingChunks.join("");
+    const frames = pending ? processFrame(pending, io) : [];
+    pendingChunks = [];
+    scanTail = "";
+    pendingBytes = 0;
     io.flush("");
     return [...frames, ...drainBefore(io, null)];
   });
@@ -338,16 +344,29 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
           return;
         }
         if (chunk.done) {
-          buffer += decoder.decode();
+          const finalText = decoder.decode();
+          if (finalText) pendingChunks.push(finalText);
           finish(controller);
           controller.close();
           return;
         }
         const value = isString(chunk.value) ? encoder.encode(chunk.value) : chunk.value;
         if (!mask) controller.enqueue(value);
-        buffer += decoder.decode(value, { stream: true });
+        const decoded = decoder.decode(value, { stream: true });
+        pendingChunks.push(decoded);
+        pendingBytes += value.byteLength;
+        if (pendingBytes > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Response masking SSE frame exceeds limit");
+        // Inspect only the new text and a three-character overlap, since a
+        // blank-line delimiter is at most four characters long.
+        const suffix = scanTail + decoded;
+        const found = /\r?\n\r?\n/.test(suffix);
+        scanTail = suffix.slice(-3);
+        if (!found) continue;
+        const buffer = pendingChunks.join("");
         const batch = extractCompleteSseFrames(buffer);
-        buffer = batch.remainder;
+        pendingChunks = batch.remainder ? [batch.remainder] : [];
+        scanTail = batch.remainder.slice(-3);
+        pendingBytes = encoder.encode(batch.remainder).byteLength;
         const frames = scan(() => batch.frames.flatMap((f) => processFrame(f, io)));
         if (!mask) return;
         if (frames.length) {

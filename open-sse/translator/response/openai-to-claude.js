@@ -162,8 +162,12 @@ function toClaudeUsage(usage) {
   if (reportedCacheReadTokens !== undefined) claudeUsage.cache_read_input_tokens = reportedCacheReadTokens;
   if (cacheCreateTokens > 0) claudeUsage.cache_creation_input_tokens = cacheCreateTokens;
 
-  // Note: completion_tokens_details.reasoning_tokens is already included in output_tokens
-  // No need to add separately as Claude expects total output_tokens
+  // reasoning_tokens is already included in output_tokens, so output_tokens stays
+  // the total Claude expects. Keep the breakdown as an extra field (Claude clients
+  // ignore it) so usage tracking does not lose reasoning counts on translated streams.
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ??
+    usage.output_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens;
+  if (isNumber(reasoningTokens) && reasoningTokens > 0) claudeUsage.reasoning_tokens = reasoningTokens;
   return claudeUsage;
 }
 

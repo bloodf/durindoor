@@ -2613,6 +2613,7 @@ function ProviderDetail({ providerId }) {
         </div>
       </Modal>
       <AddApiKeyModal
+        key={showAddApiKeyModal ? "add-api-key-open" : "add-api-key-closed"}
         isOpen={showAddApiKeyModal}
         provider={providerId}
         providerName={providerInfo.name}

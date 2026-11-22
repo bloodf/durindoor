@@ -209,6 +209,10 @@ export const MODEL_CAPABILITIES = {
    */
   "glm-5.3": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // Agnes AI (apihub.agnes-ai.com): both 3.0 models take text AND image URLs. Without these they
+  // fell through to DEFAULT_CAPABILITIES (vision:false, 200k) and the router stripped images.
+  "agnes-3.0-pro": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 512000, maxOutput: 65536 },
+  "agnes-3.0-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 512000, maxOutput: 65536 },
   // Upstream c61ee37d: z.ai docs say GLM-5.3-FLASH cannot disable thinking and carries the 1M window.
   "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   // OpenCode serves the same weights under this free id from its own inference

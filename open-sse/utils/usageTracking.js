@@ -464,8 +464,13 @@ export function extractUsage(chunk) {
 
   // OpenAI Responses API terminal usage, including reported incomplete responses.
   // Cache fields already follow the inclusive Responses contract here.
-  if ((chunk.type === "response.completed" || chunk.type === "response.done" || chunk.type === "response.incomplete") && chunk.response?.usage && isObject(chunk.response.usage)) {
-    const usage = chunk.response.usage;
+  // A bare Responses-shaped `usage` (input_tokens/output_tokens, no prompt_tokens) can also
+  // arrive directly on a translated stream chunk; read it the same way.
+  const isTerminalResponsesEvent = chunk.type === "response.completed" || chunk.type === "response.done" || chunk.type === "response.incomplete";
+  const responsesUsage = isTerminalResponsesEvent ? chunk.response?.usage :
+    chunk.usage?.input_tokens !== undefined && chunk.usage?.prompt_tokens === undefined ? chunk.usage : null;
+  if (responsesUsage && isObject(responsesUsage)) {
+    const usage = responsesUsage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
     const cacheCreationTokens = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;

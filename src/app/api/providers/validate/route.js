@@ -25,6 +25,7 @@ import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -418,7 +419,7 @@ export async function POST(request) {
         }
 
         const messagesUrl = `${normalizedBase}/v1/messages`;
-        const model = node.defaultModel || "claude-3-haiku-20240307";
+        const model = node.defaultModel || ANTHROPIC_VALIDATION_MODEL;
 
         let res;
         try {
@@ -605,7 +606,7 @@ export async function POST(request) {
               "content-type": "application/json"
             },
             body: JSON.stringify({
-              model: "claude-3-haiku-20240307",
+              model: ANTHROPIC_VALIDATION_MODEL,
               max_tokens: 1,
               messages: [{ role: "user", content: "test" }]
             })

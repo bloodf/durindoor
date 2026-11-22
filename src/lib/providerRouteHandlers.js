@@ -210,7 +210,7 @@ export async function GET(request) {
     });
 
     // Keep the original response for callers that do not request filtering.
-    const params = new URL(request.url).searchParams;
+    const params = new URL(request?.url || "http://localhost/").searchParams;
     const provider = params.get("provider") || "";
     const query = (params.get("q") || "").trim().toLowerCase();
     const paging = params.has("page") || params.has("pageSize");

@@ -37,6 +37,7 @@ import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
 import { CLAUDE_STOP, GEMINI_FINISH } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
+import { evictResponseDispatcher } from "../../utils/proxyFetch.js";
 
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
 // arrays, null) before any envelope unwrap or property access can throw or
@@ -611,7 +612,13 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
       }
-      const sseError = createSSEErrorResult(parsed || jsonDocument.body, credentials);
+      let errorPayload = parsed || jsonDocument.body;
+      if ((provider === "antigravity" || provider === "agy") && isJsonRecord(errorPayload?.error)) {
+        const code = errorPayload.error.code;
+        if (code === 401 || code === 403) evictResponseDispatcher(providerResponse);
+        errorPayload = { ...errorPayload, error: { ...errorPayload.error, status: code } };
+      }
+      const sseError = createSSEErrorResult(errorPayload, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;
@@ -654,6 +661,17 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+      }
+      // Cloud Code can return a Google RPC error inside an HTTP 200 response.
+      // Preserve its numeric code so account-level authentication handling sees it.
+      if ((provider === "antigravity" || provider === "agy") && isJsonRecord(responseBody.error)) {
+        const code = responseBody.error.code;
+        const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : HTTP_STATUS.BAD_GATEWAY;
+        if (status === 401 || status === 403) evictResponseDispatcher(providerResponse);
+        const message = isString(responseBody.error.message) && responseBody.error.message.trim() ?
+          responseBody.error.message : "Upstream Antigravity request failed";
+        appendLog({ status: `FAILED ${status}` });
+        return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
       }
     }
 

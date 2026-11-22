@@ -266,6 +266,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) {
     credentials._clientSessionId = clientSessionId;
+    if (targetFormat === FORMATS.ANTIGRAVITY) {
+      credentials._antigravitySubagentId = result?.metadata?.subagent_id || result?.metadata?.agent_id || result?.subagent_id || credentials.rawHeaders?.["x-subagent-id"] || "";
+    }
     if (connectionId) credentials._signatureNamespace = connectionId;
   }
 

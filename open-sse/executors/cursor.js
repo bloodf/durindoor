@@ -1445,6 +1445,17 @@ export class CursorExecutor extends BaseExecutor {
         return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
       }
 
+      // A successful upstream response without a body cannot contain Cursor frames.
+      if (!response.body) {
+        return {
+          response: new Response(JSON.stringify({ error: { message: "Cursor upstream returned an empty response body", type: "server_error", code: "" } }), {
+            status: 502,
+            headers: { "Content-Type": "application/json" },
+          }),
+          url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt,
+        };
+      }
+
       const transformedResponse = stream !== false ?
       this.transformProtobufToSSE(response.body, model, body) :
       this.transformProtobufToJSON(response.body, model, body);

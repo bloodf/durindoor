@@ -1413,7 +1413,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       const slash = model.id.indexOf("/");
       const provider = model.id.slice(0, slash);
       const modelId = model.id.slice(slash + 1);
-      if (!isModelExposureAllowed(provider, modelId, settings)) continue;
+      if (!isModelExposureAllowed(provider, modelId, settings, (p) => aliasToProviderId[p])) continue;
       enforceCursorCapabilities(aliasToProviderId[provider] ?? provider, model.capabilities);
     }
     dedupedModels.push(model);

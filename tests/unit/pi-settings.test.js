@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), copyFile: vi.fn(), rename: vi.fn(), unlink: vi.fn(), mkdir: vi.fn() }));
+const io = vi.hoisted(() => ({ access: vi.fn(), realpath: vi.fn(), readlink: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), copyFile: vi.fn(), rename: vi.fn(), unlink: vi.fn(), mkdir: vi.fn() }));
 const db = vi.hoisted(() => ({
   getCombos: vi.fn(),
   getCustomModels: vi.fn(),
@@ -36,6 +36,8 @@ const models = () => written().providers.durindoor.models;
 beforeEach(() => {
   vi.clearAllMocks();
   io.access.mockRejectedValue(new Error("missing"));
+  io.realpath.mockImplementation(async (path) => path);
+  io.readlink.mockRejectedValue(Object.assign(new Error("not a link"), { code: "EINVAL" }));
   io.readFile.mockResolvedValue("{}");
   io.writeFile.mockResolvedValue(undefined);
   io.copyFile.mockRejectedValue({ code: "ENOENT" });

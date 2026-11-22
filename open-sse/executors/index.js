@@ -30,6 +30,7 @@ import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
+import { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { PollinationsExecutor } from "./pollinations.js";
@@ -116,6 +117,8 @@ const executors = {
   "perplexity-web": new PerplexityWebExecutor(),
   "chatgpt-web": chatGptWebExecutor,
   "cgpt-web": chatGptWebExecutor,
+  "chatgpt-web-codex": new ChatGptWebCodexExecutor(),
+  "cgpt-codex": new ChatGptWebCodexExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),

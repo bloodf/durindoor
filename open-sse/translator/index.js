@@ -478,7 +478,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   }
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
-    return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];
+    return (targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk]).filter((event) => event != null);
   }
 
   let results = [chunk];

@@ -30,7 +30,7 @@ import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export {
   refreshAccessToken,
   refreshClaudeOAuthToken,
@@ -60,7 +60,10 @@ export function isUnrecoverableRefreshError(result) {
 
 }
 
-export function getRefreshLeadMs(provider) {
+/** Use a positive finite per-connection lead when supplied. */
+export function getRefreshLeadMs(provider, providerSpecificData = null) {
+  const override = providerSpecificData?.refreshLeadMs;
+  if (isNumber(override) && Number.isFinite(override) && override > 0) return override;
   return REFRESH_LEAD_MS[provider] || TOKEN_EXPIRY_BUFFER_MS;
 }
 

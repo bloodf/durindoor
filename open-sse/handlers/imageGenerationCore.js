@@ -98,6 +98,12 @@ export async function handleImageGenerationCore({
     );
   }
 
+  // OpenAI GIF output cannot be combined with output compression.
+  if (provider === "openai" && isString(body.output_format) &&
+      body.output_format.trim().toLowerCase() === "gif" && body.output_compression != null) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "GIF output does not support output_compression");
+  }
+
   const adapter = getImageAdapter(provider);
   if (!adapter) {
     return createErrorResult(

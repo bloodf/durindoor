@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal";
@@ -11,6 +13,7 @@ import Textarea from "@/shared/ui/components/Textarea";
  * User pastes browser cookie to get fresh API key
  */
 export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
+  const uiV5 = useUiV5();
   const [cookie, setCookie] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -69,7 +72,7 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
   };
 
   return (
-    <Modal open={isOpen} onClose={handleClose} title="iFlow Cookie Authentication" size="sm">
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} onClose={handleClose} title="iFlow Cookie Authentication" size="sm">
       <div className="flex flex-col gap-4">
         {success ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center">

@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal";
@@ -29,6 +31,7 @@ export default function GheCopilotAuthModal({
   proxyPools = [],
   proxyPoolsReady = false
 }) {
+  const uiV5 = useUiV5();
   const [gheUrl, setGheUrl] = useState("");
   const [error, setError] = useState(null);
   const [oauthMeta, setOauthMeta] = useState(null);
@@ -67,7 +70,7 @@ export default function GheCopilotAuthModal({
   }
 
   return (
-    <Modal open={isOpen} title="Connect GitHub Enterprise Copilot" onClose={handleClose} size="md">
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title="Connect GitHub Enterprise Copilot" onClose={handleClose} size="md">
       <div className="flex flex-col gap-4">
         <p className="text-[13px] text-dd-muted">
           Enter your GitHub Enterprise address. You will then sign in there with a device code.

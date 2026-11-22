@@ -5,5 +5,6 @@ import { reviewDecorator } from '../ReviewFrame.jsx';
 import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Workflows/shared-auth/OrcaRouterAuthModal", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/components/OrcaRouterAuthModal.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
+export const Default = { ...reviewStory(original.Default, {"source":"src/shared/components/OrcaRouterAuthModal.stories.jsx","standalone":false}) };
 export const OAuthCodeFlow = { ...reviewStory(original.OAuthCodeFlow, {"source":"src/shared/components/OrcaRouterAuthModal.stories.jsx","standalone":false}) };
 export const ApiKeyFailure = { ...reviewStory(original.ApiKeyFailure, {"source":"src/shared/components/OrcaRouterAuthModal.stories.jsx","standalone":false}) };

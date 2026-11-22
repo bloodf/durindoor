@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/usage",
+  "stories": [
+    "production-usage-layout--overview-widgets",
+    "production-usage-layout--layout-cancel-restores-order",
+    "production-usage-layout--layout-save-and-reset-confirm",
+    "production-usage-layout--layout-storage-blocked"
+  ]
+}

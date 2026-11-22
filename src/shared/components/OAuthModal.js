@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal";
@@ -69,6 +71,7 @@ export default function OAuthModal({
   proxyPoolsReady = false,
   connectionId = null
 }) {
+  const uiV5 = useUiV5();
   const [step, setStep] = useState("waiting");
   const [authData, setAuthData] = useState(null);
   const [callbackUrl, setCallbackUrl] = useState("");
@@ -626,7 +629,8 @@ export default function OAuthModal({
   const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
-    <Modal open={isOpen} title={modalTitle} onClose={() => {void handleClose();}} size="lg">
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title={modalTitle} onClose={() => {void handleClose();}} size="lg">
+      {uiV5 ? <span className="sr-only" aria-live="polite">{copied ? "Copied to clipboard" : ""}</span> : null}
       <div className="flex flex-col gap-5">
         {onPasteToken && <Button variant="secondary" onClick={onPasteToken}>Paste an existing token</Button>}
         {!proxyPoolsReady && (

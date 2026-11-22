@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/shared/ui/components/Card";
 import Button from "@/shared/ui/components/Button";
 import { Badge } from "@/shared/ui/components/Badge";
 import Input from "@/shared/ui/components/Input";
 import Modal from "@/shared/ui/components/Modal";
+import ConfirmDialog from "@/shared/ui/components/ConfirmDialog";
 import DocsLink from "@/shared/components/DocsLink";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -15,6 +17,8 @@ const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
  * DNS per-tool is handled separately in MitmToolCard.
  */
 export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }) {
+  const v5 = useUiV5();
+  const actionLock = useRef(false);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -25,6 +29,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [actionError, setActionError] = useState(null);
   const [mitmRouterBaseUrl, setMitmRouterBaseUrl] = useState(DEFAULT_MITM_ROUTER_BASE);
   const [port443Conflict, setPort443Conflict] = useState(null);
+  const [trustConfirm, setTrustConfirm] = useState(false);
 
   const serverIsWindows = status?.isWin === true;
   const canRunWithoutPassword = serverIsWindows || status?.hasCachedPassword || status?.needsSudoPassword === false;
@@ -51,10 +56,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
     });
   }, [fetchStatus]);
 
-  const handleAction = (action) => {
-    setActionError(null);
-    // Wait for status to load before deciding whether to show sudo modal
-    if (!status) return;
+  const beginAction = (action) => {
     if (canRunWithoutPassword) {
       doAction(action, "");
     } else {
@@ -64,7 +66,25 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
     }
   };
 
+  const handleAction = (action) => {
+    setActionError(null);
+    // Wait for status to load before deciding whether to show sudo modal
+    if (!status) return;
+    if (v5 && action === "trust-cert") {
+      setTrustConfirm(true);
+      return;
+    }
+    beginAction(action);
+  };
+
+  const confirmTrust = () => {
+    setTrustConfirm(false);
+    beginAction("trust-cert");
+  };
+
   const doAction = async (action, password, forceKillPort443 = false) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setLoading(true);
     setActionError(null);
     try {
@@ -112,6 +132,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
     } catch (e) {
       setActionError(e.message || "Network error");
     } finally {
+      actionLock.current = false;
       setLoading(false);
       setPendingAction(null);
     }
@@ -320,6 +341,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           </div>
         </div>
       </Modal>
+      <ConfirmDialog open={trustConfirm} title="Trust certificate" message="Required for SSL certificate and server startup" confirmLabel="Trust Cert" cancelLabel="Cancel" tone="primary" onConfirm={confirmTrust} onCancel={() => { if (!loading) setTrustConfirm(false); }} />
     </>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -32,6 +34,7 @@ function isolatedPageUrl(value) {
 }
 
 export default function WebLoginModal({ isOpen, provider, providerName, initialName = "", onSuccess, onClose }) {
+  const uiV5 = useUiV5();
   const [pageUrl, setPageUrl] = useState(null);
   const [name, setName] = useState(initialName);
   const [captured, setCaptured] = useState([]);
@@ -159,7 +162,7 @@ export default function WebLoginModal({ isOpen, provider, providerName, initialN
   };
 
   return (
-    <Modal open={isOpen} title={`Sign in to ${providerName || provider}`} size="xl" onClose={onClose} pending={saving}
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title={`Sign in to ${providerName || provider}`} size="xl" onClose={onClose} pending={saving}
       footer={<><Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button><Button variant="primary" onClick={save} loading={saving} disabled={!ready || !name.trim() || saving}>Save connection</Button></>}>
       <div className="flex flex-col gap-4">
         <p className="text-sm text-dd-muted">Sign in on the isolated login page. If the site refuses to load, try a popup or cancel and paste your cookie manually.</p>

@@ -2,7 +2,7 @@
 // placeholder it sends when no key is selected.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), mkdir: vi.fn() }));
+const io = vi.hoisted(() => ({ access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), mkdir: vi.fn(), copyFile: vi.fn(), chmod: vi.fn(), rename: vi.fn(), unlink: vi.fn() }));
 const db = vi.hoisted(() => ({
   getCombos: vi.fn(),
   getCustomModels: vi.fn(),
@@ -36,6 +36,10 @@ beforeEach(() => {
   io.readFile.mockResolvedValue("{}");
   io.writeFile.mockResolvedValue(undefined);
   io.mkdir.mockResolvedValue(undefined);
+  io.copyFile.mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }));
+  io.chmod.mockResolvedValue(undefined);
+  io.rename.mockResolvedValue(undefined);
+  io.unlink.mockResolvedValue(undefined);
   db.getCombos.mockResolvedValue([]);
   db.getCustomModels.mockResolvedValue([]);
   db.getSyncedModelCatalog.mockResolvedValue(null);

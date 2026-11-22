@@ -320,7 +320,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           accessToken: connectionParams.accessToken,
           conversationId: ids.conversationId,
           image,
-          signal: input.signal
+          signal: input.signal,
+          proxyOptions: input.proxyOptions
         }));
       }
     } catch (error) {

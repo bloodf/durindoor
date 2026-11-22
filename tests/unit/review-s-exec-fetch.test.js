@@ -18,7 +18,6 @@ const BARE_FETCH_ALLOWLIST = {
   "chipotle.js": "Amelia init still uses direct fetch pending shared wrapper.",
   "conol-web.js": "Conol session/model/message hops still use direct fetch pending shared wrapper.",
   "deepseek-web.js": "DeepSeek web session bootstrap still uses direct fetch pending shared wrapper.",
-  "grok-web.js": "Grok web chat still uses direct fetch pending shared wrapper.",
   "websession-utils.js": "fetchWithTimeout falls back to global fetch only when proxyOptions is null."
 };
 

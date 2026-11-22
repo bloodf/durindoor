@@ -1328,6 +1328,8 @@ describe("OIDC secret probe management boundary", () => {
 
   it("allows a same-origin authenticated operator to test the stored secret", async () => {
     const req = oidcRequest("http://localhost");
+    // #2196: the stored secret is only probed against the saved issuer.
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, oidcIssuerUrl: "https://attacker.example", oidcClientId: "example-client", oidcClientSecret: "stored-secret-fixture" });
     expect(await proxy(req)).toBe(mocks.nextResponse);
     expect((await testOidcConfiguration(req)).body.ok).toBe(true);
     expect(mocks.fetchOidcDiscovery).toHaveBeenCalledWith("https://attacker.example");

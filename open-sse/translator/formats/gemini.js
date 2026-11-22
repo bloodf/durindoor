@@ -1,6 +1,7 @@
 // Gemini helper functions for translator
 
 import { safeParseJSON } from "../concerns/json.js";
+import { parseDataUri } from "../concerns/image.js";
 import { DEFAULT_IMAGE_MIME, OPENAI_BLOCK } from "../schema/index.js";
 import { isGemini4Model } from "../../providers/capabilities.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
@@ -166,6 +167,13 @@ export function convertOpenAIContentToParts(content) {
         parts.push({
           fileData: { fileUri: item.image_url.url, mimeType: remoteImageMimeType(item.image_url.url) }
         });
+      } else if (item.type === OPENAI_BLOCK.IMAGE && item.image) {
+        const parsed = parseDataUri(item.image);
+        if (parsed) {
+          parts.push({
+            inlineData: { mimeType: parsed.mimeType, data: parsed.base64 }
+          });
+        }
       } else if (item.type === OPENAI_BLOCK.INPUT_AUDIO && item.input_audio?.data) {
         const format = item.input_audio.format || "wav";
         const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;

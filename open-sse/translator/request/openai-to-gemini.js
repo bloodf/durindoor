@@ -594,6 +594,16 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
                       data: item.source.data
                     }
                   });
+                } else if (item.type === CLAUDE_BLOCK.IMAGE && item.image) {
+                  const parsed = parseDataUri(item.image);
+                  if (parsed) {
+                    imageParts.push({
+                      inlineData: {
+                        mimeType: parsed.mimeType || "image/png",
+                        data: parsed.base64
+                      }
+                    });
+                  }
                 } else if (item.type === "image_url" && item.image_url?.url) {
                   const parsed = parseDataUri(item.image_url.url);
                   if (parsed) {

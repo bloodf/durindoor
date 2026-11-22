@@ -19,14 +19,25 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
   headers: { "Content-Type": "application/json" },
 });
 
-function userToken(credentials) {
-  const raw = credentials?.apiKey;
+function unwrapToken(raw) {
   if (!isString(raw) || !raw.trim()) return "";
   try {
     const wrapped = JSON.parse(raw);
-    if (isString(wrapped?.value)) return wrapped.value;
+    if (isString(wrapped?.value)) return wrapped.value.trim();
   } catch { /* raw token */ }
   return raw.trim();
+}
+
+/**
+ * The web userToken. A pasted API-key value wins; an extension or dashboard import stores the
+ * localStorage item as providerSpecificData.userToken. Either form may be the site's JSON wrapper.
+ */
+export function deepSeekUserToken({ apiKey, providerSpecificData } = {}) {
+  return unwrapToken(apiKey) || unwrapToken(providerSpecificData?.userToken);
+}
+
+function userToken(credentials) {
+  return deepSeekUserToken(credentials ?? {});
 }
 
 function promptFrom(messages = []) {

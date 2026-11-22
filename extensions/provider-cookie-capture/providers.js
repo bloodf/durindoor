@@ -36,6 +36,14 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["sessionKey"],
     cookiePrefixes: [],
   },
+  // DeepSeek has no session cookie the API accepts: the token is the `userToken` localStorage item.
+  "deepseek-web": {
+    label: "DeepSeek Web",
+    origin: "https://chat.deepseek.com",
+    cookieNames: [],
+    cookiePrefixes: [],
+    localStorageKeys: ["userToken"],
+  },
   "doubao-web": {
     label: "Doubao Web",
     origin: "https://www.dola.com",

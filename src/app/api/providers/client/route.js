@@ -1,5 +1,6 @@
+import { applyQuotaProviderOrder, quotaProviderOrder } from "@/shared/utils/quotaProviderOrder";
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/lib/localDb";
+import { getProviderConnections, getSettings } from "@/lib/localDb";
 import { backfillClaudeProfiles, backfillCodexEmails } from "@/lib/oauth/providers";
 import { backfillCursorEmails } from "@/lib/oauth/services/cursorLocalStore.js";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
@@ -80,7 +81,9 @@ export async function GET(request) {
       return true;
     });
 
-    const sortedConnections = sortConnections(accountFilteredConnections, sort);
+    const settings = await getSettings();
+    const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), settings.quotaProviderOrder);
+    const sortedConnections = applyQuotaProviderOrder(sortConnections(accountFilteredConnections, sort), settings.quotaProviderOrder || []);
     const total = sortedConnections.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
@@ -90,6 +93,7 @@ export async function GET(request) {
     return NextResponse.json({
       connections: pageConnections,
       providerOptions,
+      providerOrder: providerOrder.filter((id) => providerOptions.includes(id)),
       pagination: {
         page: currentPage,
         pageSize,

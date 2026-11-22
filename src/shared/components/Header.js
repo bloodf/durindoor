@@ -13,7 +13,7 @@ import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 
-const getPageInfo = (pathname) => {
+export const getPageInfo = (pathname) => {
   if (!pathname) return { title: "", description: "", breadcrumbs: [] };
 
   // Media provider detail: /dashboard/media-providers/[kind]/[id]
@@ -27,7 +27,6 @@ const getPageInfo = (pathname) => {
       title: provider?.name || providerId,
       description: "",
       breadcrumbs: [
-        { label: "Media Providers", href: `/dashboard/media-providers/${kindId}` },
         { label: kindConfig?.label || kindId, href: `/dashboard/media-providers/${kindId}` },
         // Only registry providers have marks; custom nodes and combo IDs do not.
         { label: provider?.name || providerId, provider: provider?.id },
@@ -53,7 +52,7 @@ const getPageInfo = (pathname) => {
   if (providerMatch) {
     const providerId = providerMatch[1];
     const providerInfo =
-      OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId];
+      OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || AI_PROVIDERS[providerId];
     if (providerInfo) {
       return {
         title: providerInfo.name,

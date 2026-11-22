@@ -49509,7 +49509,7 @@
       "id": "src/shared/components/Header.js#Header",
       "sourcePath": "src/shared/components/Header.js",
       "symbol": "Header",
-      "sourceSha256": "14d65ac318e405228225da25d736701c995b04da7f2ddba708edea0700c286be",
+      "sourceSha256": "b01732f412bf4503f6eddbb3d00b16857230cfc7d3917a1a5d51f8f76903c28f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -49530,7 +49530,7 @@
             "query-clear"
           ],
           "sourceHashes": {
-            "src/shared/components/Header.js": "14d65ac318e405228225da25d736701c995b04da7f2ddba708edea0700c286be",
+            "src/shared/components/Header.js": "b01732f412bf4503f6eddbb3d00b16857230cfc7d3917a1a5d51f8f76903c28f",
             "src/shared/components/Header.stories.jsx": "55ecebd9f41f291ed603c7e63d2056d6dfac1c2d76355bf3b8ee628c7dae5a07"
           },
           "proposedSourceEvidence": "SessionAndSearch renders SearchHeader, whose effect enables HeaderSearch with placeholder Search requests. Header fetch fixture resolves displayName Frodo and loginMethod OIDC; final play clears typed query while Providers remains current pathname title.",
@@ -49596,7 +49596,7 @@
       "id": "src/shared/components/Header.js#HeaderSearch",
       "sourcePath": "src/shared/components/Header.js",
       "symbol": "HeaderSearch",
-      "sourceSha256": "14d65ac318e405228225da25d736701c995b04da7f2ddba708edea0700c286be",
+      "sourceSha256": "b01732f412bf4503f6eddbb3d00b16857230cfc7d3917a1a5d51f8f76903c28f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -49617,7 +49617,7 @@
             "search-store-visible"
           ],
           "sourceHashes": {
-            "src/shared/components/Header.js": "14d65ac318e405228225da25d736701c995b04da7f2ddba708edea0700c286be",
+            "src/shared/components/Header.js": "b01732f412bf4503f6eddbb3d00b16857230cfc7d3917a1a5d51f8f76903c28f",
             "src/shared/components/Header.stories.jsx": "55ecebd9f41f291ed603c7e63d2056d6dfac1c2d76355bf3b8ee628c7dae5a07"
           },
           "proposedSourceEvidence": "Actual SessionAndSearch enables the private store-backed branch and exercises type/clear. Search requests is a placeholder; the search Material Symbol is the actual rendered glyph.",
@@ -102427,7 +102427,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "d9a156638879baa993532dedea723475fd5ede54154687829436213e19ca7ee7",
-"sourceCensusSha256": "64ffa499c099bc7df8df76aad303d9615fff242206d567ea8110d1d661ff73d0",
+    "sourceCensusSha256": "929226c817d77e643b8427ed73ffcdf0e5d889aa4d4067935f5e0e67624af247",
     "pendingRows": 426,
     "retainedApprovedRows": 211,
     "pendingReferences": 1483,

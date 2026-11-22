@@ -275,6 +275,17 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
 
       if (!response.ok) {
         const errorText = await response.text();
+        // Google answers a revoked or expired refresh token with invalid_grant;
+        // retrying cannot recover it, so surface the durable re-auth signal
+        // (9router #900). invalid_client and transient errors stay retryable.
+        const failure = classifyOAuthRefreshError(errorText, response.status);
+        if (String(failure.code).toLowerCase() === "invalid_grant") {
+          log?.error?.("TOKEN_REFRESH", "Google refresh token revoked or expired. Re-auth required.", {
+            status: response.status,
+            code: "invalid_grant"
+          });
+          return { error: "invalid_grant" };
+        }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", {
           status: response.status,
           error: safeRefreshError(errorText)

@@ -452,7 +452,7 @@ export class DefaultExecutor extends BaseExecutor {
         }
       }
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
-      if (this.config.quirks?.dropClientMetadata) {
+      if (this.config.quirks?.dropClientMetadata || (this.provider.startsWith("openai-compatible-") && getOpenAICompatibleType(this.provider, credentials) === "chat")) {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);

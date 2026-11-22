@@ -21,8 +21,9 @@ import { describeChatGptWebHttpError } from "./chatgptWebErrors.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { sha3_512Hex } from "../utils/sha3-512.js";
-import { tlsFetchChatGpt, TlsClientUnavailableError } from "../services/chatgptTlsClient.js";
+import { tlsFetchChatGpt as tlsFetchChatGptRaw, TlsClientUnavailableError } from "../services/chatgptTlsClient.js";
 import {
   storeChatGptImage,
   getChatGptImageConversationContext,
@@ -37,6 +38,12 @@ import {
   mergeRefreshedCookie,
 } from "../../src/lib/providers/webCookieAuth.js";
 import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+
+// Request-local so concurrent ChatGPT Web and Codex calls retain their own policy.
+const redirectPolicy = new AsyncLocalStorage();
+const tlsFetchChatGpt = (url, options) => tlsFetchChatGptRaw(
+  url, redirectPolicy.getStore() === true ? { ...options, sameOriginRedirects: true } : options
+);
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -2408,7 +2415,9 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
    * stream's start(), inherits the connection's proxy options.
    */
   async execute(input) {
-    return runWithTlsProxyOptions(input.proxyOptions ?? null, () => this.executeDirect(input));
+    return redirectPolicy.run(input.sameOriginRedirects === true, () =>
+      runWithTlsProxyOptions(input.proxyOptions ?? null, () => this.executeDirect(input))
+    );
   }
 
   async executeDirect({

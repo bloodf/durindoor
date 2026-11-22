@@ -33,7 +33,7 @@ DurinDoor's rules for this work forbid a browser in the dispatch path, and the r
 
 `open-sse/executors/muse-spark-web.js` implements a different, older request shape: a single GraphQL POST with `doc_id` `29ae946c82d1f301196c6ca2226400b5`, `mode_fast` and `Accept: text/event-stream`. That `doc_id` and the `mode_fast` name do not appear anywhere in the pinned upstream executor, which has moved chat to the WebSocket flow above. The same upstream file records that earlier GraphQL send operations were retired when Meta changed its schema. No source at any of the three pins establishes that this shape still works, so its parser tests prove parsing only, not request compatibility.
 
-The other two reference pins add nothing for this provider. A file listing of CLIProxyAPI at `f5c5681a8361c9da53e93c60b6507816eee7468b` shows only Meta device-code sign-in and Muse Code client paths (`internal/auth/meta`, `internal/client/musecode`), a different identity from the meta.ai web session, and no `ecto`, `clippy` or Muse Spark Web path. EasyCLIProxyAPI at `e4223d5eefa22a3301ca7e2a28d05897432b07f9` lists no Muse Spark Web path either. See `internal/docs/muse-spark-web-2034.md` for the earlier investigation notes.
+The other two reference pins add nothing for this provider. A file listing of CLIProxyAPI at `f5c5681a8361c9da53e93c60b6507816eee7468b` shows only Meta device-code sign-in and Muse Code client paths (`internal/auth/meta`, `internal/client/musecode`), a different identity from the meta.ai web session, and no `ecto`, `clippy` or Muse Spark Web path. EasyCLIProxyAPI at `e4223d5eefa22a3301ca7e2a28d05897432b07f9` lists no Muse Spark Web path either.
 
 ## What would unblock it
 

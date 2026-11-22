@@ -368,6 +368,21 @@ function parseFramePayload(data) {
   }
 }
 
+/** OpenAI finish_reason is progress, not the client end. A later usage frame can still follow. */
+function openAIFinishReasonSeen(format, frame) {
+  if (format !== FORMATS.OPENAI || !isString(frame)) return false;
+  for (const line of frame.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = parseFramePayload(trimmed.slice(5).trim());
+    if (!isRecord(payload) || !Array.isArray(payload.choices)) continue;
+    for (const choice of payload.choices) {
+      if (isString(choice?.finish_reason) && choice.finish_reason.length > 0) return true;
+    }
+  }
+  return false;
+}
+
 /** Gemini's real end is a candidate that already carries its finish reason. */
 function geminiClientTerminalKind(payload) {
   if (!isRecord(payload)) return null;
@@ -432,14 +447,30 @@ const clientTerminalEncoder = new TextEncoder();
 export function createTerminalTracker(format) {
   if (![FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(format)) return null;
   let terminated = false;
+  let sawOpenAIFinish = false;
 
   return {
     observeClientFrame(frame) {
       if (terminated || !frame) return;
-      terminated = emittedFormatTerminalKind(format, frame) !== null;
+      if (emittedFormatTerminalKind(format, frame) !== null) {
+        terminated = true;
+        return;
+      }
+      if (openAIFinishReasonSeen(format, frame)) sawOpenAIFinish = true;
     },
-    buildRecoveryBytes() {
+    /**
+     * @param {{drop?: boolean}} [options] `drop` is a network or abort close.
+     * A clean EOF after an OpenAI finish_reason is a finished translation
+     * (that format does not always emit `[DONE]`). A drop after the same
+     * frame is still incomplete: usage and `[DONE]` never arrived.
+     */
+    buildRecoveryBytes(options) {
       if (terminated) return null;
+      const drop = isRecord(options) && options.drop === true;
+      if (sawOpenAIFinish && !drop) {
+        terminated = true;
+        return null;
+      }
       terminated = true;
       if (format === FORMATS.OPENAI) {
         return clientTerminalEncoder.encode('data: {"error":{"type":"stream_error","message":"upstream_stream_incomplete","code":"stream_disconnected"}}\n\ndata: [DONE]\n\n');

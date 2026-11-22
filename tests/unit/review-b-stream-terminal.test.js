@@ -18,22 +18,28 @@ function eventFrame(event, payload) {
 const content = dataFrame({ choices: [{ index: 0, delta: { content: "hello" }, finish_reason: null }] });
 const stop = dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
 
-function framesThenReset(frames) {
+function framesThen(frames, finish) {
   let index = 0;
   return new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoder.encode(frames[0]));
-      index = 1;
-    },
     pull(controller) {
       if (index < frames.length) {
         controller.enqueue(encoder.encode(frames[index]));
         index += 1;
         return;
       }
-      controller.error(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
+      finish(controller);
     },
   });
+}
+
+function framesThenReset(frames) {
+  return framesThen(frames, (controller) => {
+    controller.error(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
+  });
+}
+
+function framesThenClose(frames) {
+  return framesThen(frames, (controller) => controller.close());
 }
 
 function streamController() {
@@ -87,10 +93,24 @@ describe("emitted format terminal", () => {
     }))).toBeNull();
   });
 
-  it.each(["stop", "length", "tool_calls"])("still recovers after an OpenAI finish_reason %s frame", (reason) => {
+  it.each(["stop", "length", "tool_calls"])("recovers a dropped OpenAI finish_reason %s and accepts a clean close", (reason) => {
+    const finish = dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: reason }] });
+    const clean = createTerminalTracker(FORMATS.OPENAI);
+    clean.observeClientFrame(content);
+    clean.observeClientFrame(finish);
+    expect(clean.buildRecoveryBytes()).toBeNull();
+
+    const dropped = createTerminalTracker(FORMATS.OPENAI);
+    dropped.observeClientFrame(content);
+    dropped.observeClientFrame(finish);
+    const bytes = dropped.buildRecoveryBytes({ drop: true });
+    expect(bytes).not.toBeNull();
+    expect(decoder.decode(bytes)).toContain("data: [DONE]");
+  });
+
+  it("still recovers a clean EOF that never sent a finish_reason", () => {
     const tracker = createTerminalTracker(FORMATS.OPENAI);
     tracker.observeClientFrame(content);
-    tracker.observeClientFrame(dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: reason }] }));
     const bytes = tracker.buildRecoveryBytes();
     expect(bytes).not.toBeNull();
     expect(decoder.decode(bytes)).toContain("data: [DONE]");
@@ -117,6 +137,24 @@ describe("emitted format terminal", () => {
 });
 
 describe("finish_reason drop recovery", () => {
+  it("does not invent an error when a finish_reason closes cleanly", async () => {
+    const controller = streamController();
+    const output = pipeWithDisconnect(
+      { body: framesThenClose([content, stop]) },
+      new TransformStream(),
+      controller,
+      null,
+      60_000,
+      createTerminalTracker(FORMATS.OPENAI),
+    );
+    const text = await new Response(output).text();
+
+    expect(text).toContain('"finish_reason":"stop"');
+    expect(text).not.toContain("error");
+    expect(controller.handleComplete).toHaveBeenCalledOnce();
+    expect(controller.handleError).not.toHaveBeenCalled();
+  });
+
   it("appends [DONE] when the upstream resets after finish_reason stop", async () => {
     const text = await pipeReset([content, stop]);
 

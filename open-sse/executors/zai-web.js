@@ -79,14 +79,14 @@ export class ZaiWebExecutor extends BaseExecutor {
     const chatBody = { chat: { id: "", title: "New Chat", models: [model], params: {}, history: { messages: { [chatMessageId]: { id: chatMessageId, parentId: null, childrenIds: [], role: "user", content: prompt, timestamp: Math.floor(Date.now() / 1000), models: [model] } }, currentId: chatMessageId }, tags: [], flags: [], features: [], mcp_servers: [], enable_thinking: true, reasoning_effort: input.body.reasoning_effort ?? "max", auto_web_search: false, message_version: 1, extra: {}, timestamp: Date.now(), type: "default" } };
     const fetcher = (url, options) => proxyAwareFetch(url, options, input.proxyOptions);
     try {
-      const chatResponse = await fetcher(NEW_CHAT, { method: "POST", headers: headers(token), body: JSON.stringify(chatBody), signal: input.signal });
+      const chatResponse = await fetcher(NEW_CHAT, { method: "POST", headers: headers(token), body: JSON.stringify(chatBody), redirect: "manual", signal: input.signal });
       if (!chatResponse.ok) return this.upstreamError(chatResponse, input.body, NEW_CHAT);
       const chatId = (await chatResponse.json()).id;
       if (!chatId) throw Object.assign(new Error("Z.ai chat creation returned no id"), { status: 502 });
       const timestamp = Date.now(); const requestId = randomUUID();
       const url = completionUrl(token, userId, requestId, timestamp);
       const payload = { stream: true, model, messages, signature_prompt: prompt, params: {}, extra: {}, features: { preview_mode: true, enable_thinking: true }, variables: {}, chat_id: chatId, id: randomUUID(), current_user_message_id: chatMessageId, current_user_message_parent_id: null, background_tasks: { title_generation: true, tags_generation: true } };
-      const upstream = await fetcher(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), signal: input.signal });
+      const upstream = await fetcher(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), redirect: "manual", signal: input.signal });
       if (!upstream.ok) return this.upstreamError(upstream, input.body, COMPLETIONS);
       const answer = await readCompletion(upstream);
       const id = `chatcmpl-zai-${timestamp}`; const created = Math.floor(timestamp / 1000);
@@ -102,7 +102,7 @@ export class ZaiWebExecutor extends BaseExecutor {
   }
 
   async upstreamError(response, body, url) {
-    const status = response.status;
+    const status = (response.status >= 300 && response.status < 400) ? 401 : response.status;
     await response.text().catch(() => "");
     return { response: errorResponse(status, status === 401 || status === 403 ? "Z.ai session expired or was rejected" : status === 429 ? "Z.ai quota exceeded" : `Z.ai request failed (HTTP ${status})`, { type: status === 401 || status === 403 ? "authentication_error" : "upstream_error", code: `HTTP_${status}` }), url, headers: {}, transformedBody: body };
   }

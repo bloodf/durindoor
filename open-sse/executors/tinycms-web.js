@@ -60,7 +60,7 @@ async function getPublicIp(fetcher, proxyOptions, signal) {
 const baseHeaders = (uuid) => ({ uuid, "x-origin": TINYCMS_ORIGIN, "User-Agent": USER_AGENT });
 
 function classify(status) {
-  if (status === 401 || status === 403) return { status: 401, type: "authentication_error", message: "TinyCMS device UUID was rejected or has expired. Copy app-config-uuid from site.tinycms.xyz again." };
+  if ((status >= 300 && status < 400) || status === 401 || status === 403) return { status: 401, type: "authentication_error", message: "TinyCMS device UUID was rejected or has expired. Copy app-config-uuid from site.tinycms.xyz again." };
   if (status === 429) return { status: 429, type: "rate_limit_error", message: "TinyCMS quota or rate limit reached" };
   if (status >= 400 && status < 500) return { status, type: "invalid_request_error", message: `TinyCMS rejected the request (HTTP ${status})` };
   return { status: 502, type: "upstream_error", message: `TinyCMS request failed (HTTP ${status})` };
@@ -79,11 +79,12 @@ async function upstreamFailure(response, url, body) {
 }
 
 /** Validate a device UUID by asking the challenge endpoint for a challenge. */
+// A redirect must never carry the custom device UUID header to another origin.
 export async function validateTinyCmsSession({ apiKey, providerSpecificData, fetcher = proxyAwareFetch, proxyOptions, signal } = {}) {
   const uuid = tinyCmsDeviceUuid({ apiKey, providerSpecificData });
   if (!isTinyCmsDeviceUuid(uuid)) return { valid: false, status: 401, error: "TinyCMS device UUID must start with R" };
   try {
-    const res = await fetcher(TINYCMS_CHALLENGE_URL, { method: "GET", headers: { ...baseHeaders(uuid), Accept: "application/json" }, signal: signal ?? AbortSignal.timeout(10000) }, proxyOptions);
+    const res = await fetcher(TINYCMS_CHALLENGE_URL, { method: "GET", headers: { ...baseHeaders(uuid), Accept: "application/json" }, redirect: "manual", signal: signal ?? AbortSignal.timeout(10000) }, proxyOptions);
     if (!res.ok) return { valid: false, status: res.status, error: classify(res.status).message };
     const challenge = await res.json().catch(() => null);
     return challenge?.challenge && challenge?.challengeId ? { valid: true, status: res.status } : { valid: false, status: 502, error: "TinyCMS returned an unreadable challenge" };
@@ -104,7 +105,7 @@ export class TinyCmsExecutor extends BaseExecutor {
       const { initTinyCmsWasm, generateSecurePayload } = await loadSigner();
       await initTinyCmsWasm();
       const ip = await getPublicIp(fetcher, input.proxyOptions, input.signal);
-      const challengeResponse = await fetcher(TINYCMS_CHALLENGE_URL, { method: "GET", headers: { ...baseHeaders(uuid), Accept: "application/json" }, signal: input.signal });
+      const challengeResponse = await fetcher(TINYCMS_CHALLENGE_URL, { method: "GET", headers: { ...baseHeaders(uuid), Accept: "application/json" }, redirect: "manual", signal: input.signal });
       if (!challengeResponse.ok) return await upstreamFailure(challengeResponse, TINYCMS_CHALLENGE_URL, input.body);
       const challenge = await challengeResponse.json().catch(() => null);
       const difficulty = Number(challenge?.difficulty);
@@ -141,7 +142,7 @@ export class TinyCmsExecutor extends BaseExecutor {
         "Content-Type": "application/json",
       };
       const chatBody = { ...body, model, stream };
-      const upstream = await fetcher(TINYCMS_CHAT_URL, { method: "POST", headers, body: JSON.stringify(chatBody), signal: input.signal });
+      const upstream = await fetcher(TINYCMS_CHAT_URL, { method: "POST", headers, redirect: "manual", body: JSON.stringify(chatBody), signal: input.signal });
       if (!upstream.ok) return await upstreamFailure(upstream, TINYCMS_CHAT_URL, chatBody);
       const type = upstream.headers.get("content-type") || "";
       if (!stream && type.includes("json")) {

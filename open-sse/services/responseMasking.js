@@ -19,6 +19,7 @@
 
 import { maskText, normalizeMaskingMode } from "./contentMasking.js";
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+import { MAX_PENDING_SSE_LINE_BYTES } from "../utils/pendingSseLine.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 // Raw text held back per stream key. 128 chars covers the length at which
@@ -302,7 +303,9 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   const io = createIo(opts, counts, mask);
-  let buffer = "";
+  let pendingChunks = [];
+  let scanTail = "";
+  let pendingBytes = 0;
   const toBytes = (frames) => encoder.encode(frames.map((f) => `${f}${f.includes("\r\n") ? "\r\n\r\n" : "\n\n"}`).join(""));
   // Warn mode never alters bytes, so a scanning failure only stops counting.
   const scan = (fn) => {
@@ -315,8 +318,11 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
   };
   // Remaining partial frame plus every held carry, masked.
   const tail = () => scan(() => {
-    const frames = buffer ? processFrame(buffer, io) : [];
-    buffer = "";
+    const pending = pendingChunks.join("");
+    const frames = pending ? processFrame(pending, io) : [];
+    pendingChunks = [];
+    scanTail = "";
+    pendingBytes = 0;
     io.flush("");
     return [...frames, ...drainBefore(io, null)];
   });
@@ -338,20 +344,101 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
           return;
         }
         if (chunk.done) {
-          buffer += decoder.decode();
+          const finalText = decoder.decode();
+          if (finalText) pendingChunks.push(finalText);
           finish(controller);
           controller.close();
           return;
         }
         const value = isString(chunk.value) ? encoder.encode(chunk.value) : chunk.value;
         if (!mask) controller.enqueue(value);
-        buffer += decoder.decode(value, { stream: true });
+        const decoded = decoder.decode(value, { stream: true });
+        pendingChunks.push(decoded);
+        pendingBytes += value.byteLength;
+        if (pendingBytes > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Response masking SSE frame exceeds limit");
+        // Inspect only the new text and a three-character overlap, since a
+        // blank-line delimiter is at most four characters long.
+        const suffix = scanTail + decoded;
+        const found = /\r?\n\r?\n/.test(suffix);
+        scanTail = suffix.slice(-3);
+        if (!found) continue;
+        const buffer = pendingChunks.join("");
         const batch = extractCompleteSseFrames(buffer);
-        buffer = batch.remainder;
+        pendingChunks = batch.remainder ? [batch.remainder] : [];
+        scanTail = batch.remainder.slice(-3);
+        pendingBytes = encoder.encode(batch.remainder).byteLength;
         const frames = scan(() => batch.frames.flatMap((f) => processFrame(f, io)));
         if (!mask) return;
         if (frames.length) {
           controller.enqueue(toBytes(frames));
+          return;
+        }
+      }
+    },
+    cancel(reason) {
+      report();
+      return reader.cancel(reason);
+    }
+  });
+}
+
+/**
+ * Line-delimited JSON: each complete line is parsed and masked on its own as
+ * it arrives. Lines that are not JSON pass through; warn mode forwards the
+ * original bytes and only counts.
+ */
+function createNdjsonStream(source, { opts, counts, mask, report }) {
+  const reader = source.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let held = "";
+  const maskLine = (line) => {
+    if (!line.trim()) return line;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return line;
+    }
+    try {
+      return maskJsonBody(parsed, opts, counts) && mask ? JSON.stringify(parsed) : line;
+    } catch (error) {
+      if (mask) throw error;
+      return line;
+    }
+  };
+  const maskLines = (text, final) => {
+    const lines = (held + text).split("\n");
+    held = final ? "" : lines.pop();
+    return lines.map((l) => (l.endsWith("\r") ? `${maskLine(l.slice(0, -1))}\r` : maskLine(l))).join("\n") + (lines.length && !final ? "\n" : "");
+  };
+  return new ReadableStream({
+    async pull(controller) {
+      for (;;) {
+        let chunk;
+        try {
+          chunk = await reader.read();
+        } catch (error) {
+          report();
+          controller.error(error);
+          return;
+        }
+        if (chunk.done) {
+          const out = maskLines(decoder.decode(), true);
+          if (mask && out) controller.enqueue(encoder.encode(out));
+          report();
+          controller.close();
+          return;
+        }
+        const value = isString(chunk.value) ? encoder.encode(chunk.value) : chunk.value;
+        if (held.length > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Response masking NDJSON line exceeds limit");
+        const out = maskLines(decoder.decode(value, { stream: true }), false);
+        if (!mask) {
+          controller.enqueue(value);
+          return;
+        }
+        if (out) {
+          controller.enqueue(encoder.encode(out));
           return;
         }
       }
@@ -374,13 +461,26 @@ function maskJsonBody(p, opts, counts) {
       const msg = choice?.message;
       if (!isObject(msg)) continue;
       changed = (isString(msg.content) ? mask(msg, "content") : maskParts(msg.content, (x) => x.type === "text")) || changed;
+      // Refusal text is shown to the user like content; reasoning stays untouched.
+      changed = mask(msg, "refusal") || changed;
+      if (Array.isArray(msg.content)) {
+        changed = msg.content.map((x) => isObject(x) && x.type === "refusal" && mask(x, "refusal")).some(Boolean) || changed;
+      }
     }
   }
   if (p.object === "response") {
     changed = maskResponsesOutput(p.output, (_k, t) => maskText(t, opts, counts)) || changed;
     changed = mask(p, "output_text") || changed;
   }
-  if (p.type === "message") changed = maskParts(p.content, (x) => x.type === "text") || changed;
+  if (p.type === "message") {
+    changed = maskParts(p.content, (x) => x.type === "text") || changed;
+    // Only an unsigned thinking block is plain visible text; signed ones must round-trip byte for byte.
+    if (Array.isArray(p.content)) {
+      for (const block of p.content) {
+        if (isObject(block) && block.type === "thinking" && !block.signature) changed = mask(block, "thinking") || changed;
+      }
+    }
+  }
   const cands = p.candidates ?? p.response?.candidates;
   if (Array.isArray(cands)) {
     for (const cand of cands) changed = maskParts(cand?.content?.parts, (x) => !x.thought) || changed;
@@ -424,6 +524,10 @@ export async function applyResponseMasking(result, config, log) {
   if (contentType.includes("text/event-stream")) {
     if (mask) headers.delete("content-length");
     return rebuild(createMaskingStream(response.body, { opts, counts, mask, report }));
+  }
+  if (contentType.includes("application/x-ndjson")) {
+    if (mask) headers.delete("content-length");
+    return rebuild(createNdjsonStream(response.body, { opts, counts, mask, report }));
   }
   if (!contentType.includes("application/json")) return result;
 

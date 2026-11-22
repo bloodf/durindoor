@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/quota",
+  "stories": [
+    "production-operations-quotapage--empty-providers",
+    "production-operations-quotapage--loading",
+    "production-operations-quotapage--account-rows",
+    "production-operations-quotapage--quota-failure"
+  ]
+}

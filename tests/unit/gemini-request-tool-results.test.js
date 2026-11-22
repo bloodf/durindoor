@@ -9,20 +9,20 @@ const convert = (parts, role = "user") => geminiToOpenAIRequest("test-model", {
 describe("Gemini request tool results (#2393)", () => {
   it("keeps one tool result with the existing fallback call id", () => {
     expect(convert([response("read", "file contents")])).toEqual([
-      { role: "tool", tool_call_id: "call_read", content: '"file contents"' },
+      { role: "tool", tool_call_id: "call_read", content: "file contents" },
     ]);
   });
 
   it("keeps every parallel tool result in source order with explicit ids", () => {
     expect(convert([response("read", "first", "c1"), response("search", "second", "c2")])).toEqual([
-      { role: "tool", tool_call_id: "c1", content: '"first"' },
-      { role: "tool", tool_call_id: "c2", content: '"second"' },
+      { role: "tool", tool_call_id: "c1", content: "first" },
+      { role: "tool", tool_call_id: "c2", content: "second" },
     ]);
   });
 
   it.each(["user", "model"])("keeps co-located text with its original %s role", (role) => {
     expect(convert([{ text: "before" }, response("read", "done"), { text: "after" }], role)).toEqual([
-      { role: "tool", tool_call_id: "call_read", content: '"done"' },
+      { role: "tool", tool_call_id: "call_read", content: "done" },
       { role: role === "model" ? "assistant" : "user", content: [
         { type: "text", text: "before" }, { type: "text", text: "after" },
       ] },
@@ -36,7 +36,7 @@ describe("Gemini request tool results (#2393)", () => {
       { text: "continuing" },
       { functionCall: { name: "last", args: {} } },
     ], "model")).toEqual([
-      { role: "tool", tool_call_id: "c1", content: '"done"' },
+      { role: "tool", tool_call_id: "c1", content: "done" },
       { role: "assistant", content: "continuing", tool_calls: [
         { id: "c2", type: "function", function: { name: "next", arguments: '{"path":"a.txt"}' } },
         { id: "call_last", type: "function", function: { name: "last", arguments: "{}" } },
@@ -50,8 +50,8 @@ describe("Gemini request tool results (#2393)", () => {
       { role: "user", parts: [{ text: "follow up" }] },
     ] }, true);
     expect(out.messages).toEqual([
-      { role: "tool", tool_call_id: "call_one", content: '"1"' },
-      { role: "tool", tool_call_id: "call_two", content: '"2"' },
+      { role: "tool", tool_call_id: "call_one", content: "1" },
+      { role: "tool", tool_call_id: "call_two", content: "2" },
       { role: "user", content: "follow up" },
     ]);
     expect(out.stream).toBe(true);

@@ -3,6 +3,7 @@ import { createProxyPool, getProviderConnections, getProxyPools } from "@/models
 import { isString } from "../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizePoolResponse } from "./sanitizePoolResponse.js";
+import { isRelayProxyType, validateRelayProxyUrl } from "./relayUrlGuard.js";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -26,6 +27,13 @@ function normalizeProxyPoolInput(body = {}) {
 
   if (!proxyUrl) {
     return { error: "Proxy URL is required" };
+  }
+
+  if (isRelayProxyType(type)) {
+    const relayCheck = validateRelayProxyUrl(proxyUrl);
+    if (relayCheck.error) {
+      return { error: relayCheck.error };
+    }
   }
 
   return { name, proxyUrl, noProxy, isActive, strictProxy, type };

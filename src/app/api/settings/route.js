@@ -151,6 +151,21 @@ export async function PATCH(request) {
 
 
 
+    // OIDC allowlists (#2195): arrays of non-empty strings; a comma/newline
+    // separated string from the profile form is split into the same shape.
+    for (const key of ["oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains"]) {
+      if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+      const raw = body[key];
+      if (!Array.isArray(raw) && !isString(raw)) {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      const items = (Array.isArray(raw) ? raw : raw.split(/[\s,]+/)).map((item) => (isString(item) ? item.trim() : null));
+      if (items.some((item) => item === null)) {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body[key] = [...new Set(items.filter(Boolean).map((item) => (key === "oidcAllowedSubjects" ? item : item.toLowerCase())))];
+    }
+
     if (Object.prototype.hasOwnProperty.call(body, "oidcClientSecret")) {
       if (!body.oidcClientSecret || !String(body.oidcClientSecret).trim()) {
         delete body.oidcClientSecret;

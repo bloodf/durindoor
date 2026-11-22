@@ -8,8 +8,9 @@ import {
 import { isString } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizePoolResponse } from "../sanitizePoolResponse.js";
+import { isRelayProxyType, validateRelayProxyUrl } from "../relayUrlGuard.js";
 
-function normalizeProxyPoolUpdate(body = {}) {
+function normalizeProxyPoolUpdate(body = {}, existing = null) {
   const updates = {};
 
   if (Object.prototype.hasOwnProperty.call(body, "name")) {
@@ -43,6 +44,18 @@ function normalizeProxyPoolUpdate(body = {}) {
   if (Object.prototype.hasOwnProperty.call(body, "type")) {
     const validTypes = ["http", "vercel", "cloudflare"];
     updates.type = validTypes.includes(body?.type) ? body.type : "http";
+  }
+
+  const effectiveType = updates.type ?? existing?.type ?? "http";
+  if (
+    isRelayProxyType(effectiveType) &&
+    (updates.type !== undefined || updates.proxyUrl !== undefined)
+  ) {
+    const effectiveProxyUrl = updates.proxyUrl ?? existing?.proxyUrl ?? "";
+    const relayCheck = validateRelayProxyUrl(effectiveProxyUrl);
+    if (relayCheck.error) {
+      return { error: relayCheck.error };
+    }
   }
 
   return { updates };
@@ -81,7 +94,7 @@ export async function PUT(request, { params }) {
     }
 
     const body = await request.json();
-    const normalized = normalizeProxyPoolUpdate(body);
+    const normalized = normalizeProxyPoolUpdate(body, existing);
 
     if (normalized.error) {
       return NextResponse.json({ error: normalized.error }, { status: 400 });

@@ -1,6 +1,8 @@
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
 
+import { failedReadStory } from "@/shared/ui/v5/preservation/workflowStoryFixtures.js";
+
 import KeysPageClient from "./KeysPageClient";
 
 const key = {
@@ -89,7 +91,8 @@ export const RevocationRejectedAndRetry = {
     await userEvent.click(dialog.getByRole("button", { name: "Confirm" }));
     await expect(await dialog.findByRole("alert")).toHaveTextContent("Revocation rejected");
     await expect(canvas.getByText("Production key", { selector: "p" })).toBeVisible();
-    await userEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    // With the V5 switch on the confirm button reads "Retry" after a rejection.
+    await userEvent.click(dialog.getByRole("button", { name: /^(Confirm|Retry)$/ }));
     await expect(canvas.queryByText("Production key", { selector: "p" })).not.toBeInTheDocument();
   },
 };
@@ -122,4 +125,10 @@ export const Rotation = {
     const rotated = within(await body.findByRole("dialog", { name: "API Key Rotated" }));
     await expect(rotated.getByLabelText("Newly issued API key")).toHaveValue("sk-fixturemachine-rotated-1a2b3c4d");
   },
+};
+
+/** V5 only: a failed key read offers Retry instead of the "No API keys yet" empty state. */
+export const V5LoadFailureAndRetry = {
+  ...failedReadStory({ routes, url: "/api/keys", pathname: "/dashboard/keys", params: {}, failure: "http", loadedText: "Production key" }),
+  globals: { ui: "v5" },
 };

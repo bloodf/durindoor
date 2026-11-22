@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
+import { failedReadStory } from "@/shared/ui/v5/preservation/workflowStoryFixtures.js";
 import McpGatewayError from "./error";
 import McpGatewayPage from "./page.js";
 
@@ -284,4 +285,11 @@ export const RetainedErrorBoundary = {
     await expect(canvas.queryByText("Reset requested")).not.toBeInTheDocument();
     await waitFor(() => expect(console.error).toHaveBeenCalledWith("MCP Gateway page error:", MCP_GATEWAY_ERROR));
   },
+};
+
+/** V5 only: a failed instances read offers Retry instead of the "No instances yet" empty state. */
+export const V5LoadFailureAndRetry = {
+  ...failedReadStory({ routes: defaultFixture().routes, url: "/api/mcp-gateway/instances", pathname: "/dashboard/mcp-gateway", params: {}, failure: "http", loadedText: "granola" }),
+  render: () => <McpGatewayPage />,
+  globals: { ui: "v5" },
 };

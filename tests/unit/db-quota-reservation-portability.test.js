@@ -70,7 +70,8 @@ describe("operational reservation portability", () => {
     }, { now: NOW + 1 });
     expect(held.acquired).toBe(true);
 
-    const exported = await localDb.exportDb({ now: NOW + 2 });
+    // SEC-B-02 / #2208: secret-preserving restore needs includeSecrets.
+    const exported = await localDb.exportDb({ now: NOW + 2, includeSecrets: true });
     expect(exported).not.toHaveProperty("quotaReservations");
     expect(exported.quota).not.toHaveProperty("reservations");
     expect(JSON.stringify(exported)).not.toContain(held.reservationId);

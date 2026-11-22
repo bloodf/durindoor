@@ -5,17 +5,16 @@
 // Google account, cookie, Chromium or network request is involved. The cookies
 // are synthetic placeholders and were never issued by Google.
 //
-// The staged provider module (open-sse/providers/private/gemini-web.js) and its
-// executor are composed into the registry and the executor map by isolated
-// mocks that extend the original exports, so the normal catalog, dispatch,
-// cookie-import and chat paths run. Registration into the shared files happens
-// in the registration batch (docs/providers/gemini-web.mdx).
+// The provider module (open-sse/providers/registry/gemini-web.js) and its executor
+// come from the production registry and executor map; only the browser, the
+// network and the usage database are mocked.
 //
 // Port source: OmniRoute release/v3.8.55
 // (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // open-sse/config/providers/registry/gemini/web/index.ts and
 // open-sse/executors/gemini-web.ts.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { chromium } from "playwright";
 import "../translator/registerAll.js";
 
 const STREAM_URL =
@@ -24,78 +23,62 @@ const STREAM_URL =
 // A scripted Playwright. `world.answer(cookieHeader)` decides, per context, what
 // the page's StreamGenerate request answers; `world.contexts` records every
 // context that was opened so isolation can be asserted.
-const world = vi.hoisted(() => ({
+const world = {
   contexts: [],
   launches: 0,
   redirectToSignIn: (_cookie) => false,
   indicatorText: "Gemini 3.7 Flash",
   answer: (_cookie) => ({ status: 200, text: "" }),
-}));
+};
 
-vi.mock("playwright", () => {
-  const launch = vi.fn(async () => {
-    world.launches += 1;
-    return {
-      isConnected: () => true,
-      close: vi.fn(async () => {}),
-      newContext: vi.fn(async (options) => {
-        const context = { options, cookies: [], prompts: [], pages: 0, closed: false };
-        world.contexts.push(context);
-        const header = () => context.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-        return {
-          addCookies: vi.fn(async (cookies) => { context.cookies.push(...cookies); }),
-          cookies: vi.fn(async () => context.cookies),
-          close: vi.fn(async () => { context.closed = true; }),
-          newPage: vi.fn(async () => {
-            context.pages += 1;
-            let onResponse = null;
-            let url = "about:blank";
-            return {
-              on: (event, handler) => { if (event === "response") onResponse = handler; },
-              url: () => url,
-              goto: vi.fn(async (target) => {
-                url = world.redirectToSignIn(header()) ? "https://accounts.google.com/v3/signin/identifier" : target;
-              }),
-              waitForSelector: vi.fn(async () => ({
-                click: vi.fn(async () => {}),
-                textContent: vi.fn(async () => world.indicatorText),
-              })),
-              keyboard: {
-                insertText: vi.fn(async (text) => { context.prompts.push(text); }),
-                press: vi.fn(async (key) => {
-                  if (key !== "Enter") return;
-                  const { status, text, body } = world.answer(header());
-                  setTimeout(() => onResponse?.({
-                    url: () => STREAM_URL,
-                    status: () => status,
-                    text: async () => body ?? frameBody(text),
-                  }), 0);
-                }),
-              },
-              // The long response wait collapses to a short real delay so a missing answer finishes fast.
-              waitForTimeout: (ms) => new Promise((resolve) => setTimeout(resolve, ms >= 1000 ? 60 : 0)),
-            };
-          }),
-        };
-      }),
-    };
-  });
-  return { chromium: { launch }, default: { chromium: { launch } } };
-});
-
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/gemini-web.js");
-  return { ...original, default: [...original.default, entry] };
-});
-
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { GeminiWebExecutor } = await import("../../open-sse/executors/gemini-web.js");
-  const executor = new GeminiWebExecutor();
+// Stub the shared launch method before tests run. Vitest's manual module
+// mock can fall through to the real module during overlapping dynamic imports.
+const launch = vi.spyOn(chromium, "launch").mockImplementation(async () => {
+  world.launches += 1;
   return {
-    ...original,
-    getExecutor: (provider) => (provider === "gemini-web" || provider === "gweb" ? executor : original.getExecutor(provider)),
+    isConnected: () => true,
+    close: vi.fn(async () => {}),
+    newContext: vi.fn(async (options) => {
+      const context = { options, cookies: [], prompts: [], pages: 0, closed: false };
+      world.contexts.push(context);
+      const header = () => context.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+      return {
+        addCookies: vi.fn(async (cookies) => { context.cookies.push(...cookies); }),
+        cookies: vi.fn(async () => context.cookies),
+        close: vi.fn(async () => { context.closed = true; }),
+        newPage: vi.fn(async () => {
+          context.pages += 1;
+          let onResponse = null;
+          let url = "about:blank";
+          return {
+            on: (event, handler) => { if (event === "response") onResponse = handler; },
+            url: () => url,
+            goto: vi.fn(async (target) => {
+              url = world.redirectToSignIn(header()) ? "https://accounts.google.com/v3/signin/identifier" : target;
+            }),
+            waitForSelector: vi.fn(async () => ({
+              click: vi.fn(async () => {}),
+              textContent: vi.fn(async () => world.indicatorText),
+            })),
+            keyboard: {
+              insertText: vi.fn(async (text) => { context.prompts.push(text); }),
+              press: vi.fn(async (key) => {
+                if (key !== "Enter") return;
+                const { status, text, body } = world.answer(header());
+                // Deliver this context's cookie-keyed response before the mock timeout can fire.
+                await onResponse?.({
+                  url: () => STREAM_URL,
+                  status: () => status,
+                  text: async () => body ?? frameBody(text),
+                });
+              }),
+            },
+            // The long response wait collapses to a short real delay so a missing answer finishes fast.
+            waitForTimeout: (ms) => new Promise((resolve) => setTimeout(resolve, ms >= 1000 ? 60 : 0)),
+          };
+        }),
+      };
+    }),
   };
 });
 
@@ -124,7 +107,7 @@ import { getExecutor } from "../../open-sse/executors/index.js";
 import geminiWebProvider, {
   GEMINI_WEB_MODELS,
   geminiWebCookieProfile,
-} from "../../open-sse/providers/private/gemini-web.js";
+} from "../../open-sse/providers/registry/gemini-web.js";
 import {
   GeminiWebExecutor,
   buildGeminiPrompt,
@@ -199,6 +182,10 @@ beforeEach(() => {
 afterEach(async () => {
   await resetGeminiBrowserLeaseForTests();
   vi.clearAllMocks();
+});
+
+afterAll(() => {
+  launch.mockRestore();
 });
 
 describe("Gemini Web registration (composed)", () => {
@@ -469,8 +456,7 @@ describe("Gemini Web error mapping", () => {
   });
 
   it("reports a missing Chromium as a host problem, not an upstream fault", async () => {
-    const { chromium } = await import("playwright");
-    chromium.launch.mockRejectedValueOnce(new Error("browserType.launch: Executable doesn't exist at /x"));
+    launch.mockRejectedValueOnce(new Error("browserType.launch: Executable doesn't exist at /x"));
     const result = await chat("/v1/chat/completions", openAiBody(false));
     expect(result.response.status).toBe(503);
     expect((await result.response.json()).error.message).toMatch(/playwright install chromium/);
@@ -483,8 +469,14 @@ describe("Gemini Web connection isolation", () => {
       chat("/v1/chat/completions", openAiBody(false), { apiKey: COOKIE_A, id: "conn-a" }),
       chat("/v1/chat/completions", openAiBody(false), { apiKey: COOKIE_B, id: "conn-b" }),
     ]);
-    expect((await first.response.json()).choices[0].message.content).toBe("reply for psid-alpha");
-    expect((await second.response.json()).choices[0].message.content).toBe("reply for psid-beta");
+    const [firstPayload, secondPayload] = await Promise.all([
+      first.response.json(),
+      second.response.json(),
+    ]);
+    expect(first.response.status, JSON.stringify(firstPayload)).toBe(200);
+    expect(second.response.status, JSON.stringify(secondPayload)).toBe(200);
+    expect(firstPayload.choices[0].message.content).toBe("reply for psid-alpha");
+    expect(secondPayload.choices[0].message.content).toBe("reply for psid-beta");
 
     expect(world.contexts).toHaveLength(2);
     const seen = world.contexts.map((context) => context.cookies.map((cookie) => cookie.value).sort());
@@ -511,8 +503,7 @@ describe("Gemini Web connection isolation", () => {
   it("writes only a rotated __Secure-1PSID* cookie back to the connection that rotated it", async () => {
     const onCredentialsRefreshed = vi.fn(async () => {});
     const executor = new GeminiWebExecutor();
-    const { chromium } = await import("playwright");
-    const browser = await chromium.launch();
+    const browser = await launch();
     browser.newContext.mockImplementationOnce(async () => ({
       addCookies: async () => {},
       cookies: async () => [
@@ -532,7 +523,7 @@ describe("Gemini Web connection isolation", () => {
         waitForTimeout: (ms) => new Promise((resolve) => setTimeout(resolve, ms >= 1000 ? 60 : 0)),
       }),
     }));
-    chromium.launch.mockResolvedValueOnce(browser);
+    launch.mockResolvedValueOnce(browser);
     await resetGeminiBrowserLeaseForTests();
 
     const { response } = await executor.execute({

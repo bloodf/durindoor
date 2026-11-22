@@ -18,6 +18,7 @@ import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPi
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
+import { pickSafeProviderSpecificData, stripConnectionSecrets } from "@/lib/providerRouteHandlers.js";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
@@ -29,21 +30,6 @@ import {
   encryptedEnvelopeCredentialMessage,
   looksLikeEncryptedEnvelope
 } from "@/shared/utils/credentialEnvelope";
-
-const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
-"chatgptPlanAccount",
-"chatgptPlanBindingRevision",
-"managementApiKey",
-"clientSecret",
-"qwenCloudCookie",
-"alibabaConsoleCookie",
-"cookie",
-"QWEN_CLOUD_COOKIE",
-// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
-"sessionToken",
-// Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
-"mimoPassToken"]
-);
 
 // Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on
 // connection creation (`MAX(priority)+1` per provider in connectionsRepo),
@@ -77,24 +63,13 @@ function invalidRequest(field) {
 }
 
 function sanitizeProviderConnection(connection) {
-  const providerSpecificData = connection.providerSpecificData ?
-  Object.fromEntries(
-    Object.entries(normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData)).
-    filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
-  ) :
-  connection.providerSpecificData;
-
-  const result = {
-    ...connection,
-    ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
-  };
-  delete result.managementApiKey;
-  delete result.apiKey;
-  delete result.accessToken;
-  delete result.refreshToken;
-  delete result.idToken;
-  delete result.firecrawlHeaders;
-  delete result.sessionToken;
+  const result = stripConnectionSecrets(connection);
+  if (connection.providerSpecificData) {
+    result.providerSpecificData = pickSafeProviderSpecificData(
+      connection.provider,
+      normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData)
+    );
+  }
   return result;
 }
 

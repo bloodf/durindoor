@@ -6,6 +6,8 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const SCOPE_OPTIONS = [
   { value: "model", label: "Model" },
@@ -30,6 +32,7 @@ function emptyDraft() {
  * else, so this form never offers a regex field.
  */
 export default function ProviderErrorRulesModal({ isOpen, providerId, rules, onSave, onClose }) {
+  const v5 = useUiV5();
   const [localRules, setLocalRules] = useState([]);
   const [draft, setDraft] = useState(emptyDraft());
   const [saving, setSaving] = useState(false);
@@ -100,6 +103,7 @@ export default function ProviderErrorRulesModal({ isOpen, providerId, rules, onS
 
   return (
     <Modal
+      surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""}
       open={isOpen}
       title="Provider Error Rules"
       subtitle={`Consulted before the built-in rules for ${providerId}. Match is a plain substring, case-insensitive, never a regex.`}
@@ -145,21 +149,23 @@ export default function ProviderErrorRulesModal({ isOpen, providerId, rules, onS
           <div className="grid grid-cols-2 gap-2">
             <Input
             label="Status"
+            error={v5 && error.startsWith("Status must") ? error : undefined}
             type="number"
             min={100}
             max={599}
             value={draft.status}
             onChange={(e) => setDraft({ ...draft, status: e.target.value })} />
 
-            <Select
+            {v5 ? <V5NativeSelect aria-label="Rule scope" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value })}>{SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</V5NativeSelect> : <Select
             options={SCOPE_OPTIONS}
             value={draft.scope}
             onChange={(value) => setDraft({ ...draft, scope: value })}
-            aria-label="Rule scope" />
+            aria-label="Rule scope" />}
 
           </div>
           <Input
           label="Match (substring, case-insensitive)"
+          error={v5 && error.startsWith("Match text") ? error : undefined}
           value={draft.match}
           onChange={(e) => setDraft({ ...draft, match: e.target.value })}
           placeholder="daily cap hit"
@@ -173,7 +179,7 @@ export default function ProviderErrorRulesModal({ isOpen, providerId, rules, onS
           onChange={(e) => setDraft({ ...draft, cooldownSeconds: e.target.value })}
           hint="Leave blank to use the generic backoff ladder." />
 
-          {error ?
+          {error && !(v5 && (error.startsWith("Status must") || error.startsWith("Match text"))) ?
           <div className="flex items-center gap-1.5 text-sm text-dd-danger" role="alert">
               <span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span>
               <span>{error}</span>

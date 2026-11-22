@@ -2,21 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({ ...(await importOriginal()), proxyAwareFetch: fetchMock }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const notion = (await import("../../open-sse/providers/private/notion-web.js")).default;
-  return { ...original, default: [...original.default, notion] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { NotionWebExecutor } = await import("../../open-sse/executors/notion-web.js");
-  const executor = new NotionWebExecutor();
-  return { ...original, getExecutor: (provider) => provider === "notion-web" || provider === "nw" ? executor : original.getExecutor(provider) };
-});
 
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
-import { cookieCaptureProfile } from "../../open-sse/providers/private/notion-web.js";
+import { cookieCaptureProfile } from "../../open-sse/providers/registry/notion-web.js";
 import { discoverNotionModels } from "../../open-sse/executors/notion-web.js";
 
 const tokenA = "token_v2=synthetic-a; space_id=space-a; notion_user_id=user-a";
@@ -63,5 +52,18 @@ describe("Notion Web staged provider", () => {
     fetchMock.mockResolvedValueOnce(json(modelCatalog)).mockResolvedValueOnce(new Response('{"value":{"text":"b"}}\n'));
     await getExecutor("notion-web").execute({ model: "m", body: body(), credentials: { apiKey: tokenB, connectionId: "b" } });
     expect(fetchMock.mock.calls.map(([, init]) => init.headers.cookie).filter(Boolean)).toEqual(expect.arrayContaining([expect.stringContaining("synthetic-a"), expect.stringContaining("synthetic-b")]));
+  });
+});
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("Notion Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { NotionWebExecutor } = await import("../../open-sse/executors/notion-web.js");
+    expect(registry.filter((entry) => entry.id === "notion-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("notion-web")).toBe(true);
+    expect(getExecutor("notion-web")).toBeInstanceOf(NotionWebExecutor);
+    expect(getExecutor("nw")).toBe(getExecutor("notion-web"));
   });
 });

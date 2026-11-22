@@ -4,6 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { PROVIDERS } from "../config/providers.js";
 import { buildErrorBody } from "../utils/error.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 
 const BASE = "https://claude.ai/api";
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
@@ -55,6 +56,31 @@ async function readSse(response, model, stream) {
   return new Response(JSON.stringify({ id: "chatcmpl-claude-web", object: "chat.completion", created: Math.floor(Date.now()/1000), model, choices: [{ index: 0, message: { role: "assistant", content: output }, finish_reason: "stop" }] }), { headers: { "content-type": "application/json" } });
 }
 
+/**
+ * Read-only session check for the dashboard Validate and Test buttons: GET
+ * claude.ai/api/organizations with the pasted sessionKey. It creates no
+ * conversation, and the cookie never reaches a chat endpoint.
+ */
+export async function validateClaudeWebSession({ apiKey, fetcher = fetch }) {
+  const cookie = normalizeClaudeWebCookie(apiKey);
+  if (!cookie) return { valid: false, status: null, error: "No sessionKey cookie found - paste it from claude.ai" };
+  let response;
+  try {
+    response = await guardedProbeFetch(`${BASE}/organizations`, { method: "GET", headers: headers(cookie), redirect: "manual", signal: AbortSignal.timeout(8000) }, getProviderValidationGuard(), fetcher);
+  } catch (error) {
+    if (error instanceof OutboundUrlGuardError) return { valid: false, status: null, blocked: true, error: error.message };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
+  }
+  const { status } = response;
+  if ((status >= 300 && status < 400) || status === 401 || status === 403) return { valid: false, status, error: "Invalid or expired sessionKey - re-capture it from claude.ai" };
+  if (status === 429) return { valid: false, status, unavailable: true, error: "Claude is rate limiting this session - try again later" };
+  if (status >= 500) return { valid: false, status, unavailable: true, error: "Provider unavailable - try again later" };
+  if (status !== 200) return { valid: false, status, error: `Claude Web validation failed (HTTP ${status})` };
+  const organizations = await response.json().catch(() => null);
+  if (Array.isArray(organizations) && organizations.length > 0) return { valid: true, status };
+  return { valid: false, status, error: "Session accepted but no Claude organization was returned - sign in again at claude.ai" };
+}
+
 export class ClaudeWebExecutor extends BaseExecutor {
   constructor() { super("claude-web", { id: "claude-web", baseUrl: BASE }); }
   async testConnection(credentials) {
@@ -71,8 +97,8 @@ export class ClaudeWebExecutor extends BaseExecutor {
     const common = headers(cookie);
     const fetcher = input.fetcher || proxyAwareFetch;
     try {
-      const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, signal: input.signal });
-      if (organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
+      const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, redirect: "manual", signal: input.signal });
+      if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       if (!organizations.ok) return { response: responseError(organizations.status, "Claude Web organization lookup failed"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       const orgs = await organizations.json();
       const org = Array.isArray(orgs) ? orgs[0] : null;
@@ -96,8 +122,8 @@ export class ClaudeWebExecutor extends BaseExecutor {
       if (!conversationId) payload.create_conversation_params = { name: "", model, include_conversation_preferences: true, paprika_mode: null, compass_mode: null, is_temporary: false, enabled_imagine: false, tool_search_mode: "auto" };
       if (!conversationId) conversationId = randomUUID();
       const url = `${BASE}/organizations/${encodeURIComponent(orgId)}/chat_conversations/${encodeURIComponent(conversationId)}/completion`;
-      const upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), signal: input.signal });
-      if (upstream.status === 401 || upstream.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body };
+      const upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), redirect: "manual", signal: input.signal });
+      if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body };
       if (upstream.status === 429) return { response: responseError(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body };
       if (!upstream.ok || !upstream.body) return { response: responseError(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body };
       const response = await readSse(upstream, model, input.stream === true || input.body?.stream === true);

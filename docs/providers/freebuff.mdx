@@ -1,0 +1,89 @@
+---
+title: Freebuff
+description: Opt-in provider for Freebuff device sessions. Separate from paid Codebuff keys and unverified against the live service.
+---
+
+Freebuff (`freebuff`, alias `fb`) is the free, ad-supported Codebuff product. Signing in with the Freebuff CLI flow gives a device-session `authToken`. That token is **not** a paid `cb_...` Codebuff API key, and DurinDoor treats the two as different providers. The existing Codebuff connection is unchanged, and a Freebuff token is never stored in it or sent as its key.
+
+This provider is **unverified**. It is a port of the reverse-engineered client in OmniRoute, not a documented third-party API: Freebuff has not published a supported auth and headless boundary for orchestrators (see [Freebuff issue #947](https://github.com/CodebuffAI/freebuff/issues/947) and the repository note `internal/docs/freebuff-provider-contract.md`). Tests use closed mocks. No live Freebuff account, token or request has been used.
+
+## Read this first
+
+- **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request fail with HTTP 403 `freebuff_dispatch_disabled` before any Freebuff call is made. Signing in does not turn it on. Each connection opts in on its own.
+- **It re-serves a free tier through a gateway.** Freebuff's free access is tier-limited and ad-supported. The session, ad and usage rules belong to Freebuff, and the gateway does not show ads or notices. Check Freebuff's terms before sharing a connection with other people. The service can change or block these endpoints without notice.
+- **Do not reuse a paid key.** Paste only a Freebuff device-session token here. Keep `CODEBUFF_API_KEY` and any Codebuff connection as they are.
+
+## Set up
+
+1. Add **Freebuff** under **Providers** and sign in with the browser device login. DurinDoor requests a login URL, you approve it at freebuff.com, and the gateway polls until Freebuff returns the auth token. Alternatively paste an existing Freebuff auth token as the key.
+2. Turn on **Allow session dispatch** in the connection's edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`) to opt in.
+3. Use the model ids below, for example `freebuff/deepseek/deepseek-v4-flash` or the `fb/` prefix.
+
+Cookie capture: **not applicable.** Freebuff signs in with a device login and a bearer token, so the cookie capture extension, pasted `Cookie:` header, cURL and HAR import flows do not apply.
+
+## Sign-in and token lifetime
+
+The login mirrors the official `freebuff login` flow:
+
+1. `POST https://freebuff.com/api/auth/cli/code` with a generated `fingerprintId` returns a `loginUrl`, `fingerprintHash` and `expiresAt`.
+2. You open the `loginUrl` in a browser.
+3. The gateway polls `GET https://freebuff.com/api/auth/cli/status` with those three values every 5 seconds, for up to the login lifetime, until the response carries `user.authToken`. A 401 means the login is still pending. A 429 or 5xx slows the poll down. An expired login stops it.
+
+The auth token has **no refresh grant**. There is nothing to refresh, so the executor reports no refresh and a rejected token asks you to sign in to Freebuff again. The new login replaces the stored token.
+
+## How a request runs
+
+Every request does the same four steps with that connection's token, and nothing is kept between requests or connections:
+
+1. `POST https://www.codebuff.com/api/v1/freebuff/session` with the `x-freebuff-model` header returns an `instanceId`. A 409 is accepted only when it still carries an `instanceId`.
+2. `POST https://www.codebuff.com/api/v1/agent-runs` with `{ "action": "START", "agentId": ... }` returns a `runId`. A failed start only drops the run id.
+3. `POST https://www.codebuff.com/api/v1/chat/completions` with the OpenAI-format body, a Buffy system prompt (added unless the first message already starts with `You are Buffy`) and `codebuff_metadata` carrying the run id, a client id and the Freebuff instance id. JSON and streamed responses are passed through.
+4. In the background, `POST .../agent-runs` with `{ "action": "FINISH", ... }`, reporting `completed` or `failed`.
+
+Both the OpenAI chat route and the Anthropic Messages route work, JSON and streamed. A `/v1/messages` request is translated to OpenAI chat and the response translated back.
+
+## Models
+
+The catalog is the fixed list in OmniRoute and has no discovery endpoint. Each model maps to a Freebuff agent id; an unlisted model id is sent with the generic `base2-free` agent.
+
+| Model id | Agent |
+| --- | --- |
+| `deepseek/deepseek-v4-flash` | `base2-free-deepseek-flash` |
+| `deepseek/deepseek-v4-pro` | `base2-free-deepseek` |
+| `openai/gpt-5.6-luna` | `base2-free-luna` |
+| `minimax/minimax-m3` | `base2-free-minimax-m3` |
+| `mimo/mimo-v2.5` | `base2-free-mimo` |
+| `z-ai/glm-5.2` | `base2-free-glm` |
+| `crof/kimi-k3-eco` | `base2-free-kimi-k3-eco` |
+| `anthropic/claude-fable-5` | `base2-free-fable` |
+| `meta/muse-spark-1.2-contributor` | `base2-free-muse-spark` |
+
+## Errors
+
+| Situation | Result |
+| --- | --- |
+| Connection did not opt in | 403 `freebuff_dispatch_disabled`, no upstream call |
+| No token on the connection | 401 `Freebuff Auth Token required` |
+| Freebuff answers 401 or 403 at session, run or chat | 401 `authentication_error`, sign in again |
+| Freebuff answers 429 (session queue, ad or usage limit) | 429 `rate_limit_error`, `Retry-After` kept when sent |
+| Session 409 without an `instanceId` | 409 upstream error |
+| Any other non-2xx | The same status as an upstream error with a short excerpt |
+| Network failure | 502 |
+
+A pasted token can be checked with the same session probe (`validateFreebuffToken`): 2xx or 409 is valid, 401 or 403 is "Invalid or expired Freebuff Auth Token".
+
+## Limits and not verified
+
+- Nothing was run against the live service. The endpoints, the `instanceId` and `runId` shapes, the agent ids, the `FINISH` status values, the 409 meaning, the ad, notice and tier limits, and the model catalog come from OmniRoute's pinned source and may differ from what Freebuff serves today.
+- The FINISH status `failed` for a failed chat is DurinDoor's choice. OmniRoute always reports `completed`.
+- Tool events, cancellation and prompt/session continuation across requests are not modeled: each request opens its own session and run.
+- Freebuff's own CLI is interactive and has no headless mode, and its token is not documented as an SDK credential, so Freebuff could change or block this at any time.
+
+## Sources
+
+- [OmniRoute freebuff registry entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/freebuff/index.ts)
+- [OmniRoute freebuff executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/freebuff.ts)
+- [OmniRoute freebuff sign-in service](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/oauth/providers/freebuff.ts)
+- [OmniRoute OAuth constants (FREEBUFF_CONFIG)](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/oauth/constants/oauth.ts)
+- [OmniRoute validator](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/providers/validation.ts)
+- [Freebuff repository](https://github.com/CodebuffAI/freebuff) and [issue #947 (headless and SDK request)](https://github.com/CodebuffAI/freebuff/issues/947)

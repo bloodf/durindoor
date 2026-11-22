@@ -20,8 +20,8 @@ import {
 "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import {
-  getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus,
-  getProviderConnections, getQuotaReservationPressure, getApiKeyProviderConnectionIds, getComboForModel } from
+  getSettings, getApiKeyByKey, getApiKeyById, getApiKeyUsageLimitStatus,
+  getProviderConnections, updateProviderConnection, getQuotaReservationPressure, getApiKeyProviderConnectionIds, getComboForModel } from
 "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
@@ -75,6 +75,8 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { getBatchRequestKeyId } from "../services/batchKeyIdentity.js";
+import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { modelKindError } from "./modelKind.js";
 import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
@@ -475,7 +477,11 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // Retain the authenticated record so local commands can expose only this
   // key's own lifetime totals. Combo ACL runs after Claude model decoding.
   let authenticatedKeyRecord = null;
-  if (apiKey) authenticatedKeyRecord = await getApiKeyByKey(apiKey);
+  const batchKeyId = getBatchRequestKeyId(request);
+  if (apiKey) authenticatedKeyRecord = batchKeyId ? await getApiKeyById(batchKeyId) : await getApiKeyByKey(apiKey);
+  if (batchKeyId && (!authenticatedKeyRecord || !authenticatedKeyRecord.isActive || isApiKeyExpired(authenticatedKeyRecord.expiresAt))) {
+    return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
+  }
   const planRequest = {
     verifiedKey: apiKeyAuth.stored === true && authenticatedKeyRecord?.id === apiKeyAuth.apiKeyId
       ? { id: authenticatedKeyRecord.id, isActive: authenticatedKeyRecord.isActive } : null,
@@ -610,6 +616,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // legacy behavior.
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const comboMembers = (await getComboForModel(comboName))?.members || [];
+    const comboVisited = new Set([comboName]);
     // #747: resolve the combo's allow-list once per top-level request. Every
     // attempt / fallback inside the same logical request shares this policy.
     const comboRouting = await getComboRoutingPolicy(comboName);
@@ -644,7 +651,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: true }
+            { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, comboVisited, reportComboPolicyRejections: true }
           );
         },
         log,
@@ -681,7 +688,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }
+          { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, comboVisited, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }
         );
       },
       log,
@@ -812,7 +819,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * through nested attempts to classify all-candidate ACL denials.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], planRequest, reportComboPolicyRejections = false } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], comboVisited = new Set(), planRequest, reportComboPolicyRejections = false } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -827,6 +834,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // lookups, and rotation/scoring keys are stable regardless of the
       // casing the client sent (#10177). Auto-combo ids pass through as-is.
       const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
+      // Bound imported cycles and long acyclic chains; each branch owns its path.
+      if (comboVisited.has(comboName) || comboVisited.size >= 16) {
+        return errorResponse(HTTP_STATUS.BAD_REQUEST, "Combo cycle or nesting limit exceeded");
+      }
+      const nestedVisited = new Set([...comboVisited, comboName]);
       const comboMembers = (await getComboForModel(comboName))?.members || [];
       // #747: nested combo resolves its OWN allow-list, then intersects with the
       // parent so the inner combo can only narrow eligibility, never replace it.
@@ -863,7 +875,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: true }
+              { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, comboVisited: nestedVisited, reportComboPolicyRejections: true }
             );
           },
           log,
@@ -899,7 +911,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: reportComboPolicyRejections || attemptOptions?.reportComboPolicyRejections }
+            { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, comboVisited: nestedVisited, reportComboPolicyRejections: reportComboPolicyRejections || attemptOptions?.reportComboPolicyRejections }
           );
         },
         log,
@@ -1448,9 +1460,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // kimi-web returns a new token pair plus `providerSpecificPatch`; keep it
         // in the encrypted token columns so the next request and a restart start
         // from it. Web-cookie executors (chatgpt-web) hand back a rotated session
-        // cookie as `apiKey`; persist only that, only for cookie connections.
+        // cookie as `apiKey`. PromptQL saves its derived credentials against the
+        // sending cookie so a concurrent re-import cannot receive a stale token.
         ...(activeConnection && activeConnection.authType !== "oauth" ? {
           onCredentialsRefreshed: async (next) => {
+            if (provider === "promptql" && cookieRefreshContext && next?.promptqlSession) {
+              return updateProviderConnection(credentials.connectionId, {
+                accessToken: next.accessToken,
+                providerSpecificData: next.promptqlSession
+              }, { expectedRefreshContext: cookieRefreshContext });
+            }
             if (next?.providerSpecificPatch) {
               await updateProviderCredentials(credentials.connectionId, {
                 accessToken: next.accessToken,

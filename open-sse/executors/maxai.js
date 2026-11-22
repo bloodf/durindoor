@@ -74,9 +74,9 @@ export async function validateMaxaiSession(credentials, fetcher = proxyAwareFetc
   if (!auth.token || !auth.deviceId || !auth.userId) return { valid: false, status: null, error: "MaxAI access token, device ID and user ID are required" };
   const headers = await signedHeaders("/models/get_config", credentials, fetcher);
   if (!headers) return { valid: false, status: null, error: "MaxAI signing constants are unavailable; reconnect the browser session" };
-  const response = await fetcher(CONFIG_URL, { method: "GET", headers, signal: AbortSignal.timeout(8000) });
+  const response = await fetcher(CONFIG_URL, { method: "GET", headers, redirect: "manual", signal: AbortSignal.timeout(8000) });
   const result = { valid: response.ok, status: response.status };
-  if (!response.ok) result.error = response.status === 401 || response.status === 403 ? "MaxAI session expired" : `MaxAI validation failed (HTTP ${response.status})`;
+  if (!response.ok) result.error = (response.status >= 300 && response.status < 400) || response.status === 401 || response.status === 403 ? "MaxAI session expired" : `MaxAI validation failed (HTTP ${response.status})`;
   return result;
 }
 function openaiRequest(body, model) {
@@ -97,9 +97,9 @@ export class MaxaiExecutor extends BaseExecutor {
     const auth = cookieValues(credentials); const headers = await signedHeaders(PATH, credentials);
     if (!auth.token || !headers) return { response: fail(401, "MaxAI session is missing or expired"), url: this.buildUrl(), headers: {}, transformedBody: null };
     let upstream;
-    try { upstream = await proxyAwareFetch(this.buildUrl(), { method: "POST", headers, body: JSON.stringify(openaiRequest(body || {}, model)), signal }); }
+    try { upstream = await proxyAwareFetch(this.buildUrl(), { method: "POST", headers, body: JSON.stringify(openaiRequest(body || {}, model)), redirect: "manual", signal }); }
     catch (error) { return { response: fail(502, error?.message || "MaxAI request failed"), url: this.buildUrl(), headers, transformedBody: body }; }
-    if (upstream.status === 418) return { response: fail(401, "MaxAI session expired"), url: this.buildUrl(), headers, transformedBody: body };
+    if (upstream.status === 418 || (upstream.status >= 300 && upstream.status < 400)) return { response: fail(401, "MaxAI session expired"), url: this.buildUrl(), headers, transformedBody: body };
     if (upstream.status === 401 || upstream.status === 403) return { response: fail(upstream.status, "MaxAI session expired or rejected"), url: this.buildUrl(), headers, transformedBody: body };
     if (!upstream.ok) return { response: upstream, url: this.buildUrl(), headers, transformedBody: body };
     const response = stream ? asOpenAIStream(upstream, model) : await collectMaxai(upstream, model);

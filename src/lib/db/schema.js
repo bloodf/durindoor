@@ -386,6 +386,24 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_model_capability_overrides_key ON modelCapabilityOverrides(overrideKey)",
     ],
   },
+  // Opt-in per-key session capture turns (migration 032). Declared here so
+  // syncSchemaFromTables / the schema verifier / PG mirror all see the same
+  // shape; portable export/import round-trips these rows with the key set.
+  sessionCaptureTurns: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      apiKeyId: "TEXT NOT NULL",
+      sessionId: "TEXT NOT NULL",
+      content: "TEXT NOT NULL",
+      byteSize: "INTEGER NOT NULL CHECK (byteSize BETWEEN 1 AND 16384)",
+      createdAt: "TEXT NOT NULL",
+      expiresAt: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_capture_key_session ON sessionCaptureTurns(apiKeyId, sessionId, createdAt, id)",
+      "CREATE INDEX IF NOT EXISTS idx_capture_expiry ON sessionCaptureTurns(expiresAt)",
+    ],
+  },
   // ─── Opt-in PostgreSQL engine: cutover event log ──────────────────
   // Records every `cutover` / `rollback` / `test` event. The PG side
   // creates the same table via the parallel migration set; on SQLite

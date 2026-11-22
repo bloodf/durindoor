@@ -3,8 +3,26 @@ import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
 import { isString } from "../../../../../shared/utils/typeChecks.js";
+import {
+  guardedProbeFetch,
+  OutboundUrlGuardError,
+} from "open-sse/utils/outboundUrlGuard.js";
+import {
+  isRelayProxyType,
+  RELAY_URL_GUARD,
+  validateRelayProxyUrl,
+} from "../../relayUrlGuard.js";
 
 async function testVercelRelay(relayUrl, relaySecret = "", timeoutMs = 30000) {
+  const validation = validateRelayProxyUrl(relayUrl);
+  if (validation.error) {
+    return {
+      ok: false,
+      status: 400,
+      blocked: true,
+      error: validation.error,
+    };
+  }
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -16,11 +34,12 @@ async function testVercelRelay(relayUrl, relaySecret = "", timeoutMs = 30000) {
     if (isString(relaySecret) && relaySecret !== "") {
       headers["x-relay-secret"] = relaySecret;
     }
-    const res = await undiciFetch(relayUrl, {
+    const res = await guardedProbeFetch(relayUrl, {
       method: "GET",
       headers,
       signal: controller.signal,
-    });
+    }, RELAY_URL_GUARD, undiciFetch);
+    try { await res.body?.cancel?.(); } catch {}
     return {
       ok: res.ok,
       status: res.status,
@@ -28,6 +47,14 @@ async function testVercelRelay(relayUrl, relaySecret = "", timeoutMs = 30000) {
       elapsedMs: Date.now() - startedAt,
     };
   } catch (err) {
+    if (err instanceof OutboundUrlGuardError) {
+      return {
+        ok: false,
+        status: 400,
+        blocked: true,
+        error: err.message,
+      };
+    }
     return {
       ok: false,
       status: 500,
@@ -48,7 +75,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
     }
 
-    const result = proxyPool.type === "vercel" || proxyPool.type === "cloudflare"
+    const result = isRelayProxyType(proxyPool.type)
       ? await testVercelRelay(proxyPool.proxyUrl, proxyPool.relaySecret || "")
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
@@ -60,14 +87,17 @@ export async function POST(request, { params }) {
       isActive: result.ok,
     });
 
-    return NextResponse.json({
-      ok: result.ok,
-      status: result.status,
-      statusText: result.statusText || null,
-      error: result.error || null,
-      elapsedMs: result.elapsedMs || 0,
-      testedAt: now,
-    });
+    return NextResponse.json(
+      {
+        ok: result.ok,
+        status: result.status,
+        statusText: result.statusText || null,
+        error: result.error || null,
+        elapsedMs: result.elapsedMs || 0,
+        testedAt: now,
+      },
+      result.blocked ? { status: 400 } : undefined
+    );
   } catch (error) {
     console.log("Error testing proxy pool:", error);
     return NextResponse.json({ error: "Failed to test proxy pool" }, { status: 500 });

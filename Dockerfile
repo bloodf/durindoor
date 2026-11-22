@@ -63,6 +63,8 @@ COPY --from=builder /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeC
 COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs
 COPY --from=builder /app/open-sse ./open-sse
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
+# MITM DNS loads its host mapping at runtime, outside Next standalone tracing.
+COPY --from=builder /app/src/shared/constants/mitmToolHosts.js ./src/shared/constants/mitmToolHosts.js
 COPY --from=builder /app/src/mitm ./src/mitm
 # scripts/build-app.mjs materializes every runtime dependency and its closure
 # into .next/standalone above, including sql.js assets and optional native bindings.

@@ -91,7 +91,6 @@ function concatBuffers(...parts) {
 
 const agentString = (field, value) => encodeField(field, PROTOBUF_LEN, value);
 const agentMessage = (field, value) => encodeField(field, PROTOBUF_LEN, value);
-const agentBool = (field, value) => encodeField(field, PROTOBUF_VARINT, value ? 1 : 0);
 
 function textFromContent(content) {
   if (isString(content)) return content;
@@ -185,8 +184,9 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
       agentString(2, effortValue),
     ))
     : null;
+  // RequestedModel field 7 is reserved for Bedrock credentials, not max mode.
   const requestedModel = concatBuffers(
-    agentString(1, model), agentBool(7, true),
+    agentString(1, model),
     ...(parameter ? [parameter] : []),
   );
   // ModelDetails (field 3): thinking variants (Composer, Grok, *-thinking)

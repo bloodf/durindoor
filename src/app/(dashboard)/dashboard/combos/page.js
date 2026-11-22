@@ -68,6 +68,7 @@ export default function CombosPage() {
 
   const loadRequest = useRef(0);
   const strategyVersion = useRef(0);
+  const strategyWrites = useRef(0);
 
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
   const allSelected = combos.length > 0 && selectedIds.length === combos.length;
@@ -162,6 +163,7 @@ export default function CombosPage() {
   const fetchData = async () => {
     const request = ++loadRequest.current;
     const version = strategyVersion.current;
+    const writesInFlight = strategyWrites.current;
     const isCurrent = () => loadRequest.current === request;
     try {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
@@ -190,7 +192,8 @@ export default function CombosPage() {
         setActiveProviders(filterActiveConnections(connections));
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
-      if (!v5 || version === strategyVersion.current) {
+      // A read overlapping a strategy write may contain the pre-write map.
+      if (!v5 || (!writesInFlight && !strategyWrites.current && version === strategyVersion.current)) {
         setComboStrategies(settingsData.comboStrategies || {});
         strategyQueue.replace(settingsData.comboStrategies || {});
       }
@@ -262,7 +265,13 @@ export default function CombosPage() {
   const persistComboStrategies = async (change) => {
     if (v5) {
       strategyVersion.current += 1;
-      return strategyQueue.update(change);
+      strategyWrites.current += 1;
+      try {
+        return await strategyQueue.update(change);
+      } finally {
+        strategyWrites.current -= 1;
+        strategyVersion.current += 1;
+      }
     }
     const updated = change(comboStrategies);
     await fetch("/api/settings", {

@@ -74,6 +74,41 @@ describe("V5 retained drafts", () => {
 });
 
 describe("V5 strategy queue", () => {
+  it("ignores a settings read that overlaps a strategy save", async () => {
+    document.documentElement.dataset.ui = "v5";
+    let releaseWrite, releaseRead;
+    let settingsReads = 0;
+    const writes = [];
+    const fallback = mockFetch();
+    vi.stubGlobal("fetch", vi.fn(async (url, options) => {
+      if (url === "/api/combos" && !options?.method) return ok({ combos: [combo, { ...combo, id: "two", name: "secondary" }] });
+      if (url === "/api/settings" && !options?.method && ++settingsReads === 2) {
+        await new Promise((resolve) => { releaseRead = resolve; });
+        return ok({ comboStrategies: {} });
+      }
+      if (options?.method === "PATCH") {
+        writes.push(JSON.parse(options.body));
+        if (writes.length === 1) await new Promise((resolve) => { releaseWrite = resolve; });
+        return ok();
+      }
+      return fallback(url, options);
+    }));
+    await render();
+    const change = async (name, value) => {
+      const input = host.querySelector(`[aria-label="Timeout for ${name}"]`);
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); await flush(); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await flush(); });
+    };
+    await change("primary", "12");
+    await click(button("Create Combo"));
+    const input = document.querySelector('input[placeholder="my-combo"]');
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "new-combo"); input.dispatchEvent(new Event("input", { bubbles: true })); await flush(); });
+    await click([...document.querySelectorAll("button")].find((el) => el.textContent.trim() === "Create"));
+    expect(releaseRead).toBeTypeOf("function");
+    await act(async () => { releaseWrite(); await flush(); });
+    await act(async () => { releaseRead(); await flush(); });
+    await change("secondary", "7");
+    expect(writes[1]).toEqual({ comboStrategies: { primary: { timeoutMs: 12000 }, secondary: { timeoutMs: 7000 } } });
+  });
   it("preserves a second row's edit while the first save is pending", async () => {
     document.documentElement.dataset.ui = "v5";
     let release;

@@ -1,0 +1,8 @@
+{
+  "route": "/dashboard/settings/pricing",
+  "stories": [
+    "production-profile-pricingsettingspage--default",
+    "production-profile-pricingsettingspage--empty-pricing",
+    "production-profile-pricingsettingspage--pricing-load-failure"
+  ]
+}

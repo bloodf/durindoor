@@ -1,0 +1,24 @@
+{
+  "route": "shell",
+  "stories": [
+    "production-shell-header--session-and-search",
+    "production-shell-header--mobile-menu",
+    "production-shell-headerlanguage--compact-trigger",
+    "production-shell-languageswitcher--success",
+    "production-shell-languageswitcher--request-error",
+    "production-shell-sidebar--groups-and-update",
+    "production-shell-sidebar--media-expanded",
+    "production-shell-sidebar--token-saver-active-hierarchy",
+    "production-shell-sidebar--collapsible-rail",
+    "production-shell-sidebar--collapsed-tooltip",
+    "production-shell-dashboardlayout--success-toast",
+    "production-shell-dashboardlayout--error-toast",
+    "production-shell-dashboardlayout--warning-toast",
+    "production-shell-dashboardlayout--info-toast",
+    "production-shell-dashboardlayout--toast-dismissal",
+    "production-shell-dashboardlayout--mobile-drawer",
+    "production-shell-dashboardlayout--mobile-drawer-transitions",
+    "production-shell-dashboardlayout--persisted-desktop-collapse",
+    "production-shell-dashboardlayout--playground-full-bleed"
+  ]
+}

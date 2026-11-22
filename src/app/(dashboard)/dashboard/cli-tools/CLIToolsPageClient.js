@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { CardSkeleton } from "@/shared/components";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { CLI_TOOLS, MITM_TOOLS } from "@/shared/constants/cliTools";
 import { MitmLinkCard } from "./components";
 import ToolSummaryCard from "./components/ToolSummaryCard";
@@ -11,6 +13,7 @@ import ToolSummaryCard from "./components/ToolSummaryCard";
 const ALL_STATUSES_URL = "/api/cli-tools/all-statuses";
 
 export default function CLIToolsPageClient({ machineId }) {
+  const v5 = useUiV5();
   const [loading, setLoading] = useState(true);
   const [toolStatuses, setToolStatuses] = useState({});
   const [loadError, setLoadError] = useState(null);
@@ -40,7 +43,7 @@ export default function CLIToolsPageClient({ machineId }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={v5 ? "v5-dashboard-page grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"} role={v5 ? "status" : undefined} aria-label={v5 ? "Loading CLI tools" : undefined}>
         <CardSkeleton /><CardSkeleton /><CardSkeleton /><CardSkeleton /><CardSkeleton /><CardSkeleton />
       </div>
     );
@@ -50,11 +53,12 @@ export default function CLIToolsPageClient({ machineId }) {
   const mitmTools = Object.entries(MITM_TOOLS);
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 text-[13px]">
+    <div className={v5 ? "v5-dashboard-page mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-8 text-[13px] text-dd-text" : "mx-auto flex w-full max-w-7xl flex-col gap-8 text-[13px]"}>
       <PageHeader icon="code" title="CLI Tools" subtitle="Configure CLI tools" />
 
       {loadError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-dd-danger">
+          {v5 ? <MotionIcon name="error" size={18} className="text-dd-danger" /> : null}
           <span>{loadError}</span>
           <Button variant="secondary" size="sm" onClick={loadStatuses}>Retry</Button>
         </div>

@@ -8,3 +8,4 @@ export default meta;
 export const AddAndDiscover = { ...reviewStory(original.AddAndDiscover, {"source":"src/shared/components/AddSystemoneCompatibleModal.stories.jsx","standalone":false}) };
 export const DiscoveryError = { ...reviewStory(original.DiscoveryError, {"source":"src/shared/components/AddSystemoneCompatibleModal.stories.jsx","standalone":false}) };
 export const EditAndRegister = { ...reviewStory(original.EditAndRegister, {"source":"src/shared/components/AddSystemoneCompatibleModal.stories.jsx","standalone":false}) };
+export const SavePending = { ...reviewStory(original.SavePending, {"source":"src/shared/components/AddSystemoneCompatibleModal.stories.jsx","standalone":false}) };

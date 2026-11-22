@@ -1,0 +1,8 @@
+{
+  "route": "dialog/OAuthModal",
+  "stories": [
+    "production-shared-oauth-oauthmodal--loading-routing-options",
+    "production-shared-oauth-oauthmodal--device-code-flow",
+    "production-shared-oauth-oauthmodal--authorization-failure"
+  ]
+}

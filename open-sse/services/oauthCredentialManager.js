@@ -93,7 +93,7 @@ export function shouldRefreshCredentials(provider, credentials, nowMs = Date.now
   if (!credentials) return false;
 
   const expiresAtMs = getCredentialExpiryMs(credentials);
-  if (expiresAtMs !== null && expiresAtMs - nowMs < getRefreshLeadMs(provider)) {
+  if (expiresAtMs !== null && expiresAtMs - nowMs < getRefreshLeadMs(provider, credentials.providerSpecificData)) {
     return true;
   }
 
@@ -136,6 +136,9 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
     next.expiresAt = toExpiresAt(refreshedCredentials.expiresIn, nowMs);
   } else if (refreshedCredentials.expiresAt) {
     next.expiresAt = refreshedCredentials.expiresAt;
+  } else {
+    // Providers that omit expiry get a conservative one-hour refresh horizon.
+    next.expiresAt = toExpiresAt(3600, nowMs);
   }
 
   if (refreshedCredentials.projectId) next.projectId = refreshedCredentials.projectId;

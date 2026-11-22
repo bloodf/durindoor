@@ -791,7 +791,7 @@ describe("image and embedding handler usage accounting", () => {
     vi.resetModules();
   });
 
-  function request(kind, query = "") {
+  function request(kind, query = "", overrides = {}) {
     const endpoint = kind === "embedding" ? "/v1/embeddings" : kind === "edit" ? "/v1/images/edits" : "/v1/images/generations";
     if (kind === "edit") {
       const body = new FormData();
@@ -800,7 +800,7 @@ describe("image and embedding handler usage accounting", () => {
       return new Request(`http://localhost${endpoint}${query}`, { method: "POST", body });
     }
     return new Request(`http://localhost${endpoint}${query}`, { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify(kind === "embedding" ? { model: "openai/text-embedding-3-small", input: "not a token count" } : { model: "openai/gpt-image-1", prompt: "cat", n: 8 }) });
+      body: JSON.stringify(kind === "embedding" ? { model: "openai/text-embedding-3-small", input: "not a token count" } : { model: "openai/gpt-image-1", prompt: "cat", n: 8, ...overrides }) });
   }
 
   it.each(["image", "edit"])("%s counts returned images without inventing token spend or free cost", async (kind) => {
@@ -829,7 +829,7 @@ describe("image and embedding handler usage accounting", () => {
 
   it("returns binary bytes without reading them for accounting", async () => {
     global.fetch.mockResolvedValue(Response.json({ created: 1, data: [{ b64_json: "Y2F0" }] }));
-    const response = await handlers.image(request("image", "?response_format=binary"));
+    const response = await handlers.image(request("image", "?response_format=binary", { n: 1 }));
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(await response.text()).toBe("cat");
     expect(writes).toHaveBeenCalledTimes(1);

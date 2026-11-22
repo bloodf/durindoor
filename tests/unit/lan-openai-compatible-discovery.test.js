@@ -30,8 +30,9 @@ describe("LAN compatible discovery", () => {
     const conn = { id: "lan", provider: "openai-compatible-lan", providerSpecificData: { baseUrl } };
     const first = await resolveCompatibleCatalog(conn, "none");
     expect(first.models).toEqual([{ id: "lan-model" }]);
-    expect(requests.at(-1)).toMatchObject({ url: "/v1/models" });
-    expect(requests.at(-1).headers.authorization).toBeUndefined();
+    // The catalog fetch is followed by a keyless LM Studio loaded-window probe (/api/v0/models, #5808).
+    expect(requests.map((r) => r.url)).toEqual(["/v1/models", "/api/v0/models"]);
+    expect(requests.every((r) => r.headers.authorization === undefined)).toBe(true);
     const count = requests.length;
     await resolveCompatibleCatalog(conn, "none");
     expect(requests).toHaveLength(count);

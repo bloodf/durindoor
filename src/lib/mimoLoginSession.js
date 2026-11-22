@@ -17,6 +17,7 @@
  */
 
 import { isNumber, isObject, isString } from "@/shared/utils/typeChecks";
+import { assertSocksProxyUrl } from "../../open-sse/utils/socksCredential.js";
 
 const ACCOUNT_HOST = "account.xiaomi.com";
 export const SESSION_COOKIE = "dd_mimo_login";
@@ -497,6 +498,7 @@ async function socksFetch(url, init, proxyUrl, sess) {
   }
   const SocksProxyAgent = await _socksPromise;
   if (!SocksProxyAgent) throw new Error("socks agent unavailable");
+  assertSocksProxyUrl(proxyUrl);
 
   const nodeUrl = new URL(url);
   // Literal specifiers on both branches — webpack forbids fully dynamic import().

@@ -71,8 +71,15 @@ export default {
     { id: "@cf/leonardo/lucid-origin", name: "Lucid Origin", params: ["size"], kind: "image" },
     { id: "@cf/leonardo/phoenix-1.0", name: "Phoenix 1.0", params: ["size"], kind: "image" },
     { id: "@cf/black-forest-labs/flux-1-schnell", name: "FLUX.1 Schnell", params: [], kind: "image" },
+    { id: "@cf/deepgram/nova-3", name: "Deepgram Nova 3 (Workers AI)", params: ["language", "diarize"], kind: "stt" },
   ],
-  serviceKinds: ["llm","embedding","image"],
+  serviceKinds: ["llm","embedding","image","stt"],
+  sttConfig: {
+    baseUrl: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run",
+    authType: "apikey",
+    authHeader: "bearer",
+    format: "cloudflare-workers-ai",
+  },
   embeddingConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/embeddings" },
   imageConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts" },
 };

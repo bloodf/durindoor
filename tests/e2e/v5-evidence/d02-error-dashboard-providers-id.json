@@ -1,0 +1,4 @@
+{
+  "route": "error/dashboard/providers/[id]",
+  "stories": ["production-providers-providerdetailerror--error-boundary"]
+}

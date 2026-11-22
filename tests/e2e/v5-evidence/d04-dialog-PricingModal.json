@@ -1,0 +1,8 @@
+{
+  "route": "dialog/PricingModal",
+  "stories": [
+    "production-shared-domain-pricingmodal--loaded",
+    "production-shared-domain-pricingmodal--save-error-visible",
+    "production-shared-domain-pricingmodal--load-error-visible"
+  ]
+}

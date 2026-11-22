@@ -18,6 +18,23 @@ export default {
 };
 
 export const Default = {};
+export const Loaded = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: "MITM Proxy" })).toBeVisible();
+    await expect(await canvas.findByText("MITM Server")).toBeVisible();
+  },
+};
+export const TrustPrompts = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/mitm", routes: { ...routes, "GET /api/cli-tools/antigravity-mitm": { body: { running: false, certExists: true, certTrusted: false, dnsStatus: {}, hasCachedPassword: false, needsSudoPassword: true, isWin: false } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Trust Cert" }));
+    const dialog = await within(canvasElement.ownerDocument.body).findByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.contains(canvasElement.ownerDocument.activeElement)).toBe(true);
+  },
+};
 export const AntigravityExpanded = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

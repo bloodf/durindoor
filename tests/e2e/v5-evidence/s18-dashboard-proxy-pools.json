@@ -1,0 +1,14 @@
+{
+  "route": "/dashboard/proxy-pools",
+  "stories": [
+    "v5-review-pages-operations-proxypoolspage--populated",
+    "v5-review-pages-operations-proxypoolspage--empty",
+    "v5-review-pages-operations-proxypoolspage--create-pending",
+    "v5-review-pages-operations-proxypoolspage--create-error",
+    "v5-review-pages-operations-proxypoolspage--delete-pending",
+    "v5-review-pages-operations-proxypoolspage--delete-error",
+    "v5-review-pages-operations-proxypoolspage--load-failure-and-retry",
+    "v5-review-pages-operations-proxypoolspage--malformed-response-and-retry",
+    "v5-review-pages-operations-proxypoolspage--network-failure-and-retry"
+  ]
+}

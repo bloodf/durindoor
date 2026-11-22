@@ -678,6 +678,7 @@ export class KiroExecutor extends BaseExecutor {
     ) === true;
     let buffer = new Uint8Array(0);
     let chunkIndex = 0;
+    let bufferedFlushCount = 0;
     const responseId = `chatcmpl-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
     const capabilityModel = resolveKiroModel(model).upstream;
@@ -694,6 +695,7 @@ export class KiroExecutor extends BaseExecutor {
       toolCallIndex: 0,
       seenToolIds: new Map(),
       toolArgsEmitted: new Map(),
+      toolArgsBuffered: new Map(),
       pendingWrapperToolCalls: new Map(),
       inThinking: false,
       stopReason: null
@@ -760,6 +762,29 @@ export class KiroExecutor extends BaseExecutor {
       state.seenToolIds.set(toolCallId, toolIndex);
       state.toolArgsEmitted.set(toolCallId, argumentsStr);
     };
+    // Object inputs are growing snapshots, not concatenable argument fragments.
+    const flushObjectToolArgs = (controller) => {
+      for (const [id, canonical] of state.toolArgsBuffered) {
+        const emitted = state.toolArgsEmitted.get(id) || "";
+        if (!canonical.startsWith(emitted)) {
+          rejectToolCall(controller, "Invalid Kiro tool call: object input conflicts with streamed arguments");
+          return false;
+        }
+        const suffix = canonical.slice(emitted.length);
+        if (suffix) {
+          const index = state.seenToolIds.get(id);
+          const chunk = { id: responseId, object: "chat.completion.chunk", created, model,
+            choices: [{ index: 0, delta: { tool_calls: [{ index, function: { arguments: suffix } }] }, finish_reason: null }] };
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+          state.totalContentLength += suffix.length;
+          state.toolArgsEmitted.set(id, canonical);
+          chunkIndex++;
+          bufferedFlushCount++;
+        }
+      }
+      state.toolArgsBuffered.clear();
+      return true;
+    };
     // Fill argument-less calls only at the terminal boundary, after all fragments arrive.
     const flushEmptyToolArgs = (controller) => {
       for (const [id, index] of state.seenToolIds) {
@@ -791,6 +816,7 @@ export class KiroExecutor extends BaseExecutor {
         if (state.failureSeen) return;
         // Track output so we can emit a keepalive if this frame yields no chunk.
         const enqueueCountBefore = chunkIndex;
+        bufferedFlushCount = 0;
         // Append to buffer
         const newBuffer = new Uint8Array(buffer.length + chunk.length);
         newBuffer.set(buffer);
@@ -1001,7 +1027,7 @@ export class KiroExecutor extends BaseExecutor {
                     argumentsStr = toolInput;
                   } else if (isObject(toolInput)) {
                     try {
-                      argumentsStr = JSON.stringify(toolInput);
+                      state.toolArgsBuffered.set(toolCallId, JSON.stringify(toolInput));
                     } catch (error) {
                       console.error(`[Kiro] dropping malformed tool input: ${error.message}`);
                       continue;
@@ -1081,7 +1107,7 @@ export class KiroExecutor extends BaseExecutor {
 
           // A terminal event is the completion boundary for nested wrapper fragments.
           if (eventType === "messageStopEvent") {
-            if (!flushPendingWrappers(controller)) return;
+            if (!flushPendingWrappers(controller) || !flushObjectToolArgs(controller)) return;
             state.rawTerminalSeen = true;
             state.stopReason = event.payload?.stopReason || event.payload?.stop_reason || null;
           }
@@ -1196,7 +1222,7 @@ export class KiroExecutor extends BaseExecutor {
 
         // No client chunk produced this frame — emit an SSE comment keepalive
         // so the stall watchdog sees upstream activity (ignored by parser/client).
-        if (chunkIndex === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
+        if (chunkIndex - bufferedFlushCount === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
           controller.enqueue(new TextEncoder().encode(": ka\n\n"));
         }
       },

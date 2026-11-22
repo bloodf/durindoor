@@ -81,8 +81,13 @@ export function totpCounter(atMs = Date.now()) {
  * plain auth failure and feed it to the rate limiter.
  */
 export function verifyTotpCode(secret, token, { skew = TOTP_SKEW_STEPS, atMs = Date.now() } = {}) {
+  return findTotpCounter(secret, token, { skew, atMs }) !== null;
+}
+
+/** Return the matching time counter so callers can reject replayed codes. */
+export function findTotpCounter(secret, token, { skew = TOTP_SKEW_STEPS, atMs = Date.now() } = {}) {
   const code = String(token || "").replace(/\s/g, "");
-  if (!secret || !/^\d{6}$/.test(code)) return false;
+  if (!secret || !/^\d{6}$/.test(code)) return null;
 
   const counter = totpCounter(atMs);
   for (let drift = -skew; drift <= skew; drift += 1) {
@@ -90,11 +95,11 @@ export function verifyTotpCode(secret, token, { skew = TOTP_SKEW_STEPS, atMs = D
     try {
       expected = generateTotpCode(secret, counter + drift);
     } catch {
-      return false;
+      return null;
     }
-    if (timingSafeCompare(expected, code)) return true;
+    if (timingSafeCompare(expected, code)) return counter + drift;
   }
-  return false;
+  return null;
 }
 
 /** otpauth:// URI consumed by authenticator apps (and encoded into the QR). */

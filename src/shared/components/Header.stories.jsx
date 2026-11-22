@@ -33,9 +33,12 @@ export const SessionAndSearch = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Providers")).toBeVisible());
-    await waitFor(() => expect(canvas.getByText("Frodo")).toBeVisible());
-    await expect(canvas.getByText("OIDC")).toBeVisible();
-    const search = canvas.getByPlaceholderText("Search requests");
+    // The session chip is `hidden sm:flex`; below the sm breakpoint it is not rendered visibly.
+    if (window.matchMedia("(min-width: 640px)").matches) {
+      await waitFor(() => expect(canvas.getByText("Frodo")).toBeVisible());
+      await expect(canvas.getByText("OIDC")).toBeVisible();
+    }
+    const search = await canvas.findByPlaceholderText("Search requests");
     await userEvent.type(search, "claude");
     await expect(search).toHaveValue("claude");
     await userEvent.click(canvas.getByRole("button", { name: "Clear search" }));

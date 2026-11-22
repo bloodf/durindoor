@@ -5,6 +5,8 @@ source_db=${1:?usage: DURINDOOR_PG_URL=... scripts/copy-proxy-timeline-to-pg.sh 
 : "${DURINDOOR_PG_URL:?DURINDOOR_PG_URL is required}"
 container=${DURINDOOR_PG_CONTAINER:-cortex-postgresql}
 copy_url=${DURINDOOR_PG_COPY_URL:-$DURINDOOR_PG_URL}
+pg_password=${DURINDOOR_PG_PASSWORD:-$(PG_URL="$copy_url" node -e 'process.stdout.write(decodeURIComponent(new URL(process.env.PG_URL).password))')}
+copy_url=$(PG_URL="$copy_url" node -e 'const u = new URL(process.env.PG_URL); u.password = ""; process.stdout.write(u.toString())')
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/durindoor-timeline-copy.XXXXXX")
 remote_dir=/tmp/durindoor-timeline-copy-$$
 trap 'rm -rf "$workdir"; docker exec "$container" rm -rf "$remote_dir" >/dev/null 2>&1 || true' EXIT
@@ -43,7 +45,7 @@ docker exec "$container" chmod 600 "$remote_dir/traces.csv" "$remote_dir/events.
 
 # Single psql session: target remains empty unless copy, verification, and
 # sequence repair all succeed.
-docker exec -u postgres -i "$container" psql "$copy_url" -v ON_ERROR_STOP=1 \
+docker exec -u postgres -e "PGPASSWORD=$pg_password" -i "$container" psql "$copy_url" -v ON_ERROR_STOP=1 \
   -v traces_csv="$remote_dir/traces.csv" -v events_csv="$remote_dir/events.csv" \
   -v traces_summary="$traces_summary" -v events_summary="$events_summary" <<'SQL'
 BEGIN;

@@ -1,10 +1,17 @@
 import { Readable } from "node:stream";
-import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
+import net from "node:net";
+import { Agent, Pool, ProxyAgent, setGlobalDispatcher } from "undici";
+import {
+  __resetProxyDispatcherFailuresForTest,
+  recordProxyDispatcherFailure,
+  recordProxyDispatcherSuccess } from
+"./proxyDispatcherFailures.js";
 import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import {
   assertGuardedProbeDispatcherAddressAllowed,
   isGuardedProbeDispatcher,
+  MAX_RESPONSE_HEADER_SIZE,
   OutboundUrlGuardError } from
 "./outboundUrlGuard.js";
 import { digestMemoryKey } from "./memoryKey.js";
@@ -21,6 +28,32 @@ const NEXT_FETCH_PATCH = Symbol.for("next-patch");
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const proxyDispatchers = new Map();
 let directDispatcher = null;
+// Remember the actual pool used, including proxy fallback, without exposing it
+// on a response or closing a newer replacement after a late authentication error.
+const responseDispatchers = new WeakMap();
+function rememberDispatcher(response, dispatcher, proxyUrl = null) {
+  if (response && dispatcher) {
+    const route = { dispatcher, proxyUrl };
+    responseDispatchers.set(response, route);
+    if (response.body) responseDispatchers.set(response.body, route);
+  }
+  return response;
+}
+
+/** Retire the pool that served an authentication failure; active requests drain. */
+export function evictResponseDispatcher(responseOrBody) {
+  const route = responseOrBody && responseDispatchers.get(responseOrBody);
+  if (!route) return false;
+  if (route.proxyUrl) {
+    const key = proxyDispatcherKey(route.proxyUrl);
+    if (proxyDispatchers.get(key) !== route.dispatcher) return false;
+    return evictProxyDispatcher(route.proxyUrl);
+  }
+  if (directDispatcher !== route.dispatcher) return false;
+  directDispatcher = null;
+  try { Promise.resolve(route.dispatcher.close()).catch(() => {}); } catch { /* already detached */ }
+  return true;
+}
 let bypassTransportForTesting = null;
 let realIpResolverForTesting = null;
 
@@ -42,13 +75,23 @@ export function __setRealIpResolverForTesting(resolver) {
   return () => {realIpResolverForTesting = previous;};
 }
 
+// Test fixtures without close() stand in for a proxy route by identity only;
+// failure-streak eviction must not swap them for a real ProxyAgent. Fixtures
+// that model a closable dispatcher stay evictable like a real pool.
+const pinnedTestDispatchers = new WeakSet();
+
 export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
   const normalized = normalizeProxyUrl(proxyUrl);
-  if (normalized) proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+  if (!normalized) return;
+  proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+  if (dispatcher && !dispatcher.close) {
+    pinnedTestDispatchers.add(dispatcher);
+  }
 }
 
 export function __clearProxyDispatchersForTesting() {
   proxyDispatchers.clear();
+  __resetProxyDispatcherFailuresForTest();
 }
 
 export function __getProxyDispatcherCacheSnapshotForTesting() {
@@ -60,7 +103,7 @@ export function __getProxyDispatcherCacheSnapshotForTesting() {
 }
 
 // Happy Eyeballs (RFC 8305) for direct egress — avoids 30s+ stalls on broken-IPv6 hosts.
-setGlobalDispatcher(new Agent({ connect: { autoSelectFamily: true } }));
+setGlobalDispatcher(new Agent({ maxHeaderSize: MAX_RESPONSE_HEADER_SIZE, connect: { autoSelectFamily: true } }));
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -222,26 +265,89 @@ function raceWithSignal(promise, signal) {
   });
 }
 
-/** Resolve every IPv4 answer through Google DNS (bypass system DNS). */
-async function resolveRealIPs(hostname) {
+// Bound on the UDP resolver. Where UDP/53 to Google DNS is filtered the OS-level
+// timeout is ~30s, which stalls the very request this lookup is unblocking.
+const UDP_RESOLVE_TIMEOUT_MS = 2000;
+const DOH_TIMEOUT_MS = 3000;
+// DNS-over-HTTPS (port 443) fallbacks for networks that block UDP/53.
+const DOH_ENDPOINTS = [
+(hostname) => `https://1.1.1.1/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+(hostname) => `https://dns.google/resolve?name=${encodeURIComponent(hostname)}&type=A`];
+
+/** A usable real answer: public-looking IPv4, never the loopback the spoof points at. */
+function isUsableRealIPv4(address) {
+  return net.isIPv4(address) && !address.startsWith("127.") && address !== "0.0.0.0";
+}
+
+async function resolveViaUdp(hostname, timeoutMs) {
+  const dns = await import("dns");
+  const resolver = new dns.Resolver();
+  resolver.setServers(GOOGLE_DNS_SERVERS);
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {resolver.cancel();} catch {/* resolver already settled */}
+      reject(new Error("queryA ETIMEOUT"));
+    }, timeoutMs);
+    resolver.resolve4(hostname, (error, addresses) => {
+      clearTimeout(timer);
+      if (error) reject(error);else resolve(addresses);
+    });
+  });
+}
+
+async function resolveViaDoh(hostname, fetchImpl) {
+  for (const buildUrl of DOH_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DOH_TIMEOUT_MS);
+    try {
+      const response = await fetchImpl(buildUrl(hostname), {
+        headers: { accept: "application/dns-json" },
+        signal: controller.signal
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const addresses = (Array.isArray(data?.Answer) ? data.Answer : []).
+      filter((answer) => answer?.type === 1 && isString(answer.data) && isUsableRealIPv4(answer.data)).
+      map((answer) => answer.data);
+      if (addresses.length) return addresses;
+    } catch {/* try the next endpoint */} finally {clearTimeout(timer);}
+  }
+  return [];
+}
+
+/**
+ * Resolve every IPv4 answer through Google DNS (bypass system DNS). UDP is tried
+ * first with a short bound; DNS-over-HTTPS is the fallback when UDP/53 is blocked.
+ */
+async function resolveRealIPs(hostname, {
+  udpResolve = resolveViaUdp,
+  dohFetch = (...args) => originalFetch(...args),
+  udpTimeoutMs = UDP_RESOLVE_TIMEOUT_MS
+} = {}) {
   const cached = DNS_CACHE.get(hostname);
   if (cached && Date.now() < cached.expiry) return cached.ips;
 
   try {
     if (realIpResolverForTesting) return await realIpResolverForTesting(hostname);
-    const dns = await import("dns");
-    const { promisify } = await import("util");
-    const resolver = new dns.Resolver();
-    resolver.setServers(GOOGLE_DNS_SERVERS);
-    const resolve4 = promisify(resolver.resolve4.bind(resolver));
-    const addresses = await resolve4(hostname);
-    DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    let addresses = [];
+    try {
+      addresses = await udpResolve(hostname, udpTimeoutMs);
+    } catch (error) {
+      logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
+    }
+    if (!addresses.length) addresses = await resolveViaDoh(hostname, dohFetch);
+    if (addresses.length) {
+      DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    }
     return addresses;
   } catch (error) {
     logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
     return [];
   }
 }
+
+export const __resolveRealIPsForTesting = resolveRealIPs;
+export const __clearRealIpCacheForTesting = () => DNS_CACHE.clear();
 
 /**
  * Check if request should bypass MITM DNS redirect
@@ -498,19 +604,53 @@ function getProxyUrl(targetUrl, proxyOptions) {
 
 /**
  * Pick the proxy for a request made outside proxyAwareFetch (for example the
- * native tls-client): the connection proxy, then the HTTP(S)_PROXY env,
- * else direct. Loopback targets always go direct.
+ * native tls-client): the HTTP relay, then the connection proxy, then the
+ * HTTP(S)_PROXY env, else direct. Loopback targets always go direct.
+ *
+ * A vercel/cloudflare relay is not a CONNECT proxy (`proxyUrl` stays null);
+ * callers that cannot speak the relay header protocol must use
+ * {@link resolveConnectProxyForRequest} or {@link resolveWebSocketProxyRoute}.
+ *
  * @param {string} targetUrl
  * @param {object|null} [proxyOptions]
- * @returns {{source: "connection"|"env"|"direct", proxyUrl: string|null}}
+ * @returns {{source: "relay"|"connection"|"env"|"direct", proxyUrl: string|null, strict: boolean, vercelRelayUrl?: string}}
  */
 export function resolveProxyForRequest(targetUrl, proxyOptions = null) {
-  if (isLoopbackTarget(targetUrl)) return { source: "direct", proxyUrl: null };
+  const strict = proxyOptions?.strictProxy === true;
+  if (isLoopbackTarget(targetUrl)) return { source: "direct", proxyUrl: null, strict };
+  const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
+  if (vercelRelayUrl) return { source: "relay", proxyUrl: null, vercelRelayUrl, strict };
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  if (connectionProxyUrl) return { source: "connection", proxyUrl: connectionProxyUrl };
-  if (proxyOptions?.disableEnvProxy === true) return { source: "direct", proxyUrl: null };
+  if (connectionProxyUrl) return { source: "connection", proxyUrl: connectionProxyUrl, strict };
+  if (proxyOptions?.disableEnvProxy === true) return { source: "direct", proxyUrl: null, strict };
   const envProxyUrl = normalizeProxyUrl(getEnvProxyUrl(targetUrl));
-  return envProxyUrl ? { source: "env", proxyUrl: envProxyUrl } : { source: "direct", proxyUrl: null };
+  return envProxyUrl
+    ? { source: "env", proxyUrl: envProxyUrl, strict }
+    : { source: "direct", proxyUrl: null, strict };
+}
+
+/**
+ * CONNECT-capable proxy for TLS clients and Playwright. Same option order as
+ * {@link proxyAwareFetch} / {@link resolveProxyForRequest}, but an HTTP relay
+ * is not usable as a CONNECT proxy: under strictProxy it fails closed, and
+ * otherwise falls through to direct (non-strict behaviour unchanged).
+ *
+ * @param {string} targetUrl
+ * @param {object|null} [proxyOptions]
+ * @returns {{source: "connection"|"env"|"direct", proxyUrl: string|null, strict: boolean}}
+ */
+export function resolveConnectProxyForRequest(targetUrl, proxyOptions = null) {
+  const route = resolveProxyForRequest(targetUrl, proxyOptions);
+  if (route.source === "relay") {
+    if (route.strict) {
+      throw new Error("[ProxyFetch] Configured HTTP relay does not support CONNECT transport");
+    }
+    return { source: "direct", proxyUrl: null, strict: false };
+  }
+  if (route.strict && !route.proxyUrl) {
+    throw new Error("[ProxyFetch] Proxy required but unavailable (strictProxy=true)");
+  }
+  return route;
 }
 
 export function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
@@ -542,6 +682,64 @@ export function resolveWebSocketProxyRoute(wsUrl, proxyOptions = null) {
     throw new Error("WebSocket proxy required but unavailable");
   }
   return { enabled: Boolean(url), url: url || "", strict: proxyOptions?.strictProxy === true };
+}
+
+function stripIpv6Brackets(hostname) {
+  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+}
+
+// undici's ProxyAgent sends the proxy hostname as TLS SNI on its CONNECT hop,
+// even for an IP literal. Node 26 rejects an IP servername, so an https:// proxy
+// addressed by IP cannot connect. Drop the servername for IP literals only;
+// the connector still verifies the proxy certificate against the IP address.
+// Port of OmniRoute #20880.
+export function createIpProxyClient(origin, options) {
+  const { connect } = options;
+  if (!isFunction(connect)) return new Pool(origin, options);
+  return new Pool(origin, {
+    ...options,
+    connect(parameters, callback) {
+      const { servername } = parameters;
+      const isIpServername = isString(servername) && net.isIP(stripIpv6Brackets(servername)) !== 0;
+      connect({ ...parameters, servername: isIpServername ? undefined : servername }, callback);
+    }
+  });
+}
+
+function usesIpHttpsProxy(normalizedProxyUrl) {
+  try {
+    const parsed = new URL(normalizedProxyUrl);
+    return parsed.protocol === "https:" && net.isIP(stripIpv6Brackets(parsed.hostname)) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+// Drop one proxy's cached dispatcher after repeated failures so the next request
+// builds a fresh pool. close() waits for active streams, so it is not awaited.
+export function evictProxyDispatcher(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (!normalized) return false;
+  const cacheKey = proxyDispatcherKey(normalized);
+  const dispatcher = proxyDispatchers.get(cacheKey);
+  if (!dispatcher || pinnedTestDispatchers.has(dispatcher)) return false;
+  proxyDispatchers.delete(cacheKey);
+  try {
+    Promise.resolve(dispatcher.close?.()).catch(() => {});
+  } catch {
+    // Already detached from the cache; cleanup must not block replacement.
+  }
+  return true;
+}
+
+function noteProxyDispatcherFailure(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized && recordProxyDispatcherFailure(normalized)) evictProxyDispatcher(normalized);
+}
+
+function noteProxyDispatcherSuccess(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized) recordProxyDispatcherSuccess(normalized);
 }
 
 /**
@@ -578,18 +776,21 @@ async function getDispatcher(proxyUrl) {
     // idle-body deadline so a streaming response can run indefinitely.
     const connectTimeout = parseInt(process.env.PROXY_CONNECT_TIMEOUT_MS, 10) || 90000;
     const headersTimeout = parseInt(process.env.PROXY_HEADERS_TIMEOUT_MS, 10) || 300000;
-    proxyDispatchers.set(cacheKey, new ProxyAgent({
+    const proxyAgentOptions = {
       uri: normalized,
       proxyTunnel: true,
       connectTimeout,
       headersTimeout,
       bodyTimeout: 0,
+      maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
       connections: PROXY_FETCH_POOL_CONFIG.proxyConnectionsPerOrigin,
       keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
       keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
       maxCachedSessions: PROXY_FETCH_POOL_CONFIG.proxyMaxCachedSessions,
       pipelining: PROXY_FETCH_POOL_CONFIG.pipelining
-    }));
+    };
+    if (usesIpHttpsProxy(normalized)) proxyAgentOptions.clientFactory = createIpProxyClient;
+    proxyDispatchers.set(cacheKey, new ProxyAgent(proxyAgentOptions));
   }
 
   return proxyDispatchers.get(cacheKey);
@@ -607,6 +808,7 @@ export function parseEyeballsTimeoutMs(raw) {
  */
 export function getDirectDispatcherOptionsForTest() {
   return {
+    maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
     connections: PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin,
     keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
     keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
@@ -650,7 +852,8 @@ async function directFetch(url, options) {
   isNextPatchedFetch ?
   originalFetch :
   currentFetch;
-  return runProviderAttemptDispatch(() => fetchImpl(url, { ...options, dispatcher }));
+  const response = await runProviderAttemptDispatch(() => fetchImpl(url, { ...options, dispatcher }));
+  return options?.dispatcher ? response : rememberDispatcher(response, dispatcher);
 }
 
 /**
@@ -844,7 +1047,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     });
   }
 
-  // Vercel relay: forward request via relay headers
+  // Vercel/Cloudflare relay: forward request via relay headers
   if (vercelRelayUrl) {
     const parsed = new URL(targetUrl);
     // new Headers() copies plain objects AND Headers instances; object spread
@@ -852,7 +1055,27 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const relayHeaders = new Headers(options.headers);
     relayHeaders.set("x-relay-target", `${parsed.protocol}//${parsed.host}`);
     relayHeaders.set("x-relay-path", `${parsed.pathname}${parsed.search}`);
-    return runProviderAttemptDispatch(() => originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders }));
+
+    // Prefer an explicit option; otherwise peel a secret embedded as URL userinfo
+    // by resolveConnectionProxyConfig (credential hops that only forward vercelRelayUrl).
+    let relayFetchUrl = vercelRelayUrl;
+    let relaySecret = normalizeString(proxyOptions?.relaySecret);
+    try {
+      const relayParsed = new URL(vercelRelayUrl);
+      if (!relaySecret && relayParsed.username) {
+        relaySecret = decodeURIComponent(relayParsed.username);
+      }
+      if (relayParsed.username || relayParsed.password) {
+        relayParsed.username = "";
+        relayParsed.password = "";
+        relayFetchUrl = relayParsed.toString();
+      }
+    } catch {
+      // Keep the original relay URL when it is not a parseable absolute URL.
+    }
+    if (relaySecret) relayHeaders.set("x-relay-secret", relaySecret);
+
+    return runProviderAttemptDispatch(() => originalFetch(relayFetchUrl, { ...options, headers: relayHeaders }));
   }
 
   // A strict OAuth pool is an egress boundary, not a preference. If the
@@ -868,7 +1091,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
-        return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+        return rememberDispatcher(await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher })), dispatcher, proxyUrl);
       } catch (proxyError) {
         if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
         rethrowTransportAbort(proxyError, options.signal);
@@ -921,10 +1144,15 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const nonReplayable = hasNonReplayableBody(url, options.body);
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+      const response = await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+      // 504 is the proxy's own gateway timeout, not an upstream answer.
+      if (response?.status === 504) noteProxyDispatcherFailure(proxyUrl);else
+      noteProxyDispatcherSuccess(proxyUrl);
+      return rememberDispatcher(response, dispatcher, proxyUrl);
     } catch (proxyError) {
       if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
       rethrowTransportAbort(proxyError, options.signal);
+      noteProxyDispatcherFailure(proxyUrl);
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");

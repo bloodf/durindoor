@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -26,6 +28,7 @@ const DEVICE_METHODS = new Set(["builder-id", "idc"]);
 export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, provider = "kiro" }) {
   const deviceOnly = provider !== "kiro";
   const providerName = provider === "amazon-q" ? "Amazon Q" : "Kiro";
+  const uiV5 = useUiV5();
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [idcStartUrl, setIdcStartUrl] = useState("");
   const [idcRegion, setIdcRegion] = useState("us-east-1");
@@ -227,7 +230,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, provide
   ];
 
   return (
-    <Modal open={isOpen} title={`Connect ${providerName}`} subtitle={`Choose a secure ${providerName} authentication method.`} onClose={onClose} size="lg" pending={importing} closeOnEscape={!importing} closeOnOverlay={!importing}>
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title={`Connect ${providerName}`} subtitle={`Choose a secure ${providerName} authentication method.`} onClose={onClose} size="lg" pending={importing} closeOnEscape={!importing} closeOnOverlay={!importing}>
       <div className="flex flex-col gap-5">
         {!selectedMethod && (
           <div className="grid gap-2 sm:grid-cols-2">

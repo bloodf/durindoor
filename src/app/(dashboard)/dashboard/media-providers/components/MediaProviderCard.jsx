@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
@@ -15,6 +16,7 @@ function getEffectiveStatus(conn) {
 }
 
 export function MediaProviderCard({ provider, kind, connections, isCustom, onToggle, saving = false }) {
+  const v5 = useUiV5();
   const providerInfo = AI_PROVIDERS[provider.id];
   const isNoAuth = !!providerInfo?.noAuth;
 
@@ -38,15 +40,15 @@ export function MediaProviderCard({ provider, kind, connections, isCustom, onTog
   };
 
   return (
-    <Card hover className={`h-full p-4 ${allDisabled ? "opacity-50" : ""}`}>
+    <Card hover className={`h-full p-4${allDisabled && !v5 ? " opacity-50" : ""}${v5 ? " min-w-0 text-dd-text" : ""}`}>
       <div className="flex min-w-0 items-center justify-between gap-3">
         <Link
           href={`/dashboard/media-providers/${kind}/${provider.id}`}
           className="flex min-h-11 min-w-11 flex-1 items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus"
           aria-label={`Open ${provider.name}`}
         >
-          <ProviderLogo provider={provider.id} fallbackText={provider.textIcon} size={32} className="shrink-0" />
-          <div className="min-w-0">
+          <ProviderLogo provider={provider.id} fallbackText={provider.textIcon} size={32} className={`shrink-0${allDisabled && v5 ? " opacity-50" : ""}`} />
+          <div className={`min-w-0${allDisabled && v5 ? " opacity-50" : ""}`}>
             <h3 className="truncate text-[13px] font-semibold text-dd-text">{provider.name}</h3>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {isCustom && <Badge tone="neutral" size="sm">Custom</Badge>}

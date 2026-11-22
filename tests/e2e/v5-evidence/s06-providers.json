@@ -1,0 +1,15 @@
+{
+  "route": "/dashboard/providers",
+  "stories": [
+    "production-providers-providerspage--inventory",
+    "production-providers-providerspage--status-filtering",
+    "production-providers-providerspage--all-status-scenarios",
+    "production-providers-providerspage--batch-provider-unavailable",
+    "production-providers-providerspage--load-failure-and-retry",
+    "production-providers-providerspage--malformed-response-and-retry",
+    "production-providers-providerspage--network-failure-and-retry",
+    "production-providers-providerspage--rejected-toggle-and-retry",
+    "production-providers-providerspage--partially-rejected-toggle",
+    "production-providers-providerspage--provider-toggle-pending"
+  ]
+}

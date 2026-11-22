@@ -44,8 +44,13 @@ async function POSTHandler(request) {
   if (decoded.response) return decoded.response;
   request = decoded.request;
 
+  const parsed = await request.clone().json().catch(() => null);
+  if (parsed === null) {
+    return Response.json({ type: "error", error: { type: "invalid_request_error", message: "Invalid JSON body" } }, { status: 400 });
+  }
+
   await ensureInitialized();
-  const body = await request.clone().json().catch(() => null);
+  const body = parsed;
   const handlerPromise = handleChat(request);
   if (body?.stream !== true) return await handlerPromise;
 

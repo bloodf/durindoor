@@ -2,7 +2,7 @@
  * OpenAI to Kiro Request Translator
  * Converts OpenAI Chat Completions format to Kiro/AWS CodeWhisperer format
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { v4 as uuidv4 } from "uuid";
 import { resolveSessionId } from "../../utils/sessionManager.js";
@@ -400,8 +400,13 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
               omittedImages++;
             }
           } else if (c.type === CLAUDE_BLOCK.IMAGE) {
-            // Claude format: source.type = "base64", source.media_type, source.data
-            if (c.source?.type === "base64" && c.source?.data) {
+            // AI SDK format: { type: "image", image: "data:image/...;base64,..." }
+            const parsed = parseDataUri(c.image);
+            if (parsed) {
+              const format = parsed.mimeType.split("/")[1] || parsed.mimeType;
+              pendingImages.push({ format, source: { bytes: parsed.base64 } });
+            } else if (c.source?.type === "base64" && c.source?.data) {
+              // Claude format: source.type = "base64", source.media_type, source.data
               const mediaType = c.source.media_type || DEFAULT_IMAGE_MIME;
               const format = mediaType.split("/")[1] || mediaType;
               pendingImages.push({ format, source: { bytes: c.source.data } });

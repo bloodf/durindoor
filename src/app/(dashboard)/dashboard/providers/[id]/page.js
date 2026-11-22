@@ -57,6 +57,7 @@ import PersistedTestResult from "./components/PersistedTestResult";
 import { buildBulkReview, reviewedTargets } from "./components/bulkReview";
 import { saveProviderTestResult, loadProviderTestResults } from "./components/providerTestStore";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { resolveProviderNodeIcon } from "@/shared/utils/providerNodeIcon.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -296,8 +297,7 @@ function ProviderDetail({ providerId }) {
   {
     id: providerNode.id,
     name: providerNode.name || (providerNode.type === "anthropic-compatible" ? "Anthropic Compatible" : "OpenAI Compatible"),
-    color: providerNode.type === "anthropic-compatible" ? "#D97757" : "#10A37F",
-    textIcon: providerNode.type === "anthropic-compatible" ? "AC" : "OC",
+    ...resolveProviderNodeIcon(providerNode),
     apiType: providerNode.apiType,
     baseUrl: providerNode.baseUrl,
     type: providerNode.type,

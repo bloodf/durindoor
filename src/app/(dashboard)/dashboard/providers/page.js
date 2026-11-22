@@ -33,6 +33,7 @@ import AddCompatibleModal from "./components/AddCompatibleModal";
 import LanDiscoveryPanel from "./components/LanDiscoveryPanel";
 import { getProviderStatus, getFreeAuthTypes, matchesProviderSearch, matchesProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 import { testSummaryToast } from "./testSummaryToast";
+import { resolveProviderNodeIcon } from "@/shared/utils/providerNodeIcon.js";
 
 import { requestJSON, requestCollection, updateProviderConnections } from "./workflowRequests.js";
 
@@ -323,8 +324,7 @@ export default function ProvidersPage() {
   map((node) => ({
     id: node.id,
     name: node.name || "OpenAI Compatible",
-    color: "#10A37F",
-    textIcon: "OC",
+    ...resolveProviderNodeIcon(node),
     apiType: node.apiType,
     ...(node.iconUrl ? { iconUrl: node.iconUrl } : null)
   })).
@@ -335,8 +335,7 @@ export default function ProvidersPage() {
   map((node) => ({
     id: node.id,
     name: node.name || "Anthropic Compatible",
-    color: "#D97757",
-    textIcon: "AC",
+    ...resolveProviderNodeIcon(node),
     ...(node.iconUrl ? { iconUrl: node.iconUrl } : null)
   })).
   filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));

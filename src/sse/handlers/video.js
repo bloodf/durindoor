@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { randomUUID } from "node:crypto";
@@ -105,6 +106,10 @@ async function handleVideoGenerationHandler(request) {
 async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId, billingEpoch, comboName = null) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+  if (modelInfo.provider === "openrouter") {
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, "video"); }
+    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
   const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model, apiKey);
   if (policyError) return policyError;
   const kindError = await modelKindError(modelInfo.provider, modelInfo.model, await getSettings(), "video");
@@ -275,6 +280,10 @@ async function handleVideoCreateHandler(request, action) {
   const resolved = await resolveVideoProvider(requestedModel, settings, apiKeyAuth.apiKeyId);
   if (resolved.error) return resolved.error;
   const { provider, model } = resolved;
+  if (provider === "openrouter") {
+    try { applyOpenRouterRouting(bodyInfo.parsed || {}, settings.openrouterRouting, "video"); }
+    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
 
   const policyError = await enforceVideoPolicy(request, provider, model, apiKey);
   if (policyError) return policyError;

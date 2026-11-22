@@ -1,5 +1,7 @@
 "use client";
 
+import OpenRouterRoutingCard from "./OpenRouterRoutingCard";
+
 import ProviderRpmControl from "./ProviderRpmControl.jsx";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -2020,6 +2022,7 @@ function ProviderDetail({ providerId }) {
 
       <NativeProviderReadiness providerId={providerId} connections={connections} />
 
+      {providerId === "openrouter" && <OpenRouterRoutingCard providerId={providerId} />}
       {isCompatible && providerNode &&
       <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

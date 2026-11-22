@@ -131,6 +131,7 @@ async function handleEmbeddingsHandler(request) {
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
+      routingPolicy: (await getSettings()).openrouterRouting,
       credentials: refreshedCredentials,
       signal: request.signal,
       log,

@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -83,6 +84,11 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  if (provider === "openrouter") {
+    try { applyOpenRouterRouting(jsonBody || {}, (await getSettings()).openrouterRouting, "image"); }
+    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
+
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const kindError = await imageModelKindError(provider, model, await getSettings());

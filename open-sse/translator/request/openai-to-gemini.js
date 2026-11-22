@@ -93,7 +93,11 @@ function normalizeGeminiContents(contents) {
     });
   }
 
-  return out;
+  // Gemini requires a mixed user turn to end in a function response.
+  return out.map((content) => content.role === GEMINI_ROLE.USER && content.parts.some((part) => part?.functionResponse) ? {
+    ...content,
+    parts: [...content.parts.filter((part) => !part?.functionResponse), ...content.parts.filter((part) => part?.functionResponse)]
+  } : content);
 }
 
 // Reserve caller-supplied ids, including future ones, in both Gemini converters (#4532).

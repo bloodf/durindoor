@@ -1,5 +1,6 @@
 // OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft)
 import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const imageCfg = (id) => PROVIDER_MEDIA[id]?.imageConfig || {};
 const imageUrl = (id) => imageCfg(id).baseUrl;
@@ -15,7 +16,7 @@ export default function createOpenAIAdapter(providerId) {
       return headers;
     },
     buildBody: (model, body) => {
-      const { prompt, n = 1, size = "1024x1024", quality, style, response_format, aspect_ratio, resolution, background, output_format, output_compression, moderation } = body;
+      const { prompt, n = 1, size = "1024x1024", quality, style, response_format, aspect_ratio, resolution, background, output_format, output_compression, moderation, complexity } = body;
       const full = { model, prompt, n, size };
       if (quality) full.quality = quality;
       if (style) full.style = style;
@@ -24,8 +25,18 @@ export default function createOpenAIAdapter(providerId) {
       if (resolution) full.resolution = resolution;
       if (background) full.background = background;
       if (output_format) full.output_format = output_format;
-      if (output_compression !== undefined) full.output_compression = output_compression;
-      if (moderation) full.moderation = moderation;
+      if (providerId === "openai") {
+        if (complexity !== undefined) full.complexity = complexity;
+        if (moderation !== undefined) full.moderation = moderation;
+        const format = isString(output_format) ? output_format.trim().toLowerCase() : "";
+        if ((format === "jpeg" || format === "webp") && Number.isFinite(output_compression)) {
+          full.output_format = format;
+          full.output_compression = output_compression;
+        }
+      } else {
+        if (output_compression !== undefined) full.output_compression = output_compression;
+        if (moderation) full.moderation = moderation;
+      }
       // bodyFields whitelist applies only provider-supported native fields.
       if (Array.isArray(cfg.bodyFields)) {
         const req = {};

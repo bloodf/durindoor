@@ -48,7 +48,8 @@ export default async function RootLayout({ children }) {
     <html lang={locale} dir={direction} suppressHydrationWarning>
       <head>
         {/* Blocking pre-paint bootstrap reads Zustand's {state:{theme}} envelope.
-            A same-origin file stays CSP-authorizable via script-src 'self' without unsafe-inline. */}
+            Same-origin file (not inline) so a future nonce/hash CSP can authorize it;
+            the baseline CSP omits script-src — Next inline runtime would break. */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts -- must run before first paint */}
         <script src="/theme-bootstrap.js"></script>
         <script

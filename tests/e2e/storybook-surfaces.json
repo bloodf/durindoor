@@ -47633,12 +47633,12 @@
       "id": "src/shared/components/CursorAuthModal.js#CursorAuthModal",
       "sourcePath": "src/shared/components/CursorAuthModal.js",
       "symbol": "CursorAuthModal",
-      "sourceSha256": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+      "sourceSha256": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: CursorAuthModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-cursorauthmodal--auto-detected",
         "production-shared-kiro-cursorauthmodal--auto-detecting",
@@ -47647,14 +47647,7 @@
         "production-shared-kiro-cursorauthmodal--manual-import-failure",
         "production-shared-kiro-cursorauthmodal--importing"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-cursorauthmodal--auto-detected",
-        "production-shared-kiro-cursorauthmodal--auto-detecting",
-        "production-shared-kiro-cursorauthmodal--windows-manual",
-        "production-shared-kiro-cursorauthmodal--manual-import-validation",
-        "production-shared-kiro-cursorauthmodal--manual-import-failure",
-        "production-shared-kiro-cursorauthmodal--importing"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-cursorauthmodal--auto-detected",
@@ -47665,7 +47658,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Found-token fixture completes auto detection; CursorAuthModal final branch renders success Notice and enabled Import Token.",
@@ -47680,7 +47673,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Pending auto-import leaves CursorAuthModal in its autoDetecting LoadingState.",
@@ -47695,7 +47688,7 @@
             "windows-manual"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "windowsManual fixture selects manual-warning branch, rendering retry control and warning Notice.",
@@ -47710,7 +47703,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Story stays in windows-manual branch after filling both credentials; final enabled Import Token control is owned by CursorAuthModal. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -47729,7 +47722,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "POST import returns Cursor token rejected; final CursorAuthModal error alert renders that server message.",
@@ -47745,7 +47738,7 @@
             "busy-control"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Pending actual import request keeps the production Import Token control busy; absence of distinct body text is not a coverage waiver. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -47757,33 +47750,152 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: CursorAuthModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: CursorAuthModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-cursorauthmodal--auto-detected",
+            "production-shared-kiro-cursorauthmodal--auto-detecting",
+            "production-shared-kiro-cursorauthmodal--windows-manual",
+            "production-shared-kiro-cursorauthmodal--manual-import-validation",
+            "production-shared-kiro-cursorauthmodal--manual-import-failure",
+            "production-shared-kiro-cursorauthmodal--importing"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-cursorauthmodal--auto-detected",
+              "storyId": "production-shared-kiro-cursorauthmodal--auto-detected",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--auto-detected",
+              "axes": [
+                "auto-detect",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "Found-token fixture completes auto detection; CursorAuthModal final branch renders success Notice and enabled Import Token.",
+              "expectedVisibleText": "Tokens auto-detected from Cursor IDE successfully."
+            },
+            {
+              "id": "production-shared-kiro-cursorauthmodal--auto-detecting",
+              "storyId": "production-shared-kiro-cursorauthmodal--auto-detecting",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--auto-detecting",
+              "axes": [
+                "auto-detect",
+                "loading"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "Pending auto-import leaves CursorAuthModal in its autoDetecting LoadingState.",
+              "expectedVisibleText": "Auto-detecting tokens…"
+            },
+            {
+              "id": "production-shared-kiro-cursorauthmodal--windows-manual",
+              "storyId": "production-shared-kiro-cursorauthmodal--windows-manual",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--windows-manual",
+              "axes": [
+                "auto-detect",
+                "windows-manual"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "windowsManual fixture selects manual-warning branch, rendering retry control and warning Notice.",
+              "expectedVisibleText": "Could not read Cursor database automatically."
+            },
+            {
+              "id": "production-shared-kiro-cursorauthmodal--manual-import-validation",
+              "storyId": "production-shared-kiro-cursorauthmodal--manual-import-validation",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--manual-import-validation",
+              "axes": [
+                "manual-import",
+                "validation"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "Story stays in windows-manual branch after filling both credentials; final enabled Import Token control is owned by CursorAuthModal. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "Import Token",
+                "disabled": false
+              }
+            },
+            {
+              "id": "production-shared-kiro-cursorauthmodal--manual-import-failure",
+              "storyId": "production-shared-kiro-cursorauthmodal--manual-import-failure",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--manual-import-failure",
+              "axes": [
+                "manual-import",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "POST import returns Cursor token rejected; final CursorAuthModal error alert renders that server message.",
+              "expectedVisibleText": "Cursor token rejected"
+            },
+            {
+              "id": "production-shared-kiro-cursorauthmodal--importing",
+              "storyId": "production-shared-kiro-cursorauthmodal--importing",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--importing",
+              "axes": [
+                "import",
+                "pending",
+                "busy-control"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "Pending actual import request keeps the production Import Token control busy; absence of distinct body text is not a coverage waiver. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "Import Token",
+                "busy": true
+              }
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: CursorAuthModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/CursorAuthModal.js#LoadingState",
       "sourcePath": "src/shared/components/CursorAuthModal.js",
       "symbol": "LoadingState",
-      "sourceSha256": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+      "sourceSha256": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: CursorAuthModal renders LoadingState when autoDetecting.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-cursorauthmodal--auto-detecting"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-cursorauthmodal--auto-detecting"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-cursorauthmodal--auto-detecting",
@@ -47794,7 +47906,7 @@
             "auto-detect"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "CursorAuthModal renders LoadingState only while autoDetecting; pending fixture preserves its status region.",
@@ -47802,35 +47914,64 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: CursorAuthModal renders LoadingState when autoDetecting.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: CursorAuthModal renders LoadingState when autoDetecting.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-cursorauthmodal--auto-detecting"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-cursorauthmodal--auto-detecting",
+              "storyId": "production-shared-kiro-cursorauthmodal--auto-detecting",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--auto-detecting",
+              "axes": [
+                "loading",
+                "auto-detect"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "CursorAuthModal renders LoadingState only while autoDetecting; pending fixture preserves its status region.",
+              "expectedVisibleText": "Auto-detecting tokens…"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: CursorAuthModal renders LoadingState when autoDetecting.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/CursorAuthModal.js#Notice",
       "sourcePath": "src/shared/components/CursorAuthModal.js",
       "symbol": "Notice",
-      "sourceSha256": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+      "sourceSha256": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: CursorAuthModal renders success Notice when autoDetected. CursorAuthModal renders warning Notice for windowsManual.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-cursorauthmodal--auto-detected",
         "production-shared-kiro-cursorauthmodal--windows-manual"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-cursorauthmodal--auto-detected",
-        "production-shared-kiro-cursorauthmodal--windows-manual"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-cursorauthmodal--auto-detected",
@@ -47841,7 +47982,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Found-token auto detection renders CursorAuthModal Notice with success message.",
@@ -47856,7 +47997,7 @@
             "warning"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "windowsManual response renders CursorAuthModal warning Notice.",
@@ -47864,16 +48005,64 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: CursorAuthModal renders success Notice when autoDetected. CursorAuthModal renders warning Notice for windowsManual.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: CursorAuthModal renders success Notice when autoDetected. CursorAuthModal renders warning Notice for windowsManual.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-cursorauthmodal--auto-detected",
+            "production-shared-kiro-cursorauthmodal--windows-manual"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-cursorauthmodal--auto-detected",
+              "storyId": "production-shared-kiro-cursorauthmodal--auto-detected",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--auto-detected",
+              "axes": [
+                "notice",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "Found-token auto detection renders CursorAuthModal Notice with success message.",
+              "expectedVisibleText": "Tokens auto-detected from Cursor IDE successfully."
+            },
+            {
+              "id": "production-shared-kiro-cursorauthmodal--windows-manual",
+              "storyId": "production-shared-kiro-cursorauthmodal--windows-manual",
+              "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--windows-manual",
+              "axes": [
+                "notice",
+                "warning"
+              ],
+              "sourceHashes": {
+                "src/shared/components/CursorAuthModal.js": "24c0dcc71f712257ffc676835c6c135d81939561274f00dc66964ee78fdf8aae",
+                "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
+              },
+              "proposedSourceEvidence": "windowsManual response renders CursorAuthModal warning Notice.",
+              "expectedVisibleText": "Could not read Cursor database automatically."
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: CursorAuthModal renders success Notice when autoDetected. CursorAuthModal renders warning Notice for windowsManual.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/DateRangePicker.js#DateRangePicker",
@@ -48561,7 +48750,7 @@
       "id": "src/shared/components/GheCopilotAuthModal.js#GheCopilotAuthModal",
       "sourcePath": "src/shared/components/GheCopilotAuthModal.js",
       "symbol": "GheCopilotAuthModal",
-      "sourceSha256": "2689ec876ecbcf9abfd4d79928a8daa525dc0bb9547a64a5a884bef12dcdebf0",
+      "sourceSha256": "7456720ba64f977b0214c7f34e533b8e273be2e19d6ab647ad51e3eaac6a3a87",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -48580,12 +48769,12 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/GheCopilotAuthModal.js": "2689ec876ecbcf9abfd4d79928a8daa525dc0bb9547a64a5a884bef12dcdebf0",
-            "src/shared/components/GheCopilotAuthModal.stories.jsx": "12942daa8eccaa028f3c800dbac9f431c832646fcf854cb400916941b29dfdbd",
+            "src/shared/components/GheCopilotAuthModal.js": "7456720ba64f977b0214c7f34e533b8e273be2e19d6ab647ad51e3eaac6a3a87",
+            "src/shared/components/GheCopilotAuthModal.stories.jsx": "ef7c950fbde43c88d72f19eb56e98ffe9324de5fe7a9bdfacf07cbef2ca27d28",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
             "src/app/api/oauth/[provider]/[action]/route.js": "1dc93da3bf3ce3fcda5c7df5e688c3935b80a63bf86aa7bb9ebca90c744242d5"
           },
@@ -48604,12 +48793,12 @@
             "OAuth-handoff"
           ],
           "sourceHashes": {
-            "src/shared/components/GheCopilotAuthModal.js": "2689ec876ecbcf9abfd4d79928a8daa525dc0bb9547a64a5a884bef12dcdebf0",
-            "src/shared/components/GheCopilotAuthModal.stories.jsx": "12942daa8eccaa028f3c800dbac9f431c832646fcf854cb400916941b29dfdbd",
+            "src/shared/components/GheCopilotAuthModal.js": "7456720ba64f977b0214c7f34e533b8e273be2e19d6ab647ad51e3eaac6a3a87",
+            "src/shared/components/GheCopilotAuthModal.stories.jsx": "ef7c950fbde43c88d72f19eb56e98ffe9324de5fe7a9bdfacf07cbef2ca27d28",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
             "src/app/api/oauth/[provider]/[action]/route.js": "1dc93da3bf3ce3fcda5c7df5e688c3935b80a63bf86aa7bb9ebca90c744242d5"
           },
@@ -48822,24 +49011,19 @@
       "id": "src/shared/components/GitLabAuthModal.js#GitLabAuthModal",
       "sourcePath": "src/shared/components/GitLabAuthModal.js",
       "symbol": "GitLabAuthModal",
-      "sourceSha256": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+      "sourceSha256": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: GitLabAuthModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-oauth-gitlabauthmodal--mode-selection",
         "production-shared-oauth-gitlabauthmodal--o-auth-configuration",
         "production-shared-oauth-gitlabauthmodal--pat-failure",
         "production-shared-oauth-gitlabauthmodal--empty-pat-blocks-submit"
       ],
-      "approvedScenarioIds": [
-        "production-shared-oauth-gitlabauthmodal--mode-selection",
-        "production-shared-oauth-gitlabauthmodal--o-auth-configuration",
-        "production-shared-oauth-gitlabauthmodal--pat-failure",
-        "production-shared-oauth-gitlabauthmodal--empty-pat-blocks-submit"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-oauth-gitlabauthmodal--mode-selection",
@@ -48849,7 +49033,7 @@
             "mode-selection"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "Initial GitLabAuthModal branch renders auth-method cards.",
@@ -48864,7 +49048,7 @@
             "configuration"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "OAuthConfiguration selects OAuth app and final form renders GitLab base URL, Client ID, and optional secret fields. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -48882,7 +49066,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "PAT endpoint returns failure; Input error branch renders server message.",
@@ -48897,7 +49081,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "Empty PAT keeps rendered Connect control disabled. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -48909,16 +49093,102 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: GitLabAuthModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: GitLabAuthModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-oauth-gitlabauthmodal--mode-selection",
+            "production-shared-oauth-gitlabauthmodal--o-auth-configuration",
+            "production-shared-oauth-gitlabauthmodal--pat-failure",
+            "production-shared-oauth-gitlabauthmodal--empty-pat-blocks-submit"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-oauth-gitlabauthmodal--mode-selection",
+              "storyId": "production-shared-oauth-gitlabauthmodal--mode-selection",
+              "runtimeArtifactId": "production-shared-oauth-gitlabauthmodal--mode-selection",
+              "axes": [
+                "mode-selection"
+              ],
+              "sourceHashes": {
+                "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+                "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
+              },
+              "proposedSourceEvidence": "Initial GitLabAuthModal branch renders auth-method cards.",
+              "expectedVisibleText": "Choose how to authenticate with GitLab Duo:"
+            },
+            {
+              "id": "production-shared-oauth-gitlabauthmodal--o-auth-configuration",
+              "storyId": "production-shared-oauth-gitlabauthmodal--o-auth-configuration",
+              "runtimeArtifactId": "production-shared-oauth-gitlabauthmodal--o-auth-configuration",
+              "axes": [
+                "OAuth",
+                "configuration"
+              ],
+              "sourceHashes": {
+                "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+                "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
+              },
+              "proposedSourceEvidence": "OAuthConfiguration selects OAuth app and final form renders GitLab base URL, Client ID, and optional secret fields. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "textbox",
+                "name": "Client ID"
+              }
+            },
+            {
+              "id": "production-shared-oauth-gitlabauthmodal--pat-failure",
+              "storyId": "production-shared-oauth-gitlabauthmodal--pat-failure",
+              "runtimeArtifactId": "production-shared-oauth-gitlabauthmodal--pat-failure",
+              "axes": [
+                "PAT",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+                "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
+              },
+              "proposedSourceEvidence": "PAT endpoint returns failure; Input error branch renders server message.",
+              "expectedVisibleText": "Token rejected by GitLab"
+            },
+            {
+              "id": "production-shared-oauth-gitlabauthmodal--empty-pat-blocks-submit",
+              "storyId": "production-shared-oauth-gitlabauthmodal--empty-pat-blocks-submit",
+              "runtimeArtifactId": "production-shared-oauth-gitlabauthmodal--empty-pat-blocks-submit",
+              "axes": [
+                "PAT",
+                "validation"
+              ],
+              "sourceHashes": {
+                "src/shared/components/GitLabAuthModal.js": "3703abe6932cc6786aecfcb8b67dd9438abdf6acf33861a405730dd1541afc87",
+                "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
+              },
+              "proposedSourceEvidence": "Empty PAT keeps rendered Connect control disabled. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "Connect",
+                "disabled": true
+              }
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: GitLabAuthModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/Header.js#Header",
@@ -49245,22 +49515,18 @@
       "id": "src/shared/components/IFlowCookieModal.js#IFlowCookieModal",
       "sourcePath": "src/shared/components/IFlowCookieModal.js",
       "symbol": "IFlowCookieModal",
-      "sourceSha256": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+      "sourceSha256": "9d1bb90348cf23faf18e5d5163570d0866aaeaa42b95b29b97647385943c0314",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: IFlowCookieModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-oauth-iflowcookiemodal--default",
         "production-shared-oauth-iflowcookiemodal--server-error",
         "production-shared-oauth-iflowcookiemodal--empty-submit"
       ],
-      "approvedScenarioIds": [
-        "production-shared-oauth-iflowcookiemodal--default",
-        "production-shared-oauth-iflowcookiemodal--server-error",
-        "production-shared-oauth-iflowcookiemodal--empty-submit"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-oauth-iflowcookiemodal--default",
@@ -49271,7 +49537,7 @@
             "default"
           ],
           "sourceHashes": {
-            "src/shared/components/IFlowCookieModal.js": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+            "src/shared/components/IFlowCookieModal.js": "9d1bb90348cf23faf18e5d5163570d0866aaeaa42b95b29b97647385943c0314",
             "src/shared/components/IFlowCookieModal.stories.jsx": "7f7ee071ae70570ad488c7c7cb1b297faf84c8685dbc66a42e6fe731281f9a70"
           },
           "proposedSourceEvidence": "Default opens IFlowCookieModal initial cookie-entry branch.",
@@ -49286,7 +49552,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/IFlowCookieModal.js": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+            "src/shared/components/IFlowCookieModal.js": "9d1bb90348cf23faf18e5d5163570d0866aaeaa42b95b29b97647385943c0314",
             "src/shared/components/IFlowCookieModal.stories.jsx": "7f7ee071ae70570ad488c7c7cb1b297faf84c8685dbc66a42e6fe731281f9a70"
           },
           "proposedSourceEvidence": "Cookie endpoint returns error; final Textarea error renders server message.",
@@ -49301,7 +49567,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/IFlowCookieModal.js": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+            "src/shared/components/IFlowCookieModal.js": "9d1bb90348cf23faf18e5d5163570d0866aaeaa42b95b29b97647385943c0314",
             "src/shared/components/IFlowCookieModal.stories.jsx": "7f7ee071ae70570ad488c7c7cb1b297faf84c8685dbc66a42e6fe731281f9a70"
           },
           "proposedSourceEvidence": "Empty Authenticate invokes client validation and final Textarea error renders message.",
@@ -49309,22 +49575,86 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: IFlowCookieModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: IFlowCookieModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-oauth-iflowcookiemodal--default",
+            "production-shared-oauth-iflowcookiemodal--server-error",
+            "production-shared-oauth-iflowcookiemodal--empty-submit"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-oauth-iflowcookiemodal--default",
+              "storyId": "production-shared-oauth-iflowcookiemodal--default",
+              "runtimeArtifactId": "production-shared-oauth-iflowcookiemodal--default",
+              "axes": [
+                "cookie",
+                "default"
+              ],
+              "sourceHashes": {
+                "src/shared/components/IFlowCookieModal.js": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+                "src/shared/components/IFlowCookieModal.stories.jsx": "7f7ee071ae70570ad488c7c7cb1b297faf84c8685dbc66a42e6fe731281f9a70"
+              },
+              "proposedSourceEvidence": "Default opens IFlowCookieModal initial cookie-entry branch.",
+              "expectedVisibleText": "How to get cookie:"
+            },
+            {
+              "id": "production-shared-oauth-iflowcookiemodal--server-error",
+              "storyId": "production-shared-oauth-iflowcookiemodal--server-error",
+              "runtimeArtifactId": "production-shared-oauth-iflowcookiemodal--server-error",
+              "axes": [
+                "cookie",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/IFlowCookieModal.js": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+                "src/shared/components/IFlowCookieModal.stories.jsx": "7f7ee071ae70570ad488c7c7cb1b297faf84c8685dbc66a42e6fe731281f9a70"
+              },
+              "proposedSourceEvidence": "Cookie endpoint returns error; final Textarea error renders server message.",
+              "expectedVisibleText": "Cookie is expired"
+            },
+            {
+              "id": "production-shared-oauth-iflowcookiemodal--empty-submit",
+              "storyId": "production-shared-oauth-iflowcookiemodal--empty-submit",
+              "runtimeArtifactId": "production-shared-oauth-iflowcookiemodal--empty-submit",
+              "axes": [
+                "cookie",
+                "validation"
+              ],
+              "sourceHashes": {
+                "src/shared/components/IFlowCookieModal.js": "881dfbb9a5d302db2e64a750d0e5b727043f3712bfb5541a85238e4f2dbeae2c",
+                "src/shared/components/IFlowCookieModal.stories.jsx": "7f7ee071ae70570ad488c7c7cb1b297faf84c8685dbc66a42e6fe731281f9a70"
+              },
+              "proposedSourceEvidence": "Empty Authenticate invokes client validation and final Textarea error renders message.",
+              "expectedVisibleText": "Please paste your cookie"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: IFlowCookieModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/ImportTokenModal.js#ImportTokenModal",
       "sourcePath": "src/shared/components/ImportTokenModal.js",
       "symbol": "ImportTokenModal",
-      "sourceSha256": "f9de5c341f3ba723e12a123ba8099560ee6593352657439c884994e1c1d37793",
+      "sourceSha256": "b54faeabef7f3c3c09fbd345f3e1cffa52739f148ad6a076e9a3231696b4ad6d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -49346,7 +49676,7 @@
             "token-input"
           ],
           "sourceHashes": {
-            "src/shared/components/ImportTokenModal.js": "f9de5c341f3ba723e12a123ba8099560ee6593352657439c884994e1c1d37793",
+            "src/shared/components/ImportTokenModal.js": "b54faeabef7f3c3c09fbd345f3e1cffa52739f148ad6a076e9a3231696b4ad6d",
             "src/shared/components/ImportTokenModal.stories.jsx": "bd8afc61c205162d438001caed72b7f7ccce7fcd0a37033761ab7a264e3cc309"
           },
           "proposedSourceEvidence": "Open renders actual ImportTokenModal with its controlled caller and leaves Access token input visible. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -49364,7 +49694,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/ImportTokenModal.js": "f9de5c341f3ba723e12a123ba8099560ee6593352657439c884994e1c1d37793",
+            "src/shared/components/ImportTokenModal.js": "b54faeabef7f3c3c09fbd345f3e1cffa52739f148ad6a076e9a3231696b4ad6d",
             "src/shared/components/ImportTokenModal.stories.jsx": "bd8afc61c205162d438001caed72b7f7ccce7fcd0a37033761ab7a264e3cc309"
           },
           "proposedSourceEvidence": "Import endpoint returns failure; final Input error renders server message.",
@@ -49379,7 +49709,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ImportTokenModal.js": "f9de5c341f3ba723e12a123ba8099560ee6593352657439c884994e1c1d37793",
+            "src/shared/components/ImportTokenModal.js": "b54faeabef7f3c3c09fbd345f3e1cffa52739f148ad6a076e9a3231696b4ad6d",
             "src/shared/components/ImportTokenModal.stories.jsx": "bd8afc61c205162d438001caed72b7f7ccce7fcd0a37033761ab7a264e3cc309"
           },
           "proposedSourceEvidence": "Default preserves Cancel transition and now asserts actual Connect GitHub dialog absent.",
@@ -49604,12 +49934,12 @@
       "id": "src/shared/components/KiroAuthModal.js#KiroAuthModal",
       "sourcePath": "src/shared/components/KiroAuthModal.js",
       "symbol": "KiroAuthModal",
-      "sourceSha256": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+      "sourceSha256": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: KiroAuthModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-kiroauthmodal--method-selection",
         "production-shared-kiro-kiroauthmodal--idc-validation-error",
@@ -49621,17 +49951,7 @@
         "production-shared-kiro-kiroauthmodal--mobile-method-selection",
         "production-shared-kiro-kiroauthmodal--rtl-method-selection"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-kiroauthmodal--method-selection",
-        "production-shared-kiro-kiroauthmodal--idc-validation-error",
-        "production-shared-kiro-kiroauthmodal--api-key-back-navigation",
-        "production-shared-kiro-kiroauthmodal--import-auto-detect-failure",
-        "production-shared-kiro-kiroauthmodal--import-auto-detecting",
-        "production-shared-kiro-kiroauthmodal--import-auto-detected",
-        "production-shared-kiro-kiroauthmodal--cli-proxy-import-failure",
-        "production-shared-kiro-kiroauthmodal--mobile-method-selection",
-        "production-shared-kiro-kiroauthmodal--rtl-method-selection"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-kiroauthmodal--method-selection",
@@ -49641,7 +49961,7 @@
             "method-selection"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Initial KiroAuthModal method grid renders all visible Kiro authentication method cards. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -49659,7 +49979,7 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Story ends in IDC form after empty Continue; Input renders IDC start URL validation error.",
@@ -49674,7 +49994,7 @@
             "back"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Story exits API-key form through Back; final KiroAuthModal method grid renders AWS Builder ID control. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -49692,7 +50012,7 @@
             "auto-detect-failure"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Auto-detect failure becomes Refresh Token Input error.",
@@ -49707,7 +50027,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Pending auto-import renders KiroAuthModal LoadingState.",
@@ -49722,7 +50042,7 @@
             "auto-detect-success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Found refresh token renders success Notice and enabled Import Token action.",
@@ -49737,7 +50057,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "CLIProxyAPI import failure renders returned error on textarea.",
@@ -49752,7 +50072,7 @@
             "mobile"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Mobile story retains method grid and verifies rendered Builder ID card geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -49770,7 +50090,7 @@
             "RTL"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "RTL fixture renders KiroAuthModal method grid and Builder ID callback control. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -49781,36 +50101,205 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: KiroAuthModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "historicalSourceReviewFindings": [
         "SocialGoogleManualCallback and SocialGitHubManualCallback render KiroSocialOAuthModal directly, not KiroAuthModal; reject as KiroAuthModal mappings."
       ],
       "proposedSourceReviewNotes": "Current source/CSF audit: KiroAuthModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-kiroauthmodal--method-selection",
+            "production-shared-kiro-kiroauthmodal--idc-validation-error",
+            "production-shared-kiro-kiroauthmodal--api-key-back-navigation",
+            "production-shared-kiro-kiroauthmodal--import-auto-detect-failure",
+            "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+            "production-shared-kiro-kiroauthmodal--import-auto-detected",
+            "production-shared-kiro-kiroauthmodal--cli-proxy-import-failure",
+            "production-shared-kiro-kiroauthmodal--mobile-method-selection",
+            "production-shared-kiro-kiroauthmodal--rtl-method-selection"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-kiroauthmodal--method-selection",
+              "storyId": "production-shared-kiro-kiroauthmodal--method-selection",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--method-selection",
+              "axes": [
+                "method-selection"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Initial KiroAuthModal method grid renders all visible Kiro authentication method cards. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "AWS Builder ID"
+              }
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--idc-validation-error",
+              "storyId": "production-shared-kiro-kiroauthmodal--idc-validation-error",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--idc-validation-error",
+              "axes": [
+                "IDC",
+                "validation-error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Story ends in IDC form after empty Continue; Input renders IDC start URL validation error.",
+              "expectedVisibleText": "Enter your IDC start URL"
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--api-key-back-navigation",
+              "storyId": "production-shared-kiro-kiroauthmodal--api-key-back-navigation",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--api-key-back-navigation",
+              "axes": [
+                "API-key",
+                "back"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Story exits API-key form through Back; final KiroAuthModal method grid renders AWS Builder ID control. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "AWS Builder ID"
+              }
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--import-auto-detect-failure",
+              "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detect-failure",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detect-failure",
+              "axes": [
+                "import",
+                "auto-detect-failure"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Auto-detect failure becomes Refresh Token Input error.",
+              "expectedVisibleText": "Kiro IDE was not found"
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+              "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+              "axes": [
+                "import",
+                "loading"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Pending auto-import renders KiroAuthModal LoadingState.",
+              "expectedVisibleText": "Auto-detecting token…"
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--import-auto-detected",
+              "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detected",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detected",
+              "axes": [
+                "import",
+                "auto-detect-success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Found refresh token renders success Notice and enabled Import Token action.",
+              "expectedVisibleText": "Token auto-detected from Kiro IDE successfully."
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--cli-proxy-import-failure",
+              "storyId": "production-shared-kiro-kiroauthmodal--cli-proxy-import-failure",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--cli-proxy-import-failure",
+              "axes": [
+                "CLIProxyAPI",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "CLIProxyAPI import failure renders returned error on textarea.",
+              "expectedVisibleText": "Unsupported auth_method"
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--mobile-method-selection",
+              "storyId": "production-shared-kiro-kiroauthmodal--mobile-method-selection",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--mobile-method-selection",
+              "axes": [
+                "method-selection",
+                "mobile"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Mobile story retains method grid and verifies rendered Builder ID card geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "AWS Builder ID"
+              }
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--rtl-method-selection",
+              "storyId": "production-shared-kiro-kiroauthmodal--rtl-method-selection",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--rtl-method-selection",
+              "axes": [
+                "method-selection",
+                "RTL"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "RTL fixture renders KiroAuthModal method grid and Builder ID callback control. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "button",
+                "name": "AWS Builder ID"
+              }
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: KiroAuthModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/KiroAuthModal.js#LoadingState",
       "sourcePath": "src/shared/components/KiroAuthModal.js",
       "symbol": "LoadingState",
-      "sourceSha256": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+      "sourceSha256": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: KiroAuthModal import branch renders LoadingState when autoDetecting.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-kiroauthmodal--import-auto-detecting"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-kiroauthmodal--import-auto-detecting"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
@@ -49821,7 +50310,7 @@
             "import"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Pending Kiro auto-import selects LoadingState in import branch.",
@@ -49829,33 +50318,63 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: KiroAuthModal import branch renders LoadingState when autoDetecting.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: KiroAuthModal import branch renders LoadingState when autoDetecting.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-kiroauthmodal--import-auto-detecting"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+              "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
+              "axes": [
+                "loading",
+                "import"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Pending Kiro auto-import selects LoadingState in import branch.",
+              "expectedVisibleText": "Auto-detecting token…"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: KiroAuthModal import branch renders LoadingState when autoDetecting.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/KiroAuthModal.js#Notice",
       "sourcePath": "src/shared/components/KiroAuthModal.js",
       "symbol": "Notice",
-      "sourceSha256": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+      "sourceSha256": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: KiroAuthModal API-key branch renders Notice. KiroAuthModal import branch renders success Notice when autoDetected.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-kiroauthmodal--import-auto-detected"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-kiroauthmodal--import-auto-detected"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-kiroauthmodal--import-auto-detected",
@@ -49866,7 +50385,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Found Kiro refresh token selects success Notice in import branch.",
@@ -49874,16 +50393,48 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: KiroAuthModal API-key branch renders Notice. KiroAuthModal import branch renders success Notice when autoDetected.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: KiroAuthModal API-key branch renders Notice. KiroAuthModal import branch renders success Notice when autoDetected.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-kiroauthmodal--import-auto-detected"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-kiroauthmodal--import-auto-detected",
+              "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detected",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detected",
+              "axes": [
+                "notice",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroAuthModal.js": "39a05d4f9497c8a75a320e70cb4ba4b879c40c44774cbf98ea358efef2ea9f4f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Found Kiro refresh token selects success Notice in import branch.",
+              "expectedVisibleText": "Token auto-detected from Kiro IDE successfully."
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: KiroAuthModal API-key branch renders Notice. KiroAuthModal import branch renders success Notice when autoDetected.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/KiroOAuthWrapper.js#KiroOAuthWrapper",
@@ -49974,12 +50525,12 @@
       "id": "src/shared/components/KiroSocialOAuthModal.js#KiroSocialOAuthModal",
       "sourcePath": "src/shared/components/KiroSocialOAuthModal.js",
       "symbol": "KiroSocialOAuthModal",
-      "sourceSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+      "sourceSha256": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: KiroSocialOAuthModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-kirosocialoauthmodal--initializing",
         "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
@@ -49992,18 +50543,7 @@
         "production-shared-kiro-kiroauthmodal--social-google-manual-callback",
         "production-shared-kiro-kiroauthmodal--social-git-hub-manual-callback"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-kirosocialoauthmodal--initializing",
-        "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
-        "production-shared-kiro-kirosocialoauthmodal--google-input",
-        "production-shared-kiro-kirosocialoauthmodal--google-with-proxy-pool",
-        "production-shared-kiro-kirosocialoauthmodal--git-hub-input",
-        "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
-        "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
-        "production-shared-kiro-kirosocialoauthmodal--exchanging",
-        "production-shared-kiro-kiroauthmodal--social-google-manual-callback",
-        "production-shared-kiro-kiroauthmodal--social-git-hub-manual-callback"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-kirosocialoauthmodal--initializing",
@@ -50014,7 +50554,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "Initializing holds social-authorize pending after opening Google modal; play asserts rendered loading status.",
@@ -50029,7 +50569,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "RoutingOptionsLoading sets proxyPoolsReady=false and play asserts its rendered status.",
@@ -50044,7 +50584,7 @@
             "callback-input"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "GoogleInput completes authorization setup and play reaches callback input with disabled Connect control.",
@@ -50059,7 +50599,7 @@
             "proxy-pool"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "GoogleWithProxyPool provides active US East pool and play asserts routing selector label.",
@@ -50074,7 +50614,7 @@
             "callback-input"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "GitHubInput sets provider=github and play opens its Connect Kiro via GitHub dialog.",
@@ -50089,7 +50629,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "ManualCallbackSuccess pastes valid callback then exchanges success; play waits for rendered success result.",
@@ -50104,7 +50644,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "ManualCallbackFailure returns Invalid authorization code; play asserts alert and Try again control.",
@@ -50119,7 +50659,7 @@
             "submitting"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "Exchanging holds social-exchange pending after callback submit; play asserts rendered Connect button aria-busy state.",
@@ -50136,7 +50676,7 @@
             "open-final"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Own actual export directly renders KiroSocialOAuthModal, not KiroAuthModal. Its visible social dialog heading is source-owned; popup and URL behavior is exercised by its own play.",
@@ -50153,7 +50693,7 @@
             "open-final"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Own actual export directly renders KiroSocialOAuthModal, not KiroAuthModal. Its visible social dialog heading is source-owned; popup and URL behavior is exercised by its own play.",
@@ -50161,35 +50701,212 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: KiroSocialOAuthModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: KiroSocialOAuthModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-kirosocialoauthmodal--initializing",
+            "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+            "production-shared-kiro-kirosocialoauthmodal--google-input",
+            "production-shared-kiro-kirosocialoauthmodal--google-with-proxy-pool",
+            "production-shared-kiro-kirosocialoauthmodal--git-hub-input",
+            "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+            "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+            "production-shared-kiro-kirosocialoauthmodal--exchanging",
+            "production-shared-kiro-kiroauthmodal--social-google-manual-callback",
+            "production-shared-kiro-kiroauthmodal--social-git-hub-manual-callback"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--initializing",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--initializing",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--initializing",
+              "axes": [
+                "initializing",
+                "loading"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "Initializing holds social-authorize pending after opening Google modal; play asserts rendered loading status.",
+              "expectedVisibleText": "Initializing…"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+              "axes": [
+                "routing-options",
+                "loading"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "RoutingOptionsLoading sets proxyPoolsReady=false and play asserts its rendered status.",
+              "expectedVisibleText": "Loading routing options…"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--google-input",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--google-input",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--google-input",
+              "axes": [
+                "google",
+                "callback-input"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "GoogleInput completes authorization setup and play reaches callback input with disabled Connect control.",
+              "expectedVisibleText": "2. Paste callback URL"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--google-with-proxy-pool",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--google-with-proxy-pool",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--google-with-proxy-pool",
+              "axes": [
+                "google",
+                "proxy-pool"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "GoogleWithProxyPool provides active US East pool and play asserts routing selector label.",
+              "expectedVisibleText": "Routing proxy pool"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--git-hub-input",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--git-hub-input",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--git-hub-input",
+              "axes": [
+                "github",
+                "callback-input"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "GitHubInput sets provider=github and play opens its Connect Kiro via GitHub dialog.",
+              "expectedVisibleText": "Connect Kiro via GitHub"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+              "axes": [
+                "callback",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "ManualCallbackSuccess pastes valid callback then exchanges success; play waits for rendered success result.",
+              "expectedVisibleText": "Connected successfully"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+              "axes": [
+                "callback",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "ManualCallbackFailure returns Invalid authorization code; play asserts alert and Try again control.",
+              "expectedVisibleText": "Invalid authorization code"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--exchanging",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--exchanging",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--exchanging",
+              "axes": [
+                "callback",
+                "submitting"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "Exchanging holds social-exchange pending after callback submit; play asserts rendered Connect button aria-busy state.",
+              "expectedVisibleText": "Connect"
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--social-google-manual-callback",
+              "storyId": "production-shared-kiro-kiroauthmodal--social-google-manual-callback",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--social-google-manual-callback",
+              "axes": [
+                "text",
+                "controls",
+                "social-input",
+                "open-final"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Own actual export directly renders KiroSocialOAuthModal, not KiroAuthModal. Its visible social dialog heading is source-owned; popup and URL behavior is exercised by its own play.",
+              "expectedVisibleText": "Connect Kiro via Google"
+            },
+            {
+              "id": "production-shared-kiro-kiroauthmodal--social-git-hub-manual-callback",
+              "storyId": "production-shared-kiro-kiroauthmodal--social-git-hub-manual-callback",
+              "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--social-git-hub-manual-callback",
+              "axes": [
+                "text",
+                "controls",
+                "social-input",
+                "open-final"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
+              },
+              "proposedSourceEvidence": "Own actual export directly renders KiroSocialOAuthModal, not KiroAuthModal. Its visible social dialog heading is source-owned; popup and URL behavior is exercised by its own play.",
+              "expectedVisibleText": "Connect Kiro via GitHub"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: KiroSocialOAuthModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/KiroSocialOAuthModal.js#LoadingState",
       "sourcePath": "src/shared/components/KiroSocialOAuthModal.js",
       "symbol": "LoadingState",
-      "sourceSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+      "sourceSha256": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: LoadingState maps only to Initializing, RoutingOptionsLoading.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-kirosocialoauthmodal--initializing",
         "production-shared-kiro-kirosocialoauthmodal--routing-options-loading"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-kirosocialoauthmodal--initializing",
-        "production-shared-kiro-kirosocialoauthmodal--routing-options-loading"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-kirosocialoauthmodal--initializing",
@@ -50200,7 +50917,7 @@
             "initializing"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "LoadingState renders for proxyPoolsReady with step=loading; Initializing play asserts its status text.",
@@ -50215,7 +50932,7 @@
             "routing-options"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "LoadingState renders when proxyPoolsReady=false; RoutingOptionsLoading play asserts its status text.",
@@ -50223,35 +50940,80 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: LoadingState maps only to Initializing, RoutingOptionsLoading.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: LoadingState maps only to Initializing, RoutingOptionsLoading.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-kirosocialoauthmodal--initializing",
+            "production-shared-kiro-kirosocialoauthmodal--routing-options-loading"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--initializing",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--initializing",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--initializing",
+              "axes": [
+                "loading",
+                "initializing"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "LoadingState renders for proxyPoolsReady with step=loading; Initializing play asserts its status text.",
+              "expectedVisibleText": "Initializing…"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
+              "axes": [
+                "loading",
+                "routing-options"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "LoadingState renders when proxyPoolsReady=false; RoutingOptionsLoading play asserts its status text.",
+              "expectedVisibleText": "Loading routing options…"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: LoadingState maps only to Initializing, RoutingOptionsLoading.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/KiroSocialOAuthModal.js#ResultState",
       "sourcePath": "src/shared/components/KiroSocialOAuthModal.js",
       "symbol": "ResultState",
-      "sourceSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+      "sourceSha256": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: ResultState maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
         "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure"
       ],
-      "approvedScenarioIds": [
-        "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
-        "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
@@ -50262,7 +51024,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "Successful exchange sets step=success, which renders ResultState; play waits for its success title.",
@@ -50277,7 +51039,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
             "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
           },
           "proposedSourceEvidence": "Failed exchange sets step=error, which renders ResultState error alert; play asserts its server message.",
@@ -50285,16 +51047,64 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: ResultState maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: ResultState maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+            "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-success",
+              "axes": [
+                "result",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "Successful exchange sets step=success, which renders ResultState; play waits for its success title.",
+              "expectedVisibleText": "Connected successfully"
+            },
+            {
+              "id": "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+              "storyId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+              "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure",
+              "axes": [
+                "result",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/KiroSocialOAuthModal.js": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
+                "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+              },
+              "proposedSourceEvidence": "Failed exchange sets step=error, which renders ResultState error alert; play asserts its server message.",
+              "expectedVisibleText": "Invalid authorization code"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: ResultState maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/LanguageSwitcher.js#LanguageSwitcher",
@@ -51601,7 +52411,7 @@
       "id": "src/shared/components/OAuthModal.js#OAuthModal",
       "sourcePath": "src/shared/components/OAuthModal.js",
       "symbol": "OAuthModal",
-      "sourceSha256": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+      "sourceSha256": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51626,7 +52436,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
@@ -51642,7 +52452,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
@@ -51658,7 +52468,7 @@
             "fingerprint"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -51675,7 +52485,7 @@
             "device-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
@@ -51690,7 +52500,7 @@
             "manual-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
@@ -51705,7 +52515,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "7389fc1be2ea7bc5d0158f3dd349a938c23c53252c4234f4452138385defd211",
+            "src/shared/components/OAuthModal.js": "96604a8a8b650ded3dc6f5ba42640205287cd9b0a7017f9dc2d9ee8d77cd833a",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
@@ -52008,20 +52818,17 @@
       "id": "src/shared/components/OrcaRouterAuthModal.js#OrcaRouterAuthModal",
       "sourcePath": "src/shared/components/OrcaRouterAuthModal.js",
       "symbol": "OrcaRouterAuthModal",
-      "sourceSha256": "025a07659978ef52f662db328b8d40acfbf7b0a4fb9cd2398c12750018129f1f",
+      "sourceSha256": "45fbbebe1001588d26d4f7f4fea60d383a5973368ff28a158132d1c145a0af62",
       "proposedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: OrcaRouterAuthModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "Independent source review",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
         "production-shared-auth-orcarouterauthmodal--api-key-failure"
       ],
-      "approvedScenarioIds": [
-        "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
-        "production-shared-auth-orcarouterauthmodal--api-key-failure"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
@@ -52032,8 +52839,8 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OrcaRouterAuthModal.js": "025a07659978ef52f662db328b8d40acfbf7b0a4fb9cd2398c12750018129f1f",
-            "src/shared/components/OrcaRouterAuthModal.stories.jsx": "9f14328ef0c0657eabb49d1a5f3c33f43e67d659278329e24f9c8cacb54d4329"
+            "src/shared/components/OrcaRouterAuthModal.js": "45fbbebe1001588d26d4f7f4fea60d383a5973368ff28a158132d1c145a0af62",
+            "src/shared/components/OrcaRouterAuthModal.stories.jsx": "8fa77e085ae77e0143b590c3226868b15c81c23aa93ceabd5338c32ef22e4a0f"
           },
           "proposedSourceEvidence": "OAuth code exchange succeeds; final done branch renders completion message.",
           "expectedVisibleText": "Connected. You can close this window."
@@ -52047,24 +52854,72 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OrcaRouterAuthModal.js": "025a07659978ef52f662db328b8d40acfbf7b0a4fb9cd2398c12750018129f1f",
-            "src/shared/components/OrcaRouterAuthModal.stories.jsx": "9f14328ef0c0657eabb49d1a5f3c33f43e67d659278329e24f9c8cacb54d4329"
+            "src/shared/components/OrcaRouterAuthModal.js": "45fbbebe1001588d26d4f7f4fea60d383a5973368ff28a158132d1c145a0af62",
+            "src/shared/components/OrcaRouterAuthModal.stories.jsx": "8fa77e085ae77e0143b590c3226868b15c81c23aa93ceabd5338c32ef22e4a0f"
           },
           "proposedSourceEvidence": "API key save returns failure; final error alert renders server message.",
           "expectedVisibleText": "Key storage unavailable"
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: OrcaRouterAuthModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: OrcaRouterAuthModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "025a07659978ef52f662db328b8d40acfbf7b0a4fb9cd2398c12750018129f1f",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+            "production-shared-auth-orcarouterauthmodal--api-key-failure"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+              "storyId": "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+              "runtimeArtifactId": "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+              "axes": [
+                "OAuth-code",
+                "success"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OrcaRouterAuthModal.js": "025a07659978ef52f662db328b8d40acfbf7b0a4fb9cd2398c12750018129f1f",
+                "src/shared/components/OrcaRouterAuthModal.stories.jsx": "9f14328ef0c0657eabb49d1a5f3c33f43e67d659278329e24f9c8cacb54d4329"
+              },
+              "proposedSourceEvidence": "OAuth code exchange succeeds; final done branch renders completion message.",
+              "expectedVisibleText": "Connected. You can close this window."
+            },
+            {
+              "id": "production-shared-auth-orcarouterauthmodal--api-key-failure",
+              "storyId": "production-shared-auth-orcarouterauthmodal--api-key-failure",
+              "runtimeArtifactId": "production-shared-auth-orcarouterauthmodal--api-key-failure",
+              "axes": [
+                "API-key",
+                "error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/OrcaRouterAuthModal.js": "025a07659978ef52f662db328b8d40acfbf7b0a4fb9cd2398c12750018129f1f",
+                "src/shared/components/OrcaRouterAuthModal.stories.jsx": "9f14328ef0c0657eabb49d1a5f3c33f43e67d659278329e24f9c8cacb54d4329"
+              },
+              "proposedSourceEvidence": "API key save returns failure; final error alert renders server message.",
+              "expectedVisibleText": "Key storage unavailable"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: OrcaRouterAuthModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/Pagination.js#Pagination",
@@ -55945,7 +56800,7 @@
       "id": "src/shared/components/WebLoginModal.js#WebLoginModal",
       "sourcePath": "src/shared/components/WebLoginModal.js",
       "symbol": "WebLoginModal",
-      "sourceSha256": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db",
+      "sourceSha256": "f6e8cb6ca0f300ee69c52f0139daaaf749a4ef816b786c05650ce4a931d51ac1",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -55965,7 +56820,7 @@
             "iframe"
           ],
           "sourceHashes": {
-            "src/shared/components/WebLoginModal.js": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db",
+            "src/shared/components/WebLoginModal.js": "f6e8cb6ca0f300ee69c52f0139daaaf749a4ef816b786c05650ce4a931d51ac1",
             "src/shared/components/WebLoginModal.stories.jsx": "6472a4f2a335953f9aafe837eeec39e11fe6c42709d0cefca703e33580525c05"
           },
           "proposedSourceEvidence": "Start response supplies isolated page URL and status has no cookies; final WebLoginModal status shows waiting and Save connection remains disabled.",
@@ -55980,7 +56835,7 @@
             "ready"
           ],
           "sourceHashes": {
-            "src/shared/components/WebLoginModal.js": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db",
+            "src/shared/components/WebLoginModal.js": "f6e8cb6ca0f300ee69c52f0139daaaf749a4ef816b786c05650ce4a931d51ac1",
             "src/shared/components/WebLoginModal.stories.jsx": "6472a4f2a335953f9aafe837eeec39e11fe6c42709d0cefca703e33580525c05"
           },
           "proposedSourceEvidence": "Ready status response renders ready text and enables save action. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55999,7 +56854,7 @@
             "start-error"
           ],
           "sourceHashes": {
-            "src/shared/components/WebLoginModal.js": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db",
+            "src/shared/components/WebLoginModal.js": "f6e8cb6ca0f300ee69c52f0139daaaf749a4ef816b786c05650ce4a931d51ac1",
             "src/shared/components/WebLoginModal.stories.jsx": "6472a4f2a335953f9aafe837eeec39e11fe6c42709d0cefca703e33580525c05"
           },
           "proposedSourceEvidence": "Start request 503 renders error alert and no login iframe.",
@@ -56094,7 +56949,7 @@
       "id": "src/shared/components/XiaomiMimoAuthModal.js#XiaomiMimoAuthModal",
       "sourcePath": "src/shared/components/XiaomiMimoAuthModal.js",
       "symbol": "XiaomiMimoAuthModal",
-      "sourceSha256": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+      "sourceSha256": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -56115,7 +56970,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/XiaomiMimoAuthModal.js": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+            "src/shared/components/XiaomiMimoAuthModal.js": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
             "src/shared/components/XiaomiMimoAuthModal.stories.jsx": "95d4328794cb44987593cf1e19d2c34247f8524ca39d3a0d53c982f92cd7fc01"
           },
           "proposedSourceEvidence": "Current src/shared/components/XiaomiMimoAuthModal.stories.jsx directly imports src/shared/components/XiaomiMimoAuthModal.js; XiaomiMimoAuthModal is reviewed through LocalCredentialsFound, which asserts visible text \"Xiaomi MiMo Desktop credentials found!\".",
@@ -56129,7 +56984,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/XiaomiMimoAuthModal.js": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+            "src/shared/components/XiaomiMimoAuthModal.js": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
             "src/shared/components/XiaomiMimoAuthModal.stories.jsx": "95d4328794cb44987593cf1e19d2c34247f8524ca39d3a0d53c982f92cd7fc01"
           },
           "proposedSourceEvidence": "BrowserLoginClusterSelection receives found=false, opens Choose cluster, and asserts the actual Europe/Amsterdam cluster control.",
@@ -56143,7 +56998,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/XiaomiMimoAuthModal.js": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+            "src/shared/components/XiaomiMimoAuthModal.js": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
             "src/shared/components/XiaomiMimoAuthModal.stories.jsx": "95d4328794cb44987593cf1e19d2c34247f8524ca39d3a0d53c982f92cd7fc01"
           },
           "proposedSourceEvidence": "DetectionFallback receives a failed local credential lookup; the actual modal exposes the no-local-credentials fallback and browser-login guidance.",
@@ -56227,7 +57082,7 @@
       "id": "src/shared/components/XiaomiMimoAuthModal.js#browserLogin",
       "sourcePath": "src/shared/components/XiaomiMimoAuthModal.js",
       "symbol": "browserLogin",
-      "sourceSha256": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+      "sourceSha256": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -56247,7 +57102,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/XiaomiMimoAuthModal.js": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+            "src/shared/components/XiaomiMimoAuthModal.js": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
             "src/shared/components/XiaomiMimoAuthModal.stories.jsx": "95d4328794cb44987593cf1e19d2c34247f8524ca39d3a0d53c982f92cd7fc01"
           },
           "proposedSourceEvidence": "browserLogin reaches BrowserLoginClusterSelection in current src/shared/components/XiaomiMimoAuthModal.stories.jsx.",
@@ -56261,7 +57116,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/XiaomiMimoAuthModal.js": "da748811109bf4ba6b7afce028a67d785d56f1cc4fcaa7415d9e63485aef5379",
+            "src/shared/components/XiaomiMimoAuthModal.js": "5ceb6373fd9f4e750a47b5e18f922368aa3a9719f037a5068420c27d5628bc8f",
             "src/shared/components/XiaomiMimoAuthModal.stories.jsx": "95d4328794cb44987593cf1e19d2c34247f8524ca39d3a0d53c982f92cd7fc01"
           },
           "proposedSourceEvidence": "browserLogin reaches DetectionFallback in current src/shared/components/XiaomiMimoAuthModal.stories.jsx.",
@@ -81542,9 +82397,9 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
+      "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--default",
       "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-ghecopilotauthmodal.stories.jsx",
-      "sourceSha256": "43feb6a4270b8b318e571e04e46a938c4a7f3bb2f98174ee0d1670925b9c08d1",
+      "sourceSha256": "b76c9331fc15fa96c59bb92feebf9ae26f418b14c82d242861ab7c33489cf992",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -81552,14 +82407,44 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--device-code-handoff",
+      "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
       "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-ghecopilotauthmodal.stories.jsx",
-      "sourceSha256": "43feb6a4270b8b318e571e04e46a938c4a7f3bb2f98174ee0d1670925b9c08d1",
+      "sourceSha256": "b76c9331fc15fa96c59bb92feebf9ae26f418b14c82d242861ab7c33489cf992",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
+        "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-ghecopilotauthmodal.stories.jsx",
+        "sourceSha256": "43feb6a4270b8b318e571e04e46a938c4a7f3bb2f98174ee0d1670925b9c08d1",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--device-code-handoff",
+      "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-ghecopilotauthmodal.stories.jsx",
+      "sourceSha256": "b76c9331fc15fa96c59bb92feebf9ae26f418b14c82d242861ab7c33489cf992",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--device-code-handoff",
+        "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-ghecopilotauthmodal.stories.jsx",
+        "sourceSha256": "43feb6a4270b8b318e571e04e46a938c4a7f3bb2f98174ee0d1670925b9c08d1",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-workflows-shared-oauth-gitlabauthmodal--mode-selection",
@@ -82602,9 +83487,9 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+      "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--default",
       "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-orcarouterauthmodal.stories.jsx",
-      "sourceSha256": "cbb2d98987c1c024b365abb3ae370495e6e3984b1d53c62e1f2c2667947c6a8d",
+      "sourceSha256": "f946eb35d76e0b355fadcb8571b8c6eb95c052b61686d8519c371e2e50b106a7",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -82612,14 +83497,44 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--api-key-failure",
+      "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
       "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-orcarouterauthmodal.stories.jsx",
-      "sourceSha256": "cbb2d98987c1c024b365abb3ae370495e6e3984b1d53c62e1f2c2667947c6a8d",
+      "sourceSha256": "f946eb35d76e0b355fadcb8571b8c6eb95c052b61686d8519c371e2e50b106a7",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+        "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-orcarouterauthmodal.stories.jsx",
+        "sourceSha256": "cbb2d98987c1c024b365abb3ae370495e6e3984b1d53c62e1f2c2667947c6a8d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--api-key-failure",
+      "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-orcarouterauthmodal.stories.jsx",
+      "sourceSha256": "f946eb35d76e0b355fadcb8571b8c6eb95c052b61686d8519c371e2e50b106a7",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--api-key-failure",
+        "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-orcarouterauthmodal.stories.jsx",
+        "sourceSha256": "cbb2d98987c1c024b365abb3ae370495e6e3984b1d53c62e1f2c2667947c6a8d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-workflows-shared-overlays-pagination--interactive",
@@ -87240,6 +88155,16 @@
       }
     },
     {
+      "storyId": "production-shared-auth-ghecopilotauthmodal--default",
+      "sourcePath": "./src/shared/components/GheCopilotAuthModal.stories.jsx",
+      "sourceSha256": "ef7c950fbde43c88d72f19eb56e98ffe9324de5fe7a9bdfacf07cbef2ca27d28",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
       "storyId": "production-shared-oauth-gitlabauthmodal--pat-submit",
       "sourcePath": "./src/shared/components/GitLabAuthModal.stories.jsx",
       "sourceSha256": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee",
@@ -87351,6 +88276,16 @@
       "storyId": "production-shared-config-modelselectmodal--owner-plan-catalog",
       "sourcePath": "./src/shared/components/ModelSelectModal.stories.jsx",
       "sourceSha256": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "production-shared-auth-orcarouterauthmodal--default",
+      "sourcePath": "./src/shared/components/OrcaRouterAuthModal.stories.jsx",
+      "sourceSha256": "8fa77e085ae77e0143b590c3226868b15c81c23aa93ceabd5338c32ef22e4a0f",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -99424,11 +100359,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "2639761662ee226a92caa282f212672ea6c298c3336d1b1569fbd5a9495a41cf",
-    "sourceCensusSha256": "c51c19f4b54d554e63450bdd9935dd3c4d4ceee3bf25c3ef764c98a1999ea45f",
-    "pendingRows": 404,
-    "retainedApprovedRows": 232,
-    "pendingReferences": 1409,
+    "builtIndexSha256": "d9399a6d57f6ae5f345d89ded9ee41896c0e82faaaa4a9299ea1c0dbce317c76",
+    "sourceCensusSha256": "84481f333ebaad602b76baebb62cb659171a8453007db0a83fb0637fdbe80c04",
+    "pendingRows": 416,
+    "retainedApprovedRows": 220,
+    "pendingReferences": 1413,
     "runtimeStatus": "pending"
   }
 }

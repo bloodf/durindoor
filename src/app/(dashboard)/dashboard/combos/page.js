@@ -1118,7 +1118,10 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     setSaveError("");
     setSaving(true);
     try {
-      const result = await onSave({ name: name.trim(), models, members, capabilities, noLog });
+      // Omit the default unless an existing disabled log must be re-enabled.
+      const data = { name: name.trim(), models, members, capabilities };
+      if (noLog || combo?.noLog === true) data.noLog = noLog;
+      const result = await onSave(data);
       if (!result?.ok) setSaveError(result?.error || "Failed to save combo");
     } finally {
       setSaving(false);

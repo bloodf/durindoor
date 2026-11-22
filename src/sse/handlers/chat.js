@@ -20,7 +20,7 @@ import {
 "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import {
-  getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus,
+  getSettings, getApiKeyByKey, getApiKeyById, getApiKeyUsageLimitStatus,
   getProviderConnections, updateProviderConnection, getQuotaReservationPressure, getApiKeyProviderConnectionIds, getComboForModel } from
 "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
@@ -75,6 +75,8 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { getBatchRequestKeyId } from "../services/batchKeyIdentity.js";
+import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { modelKindError } from "./modelKind.js";
 import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
@@ -475,7 +477,11 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // Retain the authenticated record so local commands can expose only this
   // key's own lifetime totals. Combo ACL runs after Claude model decoding.
   let authenticatedKeyRecord = null;
-  if (apiKey) authenticatedKeyRecord = await getApiKeyByKey(apiKey);
+  const batchKeyId = getBatchRequestKeyId(request);
+  if (apiKey) authenticatedKeyRecord = batchKeyId ? await getApiKeyById(batchKeyId) : await getApiKeyByKey(apiKey);
+  if (batchKeyId && (!authenticatedKeyRecord || !authenticatedKeyRecord.isActive || isApiKeyExpired(authenticatedKeyRecord.expiresAt))) {
+    return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
+  }
   const planRequest = {
     verifiedKey: apiKeyAuth.stored === true && authenticatedKeyRecord?.id === apiKeyAuth.apiKeyId
       ? { id: authenticatedKeyRecord.id, isActive: authenticatedKeyRecord.isActive } : null,

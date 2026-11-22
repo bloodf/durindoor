@@ -2991,7 +2991,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "proposedSourceEvidence": "key mode, managed-key note, cloud branch",
           "expectedVisibleText": "Managed keys"
@@ -3010,7 +3010,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "proposedSourceEvidence": "CloudEnabled asserts visible native API key input, its placeholder attribute and actual visible API key label; placeholder is not text content. Meta beforeEach resets and restores persisted API-key presets.",
           "expectedVisibleText": "API key",
@@ -3041,7 +3041,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "proposedSourceEvidence": "TypeInput types into the actual password input and asserts its native value, then the visible API key label. Input value is not text content. Meta beforeEach resets and restores persisted presets.",
           "expectedVisibleText": "API key",
@@ -3070,7 +3070,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "proposedSourceEvidence": "Empty play locates actual native API key input by label and asserts the visible API key label. Meta beforeEach resets/restores persisted presets.",
           "expectedVisibleText": "API key",
@@ -3252,7 +3252,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "expectedVisibleText": "Local (127.0.0.1)",
           "id": "durin-ds-production-pages-cli-tools-baseurlselect--local",
@@ -3274,7 +3274,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "expectedVisibleText": "Custom URL",
           "id": "durin-ds-production-pages-cli-tools-baseurlselect--switch-to-custom",
@@ -3296,7 +3296,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "expectedVisibleText": "Public tunnel",
           "id": "durin-ds-production-pages-cli-tools-baseurlselect--tunnel",
@@ -3318,7 +3318,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "expectedVisibleText": "Cloud",
           "id": "durin-ds-production-pages-cli-tools-baseurlselect--cloud",
@@ -3340,7 +3340,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4"
+            "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07"
           },
           "expectedVisibleText": "Tailscale",
           "id": "durin-ds-production-pages-cli-tools-baseurlselect--tailscale",
@@ -4898,7 +4898,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js#EndpointPresetControl",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js",
       "symbol": "EndpointPresetControl",
-      "sourceSha256": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
+      "sourceSha256": "7b3ac9c69da9df8956ded8a6f9f76cefb21a80144323a4b8c220fce3f778bd3d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -4920,8 +4920,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "fdb727675486c2fd189b2eddee20dd34e27d2d5499c64a44e7c8080562810aaf"
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "7b3ac9c69da9df8956ded8a6f9f76cefb21a80144323a4b8c220fce3f778bd3d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "c68d5821054b111f12a3599e6baadc1ec3c96463c6b2300bd7713e9b369255f8"
           },
           "proposedSourceEvidence": "browser-local endpoint preset selector",
           "expectedVisibleText": "Prod"
@@ -4935,8 +4935,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "fdb727675486c2fd189b2eddee20dd34e27d2d5499c64a44e7c8080562810aaf"
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "7b3ac9c69da9df8956ded8a6f9f76cefb21a80144323a4b8c220fce3f778bd3d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "c68d5821054b111f12a3599e6baadc1ec3c96463c6b2300bd7713e9b369255f8"
           },
           "proposedSourceEvidence": "browser-local endpoint preset selector",
           "expectedVisibleText": "Save preset"
@@ -4950,8 +4950,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "dbf057b9223e6069bc899ec0d3f6def4b34e9e5723dbdc9b88fd0d2fc604baf7",
-            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "fdb727675486c2fd189b2eddee20dd34e27d2d5499c64a44e7c8080562810aaf"
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "7b3ac9c69da9df8956ded8a6f9f76cefb21a80144323a4b8c220fce3f778bd3d",
+            "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.stories.jsx": "c68d5821054b111f12a3599e6baadc1ec3c96463c6b2300bd7713e9b369255f8"
           },
           "proposedSourceEvidence": "browser-local endpoint preset selector",
           "expectedVisibleText": "Manual / current endpoint"
@@ -6373,31 +6373,45 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/cliEndpointPresets.js",
       "symbol": "[module]",
-      "sourceSha256": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4",
+      "sourceSha256": "2266b15da79a3dda4b61f18610dfb4639c041cffc1d0780f166c6094897b8e07",
       "proposedClassification": "nonvisual",
-      "approvedClassification": "nonvisual",
-      "proposedCoverageRationale": "No renderable symbol detected; helper/config/transport module. Reclassify if export/caller analysis finds a visible return.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [],
       "approvedScenarioIds": [],
       "storyScenarios": [],
-      "approvedException": {
-        "reason": "Exports label-formatting and localStorage read/write helpers only; no JSX.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Exports label-formatting and localStorage read/write helpers only; no JSX.",
-        "runtimeStatus": "pending"
-      },
+      "approvedException": null,
+      "reviewEvidence": null,
       "proposedException": {
         "reason": "Exports label-formatting and localStorage read/write helpers only; no JSX."
       },
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
-      "runtimeStatus": "pending"
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "2a54141235f9583588dfb9a71ed097cb001aad485a18ededcf391bc84862d2b4",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "nonvisual",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "Exports label-formatting and localStorage read/write helpers only; no JSX.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "storyScenarios": [],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Exports label-formatting and localStorage read/write helpers only; no JSX.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/index.js#[module]",
@@ -44712,7 +44726,7 @@
       "id": "src/app/layout.js#RootLayout",
       "sourcePath": "src/app/layout.js",
       "symbol": "RootLayout",
-      "sourceSha256": "7c5cd0c165219fac68ae9a7ac90029407e820db970db493b3f183688e649cbc1",
+      "sourceSha256": "23d156fa487a9680573f49d71d150ef83cb52fbc8ff7ba4d8a148fbf5c040885",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -44736,7 +44750,7 @@
           ],
           "proposedSourceEvidence": "Actual descendant-client scenario renders 'Usage route content'; this is owned-client-only source proposal, not execution or approval of server RootLayout html/head/body/bootstrap semantics. Real Next.js integration evidence remains mandatory.",
           "sourceHashes": {
-            "src/app/layout.js": "7c5cd0c165219fac68ae9a7ac90029407e820db970db493b3f183688e649cbc1",
+            "src/app/layout.js": "23d156fa487a9680573f49d71d150ef83cb52fbc8ff7ba4d8a148fbf5c040885",
             "src/app/(dashboard)/layout.stories.jsx": "141ec5e95f8ec34f202d5adbb2234f2ab67bef7549dd19b07ee5801570019bde"
           },
           "coverageScope": "owned-client-only-integration-required",
@@ -44753,7 +44767,7 @@
           ],
           "proposedSourceEvidence": "Actual descendant-client scenario renders 'Durin Door'; this is owned-client-only source proposal, not execution or approval of server RootLayout html/head/body/bootstrap semantics. Real Next.js integration evidence remains mandatory.",
           "sourceHashes": {
-            "src/app/layout.js": "7c5cd0c165219fac68ae9a7ac90029407e820db970db493b3f183688e649cbc1",
+            "src/app/layout.js": "23d156fa487a9680573f49d71d150ef83cb52fbc8ff7ba4d8a148fbf5c040885",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "coverageScope": "owned-client-only-integration-required",
@@ -44770,7 +44784,7 @@
           ],
           "proposedSourceEvidence": "Actual descendant-client scenario renders 'Ready to simplify your AI infrastructure?'; this is owned-client-only source proposal, not execution or approval of server RootLayout html/head/body/bootstrap semantics. Real Next.js integration evidence remains mandatory.",
           "sourceHashes": {
-            "src/app/layout.js": "7c5cd0c165219fac68ae9a7ac90029407e820db970db493b3f183688e649cbc1",
+            "src/app/layout.js": "23d156fa487a9680573f49d71d150ef83cb52fbc8ff7ba4d8a148fbf5c040885",
             "src/app/landing/page.stories.jsx": "caa073f5b702021c3ba28d894f0d95f97bb791677f1b20aeb753eff1c30cfd47"
           },
           "coverageScope": "owned-client-only-integration-required",
@@ -48971,7 +48985,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "403ad3cb4cdd4f925407421904357eadcea4859c98c8599d07802bbd83250015"
+            "src/app/api/oauth/[provider]/[action]/route.js": "de1fe5a5bdf4b5baab44caa0bef8c933e490a214e8b217370da0455907ed5b76"
           },
           "expectedVisibleText": "Enter an https URL, for example https://ghe.company.com",
           "id": "production-shared-auth-ghecopilotauthmodal--invalid-origin",
@@ -48995,7 +49009,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "403ad3cb4cdd4f925407421904357eadcea4859c98c8599d07802bbd83250015"
+            "src/app/api/oauth/[provider]/[action]/route.js": "de1fe5a5bdf4b5baab44caa0bef8c933e490a214e8b217370da0455907ed5b76"
           },
           "expectedVisibleText": "GHE-1234",
           "id": "production-shared-auth-ghecopilotauthmodal--device-code-handoff",
@@ -102387,9 +102401,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "d9a156638879baa993532dedea723475fd5ede54154687829436213e19ca7ee7",
-    "sourceCensusSha256": "56681ce61be9b7540a8d74527a69c87962551745b4fca6a64f33fdae5ce0ac4b",
-    "pendingRows": 424,
-    "retainedApprovedRows": 212,
+    "sourceCensusSha256": "27ad376eef9407797740940004222e8a8841baed5b6761e89670bd485fe6c031",
+    "pendingRows": 425,
+    "retainedApprovedRows": 211,
     "pendingReferences": 1486,
     "runtimeStatus": "pending"
   }

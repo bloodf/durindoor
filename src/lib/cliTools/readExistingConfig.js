@@ -1,4 +1,6 @@
 import fs from "fs/promises";
+import path from "path";
+import { randomUUID } from "crypto";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 /**
@@ -29,6 +31,28 @@ export async function readExistingConfig(filePath, parse) {
         code: error?.code || null,
       },
     }));
-    throw new Error(`${filePath} exists but could not be parsed; refusing to overwrite it`);
+    const failure = new Error(`${filePath} exists but could not be parsed; refusing to overwrite it`);
+    failure.code = "CLI_CONFIG_PARSE_ERROR";
+    throw failure;
+  }
+}
+
+/** Atomically replace a CLI config, retaining one private backup of its previous contents. */
+export async function writeConfigAtomic(filePath, content) {
+  const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+  const backupTemp = `${tempPath}.bak`;
+  try {
+    await fs.writeFile(tempPath, content, { encoding: "utf-8", mode: 0o600, flag: "wx" });
+    try {
+      await fs.copyFile(filePath, backupTemp);
+      await fs.chmod(backupTemp, 0o600);
+      await fs.rename(backupTemp, `${filePath}.bak`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    await fs.rename(tempPath, filePath);
+  } finally {
+    await fs.unlink(tempPath).catch(() => {});
+    await fs.unlink(backupTemp).catch(() => {});
   }
 }

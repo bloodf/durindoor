@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
@@ -34,15 +35,7 @@ const checkJcodeInstalled = async () => {
   }
 };
 
-const readConfig = async () => {
-  try {
-    const configPath = getConfigPath();
-    const content = await fs.readFile(configPath, "utf-8");
-    return parseTOML(content);
-  } catch (error) {
-    return { providers: {} };
-  }
-};
+const readConfig = async () => (await readExistingConfig(getConfigPath(), parseTOML)) ?? { providers: {} };
 
 const has9RouterConfig = (config) => {
   if (!config || !config.providers) return false;
@@ -63,7 +56,7 @@ const has9RouterConfig = (config) => {
 const writeConfig = async (config) => {
   const configPath = getConfigPath();
   const content = stringifyTOML(config);
-  await fs.writeFile(configPath, content, "utf-8");
+  await writeConfigAtomic(configPath, content, "utf-8");
 };
 
 const readProviderEnv = async () => {
@@ -104,7 +97,7 @@ const writeProviderEnv = async (env) => {
     content += `${key}="${value}"\n`;
   }
 
-  await fs.writeFile(envPath, content, "utf-8");
+  await writeConfigAtomic(envPath, content, "utf-8");
 };
 
 export async function GET() {
@@ -117,7 +110,12 @@ export async function GET() {
     });
   }
 
-  const config = await readConfig();
+  let config;
+  try {
+    config = await readConfig();
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+  }
   const has9Router = has9RouterConfig(config);
 
   return NextResponse.json({
@@ -181,7 +179,7 @@ export async function POST(request) {
     console.error("Error configuring jcode:", error);
     return NextResponse.json(
       { error: error.message },
-      { status: 500 }
+      { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 }
     );
   }
 }
@@ -210,7 +208,7 @@ export async function DELETE() {
     console.error("Error removing jcode configuration:", error);
     return NextResponse.json(
       { error: error.message },
-      { status: 500 }
+      { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 }
     );
   }
 }

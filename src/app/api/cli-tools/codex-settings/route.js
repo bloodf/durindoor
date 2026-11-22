@@ -8,7 +8,7 @@ import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject } from "../../../../shared/utils/typeChecks.js";
-import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 
 const execAsync = promisify(exec);
 
@@ -169,12 +169,12 @@ export async function POST(request) {
 
     // Both destinations passed preflight above; now write their merged values.
     const configContent = stringifyTOML(parsed);
-    await fs.writeFile(configPath, configContent);
+    await writeConfigAtomic(configPath, configContent);
 
     // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
     authData.OPENAI_API_KEY = apiKey;
     authData.auth_mode = "apikey";
-    await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
+    await writeConfigAtomic(authPath, JSON.stringify(authData, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -225,7 +225,7 @@ export async function DELETE() {
 
     // Write updated config
     const configContent = stringifyTOML(parsed);
-    await fs.writeFile(configPath, configContent);
+    await writeConfigAtomic(configPath, configContent);
 
     // Remove OPENAI_API_KEY from auth.json
     const authPath = getCodexAuthPath();
@@ -239,7 +239,7 @@ export async function DELETE() {
       if (Object.keys(authData).length === 0) {
         await fs.unlink(authPath);
       } else {
-        await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
+        await writeConfigAtomic(authPath, JSON.stringify(authData, null, 2));
       }
     } catch {/* No auth file */}
 

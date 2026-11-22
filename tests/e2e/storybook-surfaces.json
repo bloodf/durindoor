@@ -4817,7 +4817,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js#DroidToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js",
       "symbol": "DroidToolCard",
-      "sourceSha256": "ea0921408882510edfca4b6e81bd2f14add613524b34b006c7abbf3c038aebd6",
+      "sourceSha256": "20d4cb406e66ab77ed429d3a5df8da2d3de830ef48606aed4bdfa2cde27cc4dc",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -4837,7 +4837,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js": "ea0921408882510edfca4b6e81bd2f14add613524b34b006c7abbf3c038aebd6",
+            "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js": "20d4cb406e66ab77ed429d3a5df8da2d3de830ef48606aed4bdfa2cde27cc4dc",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -102427,7 +102427,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "d9a156638879baa993532dedea723475fd5ede54154687829436213e19ca7ee7",
-"sourceCensusSha256": "64ffa499c099bc7df8df76aad303d9615fff242206d567ea8110d1d661ff73d0",
+    "sourceCensusSha256": "826f1907099126582ebc07d5367d7c9e814e384479f14d997f77011e851297b9",
     "pendingRows": 426,
     "retainedApprovedRows": 211,
     "pendingReferences": 1483,

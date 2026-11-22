@@ -1,9 +1,9 @@
 /**
- * #1188 scope: offline comparison of installed native Ollama with the unregistered
- * g4f-ollama candidate. g4f/web/app-server is not the native vendor. Registry
+ * #1188 scope: offline comparison of installed native Ollama with the registered
+ * g4f-ollama candidate (registration batch B, #2034). g4f/web/app-server is not the native vendor. Registry
  * exports prove metadata only; mocked HTTP cannot prove account access, model
- * availability, tool execution, or live streaming. Keep candidate capabilities
- * unavailable until account-backed endpoint/auth/model evidence exists.
+ * availability, tool execution, or live streaming. The candidate
+ * is registered for its own g4f.space endpoints only; it never borrows native Ollama identity.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,16 +53,32 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("#1188 g4f-ollama is not installed native Ollama", () => {
-  it("rejects candidate validation and discovery without borrowing Ollama identity or making HTTP calls", async () => {
-    expect(AI_PROVIDERS[candidate]).toBeUndefined();
-    expect(PROVIDERS[candidate]).toBeUndefined();
+  it("validates and discovers the registered candidate through g4f.space only, not Ollama", async () => {
+    expect(AI_PROVIDERS[candidate]).toMatchObject({ name: "g4f Ollama" });
+    expect(PROVIDERS[candidate]).toMatchObject({ baseUrl: "https://g4f.space/api/ollama/v1/chat/completions", format: "openai" });
     expect(AI_PROVIDERS.ollama.alias).not.toBe(candidate);
     expect(AI_PROVIDERS.ollama.aliases || []).not.toContain(candidate);
+    transport.mockImplementation(async () => json({ data: [{ id: "gemma3:4b" }] }));
     const response = await validateProvider(candidate);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ valid: true, error: null });
+    expect(await fetchConnectionModels({ id: "offline-candidate", provider: candidate, ...credentials })).toMatchObject({ models: [{ id: "gemma3:4b" }] });
+    expect(transport).toHaveBeenCalledTimes(2);
+    for (const [url, init] of transport.mock.calls) {
+      expect(url).toBe("https://g4f.space/api/ollama/v1/models");
+      expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${credentials.apiKey}`);
+    }
+  });
+
+  it("rejects an unregistered identity before validation and discovery I/O", async () => {
+    const provider = "fleet-unregistered-provider-1188";
+    expect(AI_PROVIDERS[provider]).toBeUndefined();
+    expect(PROVIDERS[provider]).toBeUndefined();
+    const response = await validateProvider(provider);
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "Provider validation not supported" });
-    expect(await fetchConnectionModels({ id: "offline-candidate", provider: candidate, ...credentials })).toEqual({
-      error: "Provider g4f-ollama does not support models listing", status: 400,
+    expect(await fetchConnectionModels({ id: "offline-unknown", provider, ...credentials })).toEqual({
+      error: `Provider ${provider} does not support models listing`, status: 400,
     });
     expect(transport).not.toHaveBeenCalled();
   });
@@ -106,7 +122,7 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
     expect(transport).not.toHaveBeenCalled();
   });
 
-  it("round-trips installed native nonstream chat without promoting candidate support", async () => {
+  it("round-trips installed native nonstream chat on the native endpoint, not the candidate's", async () => {
     const completion = { model, message: { role: "assistant", content: "hello" }, done: true };
     transport.mockResolvedValueOnce(json(completion));
     const body = openaiToOllamaRequest(model, { messages: [{ role: "user", content: "hi" }] }, false);
@@ -115,7 +131,8 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
     expect(JSON.parse(transport.mock.calls[0][1].body)).toEqual(body);
     expect(await result.response.json()).toEqual(completion);
     expect(transport).toHaveBeenCalledTimes(1);
-    expect(AI_PROVIDERS[candidate]).toBeUndefined();
+    expect(transport.mock.calls[0][0]).not.toContain("g4f.space");
+    expect(AI_PROVIDERS[candidate]).toMatchObject({ name: "g4f Ollama" });
   });
 
   it("does not validate an unverified account key merely because public native tags returns 200", async () => {

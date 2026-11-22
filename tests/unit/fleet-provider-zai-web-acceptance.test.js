@@ -1,8 +1,8 @@
 /**
  * Scope note (issue #1251, zai-web vs installed `zai`). Offline only: fetch is mocked, no network,
  * credentials or account. Positive candidate = installed native `zai` (api.z.ai Anthropic transport).
- * Negative candidate = `zai-web`, which is NOT registered; it must not borrow `zai` identity or
- * any fallback transport. Static registry exports prove metadata only. Live account-backed
+ * Second candidate = `zai-web`, the registered chat.z.ai session provider; it must not borrow the
+ * `zai` identity, and its token must only ever reach chat.z.ai. Static registry exports prove metadata only. Live account-backed
  * verification is UNAVAILABLE here, so no web-session support is claimed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -80,15 +80,15 @@ describe("zai-web acceptance (offline)", () => {
     expect(init.headers.Authorization).toBeUndefined();
   });
 
-  it("zai-web has no registration, probe, or model discovery", async () => {
-    expect(PROVIDERS["zai-web"]).toBeUndefined();
-    expect(hasSpecializedExecutor("zai-web")).toBe(false);
-    const fetcher = vi.fn();
-    expect(await probeRegistryProvider("zai-web", KEY, fetcher)).toBeNull();
+  it("zai-web is registered as its own web identity with a local catalog and no probe request", async () => {
+    expect(PROVIDERS["zai-web"]).toMatchObject({ baseUrl: "https://chat.z.ai/api/v2/chat/completions" });
+    expect(PROVIDERS["zai-web"].baseUrl).not.toBe(PROVIDERS.zai.baseUrl);
+    expect(hasSpecializedExecutor("zai-web")).toBe(true);
+    expect(getExecutor("zai-web")).not.toBe(getExecutor("zai"));
+    expect(getProviderModels("zai-web").map(({ id }) => id)).toEqual(["glm-5.3-flash", "glm-5.3", "glm-5.2"]);
     const models = await fetchConnectionModels({ provider: "zai-web", apiKey: KEY });
-    expect(models).toEqual({ error: "Provider zai-web does not support models listing", status: 400 });
-    expect(getProviderModels("zai-web")).toEqual([]);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(models).toMatchObject({ provider: "zai-web", source: "local_catalog" });
+    expect(models.models.map(({ id }) => id)).toEqual(["glm-5.3-flash", "glm-5.3", "glm-5.2"]);
     expect(transport.fetch).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -96,22 +96,19 @@ describe("zai-web acceptance (offline)", () => {
   it("zai-web credentials are never sent to another vendor's endpoint", async () => {
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     transport.fetch.mockImplementation(fetchMock);
-    const executor = getExecutor("zai-web");
-    const buildHeaders = vi.spyOn(executor, "buildHeaders");
-    const rejected = executor.execute({
-      model: "glm-4.7",
-      body: { model: "glm-4.7", messages: [{ role: "user", content: "hi" }] },
+    const token = `header.${Buffer.from(JSON.stringify({ id: "fixture-user" })).toString("base64url")}.signature`;
+    await getExecutor("zai-web").execute({
+      model: "glm-5.3",
+      body: { model: "glm-5.3", messages: [{ role: "user", content: "hi" }] },
       stream: false,
-      credentials: { apiKey: KEY },
+      credentials: { apiKey: `token=${token}` },
       log: null,
     });
-    await expect(rejected).rejects.toBeInstanceOf(Error);
-    await expect(rejected).rejects.toMatchObject({
-      message: 'Unknown provider "zai-web": no supported transport endpoint',
-      status: 400,
-    });
-    expect(buildHeaders).not.toHaveBeenCalled();
-    expect(transport.fetch).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(new URL(String(url)).origin).toBe("https://chat.z.ai");
+      expect(JSON.stringify(init.headers)).not.toContain(KEY);
+    }
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

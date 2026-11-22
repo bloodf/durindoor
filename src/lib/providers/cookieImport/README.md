@@ -53,6 +53,15 @@ through the normal connection path.
 | Perplexity Web | Extension and dashboard | Existing `www.perplexity.ai` profile. NextAuth session cookie or contiguous numbered chunks. |
 | Grok Web | Extension and dashboard | Existing `grok.com` profile requires `sso`. |
 | Muse Spark Web | Extension and dashboard, guarded runtime | Existing `www.meta.ai` profile requires `ecto_1_sess`. Import leaves guard-only dispatch in place. |
+| ChatGPT Web Codex | Extension and dashboard | Same `chatgpt.com` profile as ChatGPT Web: NextAuth session cookie or contiguous numbered chunks. |
+| Claude Web | Extension and dashboard | `claude.ai` profile requires `sessionKey`. |
+| Gemini Web | Extension and dashboard | `gemini.google.com` profile requires `__Secure-1PSID` and `__Secure-1PSIDTS`, which Google sets on the parent `.google.com` domain; the contract accepts a parent domain of the origin host. |
+| Doubao Web | Extension and dashboard | `www.dola.com` profile requires `sessionid` and `s_v_web_id`. A pasted header that carries `fp` instead of `s_v_web_id` still works through manual paste. |
+| Z.ai Web | Extension and dashboard | `chat.z.ai` profile requires the `token` cookie. |
+| MaxAI | Extension and dashboard | `www.maxai.co` profile requires `access_token`, `device_id` and `user_id` from the same browser session. |
+| Arena | Extension and dashboard | `arena.ai` profile requires `arena-auth-prod-v1`; numbered `arena-auth-prod-v1.N` chunks must be contiguous. |
+| ChatPlayground | Extension and dashboard | `app.chatplayground.ai` profile requires `__client` and `__session`. |
+| DeepSeek Web | Manual token | The credential is the `userToken` from local storage, saved as an API-key credential; there is no cookie to capture. |
 | Adapta Web | Dashboard only | `__client` is accepted as a Cookie header at the Clerk origin, `https://clerk.agent.adapta.one`. The chat site `agent.adapta.one` has a separate origin. cURL and HAR input must identify the Clerk origin. [Pinned comparison](../../../../internal/docs/adapta-t3-web-cookie-parity-2034.md) |
 | Tencent Yuanbao Web | Extension and dashboard | The normal connection requires both `hy_user` and `hy_token` for `https://yuanbao.tencent.com`. The executor supplies `hy_source=web`. [Pinned comparison](../../../../internal/docs/yuanbao-web-signin-parity-2034.md) |
 | T3 Chat Web | Manual header | The local parser requires `convex-session-id`, and the pinned source calls for the full session cookie set. A complete narrow allowlist is unverified. [Pinned comparison](../../../../internal/docs/t3-web-signin-parity-2034.md) |

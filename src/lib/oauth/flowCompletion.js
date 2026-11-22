@@ -12,6 +12,7 @@ import {
 "@/models";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
 import { isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
+import { resetM365RefreshCircuit } from "open-sse/services/tokenRefresh/copilotM365.js";
 
 /** Merge durable OAuth routing without erasing provider-owned metadata. */
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
@@ -102,9 +103,11 @@ flowClaim = null)
       error.code = "OAUTH_RECONNECT_TARGET_MISSING";
       throw error;
     }
-    return commit && isObject(commit) && Object.hasOwn(commit, "connection") ?
-    commit.connection :
-    commit;
+    const connection = commit && isObject(commit) && Object.hasOwn(commit, "connection") ?
+      commit.connection :
+      commit;
+    if (provider === "copilot-m365-web") resetM365RefreshCircuit(connectionId);
+    return connection;
   }
 
   const connectionData = {
@@ -117,11 +120,13 @@ flowClaim = null)
     ...reactivate,
     testStatus: "active"
   };
-  return flowClaim ?
-  createProviderConnection(connectionData, {
+  const connection = flowClaim ?
+  await createProviderConnection(connectionData, {
     shouldCommit: () => isOAuthFlowClaimActive(flowClaim)
   }) :
-  createProviderConnection(connectionData);
+  await createProviderConnection(connectionData);
+  if (provider === "copilot-m365-web" && typeof connection?.id === "string") resetM365RefreshCircuit(connection.id);
+  return connection;
 }
 
 /**

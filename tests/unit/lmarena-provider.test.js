@@ -6,9 +6,8 @@ vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: 
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
 vi.mock("../../open-sse/utils/requestLogger.js", async (original) => ({ ...(await original()), createRequestLogger: vi.fn(async () => ({ logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(), logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn() })) }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => { const original = await importOriginal(); const entry = await import("../../open-sse/providers/private/lmarena.js"); return { ...original, default: [...original.default, entry.default] }; });
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => { const original = await importOriginal(); const { LmarenaExecutor } = await import("../../open-sse/executors/lmarena.js"); const executor = new LmarenaExecutor(); return { ...original, getExecutor: (id) => id === "lmarena" ? executor : original.getExecutor(id), hasSpecializedExecutor: (id) => id === "lmarena" || original.hasSpecializedExecutor(id) }; });
-import entry, { cookieCaptureProfile } from "../../open-sse/providers/private/lmarena.js";
+import entry, { cookieCaptureProfile } from "../../open-sse/providers/registry/lmarena.js";
 import { validateLmarenaSession } from "../../open-sse/executors/lmarena.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";

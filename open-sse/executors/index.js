@@ -30,6 +30,17 @@ import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
+import { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
+import { ClaudeWebExecutor } from "./claude-web.js";
+import { DeepSeekWebExecutor } from "./deepseek-web.js";
+import { DoubaoWebExecutor } from "./doubao-web.js";
+import { GeminiWebExecutor } from "./gemini-web.js";
+import { ZaiWebExecutor } from "./zai-web.js";
+import { ChatPlaygroundExecutor } from "./chatplayground.js";
+import { CloudflarePlaygroundExecutor } from "./cloudflare-playground.js";
+import { LmarenaExecutor } from "./lmarena.js";
+import { MaxaiExecutor } from "./maxai.js";
+import { PoeExecutor } from "./poe.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { PollinationsExecutor } from "./pollinations.js";
@@ -69,6 +80,15 @@ import { resolveProviderAlias } from "../services/model.js";
 import { OpenCodeServerExecutor } from "./opencode-server.js";
 
 const chatGptWebExecutor = new ChatGptWebExecutor();
+const chatGptWebCodexExecutor = new ChatGptWebCodexExecutor();
+const claudeWebExecutor = new ClaudeWebExecutor();
+const deepSeekWebExecutor = new DeepSeekWebExecutor();
+const geminiWebExecutor = new GeminiWebExecutor();
+const zaiWebExecutor = new ZaiWebExecutor();
+const chatPlaygroundExecutor = new ChatPlaygroundExecutor();
+const cloudflarePlaygroundExecutor = new CloudflarePlaygroundExecutor();
+const lmarenaExecutor = new LmarenaExecutor();
+const maxaiExecutor = new MaxaiExecutor();
 
 const executors = {
   "adapta-web": new AdaptaWebExecutor(),
@@ -116,6 +136,26 @@ const executors = {
   "perplexity-web": new PerplexityWebExecutor(),
   "chatgpt-web": chatGptWebExecutor,
   "cgpt-web": chatGptWebExecutor,
+  "chatgpt-web-codex": chatGptWebCodexExecutor,
+  "cgpt-codex": chatGptWebCodexExecutor,
+  "claude-web": claudeWebExecutor,
+  cw: claudeWebExecutor,
+  "deepseek-web": deepSeekWebExecutor,
+  "ds-web": deepSeekWebExecutor,
+  "doubao-web": new DoubaoWebExecutor(),
+  "gemini-web": geminiWebExecutor,
+  gweb: geminiWebExecutor,
+  "zai-web": zaiWebExecutor,
+  zw: zaiWebExecutor,
+  chatplayground: chatPlaygroundExecutor,
+  cpl: chatPlaygroundExecutor,
+  "cloudflare-playground": cloudflarePlaygroundExecutor,
+  cfp: cloudflarePlaygroundExecutor,
+  lmarena: lmarenaExecutor,
+  lma: lmarenaExecutor,
+  maxai: maxaiExecutor,
+  mx: maxaiExecutor,
+  poe: new PoeExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),
@@ -234,6 +274,12 @@ export { OpenCodeGoExecutor } from "./opencode-go.js";
 export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
+export { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.js";
+export { ClaudeWebExecutor } from "./claude-web.js";
+export { DeepSeekWebExecutor } from "./deepseek-web.js";
+export { DoubaoWebExecutor } from "./doubao-web.js";
+export { GeminiWebExecutor } from "./gemini-web.js";
+export { ZaiWebExecutor } from "./zai-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { PollinationsExecutor } from "./pollinations.js";

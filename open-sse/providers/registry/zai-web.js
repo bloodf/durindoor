@@ -15,7 +15,7 @@ export const ZAI_WEB_COOKIE_PROFILE = Object.freeze({
 
 export default {
   id: "zai-web",
-  priority: 145,
+  priority: 252,
   alias: "zai-web",
   uiAlias: "zw",
   display: { name: "Z.ai Web", icon: "hub", color: "#2563EB", textIcon: "Z.ai", website: "https://chat.z.ai" },

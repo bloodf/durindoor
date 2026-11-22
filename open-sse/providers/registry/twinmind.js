@@ -5,7 +5,8 @@
 // registration batch must wire open-sse/executors/twinmind.js.
 export default {
   id: "twinmind",
-  alias: "tm",
+  // OmniRoute names this alias "tm", but tokenmarket already owns it in this registry.
+  alias: "twinmind",
   display: {
     name: "TwinMind",
     icon: "hub",

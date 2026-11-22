@@ -2,9 +2,8 @@
  * Issue #1185 offline acceptance scope: installed `gemini` is Google's native
  * API, not evidence for g4f, Gemini Web, or an app-server transport. Synthetic
  * fetch fixtures prove request wiring only, never account access or capability
- * availability. Candidate capabilities must stay hidden until account-backed
- * endpoint/auth/model, tool, stream, and error verification is available.
- * Production is read-only; the unsupported-identity regression requests a grant.
+ * availability. Registered g4f dispatch and unregistered-provider rejection
+ * are both exercised with closed transport mocks.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,11 +79,14 @@ describe("#1185 g4f-gemini identity and offline native comparison", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps unregistered candidate models and metadata hidden, not aliased to native Gemini", () => {
+  it("keeps the registered g4f candidate separate from native Gemini", () => {
     expect(PROVIDERS.gemini.baseUrl).toBe(nativeBase);
     expect(PROVIDERS.gemini.format).toBe("gemini");
-    expect(PROVIDERS[candidate]).toBeUndefined();
-    expect(getModelsByProviderId(candidate)).toEqual([]);
+    expect(PROVIDERS[candidate]).toMatchObject({
+      baseUrl: "https://g4f.space/api/gemini/v1/chat/completions",
+      format: "openai",
+    });
+    expect(getModelsByProviderId(candidate).map((entry) => entry.id)).toEqual(["models/gemini-2.5-flash", "models/gemini-2.5-pro"]);
     expect(getModelsByProviderId("gemini").some((entry) => entry.id === model)).toBe(true);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -99,15 +101,16 @@ describe("#1185 g4f-gemini identity and offline native comparison", () => {
     expect(mocks.updateProviderConnection).toHaveBeenCalledWith("fixture-gemini", expect.objectContaining({ testStatus: "active" }));
   });
 
-  it("rejects candidate validation and model discovery without sending its credential", async () => {
+  it("validates and discovers the candidate against g4f.space only, never Google", async () => {
     mocks.getProviderConnectionById.mockResolvedValue(connection(candidate));
-    expect(await testSingleConnection(`fixture-${candidate}`)).toMatchObject({
-      valid: false, error: "Provider test not supported",
-    });
-    expect(await fetchConnectionModels(connection(candidate))).toEqual({
-      error: `Provider ${candidate} does not support models listing`, status: 400,
-    });
-    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockResolvedValue(Response.json({ data: [{ id: `models/${model}` }] }));
+    expect(await testSingleConnection(`fixture-${candidate}`)).toMatchObject({ valid: true, error: null });
+    expect(await fetchConnectionModels(connection(candidate))).toMatchObject({ models: [{ id: `models/${model}` }] });
+    expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://g4f.space/api/gemini/v1/models",
+      "https://g4f.space/api/gemini/v1/models",
+    ]);
+    for (const [, options] of fetch.mock.calls) expect(options.headers.Authorization).toBe("Bearer offline-fixture-key");
   });
 
   it("discovers account-fixture models through native Google query auth, not g4f /v1/models", async () => {
@@ -161,13 +164,37 @@ describe("#1185 g4f-gemini identity and offline native comparison", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects unsupported candidate executor identity before credential-bearing transport dispatch", async () => {
-    // A mock success must not turn an unknown provider's OpenAI fallback into support.
+  it("rejects an unregistered identity without reading models or dispatching credentials", async () => {
+    const provider = "fleet-unregistered-provider-1185";
+    expect(PROVIDERS[provider]).toBeUndefined();
+    expect(getModelsByProviderId(provider)).toEqual([]);
+    mocks.getProviderConnectionById.mockResolvedValue(connection(provider));
+    expect(await testSingleConnection(`fixture-${provider}`)).toMatchObject({
+      valid: false, error: "Provider test not supported",
+    });
+    expect(await fetchConnectionModels(connection(provider))).toEqual({
+      error: `Provider ${provider} does not support models listing`, status: 400,
+    });
     fetch.mockResolvedValue(Response.json({ choices: [{ message: { content: "wrong vendor" } }] }));
-    await expect(Promise.resolve().then(() => getExecutor(candidate).execute({
+    await expect(getExecutor(provider).execute({
       model, body: { messages: [{ role: "user", content: "hello" }] },
-      stream: false, credentials: connection(candidate),
-    }))).rejects.toMatchObject({ status: 400 });
+      stream: false, credentials: connection(provider),
+    })).rejects.toMatchObject({ status: 400 });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the candidate to g4f.space with its own key, never to Google or an app-server base URL", async () => {
+    fetch.mockResolvedValue(Response.json({ choices: [{ message: { content: "from g4f" } }] }));
+    const result = await getExecutor(candidate).execute({
+      model: `models/${model}`, body: { messages: [{ role: "user", content: "hello" }] },
+      stream: false, credentials: connection(candidate),
+    });
+    expect(result.url).toBe("https://g4f.space/api/gemini/v1/chat/completions");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("https://g4f.space/api/gemini/v1/chat/completions");
+    expect(options.headers.Authorization).toBe("Bearer offline-fixture-key");
+    expect(options.headers["x-goog-api-key"]).toBeUndefined();
+    expect(await result.response.json()).toMatchObject({ choices: [{ message: { content: "from g4f" } }] });
   });
 });

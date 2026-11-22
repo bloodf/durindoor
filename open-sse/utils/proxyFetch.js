@@ -225,26 +225,89 @@ function raceWithSignal(promise, signal) {
   });
 }
 
-/** Resolve every IPv4 answer through Google DNS (bypass system DNS). */
-async function resolveRealIPs(hostname) {
+// Bound on the UDP resolver. Where UDP/53 to Google DNS is filtered the OS-level
+// timeout is ~30s, which stalls the very request this lookup is unblocking.
+const UDP_RESOLVE_TIMEOUT_MS = 2000;
+const DOH_TIMEOUT_MS = 3000;
+// DNS-over-HTTPS (port 443) fallbacks for networks that block UDP/53.
+const DOH_ENDPOINTS = [
+(hostname) => `https://1.1.1.1/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+(hostname) => `https://dns.google/resolve?name=${encodeURIComponent(hostname)}&type=A`];
+
+/** A usable real answer: public-looking IPv4, never the loopback the spoof points at. */
+function isUsableRealIPv4(address) {
+  return net.isIPv4(address) && !address.startsWith("127.") && address !== "0.0.0.0";
+}
+
+async function resolveViaUdp(hostname, timeoutMs) {
+  const dns = await import("dns");
+  const resolver = new dns.Resolver();
+  resolver.setServers(GOOGLE_DNS_SERVERS);
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {resolver.cancel();} catch {/* resolver already settled */}
+      reject(new Error("queryA ETIMEOUT"));
+    }, timeoutMs);
+    resolver.resolve4(hostname, (error, addresses) => {
+      clearTimeout(timer);
+      if (error) reject(error);else resolve(addresses);
+    });
+  });
+}
+
+async function resolveViaDoh(hostname, fetchImpl) {
+  for (const buildUrl of DOH_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DOH_TIMEOUT_MS);
+    try {
+      const response = await fetchImpl(buildUrl(hostname), {
+        headers: { accept: "application/dns-json" },
+        signal: controller.signal
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const addresses = (Array.isArray(data?.Answer) ? data.Answer : []).
+      filter((answer) => answer?.type === 1 && isString(answer.data) && isUsableRealIPv4(answer.data)).
+      map((answer) => answer.data);
+      if (addresses.length) return addresses;
+    } catch {/* try the next endpoint */} finally {clearTimeout(timer);}
+  }
+  return [];
+}
+
+/**
+ * Resolve every IPv4 answer through Google DNS (bypass system DNS). UDP is tried
+ * first with a short bound; DNS-over-HTTPS is the fallback when UDP/53 is blocked.
+ */
+async function resolveRealIPs(hostname, {
+  udpResolve = resolveViaUdp,
+  dohFetch = (...args) => originalFetch(...args),
+  udpTimeoutMs = UDP_RESOLVE_TIMEOUT_MS
+} = {}) {
   const cached = DNS_CACHE.get(hostname);
   if (cached && Date.now() < cached.expiry) return cached.ips;
 
   try {
     if (realIpResolverForTesting) return await realIpResolverForTesting(hostname);
-    const dns = await import("dns");
-    const { promisify } = await import("util");
-    const resolver = new dns.Resolver();
-    resolver.setServers(GOOGLE_DNS_SERVERS);
-    const resolve4 = promisify(resolver.resolve4.bind(resolver));
-    const addresses = await resolve4(hostname);
-    DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    let addresses = [];
+    try {
+      addresses = await udpResolve(hostname, udpTimeoutMs);
+    } catch (error) {
+      logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
+    }
+    if (!addresses.length) addresses = await resolveViaDoh(hostname, dohFetch);
+    if (addresses.length) {
+      DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    }
     return addresses;
   } catch (error) {
     logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
     return [];
   }
 }
+
+export const __resolveRealIPsForTesting = resolveRealIPs;
+export const __clearRealIpCacheForTesting = () => DNS_CACHE.clear();
 
 /**
  * Check if request should bypass MITM DNS redirect

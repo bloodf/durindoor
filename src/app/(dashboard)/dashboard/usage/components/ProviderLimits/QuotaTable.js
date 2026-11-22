@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import Pagination from "@/shared/ui/components/Pagination.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
-import { formatResetTime, getRemainingPercentage } from "./utils";
+import { formatResetTime, getRemainingPercentage, quotaStatusLevel } from "./utils";
 import { MERGE_MODE } from "./grouping";
 import { isFunction } from "../../../../../../shared/utils/typeChecks.js";
 
@@ -17,10 +17,11 @@ const TONES = {
   credit: { text: "text-dd-info", bar: "bg-dd-info", surface: "bg-dd-surface-2" },
 };
 
+// Thresholds live in ./utils (quotaStatusLevel); this file only maps level -> tone.
+const TONE_BY_LEVEL = { green: TONES.healthy, yellow: TONES.warning, red: TONES.danger };
+
 function toneFor(remaining) {
-  if (remaining > 70) return TONES.healthy;
-  if (remaining >= 30) return TONES.warning;
-  return TONES.danger;
+  return TONE_BY_LEVEL[quotaStatusLevel(remaining)];
 }
 
 function formatResetTimeDisplay(resetTime) {

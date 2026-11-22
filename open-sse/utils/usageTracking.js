@@ -120,7 +120,7 @@ export function filterUsageForFormat(usage, targetFormat) {
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.OPENAI_RESPONSES]: [
-    'input_tokens', 'output_tokens',
+    'input_tokens', 'output_tokens', 'total_tokens',
     'input_tokens_details', 'output_tokens_details',
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 

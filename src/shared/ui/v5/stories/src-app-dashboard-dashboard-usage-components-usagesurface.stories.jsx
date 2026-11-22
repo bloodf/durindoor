@@ -9,6 +9,7 @@ export const Overview = { ...reviewStory(original.Overview, {"source":"src/app/(
 export const RecentAndSessions = { ...reviewStory(original.RecentAndSessions, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
 export const UsageTrend = { ...reviewStory(original.UsageTrend, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
 export const UsageTrendEmpty = { ...reviewStory(original.UsageTrendEmpty, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const UsageTrendError = { ...reviewStory(original.UsageTrendError, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
 export const UsageTableCollapsed = { ...reviewStory(original.UsageTableCollapsed, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
 export const UsageTablePending = { ...reviewStory(original.UsageTablePending, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
 export const UsageTableCostView = { ...reviewStory(original.UsageTableCostView, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };

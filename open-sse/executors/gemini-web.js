@@ -28,7 +28,7 @@ import { BaseExecutor } from "./base.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 import { resolvePlaywrightProxy } from "../services/browserPool.js";
 import { isFunction, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -578,7 +578,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       abortBrowser = () => void context?.close().catch(() => {});
       signal?.addEventListener("abort", abortBrowser, { once: true });
 
-      const proxyUrl = resolveProxyForRequest(GEMINI_WEB_URL, input.proxyOptions).proxyUrl;
+      const proxyUrl = resolveConnectProxyForRequest(GEMINI_WEB_URL, input.proxyOptions).proxyUrl;
       const proxy = resolvePlaywrightProxy(proxyUrl);
       const contextOptions = { userAgent: GEMINI_USER_AGENT };
       if (proxy) contextOptions.proxy = proxy;

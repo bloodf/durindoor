@@ -20,7 +20,7 @@
  */
 import { executeChatGptWebCleanRoom } from "../utils/chatgptWebExecutorAdapter.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { BrowserUnavailableError } from "../services/browserPool.js";
 import { BaseExecutor } from "./base.js";
 import { ChatGptWebHttpExecutor } from "./chatgpt-web-http.js";
@@ -108,7 +108,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
   }
 
   runBrowser(input) {
-    const proxyUrl = resolveProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
+    const proxyUrl = resolveConnectProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
     const run = this.deps.runBrowser ?? executeChatGptWebCleanRoom;
     return run({ ...input, proxyUrl }, this.deps.browser ?? {});
   }

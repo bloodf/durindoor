@@ -20,6 +20,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { resolveCursorModels } from "../services/cursorModels.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -135,9 +136,10 @@ export class CursorApiExecutor extends CursorExecutor {
     };
     let response;
     try {
-      response = this.fetchImpl
-        ? await this.fetchImpl(CURSOR_API_KEY_EXCHANGE_URL, init, proxyOptions)
-        : await proxyAwareFetch(CURSOR_API_KEY_EXCHANGE_URL, init, proxyOptions);
+      const fetcher = this.fetchImpl
+        ? (url, options) => this.fetchImpl(url, options, proxyOptions)
+        : (url, options) => proxyAwareFetch(url, options, proxyOptions);
+      response = await credentialFetch(fetcher, CURSOR_API_KEY_EXCHANGE_URL, init);
     } catch (error) {
       if (error?.name === "AbortError" && signal?.aborted) throw error;
       throw new CursorApiError(502, "cursor_api_exchange_failed", "Cursor API key exchange request failed");

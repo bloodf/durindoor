@@ -18,6 +18,7 @@
 // zedHostedOptIn() and is enforced by the executor and by model discovery.
 import crypto from "node:crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const ZED_WEB_BASE_URL = "https://zed.dev";
@@ -74,8 +75,10 @@ export function zedDispatchDisabledError() {
 }
 
 function fetchFor(options) {
-  if (isFunction(options?.fetch)) return options.fetch;
-  return (url, init) => proxyAwareFetch(url, init, options?.proxyOptions ?? null);
+  const transport = isFunction(options?.fetch)
+    ? options.fetch
+    : (url, init) => proxyAwareFetch(url, init, options?.proxyOptions ?? null);
+  return (url, init) => credentialFetch(transport, url, init);
 }
 
 const b64url = (value) => Buffer.from(value).toString("base64url");

@@ -1,5 +1,6 @@
 // Device authorization contract from OmniRoute release/v3.8.55,
 // src/lib/oauth/providers/workbuddy.ts.
+import { credentialFetch } from "../../../open-sse/utils/credentialFetch.js";
 const config = Object.freeze({
   stateUrl: "https://www.workbuddy.ai/v2/plugin/auth/state",
   tokenUrl: "https://www.workbuddy.ai/v2/plugin/auth/token",
@@ -12,7 +13,7 @@ export default {
   config,
   flowType: "device_code",
   async requestDeviceCode(cfg = config) {
-    const response = await fetch(`${cfg.stateUrl}?platform=${encodeURIComponent(cfg.platform)}`, {
+    const response = await credentialFetch(fetch, `${cfg.stateUrl}?platform=${encodeURIComponent(cfg.platform)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", "X-Product": "SaaS" },
       body: JSON.stringify({ platform: cfg.platform }),
@@ -26,7 +27,7 @@ export default {
       verification_uri_complete: url, expires_in: 600, interval: Math.max(1, Math.floor(cfg.pollInterval / 1000)) };
   },
   async pollToken(cfg, state) {
-    const response = await fetch(`${cfg.tokenUrl}?state=${encodeURIComponent(state)}`, {
+    const response = await credentialFetch(fetch, `${cfg.tokenUrl}?state=${encodeURIComponent(state)}`, {
       headers: { Accept: "application/json", "X-Product": "SaaS" },
     });
     if (!response.ok) return { ok: false, data: { error: "request_failed" } };

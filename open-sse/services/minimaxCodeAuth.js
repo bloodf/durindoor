@@ -17,6 +17,7 @@
  */
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 
 export const MINIMAX_CODE_ACCOUNT_BASES = Object.freeze({
   en: "https://account.minimax.io",
@@ -74,7 +75,6 @@ async function postAccountForm(url, params, proxyOptions, fetchImpl) {
   try {
     const init = {
       method: "POST",
-      redirect: "error",
       signal: controller.signal,
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -83,7 +83,8 @@ async function postAccountForm(url, params, proxyOptions, fetchImpl) {
       },
       body: new URLSearchParams(params).toString(),
     };
-    const response = fetchImpl ? await fetchImpl(url, init) : await proxyAwareFetch(url, init, proxyOptions);
+    const fetcher = fetchImpl || ((target, options) => proxyAwareFetch(target, options, proxyOptions));
+    const response = await credentialFetch(fetcher, url, init);
     const data = await response.json().catch(() => null);
     return { status: response.status, ok: response.ok, data: asRecord(data) };
   } catch {

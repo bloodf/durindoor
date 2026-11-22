@@ -89,7 +89,7 @@ describe("Kimi platform Chat Completions", () => {
       expect(probe.mock.calls[0][0]).toBe("https://api.moonshot.ai/v1/chat/completions");
       expect(probe.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${key}`);
       expect(probe.mock.calls[0][1].method).toBe("POST");
-      expect(JSON.parse(probe.mock.calls[0][1].body)).toMatchObject({ model: "kimi-for-coding", max_tokens: 1 });
+      expect(JSON.parse(probe.mock.calls[0][1].body)).toMatchObject({ model: "kimi-for-coding", max_tokens: 10 });
     } finally { restore(); }
   });
 

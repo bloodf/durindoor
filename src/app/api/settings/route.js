@@ -5,6 +5,7 @@ import { MAX_PROVIDER_RPM } from "@/shared/constants/providers";
 import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { resetRoundrobinCursors } from "open-sse/services/modelFallback.js";
 import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
@@ -451,6 +452,10 @@ export async function PATCH(request) {
     {
       resetComboRotation();
       resetComboScoring();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "modelFallbacks")) {
+      resetRoundrobinCursors();
     }
 
     // Write authority and read authority differ: an open local dashboard may

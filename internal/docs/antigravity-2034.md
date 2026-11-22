@@ -18,11 +18,14 @@ uppercase thinking levels and removes invalid Claude budgets without leaving
 native search envelope; function tools take precedence in mixed requests. The
 reverted `X-Goog-User-Project` header is not added.
 
-DurinDoor has no Antigravity native CountTokens request: its count-token handler
-uses a local estimate for this provider. Consequently the upstream CountTokens
-model, stream, cooldown, 429 and schema changes have no corresponding request
-path to port. Synthetic outbound tests exercise the envelope; they do not prove
-live provider acceptance.
+DurinDoor now sends Antigravity connections to the native `v1internal:countTokens`
+endpoint, using the chat executor's project, credential, user-agent and session
+scoping helpers. The request populates `request.model`, removes streaming-only
+and unsupported fields, and sanitizes tool schemas. Successful counts are
+authoritative; 429s feed the selected connection's cooldown, authentication
+errors remain credential errors, and other unavailable responses use the local
+estimate marked approximate. Closed synthetic outbound tests exercise this
+envelope and connection isolation; they do not prove live provider acceptance.
 
 Compared on 2026-11-20, without provider credentials or account traffic. These are source comparisons, not evidence that Google currently accepts any particular client, model, or account.
 

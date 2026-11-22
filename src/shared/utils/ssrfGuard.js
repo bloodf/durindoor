@@ -45,6 +45,7 @@ const BLOCKED_V4_RANGES = [
   [ipv4ToInt("169.254.0.0"), 16], // includes 169.254.169.254 cloud metadata
   [ipv4ToInt("172.16.0.0"), 12],
   [ipv4ToInt("192.168.0.0"), 16],
+  [ipv4ToInt("192.0.2.0"), 24], // TEST-NET-1
   [ipv4ToInt("192.0.0.0"), 24], // special-use protocol assignments
   [ipv4ToInt("224.0.0.0"), 4], // multicast
   [ipv4ToInt("240.0.0.0"), 4], // reserved, including limited broadcast
@@ -143,6 +144,8 @@ function classifyIpv6Groups(g) {
   const low32 = ((g[6] << 16) | g[7]) >>> 0;
   if ([0, 1, 2, 3, 4].every(isZero) && g[5] === 0xffff) return classifyIpv4Int(low32);
   if (g[0] === 0x0064 && g[1] === 0xff9b && [2, 3, 4, 5].every(isZero)) return classifyIpv4Int(low32);
+  // Documentation addresses are not globally routable.
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return "blocked";
   // IPv4-compatible ::a.b.c.d/96 (deprecated, still parseable) — excludes :: and ::1
   // which already matched above.
   if ([0, 1, 2, 3, 4, 5].every(isZero) && low32 !== 0 && low32 !== 1) return classifyIpv4Int(low32);

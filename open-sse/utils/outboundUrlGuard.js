@@ -100,16 +100,36 @@ function wordsToIpv4(words) {
 
 function embeddedIpv4Address(host, includeCompatible = false) {
   const words = ipv6ToWords(host);
-  if (!words || !words.slice(0, 5).every((word) => word === 0)) return null;
-  if (words[5] === 0xffff || includeCompatible && words[5] === 0) return wordsToIpv4(words);
+  if (!words) return null;
+  if (words.slice(0, 5).every((word) => word === 0) &&
+      (words[5] === 0xffff || includeCompatible && words[5] === 0)) return wordsToIpv4(words);
+  if (words[0] === 0x0064 && words[1] === 0xff9b && words.slice(2, 6).every((word) => word === 0)) return wordsToIpv4(words);
   return null;
+}
+
+function transitionIpv4Addresses(words) {
+  if (!words) return [];
+  if (words[0] === 0x2002) {
+    return [`${words[1] >>> 8}.${words[1] & 255}.${words[2] >>> 8}.${words[2] & 255}`];
+  }
+  if (words[0] === 0x2001 && words[1] === 0) {
+    const server = `${words[2] >>> 8}.${words[2] & 255}.${words[3] >>> 8}.${words[3] & 255}`;
+    const clientInt = (~((words[6] << 16) | words[7])) >>> 0;
+    const client = `${clientInt >>> 24}.${clientInt >>> 16 & 255}.${clientInt >>> 8 & 255}.${clientInt & 255}`;
+    return [server, client];
+  }
+  return [];
 }
 
 export function isPrivateHost(hostname) {
   const normalized = normalizeHost(hostname);
+  // Preserve the provider URL policy's explicit TEST-NET-1 allowance. The
+  // shared SSRF classifier remains stricter for image fetches and other callers.
+  if (/^192\.0\.2\.\d{1,3}$/.test(normalized)) return false;
   if (!normalized || classifyHost(normalized) === "blocked") return true;
   const words = ipv6ToWords(normalized);
   if (!words) return false;
+  if (transitionIpv4Addresses(words).some((ip) => classifyHost(ip) === "blocked")) return true;
   // Preserve the outbound guard's additional local-use NAT64 and documentation blocks.
   return words[0] === 0x0064 && words[1] === 0xff9b && words[2] === 0x0001 ||
     words[0] === 0x2001 && words[1] === 0x0db8;
@@ -134,6 +154,7 @@ export function isCloudMetadataHost(hostname) {
   if (CLOUD_METADATA_HOSTNAMES.has(host)) return true;
   const embeddedIpv4 = embeddedIpv4Address(host, true);
   if (embeddedIpv4 && isCloudMetadataHost(embeddedIpv4)) return true;
+  if (transitionIpv4Addresses(ipv6ToWords(host)).some(isCloudMetadataHost)) return true;
   if (host.startsWith("169.254.")) return true; // IPv4 link-local /16
   return false;
 }

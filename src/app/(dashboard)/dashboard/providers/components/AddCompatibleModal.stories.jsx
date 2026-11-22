@@ -66,8 +66,20 @@ export const AnthropicInvalid = {
     const baseUrl = await dialogScope.findByLabelText("Base URL");
     await userEvent.clear(baseUrl);
     await userEvent.type(baseUrl, "https://example.com/v1");
-    await userEvent.type(dialogScope.getByLabelText("API Key (for Check)"), "sk-test");
+    await userEvent.type(dialogScope.getByLabelText("API key (optional)"), "sk-test");
     await userEvent.click(dialogScope.getByRole("button", { name: "Check" }));
     await expect(await dialogScope.findByText("Invalid")).toBeInTheDocument();
+  },
+};
+
+export const CreatePending = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", routes: { "POST /api/provider-nodes": () => new Promise(() => {}) } } },
+  render: () => <Wrap variant="openai" />,
+  play: async () => {
+    const dialog = within(await within(document.body).findByRole("dialog", { name: /add openai compatible/i }));
+    await userEvent.type(dialog.getByLabelText("Name"), "Example");
+    await userEvent.type(dialog.getByLabelText("Prefix"), "example");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await expect(dialog.getByRole("button", { name: "Creating..." })).toBeDisabled();
   },
 };

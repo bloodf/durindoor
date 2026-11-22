@@ -28,6 +28,7 @@ export async function PUT(request) {
 
     return NextResponse.json({ success: true, model, alias });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.log("Error updating alias:", error);
     return NextResponse.json({ error: "Failed to update alias" }, { status: 500 });
   }

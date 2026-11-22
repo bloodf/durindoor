@@ -8,6 +8,7 @@ import "open-sse/index.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
 import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
+import { readBoundedResponseText } from "open-sse/utils/error.js";
 
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
@@ -51,10 +52,19 @@ import {
 "./providerHelpers";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { assertPublicUrlResolved } from "../../shared/utils/ssrfGuard.js";
+import { OAuthCancelledError, throwIfOAuthCancelled } from "./cancellation.js";
+
+export { OAuthCancelledError, throwIfOAuthCancelled };
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
+import copilotM365 from "./copilotM365Provider.js";
 import museCode from "./museCodeProvider.js";
 import openference from "./openferenceProvider.js";
+import freebuff from "./freebuffProvider.js";
+import workbuddy from "./workbuddyProvider.js";
+import zedHosted from "./zedHostedProvider.js";
+import { devinDesktopOAuth } from "./services/devin-desktop.js";
+import { minimaxCodeOAuthProvider } from "./services/minimax-code.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -230,6 +240,110 @@ function antigravityOnboardMaxAttempts() {
 /** Delay between two `onboardUser` polls, in milliseconds. */
 function antigravityOnboardRetryDelayMs() {
   return antigravityOnboardBound("ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS", 5000, 0);
+}
+
+/**
+ * Sleep that ends early, with the cancelled outcome, when `signal` aborts.
+ * The timer and the abort listener are always released.
+ */
+function abortableDelay(ms, signal) {
+  throwIfOAuthCancelled(signal);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new OAuthCancelledError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
+/** Resolve user info and the project for a fresh Antigravity token. */
+async function antigravityResolveAccount(tokens, proxyOptions, signal) {
+  // Google fingerprints X-Goog-Api-Client / Client-Metadata on these calls
+  // and then refuses to provision a cloudaicompanionProject, so the real
+  // Antigravity IDE sends neither.
+  const loadHeaders = {
+    "Authorization": `Bearer ${tokens.access_token}`,
+    "Content-Type": "application/json",
+    "User-Agent": ANTIGRAVITY_CONFIG.loadCodeAssistUserAgent,
+    "x-request-source": "local"
+  };
+  const metadata = getOAuthClientMetadata();
+
+  // Fetch user info
+  const userInfoRes = await fetch(`${ANTIGRAVITY_CONFIG.userInfoUrl}?alt=json`, {
+    headers: {
+      Authorization: `Bearer ${tokens.access_token}`,
+      "x-request-source": "local"
+    },
+    proxyOptions,
+    signal
+  });
+  const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
+  throwIfOAuthCancelled(signal);
+
+  // Load Code Assist to get project ID and tier
+  let projectId = "";
+  let tierId = "legacy-tier";
+  const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
+    method: "POST",
+    headers: loadHeaders,
+    body: JSON.stringify({ metadata }),
+    proxyOptions,
+    signal
+  });
+  throwIfOAuthCancelled(signal);
+  if (!loadRes.ok) throw new Error(`Antigravity project lookup failed: ${loadRes.status}`);
+  const data = JSON.parse(await readBoundedResponseText(loadRes, { maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true }));
+  const project = data.cloudaicompanionProject;
+  projectId = isString(project) ? project.trim() :
+  isString(project?.id) ? project.id.trim() : "";
+  if (Array.isArray(data.allowedTiers)) {
+    for (const tier of data.allowedTiers) {
+      if (tier.isDefault && tier.id) {
+        tierId = tier.id.trim();
+        break;
+      }
+    }
+  }
+
+  // A new account can have no project until onboarding completes. Persist
+  // only the project associated with this token, never a placeholder.
+  if (!projectId) {
+    const maxAttempts = antigravityOnboardMaxAttempts();
+    const retryDelayMs = antigravityOnboardRetryDelayMs();
+    for (let i = 0; i < maxAttempts; i++) {
+      throwIfOAuthCancelled(signal);
+      const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
+        method: "POST",
+        headers: loadHeaders,
+        body: JSON.stringify({ tierId, metadata }),
+        proxyOptions,
+        signal
+      });
+      throwIfOAuthCancelled(signal);
+      if (!onboardRes.ok) throw new Error(`Antigravity onboarding failed: ${onboardRes.status}`);
+      const result = JSON.parse(await readBoundedResponseText(onboardRes, { maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true }));
+      // onboardUser is a long-running operation: Google answers `done:false`
+      // until the project is provisioned. Only a settled `done:true` response
+      // carries the project, so keep polling instead of reading a missing
+      // project as "this account owns no project".
+      if (result.done === true) {
+        const project = result.response?.cloudaicompanionProject;
+        projectId = isString(project) ? project.trim() :
+        isString(project?.id) ? project.id.trim() : "";
+        break;
+      }
+      if (i < maxAttempts - 1) await abortableDelay(retryDelayMs, signal);
+    }
+    if (!projectId) throw new Error("Antigravity onboarding did not return a project ID");
+  }
+
+  return { userInfo, projectId };
 }
 
 function kimiDeviceProvider(config, fallbackVerificationUrl) {
@@ -972,81 +1086,16 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    postExchange: async (tokens, proxyOptions) => {
-      // Google fingerprints X-Goog-Api-Client / Client-Metadata on these calls
-      // and then refuses to provision a cloudaicompanionProject, so the real
-      // Antigravity IDE sends neither.
-      const loadHeaders = {
-        "Authorization": `Bearer ${tokens.access_token}`,
-        "Content-Type": "application/json",
-        "User-Agent": ANTIGRAVITY_CONFIG.loadCodeAssistUserAgent,
-        "x-request-source": "local"
-      };
-      const metadata = getOAuthClientMetadata();
-
-      // Fetch user info
-      const userInfoRes = await fetch(`${ANTIGRAVITY_CONFIG.userInfoUrl}?alt=json`, {
-        headers: {
-          Authorization: `Bearer ${tokens.access_token}`,
-          "x-request-source": "local"
-        },
-        proxyOptions
-      });
-      const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
-
-      // Load Code Assist to get project ID and tier
-      let projectId = "";
-      let tierId = "legacy-tier";
-      const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
-        method: "POST",
-        headers: loadHeaders,
-        body: JSON.stringify({ metadata }),
-        proxyOptions
-      });
-      if (!loadRes.ok) throw new Error(`Antigravity project lookup failed: ${loadRes.status}`);
-      const data = await loadRes.json();
-      const project = data.cloudaicompanionProject;
-      projectId = isString(project) ? project.trim() :
-      isString(project?.id) ? project.id.trim() : "";
-      if (Array.isArray(data.allowedTiers)) {
-        for (const tier of data.allowedTiers) {
-          if (tier.isDefault && tier.id) {
-            tierId = tier.id.trim();
-            break;
-          }
-        }
+    postExchange: async (tokens, proxyOptions, _extraData, signal) => {
+      throwIfOAuthCancelled(signal);
+      try {
+        return await antigravityResolveAccount(tokens, proxyOptions, signal);
+      } catch (error) {
+        // An aborted request rejects with a transport error; report the
+        // cancellation instead of a provider failure.
+        if (signal?.aborted) throw new OAuthCancelledError();
+        throw error;
       }
-
-      // A new account can have no project until onboarding completes. Persist
-      // only the project associated with this token, never a placeholder.
-      if (!projectId) {
-        const maxAttempts = antigravityOnboardMaxAttempts();
-        const retryDelayMs = antigravityOnboardRetryDelayMs();
-        for (let i = 0; i < maxAttempts; i++) {
-          const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
-            method: "POST",
-            headers: loadHeaders,
-            body: JSON.stringify({ tierId, metadata }),
-            proxyOptions
-          });
-          if (!onboardRes.ok) throw new Error(`Antigravity onboarding failed: ${onboardRes.status}`);
-          const result = await onboardRes.json();
-          // onboardUser is a long-running operation: Google answers `done:false`
-          // until the project is provisioned. Only a settled `done:true` response
-          // carries the project, so keep polling instead of reading a missing
-          // project as "this account owns no project".
-          if (result.done === true) {
-            const project = result.response?.cloudaicompanionProject;
-            projectId = isString(project) ? project.trim() :
-            isString(project?.id) ? project.id.trim() : "";
-            break;
-          }
-          if (i < maxAttempts - 1) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-        }
-        if (!projectId) throw new Error("Antigravity onboarding did not return a project ID");
-      }
-
-      return { userInfo, projectId };
     },
     mapTokens: (tokens, extra) => ({
       accessToken: tokens.access_token,
@@ -2028,8 +2077,18 @@ const PROVIDERS = {
   },
   orcarouter,
   "ghe-copilot": gheCopilot,
+  // Microsoft 365 Copilot native sign-in (work or school accounts). A pasted session still saves
+  // as a cookie row; this adds a refreshable oauth row beside it.
+  "copilot-m365-web": copilotM365,
   "muse-code": museCode,
-  openference
+  openference,
+  // Opt-in session providers (dispatch stays off per connection until
+  // providerSpecificData.enableSessionDispatch is true).
+  "devin-desktop": devinDesktopOAuth,
+  "minimax-code": minimaxCodeOAuthProvider,
+  "zed-hosted": zedHosted,
+  freebuff,
+  workbuddy
 };
 
 // Amazon Q Developer signs in exactly like Kiro (AWS Builder ID / IAM Identity
@@ -2067,16 +2126,40 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
   const config = provider.prepareConfig ?
   await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
   provider.config;
-  const { codeVerifier, codeChallenge, state } = generatePKCE(provider.pkceVerifierBytes);
+  const generated = generatePKCE(provider.pkceVerifierBytes);
+  const { codeChallenge, state } = generated;
+  let { codeVerifier } = generated;
+  let effectiveRedirectUri = redirectUri;
+  let authMeta = null;
 
+  // A token-import provider that also offers a browser PKCE sign-in (Devin
+  // Desktop) declares supportsBrowserPkce; every other import provider
+  // (devin-cli) has no authorize URL and keeps the import-token path.
+  const usesPkce = provider.flowType === "authorization_code_pkce" || provider.supportsBrowserPkce === true;
   let authUrl;
   if (provider.flowType === "device_code") {
     // Device code flow doesn't have auth URL upfront
     authUrl = null;
-  } else if (provider.flowType === "authorization_code_pkce") {
-    authUrl = provider.buildAuthUrl(config, redirectUri, state, codeChallenge, meta || {});
+  } else if (usesPkce) {
+    // The Devin CLI client only accepts its fixed loopback callback.
+    if (provider.supportsBrowserPkce && provider.fixedPort && provider.callbackHost) {
+      effectiveRedirectUri = `http://${provider.callbackHost}:${provider.fixedPort}${provider.callbackPath || "/callback"}`;
+    }
+    authUrl = provider.buildAuthUrl(config, effectiveRedirectUri, state, codeChallenge, meta || {});
   } else {
-    authUrl = provider.buildAuthUrl(config, redirectUri, state, undefined, meta || {});
+    authUrl = provider.buildAuthUrl(config, effectiveRedirectUri, state, undefined, meta || {});
+  }
+
+  // A provider may return a record instead of a bare URL when its flow carries
+  // more than PKCE: Zed Hosted binds an RSA private key where the verifier
+  // would go, reports the loopback redirect it expects, and needs its system id
+  // at exchange time.
+  if (authUrl && isObject(authUrl) && !Array.isArray(authUrl)) {
+    const { authUrl: url, codeVerifier: verifier, redirectUri: reported, ...rest } = authUrl;
+    authUrl = url || null;
+    if (verifier) codeVerifier = verifier;
+    if (reported) effectiveRedirectUri = reported;
+    if (Object.keys(rest).length) authMeta = rest;
   }
 
   return {
@@ -2084,7 +2167,8 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
     state,
     codeVerifier,
     codeChallenge,
-    redirectUri,
+    redirectUri: effectiveRedirectUri,
+    ...(authMeta ? { meta: authMeta } : null),
     flowType: provider.flowType,
     fixedPort: provider.fixedPort,
     callbackPath: provider.callbackPath || "/callback"
@@ -2094,8 +2178,10 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
 /**
  * Exchange code for tokens
  * @param {object} [meta] - Provider-specific metadata (e.g. gitlab clientId/baseUrl)
+ * @param {AbortSignal} [signal] - Caller cancellation; a fired signal rejects with `OAuthCancelledError`
  */
-export async function exchangeTokens(providerName, code, redirectUri, codeVerifier, state, meta, proxyOptions = null) {
+export async function exchangeTokens(providerName, code, redirectUri, codeVerifier, state, meta, proxyOptions = null, signal = null) {
+  throwIfOAuthCancelled(signal);
   const provider = getProvider(providerName);
   const config = provider.prepareConfig ?
   await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
@@ -2105,7 +2191,8 @@ export async function exchangeTokens(providerName, code, redirectUri, codeVerifi
 
   let extra = null;
   if (provider.postExchange) {
-    extra = await provider.postExchange(tokens, proxyOptions);
+    // `signal` rides as a trailing argument; providers that do not use it ignore it.
+    extra = await provider.postExchange(tokens, proxyOptions, undefined, signal || undefined);
   }
 
   return provider.mapTokens(tokens, extra);
@@ -2142,8 +2229,9 @@ export async function requestDeviceCode(providerName, codeChallenge, options, pr
  * @param {string} deviceCode - Device code from requestDeviceCode
  * @param {string} codeVerifier - PKCE code verifier (optional for some providers)
  * @param {object} extraData - Extra data from device code response (e.g. clientId/clientSecret for Kiro)
+ * @param {AbortSignal} [signal] - Optional cancellation, forwarded to `postExchange` as its last argument
  */
-export async function pollForToken(providerName, deviceCode, codeVerifier, extraData, proxyOptions = null) {
+export async function pollForToken(providerName, deviceCode, codeVerifier, extraData, proxyOptions = null, signal = null) {
   const provider = getProvider(providerName);
   const device = resolveDeviceFlow(provider);
   if (!device || !isFunction(device.pollToken)) {
@@ -2158,7 +2246,7 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       // Call postExchange to get additional data (copilotToken, userInfo, etc.)
       let extra = null;
       if (provider.postExchange) {
-        extra = await provider.postExchange(result.data, proxyOptions, extraData);
+        extra = await provider.postExchange(result.data, proxyOptions, extraData, signal || undefined);
       }
       const tokens = provider.mapTokens(result.data, extra);
       // Kiro IDC/Builder-ID tokens lack profileArn; resolve it to avoid 403.

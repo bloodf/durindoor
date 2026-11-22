@@ -52,8 +52,8 @@ export function detectClientTool(headers = {}, body = {}) {
     return "codex";
   }
 
-  // DeepSeek TUI
-  if (ua.includes("deepseek-tui")) return "deepseek-tui";
+  // CodeWhale and its legacy DeepSeek TUI name share streaming behavior.
+  if (ua.includes("codewhale") || ua.includes("deepseek-tui")) return "deepseek-tui";
 
   return null;
 }

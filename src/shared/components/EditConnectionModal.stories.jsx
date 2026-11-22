@@ -222,3 +222,20 @@ export const Closed = {
     await expect(within(canvasElement.ownerDocument.body).queryByRole("dialog", { name: "Edit Connection" })).not.toBeInTheDocument();
   },
 };
+
+export const SavePending = {
+  args: { isOpen: true, connection: baseConnection, onClose: () => {}, onSave: () => new Promise(() => {}) },
+  play: async () => {
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Edit Connection" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await expect(dialog.getByRole("button", { name: /save/i })).toBeDisabled();
+  },
+};
+export const SaveError = {
+  args: { isOpen: true, connection: baseConnection, onClose: () => {}, onSave: async () => { throw new Error("Save failed"); } },
+  play: async () => {
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Edit Connection" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await expect(await dialog.findByRole("alert")).toHaveTextContent("Could not save connection");
+  },
+};

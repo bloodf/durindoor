@@ -17,3 +17,4 @@ export const FailedTestRequiresLogin = { ...reviewStory(original.FailedTestRequi
 export const EmptyInstances = { ...reviewStory(original.EmptyInstances, {"source":"src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx","standalone":false}) };
 export const ErrorBoundary = { ...reviewStory(original.ErrorBoundary, {"source":"src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx","standalone":false}) };
 export const RetainedErrorBoundary = { ...reviewStory(original.RetainedErrorBoundary, {"source":"src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx","standalone":false}) };
+export const V5LoadFailureAndRetry = { ...reviewStory(original.V5LoadFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx","standalone":false}) };

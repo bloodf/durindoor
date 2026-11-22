@@ -59,6 +59,9 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "ghe-copilot",
 "amazon-q",
 "muse-code",
+// WorkBuddy and Freebuff sign in with their own login state, not a PKCE pair.
+"workbuddy",
+"freebuff",
 // Codex device flow: auth.openai.com issues the PKCE pair together with the
 // device authorization code, so the client never sends a challenge of its own.
 // Upstream provenance: router-for-me/CLIProxyAPI `sdk/auth/codex_device.go`
@@ -80,6 +83,8 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set([
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
 "muse-code",
+"workbuddy",
+"freebuff",
 "kilocode",
 "codebuddy-cn"]
 );
@@ -100,6 +105,8 @@ const OAUTH_ERROR_STATUS = Object.freeze({
   OAUTH_STATE_MISMATCH: 400,
   OAUTH_FLOW_CONFLICT: 409,
   OAUTH_SESSION_GONE: 410,
+  // The dashboard closed the request: nginx-style "client closed request".
+  OAUTH_CANCELLED: 499,
   OAUTH_UPSTREAM_FAILURE: 502
 });
 
@@ -294,7 +301,10 @@ function oauthErrorResponse(error, operation) {
 }
 
 async function beginAuthorization(provider, input) {
-  requireOAuthProvider(provider);
+  const providerData = requireOAuthProvider(provider);
+  if (provider === "devin-cli" && !providerData.supportsBrowserPkce) {
+    throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Devin CLI requires the import-token action");
+  }
   const intent = beginOAuthFlowIntent(provider, input.ownerId);
   // Anthropic only accepts its own registered redirect for the Claude OAuth
   // client, so a caller that omits one must not fall back to the generic
@@ -329,8 +339,10 @@ async function beginAuthorization(provider, input) {
     kind: "authorization",
     payload: {
       codeVerifier: authData.codeVerifier,
-      redirectUri,
-      meta,
+      // A provider may report the redirect it needs (Devin Desktop's fixed
+      // loopback, Zed's native-app port); the exchange must reuse that value.
+      redirectUri: authData.redirectUri || redirectUri,
+      meta: authData.meta ? { ...meta, ...authData.meta } : meta,
       proxySelection: resolvedProxy.selection,
       ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : null),
       ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : null)
@@ -377,6 +389,9 @@ async function beginDeviceCode(provider, input) {
       );
     }
     deviceOptions = { gheUrl };
+  } else if (provider === "minimax-code") {
+    // The account region picks the host that issues the device code.
+    deviceOptions = input.region ? { region: input.region } : undefined;
   }
   const deviceData = await callOAuthUpstream(() => requestDeviceCode(
     provider,
@@ -444,7 +459,7 @@ async function completeAccessToken(provider, code, resolvedProxy, flowClaim) {
   });
 }
 
-async function completeAuthorization(provider, input) {
+async function completeAuthorization(provider, input, signal = null) {
   const code = isString(input.code) ? input.code.trim() : "";
   const state = isString(input.state) ? input.state.trim() : "";
   const flowId = isString(input.flowId) ? input.flowId.trim() : "";
@@ -461,7 +476,7 @@ async function completeAuthorization(provider, input) {
       // remains active through the actual write.
       return await completeAccessToken(provider, code, resolvedProxy, claim);
     }
-    const { connection } = await exchangeAndSaveAuthorizationCode(provider, code, state, claim);
+    const { connection } = await exchangeAndSaveAuthorizationCode(provider, code, state, claim, signal);
     return connection;
   } catch (error) {
     throw normalizeOAuthCompletionError(error);
@@ -878,7 +893,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ success: true, connection: publicConnection(connection) });
     }
     if (action === "exchange") {
-      const connection = await completeAuthorization(provider, body);
+      const connection = await completeAuthorization(provider, body, request.signal);
       return NextResponse.json({ success: true, connection: publicConnection(connection) });
     }
     if (action === "poll") {

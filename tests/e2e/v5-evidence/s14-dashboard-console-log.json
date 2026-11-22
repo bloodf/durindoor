@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/console-log",
+  "stories": [
+    "production-operations-consolelogclient--streaming",
+    "production-operations-consolelogclient--empty",
+    "production-operations-consolelogclient--transport-unavailable",
+    "production-operations-consolelogclient--clear-rejected"
+  ]
+}

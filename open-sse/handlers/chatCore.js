@@ -2,6 +2,7 @@ import { normalizeResponsesImageReplay } from "../translator/concerns/responsesI
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
 import { supportsServiceTier } from "../config/serviceTier.js";
+import { stripClientTierFields } from "./chatCore/clientTierFieldStrip.js";
 import { chatbotRequest as validateNlpCloudRequest } from "../executors/nlpcloud.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
@@ -15,6 +16,7 @@ import { validateInputAudio, validateOutboundPayload, stripInternalKeys, normali
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
+import { sanitizeIdentity } from "../services/identitySanitizer.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getModelUpstreamThinkingIntent, resolveRequestedModelTier, applyProviderThinkingOverride, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -46,6 +48,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
+import { evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
@@ -62,6 +65,7 @@ import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } 
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { isCursorProvider } from "../providers/cursorProviders.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
@@ -342,7 +346,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   rawCredentials;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
-  if (provider === "cursor" || provider === "cu") {
+  if (isCursorProvider(provider)) {
     try {
       validateCursorImages(body);
     } catch (error) {
@@ -703,7 +707,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // A stack rtk step is fidelity-gated like every stack step; the plain RTK
   // toggle alone keeps its ungated behavior.
   const rtkGate = rtkInStack ? { textInvariants: compressionFidelityGate === true } : null;
-  const preTranslateRtk = provider === "cursor" ?
+  const preTranslateRtk = isCursorProvider(provider) ?
   compressRtkGated(body, runRtk, rtkGate, log) :
   null;
 
@@ -863,6 +867,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+  // Opt-in connection guard: drop client-supplied tier/identity fields first so an
+  // explicit model modifier below remains the only operator-approved tier source.
+  stripClientTierFields(translatedBody, credentials?.providerSpecificData);
   // Explicit model modifiers take precedence after translation on supported transports.
   if (supportsServiceTier(provider) && parsedModel.serviceTier &&
       (finalFormat === FORMATS.OPENAI || finalFormat === FORMATS.OPENAI_RESPONSES)) {
@@ -1062,6 +1069,15 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   salvageOrphanedToolResults(translatedBody);
   fixMissingToolResponses(translatedBody);
 
+  // Opt-in (DURINDOOR_SANITIZE_IDENTITY=1): neutralise harness names in system text and tool descriptions.
+  {
+    const sanitized = sanitizeIdentity(translatedBody);
+    if (sanitized !== translatedBody) {
+      translatedBody = sanitized;
+      xf.push("IDENTITY");
+    }
+  }
+
   // Pin cache breakpoints to the final Claude body after all request savers.
   if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody, provider);
 
@@ -1168,6 +1184,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // frozen dispatch context, including the resolved limits.
   requestContext = Object.freeze({
     ...requestContext,
+    sourceFormat,
     modelCapabilities: preflightCaps,
     translatedToCodex: provider === "codex" && !passthrough && sourceFormat !== targetFormat,
   });
@@ -1808,6 +1825,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         reexecute,
         signal: providerSignal,
         log,
+        onInBandError: (error, attemptBody) => {
+          if (error?.code === 401 || error?.code === 403) evictResponseDispatcher(attemptBody);
+        },
         onAttemptDiscarded: (attemptBody, _reason, { final } = {}) =>
         settleProviderAttemptDispatch(attemptBody, {
           success: false,

@@ -22,7 +22,11 @@ async function createNativeRealtimeRelay({ client, wsUrl, authorization = null, 
     try {
       const scheme = new URL(proxy.url).protocol;
       if (scheme === "http:" || scheme === "https:") agent = agentFactory ? await agentFactory(proxy.url) : new (await import("https-proxy-agent")).HttpsProxyAgent(proxy.url);else
-      if (scheme === "socks:" || scheme === "socks4:" || scheme === "socks5:") agent = agentFactory ? await agentFactory(proxy.url) : new (await import("socks-proxy-agent")).SocksProxyAgent(proxy.url);else
+      if (scheme === "socks:" || scheme === "socks4:" || scheme === "socks5:") {
+        const { assertSocksProxyUrl } = await import("../utils/socksCredential.js");
+        assertSocksProxyUrl(proxy.url);
+        agent = agentFactory ? await agentFactory(proxy.url) : new (await import("socks-proxy-agent")).SocksProxyAgent(proxy.url);
+      } else
       throw new Error("unsupported native realtime proxy");
     } catch (error) {
       throw new Error("native realtime proxy unavailable", { cause: error });

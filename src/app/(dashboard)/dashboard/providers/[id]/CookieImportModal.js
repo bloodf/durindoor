@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
@@ -45,10 +47,12 @@ async function readFileText(file) {
  * go through the same import API the extension uses, so the provider's origin
  * and cookie allowlist are enforced by the server as well.
  *
+ * V5 masks pasted credentials while retaining the same import payload.
  * The pasted text, the parsed cookies and the pairing secret are dropped from
  * the page as soon as the operator submits or dismisses the dialog.
  */
 export default function CookieImportModal({ isOpen, provider, providerName, importContract, webLogin, connections = [], onSuccess, onClose }) {
+  const v5 = useUiV5();
   const [mode, setMode] = useState("paste");
   const [rawText, setRawText] = useState("");
   const [fileLabel, setFileLabel] = useState("");
@@ -61,17 +65,29 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [storageValues, setStorageValues] = useState({});
 
   const contract = useMemo(() => importContract ?? resolveCookieImportContract(webLogin), [importContract, webLogin]);
   const ambiguous = candidatesAreAmbiguous(candidates);
   const selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
-  const cookieConnections = connections.filter((connection) => connection?.authType === "cookie");
+  // A provider whose credential is a localStorage item (TinyCMS) takes pasted values, not cookies.
+  const storageKeys = contract?.localStorageKeys ?? [];
+  const usesCookies = Boolean(contract?.cookieNames?.length);
+  const credentialPattern = useMemo(() => {
+    try { return contract?.credentialPattern ? new RegExp(contract.credentialPattern) : null; } catch { return null; }
+  }, [contract]);
+  const storageReady = storageKeys.every((key) => {
+    const value = (storageValues[key] || "").trim();
+    return Boolean(value) && (!credentialPattern || credentialPattern.test(value));
+  });
+  const cookieConnections = usesCookies ? connections.filter((connection) => connection?.authType === "cookie") : connections;
 
   const clearSensitiveInput = () => {
     setRawText("");
     setFileLabel("");
     setCandidates([]);
     setSelectedIndex(-1);
+    setStorageValues({});
   };
 
   const applyParsed = (parsed, kind) => {
@@ -170,7 +186,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   };
 
   const importSelected = async () => {
-    if (!selected || !contract || busy) return;
+    if (!contract || busy || (usesCookies && !selected) || !storageReady) return;
     setBusy(true);
     setError("");
     setStatus("");
@@ -181,15 +197,19 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
         headers: { "Content-Type": "application/json", [created.header]: created.token },
         body: JSON.stringify({
           provider,
-          origin: selected.origin,
-          cookies: selected.cookies,
+          origin: usesCookies ? selected.origin : contract.origin,
+          ...(usesCookies ? { cookies: selected.cookies } : null),
+          ...(storageKeys.length ? { localStorage: Object.fromEntries(storageKeys.map((key) => [key, storageValues[key].trim()])) } : null),
           ...(targetMode === "create" ? { name: name.trim() } : { connectionId }),
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "The import failed.");
+      const imported = usesCookies
+        ? `${selected.cookies.length} cookie${selected.cookies.length === 1 ? "" : "s"}`
+        : `${storageKeys.length} session value${storageKeys.length === 1 ? "" : "s"}`;
       clearSensitiveInput();
-      setStatus(`Imported ${selected.cookies.length} cookie${selected.cookies.length === 1 ? "" : "s"} into ${data.connection?.name || "the connection"}.`);
+      setStatus(`Imported ${imported} into ${data.connection?.name || "the connection"}.`);
       onSuccess?.(data.connection);
     } catch (failure) {
       clearSensitiveInput();
@@ -224,10 +244,13 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   if (!contract) return null;
 
   const targetReady = targetMode === "create" ? Boolean(name.trim()) : Boolean(connectionId);
-  const canImport = Boolean(selected) && targetReady && !busy;
+  const canImport = (!usesCookies || Boolean(selected)) && storageReady && targetReady && !busy;
+  const sources = usesCookies
+    ? [["paste", "Paste header or cURL"], ["file", "HAR file"], ["extension", "Browser extension"]]
+    : [["paste", "Paste value"], ["extension", "Browser extension"]];
 
   return (
-    <Modal open={isOpen} title={`Import ${providerName || provider} cookies`} size="lg" onClose={dismiss} pending={busy}
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen} title={`Import ${providerName || provider} ${usesCookies ? "cookies" : "session"}`} size="lg" onClose={dismiss} pending={busy}
       footer={<>
         <Button variant="ghost" onClick={dismiss} disabled={busy}>Cancel</Button>
         {mode === "extension" ?
@@ -235,17 +258,22 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
             {pairing ? "New pairing" : "Create pairing"}
           </Button> :
           <Button variant="primary" onClick={importSelected} loading={busy} disabled={!canImport}>
-            Import cookies
+            {usesCookies ? "Import cookies" : "Import session"}
           </Button>}
       </>}>
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-dd-muted">
-          Import a signed-in {providerName || provider} session from a Cookie header, a cURL command or a HAR file. The input is read in this
-          page as data: nothing is executed, no request is made to the URL it names and the HAR file is not uploaded.
-        </p>
+        {usesCookies ?
+          <p className="text-sm text-dd-muted">
+            Import a signed-in {providerName || provider} session from a Cookie header, a cURL command or a HAR file. The input is read in this
+            page as data: nothing is executed, no request is made to the URL it names and the HAR file is not uploaded.
+          </p> :
+          <p className="text-sm text-dd-muted">
+            {providerName || provider} keeps its session in the browser&apos;s local storage on {contract.origin}, not in a cookie. Paste the
+            value below, or let the browser extension read it from a signed-in tab.
+          </p>}
 
         <div className="flex flex-wrap gap-2" role="group" aria-label="Import source">
-          {[["paste", "Paste header or cURL"], ["file", "HAR file"], ["extension", "Browser extension"]].map(([value, label]) => (
+          {sources.map(([value, label]) => (
             <Button key={value} size="sm" variant={mode === value ? "primary" : "ghost"} onClick={() => switchMode(value)}>
               {label}
             </Button>
@@ -257,14 +285,17 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant={targetMode === "create" ? "primary" : "ghost"} onClick={() => setTargetMode("create")}>New connection</Button>
             <Button size="sm" variant={targetMode === "update" ? "primary" : "ghost"} onClick={() => setTargetMode("update")} disabled={!cookieConnections.length}>
-              Replace cookies
+              {usesCookies ? "Replace cookies" : "Replace session"}
             </Button>
           </div>
           {targetMode === "create" ?
             <Input label="Connection name" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /> :
             <label className="flex flex-col gap-1 text-xs text-dd-muted">
               Connection
-              <select
+              {v5 ? <V5NativeSelect aria-label="Connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)} disabled={busy}>
+                <option value="">Choose a connection…</option>
+                {cookieConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name || connection.id}</option>)}
+              </V5NativeSelect> : <select
                 className="min-h-11 rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-sm text-dd-text"
                 value={connectionId}
                 onChange={(event) => setConnectionId(event.target.value)}
@@ -273,15 +304,34 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
                 {cookieConnections.map((connection) => (
                   <option key={connection.id} value={connection.id}>{connection.name || connection.id}</option>
                 ))}
-              </select>
+              </select>}
             </label>}
         </section>
 
-        {mode === "paste" &&
+        {mode === "paste" && storageKeys.length > 0 &&
+          <section className="flex flex-col gap-2">
+            {storageKeys.map((key) => (
+              <Input
+                key={key}
+                label={`localStorage ${key}`}
+                type={v5 ? "password" : "text"}
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+                value={storageValues[key] || ""}
+                onChange={(event) => setStorageValues((current) => ({ ...current, [key]: event.target.value }))}
+                disabled={busy} />
+            ))}
+            {storageKeys.some((key) => (storageValues[key] || "").trim()) && !storageReady ?
+              <p className="text-xs text-dd-danger">The value does not have the format this provider uses.</p> : null}
+          </section>}
+
+        {mode === "paste" && usesCookies &&
           <section className="flex flex-col gap-2">
             <Textarea
               label="Cookie header or cURL command"
-              className="min-h-[140px] font-mono"
+              style={v5 ? (globalThis.CSS?.supports?.("-webkit-text-security", "disc") ? { WebkitTextSecurity: "disc" } : { color: "transparent", caretColor: "var(--dd-text)" }) : undefined}
+              className={v5 ? "min-h-[140px] font-mono selection:text-transparent" : "min-h-[140px] font-mono"}
               placeholder="__Secure-next-auth.session-token=…"
               value={rawText}
               onChange={(event) => setRawText(event.target.value)}
@@ -320,7 +370,11 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
                 <p className="text-dd-muted">Origin</p>
                 <code className="break-all font-mono">{pairing.contract?.origin}</code>
                 <p className="text-dd-muted">Cookie names</p>
-                <code className="break-all font-mono">{(pairing.contract?.cookieNames || []).join(", ")}</code>
+                <code className="break-all font-mono">{(pairing.contract?.cookieNames || []).join(", ") || "none"}</code>
+                {pairing.contract?.localStorageKeys?.length ? <>
+                  <p className="text-dd-muted">localStorage items</p>
+                  <code className="break-all font-mono">{pairing.contract.localStorageKeys.join(", ")}</code>
+                </> : null}
                 <p className="text-dd-muted">Expires at</p>
                 <code className="break-all font-mono">{pairing.expiresAt}</code>
               </div>

@@ -107,7 +107,7 @@ const TABLE_OPTIONS = [
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
-export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, customRange = null, isCustomRange = false, hidePeriodSelector = false, resetNonce = 0 } = {}) {
+export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, customRange = null, isCustomRange = false, hidePeriodSelector = false, resetNonce = 0, renderSections = null } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -394,7 +394,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     <p>{stats ? requestError : "Failed to load usage statistics."}{stats ? " Last received usage remains visible." : ""}</p>
     <Button variant="secondary" size="sm" disabled={fetching} onClick={() => setRetryNonce((value) => value + 1)}>Retry usage</Button>
   </div>;
-  if (!stats && !loading) return <div>{fetching ? <p role="status">Loading usage statistics</p> : readFailure}</div>;
+  // The V5 usage page passes `renderSections` to place each report in the widget layout.
+  // Without it the original single-column composition below is rendered unchanged.
+  if (!stats && !loading && !renderSections) return <div>{fetching ? <p role="status">Loading usage statistics</p> : readFailure}</div>;
 
   const spinner =
   <div className="flex items-center justify-center gap-2 py-12 text-dd-muted" role="status">
@@ -402,18 +404,81 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       <span className="text-[13px]">Loading usage statistics</span>
     </div>;
 
+  const topology = stats ? <ProviderTopology
+  providers={providers}
+  activeRequests={stats.activeRequests || []}
+  lastProvider={stats.recentRequests?.[0]?.provider || ""}
+  errorProvider={stats.errorProvider || ""} /> : null;
+  const requestsPanel = stats ? <RequestsPanel recentRequests={stats.recentRequests || []} activeSessions={stats.activeSessions || []} formatToken={formatCompactToken} /> : null;
+
+  // Token / Cost chart — preset ranges only. On a custom calendar range the
+  // chart endpoint has no matching window, so show an honest note instead
+  // of a graph that disagrees with the cards/table above. Request count is
+  // stable but can miss a 24h refresh when one request enters as another
+  // ages out.
+  const chart = isCustomRange ?
+  <div className="flex h-40 items-center justify-center rounded-dd-lg border border-dd-border bg-dd-surface text-[13px] text-dd-muted">
+      Chart shows preset ranges only — pick a preset to view graph.
+    </div> :
+  <UsageChart period={period} refreshKey={stats?.totalRequests} />;
+
+  const breakdown =
+  <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Select aria-label="Usage grouping" options={TABLE_OPTIONS} value={tableView} onChange={setTableView} size="sm" className="sm:w-56" />
+        <SegmentedControl aria-label="Usage value type" options={[{ value: "costs", label: "Costs" }, { value: "tokens", label: "Tokens" }]} value={viewMode} onChange={setViewMode} size="sm" />
+      </div>
+      {loading ? spinner : activeTableConfig &&
+    <UsageTable
+      title=""
+      groupedData={activeTableConfig.groupedData}
+      groupColumns={activeTableConfig.groupColumns}
+      detailColumns={activeTableConfig.detailColumns}
+      tableType={tableView}
+      sortBy={sortBy}
+      sortOrder={sortOrder}
+      onToggleSort={toggleSort}
+      valueMode={viewMode}
+      storageKey={activeTableConfig.storageKey}
+      emptyMessage={activeTableConfig.emptyMessage} />
+
+    }
+    </div>;
+
+  const periodSelector = !hidePeriodSelector &&
+  <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end">
+      <SegmentedControl aria-label="Usage period" options={PERIODS} value={period} onChange={setPeriod} disabled={fetching} size="sm" />
+      {fetching && <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-dd-muted animate-spin">progress_activity</span>}
+    </div>;
+  const periodStatus = snapshot && snapshot.key !== snapshotKey ? <p role="status">Showing previous {snapshot.label} usage. {fetching ? "Updating selected period…" : "Waiting for the selected period."}</p> : fetching && stats ? <p role="status">Updating usage…</p> : null;
+
+  if (renderSections) {
+    // Independent reports (combos, key limits, monitoring) stay mounted when usage cannot load.
+    const unavailable = <p className="text-[13px] text-dd-muted">Usage statistics are unavailable.</p>;
+    const pending = loading ? spinner : unavailable;
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {periodSelector}
+        {periodStatus}
+        {!stats && !loading ? (fetching ? <p role="status">Loading usage statistics</p> : readFailure) : null}
+        {stats && requestError ? readFailure : null}
+        {renderSections({
+          overview: stats && !loading ? <OverviewCards stats={stats} /> : pending,
+          topology: stats && !loading ? topology : pending,
+          requests: stats && !loading ? requestsPanel : pending,
+          chart: stats && !loading ? chart : pending,
+          breakdown: stats ? breakdown : <div className="flex flex-col gap-3">{pending}</div>
+        })}
+      </div>);
+
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       {/* Period selector (hidden when controlled by parent) */}
-      {!hidePeriodSelector &&
-      <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end">
-          <SegmentedControl aria-label="Usage period" options={PERIODS} value={period} onChange={setPeriod} disabled={fetching} size="sm" />
-          {fetching && <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-dd-muted animate-spin">progress_activity</span>}
-        </div>
-      }
+      {periodSelector}
 
-      {snapshot && snapshot.key !== snapshotKey ? <p role="status">Showing previous {snapshot.label} usage. {fetching ? "Updating selected period…" : "Waiting for the selected period."}</p> : fetching && stats ? <p role="status">Updating usage…</p> : null}
+      {periodStatus}
       {stats && requestError ? readFailure : null}
 
       {/* Overview cards */}
@@ -422,49 +487,15 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Provider topology + tabbed requests panel */}
       {loading ? spinner :
       <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          <ProviderTopology
-          providers={providers}
-          activeRequests={stats.activeRequests || []}
-          lastProvider={stats.recentRequests?.[0]?.provider || ""}
-          errorProvider={stats.errorProvider || ""} />
-        
-          <RequestsPanel recentRequests={stats.recentRequests || []} activeSessions={stats.activeSessions || []} formatToken={formatCompactToken} />
+          {topology}
+          {requestsPanel}
         </div>
       }
 
-      {/* Token / Cost chart — preset ranges only. On a custom calendar range the
-           chart endpoint has no matching window, so show an honest note instead
-           of a graph that disagrees with the cards/table above. Request count is
-           stable but can miss a 24h refresh when one request enters as another
-           ages out. */}
-      {loading ? spinner : isCustomRange ?
-      <div className="flex h-40 items-center justify-center rounded-dd-lg border border-dd-border bg-dd-surface text-[13px] text-dd-muted">
-          Chart shows preset ranges only — pick a preset to view graph.
-        </div> :
-      <UsageChart period={period} refreshKey={stats.totalRequests} />}
+      {loading ? spinner : chart}
 
       {/* Table with dropdown selector */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <Select aria-label="Usage grouping" options={TABLE_OPTIONS} value={tableView} onChange={setTableView} size="sm" className="sm:w-56" />
-          <SegmentedControl aria-label="Usage value type" options={[{ value: "costs", label: "Costs" }, { value: "tokens", label: "Tokens" }]} value={viewMode} onChange={setViewMode} size="sm" />
-        </div>
-        {loading ? spinner : activeTableConfig &&
-        <UsageTable
-          title=""
-          groupedData={activeTableConfig.groupedData}
-          groupColumns={activeTableConfig.groupColumns}
-          detailColumns={activeTableConfig.detailColumns}
-          tableType={tableView}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onToggleSort={toggleSort}
-          valueMode={viewMode}
-          storageKey={activeTableConfig.storageKey}
-          emptyMessage={activeTableConfig.emptyMessage} />
-
-        }
-      </div>
+      {breakdown}
     </div>);
 
 }

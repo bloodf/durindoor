@@ -44,3 +44,13 @@ export const EditAndRegister = {
     await expect(within(dialog).queryByRole("button", { name: "System One Embed" })).not.toBeInTheDocument();
   },
 };
+
+export const SavePending = {
+  args: { isOpen: true, ...callbacks, node: { id: "systemone-review", name: "Review System One", prefix: "review-systemone", baseUrl: "http://localhost:3000/v1" } },
+  parameters: fixture({ "PUT /api/provider-nodes/systemone-review": () => new Promise(() => {}) }),
+  play: async () => {
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Edit Custom System One" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await expect(dialog.getByRole("button", { name: /save/i })).toBeDisabled();
+  },
+};

@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { formatNumber, formatUsd, meterBarClass } from "@/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits";
 import { KEY_USAGE_POLL_MS } from "@/app/(dashboard)/dashboard/endpoint/endpointConstants";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import Button from "@/shared/ui/components/Button.jsx";
 
 function formatReset(resetAt) {
   if (!resetAt) return "Rolling 60s";
@@ -62,6 +64,10 @@ LimitRow.propTypes = { row: PropTypes.object.isRequired };
 export default function ApiKeyLimitsCard() {
   const [keys, setKeys] = useState(null);
   const [usage, setUsage] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const uiV5 = useUiV5();
 
   useEffect(() => {
     let cancelled = false;
@@ -73,10 +79,13 @@ export default function ApiKeyLimitsCard() {
         ]);
         const keysData = keysRes.ok ? (await keysRes.json()).keys || [] : null;
         const usageData = usageRes.ok ? (await usageRes.json()).usage || {} : null;
+        if (uiV5 && (!keysRes.ok || !usageRes.ok)) throw new Error("Unable to load API key limits");
         if (cancelled) return;
         if (keysData) setKeys(keysData);
         if (usageData) setUsage(usageData);
-      } catch { /* keep the last data; the card is best-effort */ }
+        if (uiV5) setLoadError(false);
+      } catch { if (uiV5 && !cancelled) setLoadError(true); /* keep the last data; the card is best-effort */ }
+      finally { if (!cancelled) setIsLoading(false); }
     };
     load();
     const timer = setInterval(load, KEY_USAGE_POLL_MS);
@@ -84,9 +93,13 @@ export default function ApiKeyLimitsCard() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [retryNonce, uiV5]);
 
-  if (!keys || keys.length === 0) return null;
+  if (!keys || keys.length === 0) {
+    if (uiV5 && isLoading) return <Card padding={false}><CardContent role="status" className="text-sm text-dd-muted">Loading API key limits…</CardContent></Card>;
+    if (!uiV5 || !loadError) return null;
+    return <Card padding={false}><CardContent className="flex items-center justify-between gap-3"><p role="alert" className="text-sm text-dd-danger">Unable to load API key limits.</p><Button variant="secondary" size="sm" onClick={() => setRetryNonce((value) => value + 1)}>Retry limits</Button></CardContent></Card>;
+  }
 
   const withRows = keys
     .map((key) => ({ key, rows: usage[key.id] ? configuredLimits(usage[key.id]) : [] }))
@@ -100,6 +113,7 @@ export default function ApiKeyLimitsCard() {
         subtitle="Current usage against each key's limits. Daily limits reset at the server's midnight, monthly ones on the 1st."
       />
       <CardContent className="flex flex-col gap-4">
+        {uiV5 && loadError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 p-3 text-sm text-dd-danger"><span>Unable to refresh API key limits. Showing the last loaded data.</span><Button variant="secondary" size="sm" onClick={() => setRetryNonce((value) => value + 1)}>Retry limits</Button></div> : null}
         {withRows.map(({ key, rows }) => (
           <div key={key.id} className="min-w-0">
             <div className="flex items-center gap-2 pb-1.5">

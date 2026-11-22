@@ -20,7 +20,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const undiciFetchMock = vi.fn();
 const proxyAgentCloseMock = vi.fn();
 
-vi.mock("undici", () => ({
+vi.mock("undici", async (importOriginal) => ({
+  ...(await importOriginal()),
   // `ProxyAgent` is constructed via `new` in the module under test, so
   // the implementation must be a constructible function (not an arrow).
   ProxyAgent: vi.fn().mockImplementation(function ProxyAgentMock() {

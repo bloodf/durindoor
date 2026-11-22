@@ -28,7 +28,7 @@ export function prepareChatgptPlanRequest(model, source) {
     checkTools(body.tools);
     const clientTools = body.tools.filter((tool) => tool.type === "function" || tool.type === "custom");
     body.tools = body.tools.filter((tool) => tool.type !== "function" && tool.type !== "custom");
-    if (clientTools.length) body.input.unshift({ type: "additional_tools", tools: clientTools });
+    if (clientTools.length) body.input.unshift({ type: "additional_tools", role: "developer", tools: clientTools });
   }
   return { ...body, model, store: false, stream: true };
 }

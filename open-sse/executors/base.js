@@ -1,6 +1,6 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 
@@ -486,40 +486,6 @@ export class BaseExecutor {
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
         let response = await runQuotaBearingProviderRequest(() =>
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
-        // Cohere can explicitly suggest its supported tier on a 422. Retry only
-        // that rejection, once, and only when a different effort was sent.
-        //
-        // COMPATIBILITY CONTRACT (see internal/docs/port-reports/1073-existing-provider-request-residuals.md):
-        //  - The recovery is an EXTRA transport dispatch on this base URL, so it
-        //    is gated by the SAME transport-attempt budget the generic retry path
-        //    spends (`requestPolicy.maxTransportAttempts`, which counts the
-        //    first try). With a one-attempt ceiling the 422 is returned unchanged
-        //    and no second request is dispatched.
-        //  - The error body read is OPTIONAL. A body that cannot be read is a
-        //    NON-MATCH: the original response and its status are preserved
-        //    instead of the read failure surfacing as a transport error.
-        //  - Without a requestPolicy (no ceiling) the implicit pre-port
-        //    behavior is unchanged: the recovery still runs exactly once.
-        if (this.provider === "cohere" && response.status === 422 &&
-            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high" &&
-            transportBudgetLeft(urlIndex)) {
-          const errorText = await readOptionalProbeText(response, { signal });
-          if (/reasoning_effort/i.test(errorText) && /\buse\s+['"`]high['"`]\s+instead\b/i.test(errorText)) {
-            requestBody = { ...requestBody, reasoning_effort: "high" };
-            bodyStr = JSON.stringify(requestBody);
-            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
-            cancelDiscardedResponse(response);
-            clearTimeout(connectTimer);
-            connectCtrl = new AbortController();
-            connectTimer = armConnectTimer();
-            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            chargeDispatch(urlIndex);
-            beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              ...fetchOptions, body: bodyStr, signal: mergedSignal
-            }), proxyOptions));
-          }
-        }
         if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
@@ -553,6 +519,9 @@ export class BaseExecutor {
               ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
+        }
+        if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
+          evictResponseDispatcher(response);
         }
         // Relayed SSE (vercel relay): keep the timeout/abort signal live until
         // the body actually ends — EOF, error, downstream cancel, or caller

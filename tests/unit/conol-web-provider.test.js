@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
-vi.mock("../../open-sse/providers/registry/index.js", async (original) => { const actual = await original(); const { default: entry } = await import("../../open-sse/providers/private/conol-web.js"); return { ...actual, default: [...actual.default, entry] }; });
-vi.mock("../../open-sse/executors/index.js", async (original) => { const actual = await original(); const { ConolWebExecutor } = await import("../../open-sse/executors/conol-web.js"); const executor = new ConolWebExecutor(); return { ...actual, getExecutor: (id) => id === "conol-web" || id === "cnl" ? executor : actual.getExecutor(id) }; });
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
@@ -12,7 +10,7 @@ import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { conolWebCookieProfile } from "../../open-sse/providers/private/conol-web.js";
+import { conolWebCookieProfile } from "../../open-sse/providers/registry/conol-web.js";
 import { ConolWebExecutor } from "../../open-sse/executors/conol-web.js";
 import { getCookieImportContract, buildImportedCookieHeader } from "../../src/lib/providers/cookieImport/contract.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
@@ -71,5 +69,18 @@ describe("Conol Web staged provider", () => {
       expect((await executor.execute({model:"claude-fable-5",body:{messages:[{role:"user",content:"hi"}]},credentials:{apiKey:COOKIE}})).response.status).toBe(401);
       expect(seen).toContain("__Secure-better-auth.session_token=account-a"); expect(seen).toContain("__Secure-better-auth.session_token=account-b");
     } finally { globalThis.fetch = original; }
+  });
+});
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("Conol Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { ConolWebExecutor } = await import("../../open-sse/executors/conol-web.js");
+    expect(registry.filter((entry) => entry.id === "conol-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("conol-web")).toBe(true);
+    expect(getExecutor("conol-web")).toBeInstanceOf(ConolWebExecutor);
+    expect(getExecutor("cnl")).toBe(getExecutor("conol-web"));
   });
 });

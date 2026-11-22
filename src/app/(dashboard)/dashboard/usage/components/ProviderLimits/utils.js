@@ -406,16 +406,31 @@ export function formatResetTime(date) {
   }
 }
 
+// The one place the quota status thresholds live. QuotaProgressBar, QuotaTable,
+// getStatusColor and getStatusEmoji each used to restate `> 70` / `>= 30`.
+export const QUOTA_STATUS_HEALTHY_ABOVE = 70;
+export const QUOTA_STATUS_WARNING_AT_OR_ABOVE = 30;
+
+/**
+ * @param {number} percentage - Remaining percentage (0-100)
+ * @returns {string} Level: "green" | "yellow" | "red"
+ */
+export function quotaStatusLevel(percentage) {
+  if (percentage > QUOTA_STATUS_HEALTHY_ABOVE) return "green";
+  if (percentage >= QUOTA_STATUS_WARNING_AT_OR_ABOVE) return "yellow";
+  return "red"; // 0-29% including 0% (out of quota) - show red
+}
+
 /**
  * Get Tailwind color class based on percentage
  * @param {number} percentage - Remaining percentage (0-100)
  * @returns {string} Color name: "green" | "yellow" | "red"
  */
 export function getStatusColor(percentage) {
-  if (percentage > 70) return "green";
-  if (percentage >= 30) return "yellow";
-  return "red"; // 0-29% including 0% (out of quota) - show red
+  return quotaStatusLevel(percentage);
 }
+
+const QUOTA_STATUS_EMOJI = { green: "🟢", yellow: "🟡", red: "🔴" };
 
 /**
  * Get status emoji based on percentage
@@ -423,9 +438,7 @@ export function getStatusColor(percentage) {
  * @returns {string} Emoji: "🟢" | "🟡" | "🔴"
  */
 export function getStatusEmoji(percentage) {
-  if (percentage > 70) return "🟢";
-  if (percentage >= 30) return "🟡";
-  return "🔴"; // 0-29% including 0% (out of quota) - show red
+  return QUOTA_STATUS_EMOJI[quotaStatusLevel(percentage)];
 }
 
 /**

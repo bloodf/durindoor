@@ -75,6 +75,8 @@ Kimi Web uses access and refresh tokens from localStorage, rather than a browser
 
 DurinDoor refreshes supported OAuth credentials before expiry, both on requests and in the background. Refresh is provider-specific and can fail. Imported Cursor, Windsurf, Trae, and Devin tokens have no public refresh flow. Qoder refresh can return 403 and require a new login.
 
+Connections can set `providerSpecificData.refreshLeadMs` to a positive finite number of milliseconds to override the provider's request-time refresh lead. Background refresh uses the larger of this lead and its 30-minute minimum.
+
 An unrecoverable grant error, such as `invalid_grant` or a reused refresh token, requires reconnecting. Revoked Codex and OrcaRouter credentials can be quarantined as `reauth_required`; sign in again or replace the credential. Quota failures are separate from credential revocation.
 
 Gemini CLI and Antigravity need operator-supplied OAuth client IDs and secrets. Set `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET`, or `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET`, then restart before connecting. Existing accounts may stop refreshing if you change their OAuth client.
@@ -125,4 +127,4 @@ After connecting, send a short request with an ID from `GET /v1/models` and chec
 
 For CodeBuddy International, create an [International API key](https://www.codebuddy.ai/profile/keys) and save it under **CodeBuddy International** in the dashboard. Tencent's [IAM guide](https://www.codebuddy.ai/docs/cli/iam) lists `CODEBUDDY_API_KEY` for individual developers, identifies International as the default CLI environment, and specifies the `X-Api-Key` header. China keys use the separate CodeBuddy CN connection.
 
-DurinDoor follows the [pinned OmniRoute transport](https://github.com/cheaper-inference/OmniRoute/blob/bd9b1324abb82f0e00066f631b6dd7744e5d975a/open-sse/config/providers/registry/codebuddy-intl/index.ts) for the International chat endpoint, conversation headers and upstream streaming. DurinDoor aggregates the stream for non-streaming clients. The gateway transport has been tested with mocks. Save the key and use a chat request to check it, since the dashboard has no separate validation probe. The curated model list is a fallback and availability varies by account. International OAuth, token refresh, account-specific model discovery and quota reporting are unavailable.
+DurinDoor uses the International chat endpoint, conversation headers and upstream streaming. DurinDoor aggregates the stream for non-streaming clients. The gateway transport has been tested with mocks. Save the key and use a chat request to check it, since the dashboard has no separate validation probe. The curated model list is a fallback and availability varies by account. International OAuth, token refresh, account-specific model discovery and quota reporting are unavailable.

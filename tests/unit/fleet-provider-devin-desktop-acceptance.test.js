@@ -5,6 +5,7 @@
  * and DEVIN_MODEL_CATALOG; static exports do not prove native runtime support.
  * No g4f, web, or app-server substitute qualifies as a native vendor transport.
  * Desktop request/tool/stream fixtures below require rejection without dispatch.
+ * (Registered behind a per-connection opt-in in #2034; they pin the no-dispatch guarantee.)
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -45,15 +46,21 @@ describe("#1175 devin-desktop is not installed devin", () => {
     vi.stubGlobal("fetch", fetcher);
     await expect(probeRegistryProvider("devin", "offline-cloud-token", fetcher))
       .resolves.toMatchObject({ valid: true, status: 200 });
+    // The desktop identity has its own validator (GetUserJwt on server.codeium.com); it never
+    // reuses the cloud-agent sessions probe, and a sessions-shaped answer does not validate it.
     await expect(probeRegistryProvider("devin-desktop", "offline-desktop-token", fetcher))
-      .resolves.toBeNull();
-    expect(fetcher).toHaveBeenCalledTimes(1);
+      .resolves.toMatchObject({ valid: false });
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[0][0]).toBe("https://api.devin.ai/v1/sessions?limit=1");
     expect(fetcher.mock.calls[0][1]).toMatchObject({
       method: "GET", headers: { Authorization: "Bearer offline-cloud-token" },
     });
-    expect(PROVIDER_ID_TO_ALIAS["devin-desktop"]).toBeUndefined();
-    expect(hasSpecializedExecutor("devin-desktop")).toBe(false);
+    expect(fetcher.mock.calls[1][0]).toBe("https://server.codeium.com/exa.auth_pb.AuthService/GetUserJwt");
+    // No short alias: the id is its own prefix, and it is never the cloud agent's.
+    expect(PROVIDER_ID_TO_ALIAS["devin-desktop"]).toBe("devin-desktop");
+    expect(PROVIDER_ID_TO_ALIAS["devin-desktop"]).not.toBe(PROVIDER_ID_TO_ALIAS.devin);
+    expect(hasSpecializedExecutor("devin-desktop")).toBe(true);
+    expect(getExecutor("devin-desktop")).not.toBe(getExecutor("devin"));
   });
 
   it.each([401, 403])("preserves native sessions auth rejection (status=%s)", async (status) => {
@@ -99,10 +106,15 @@ describe("#1175 devin-desktop is not installed devin", () => {
     expect(getModelsByProviderId("devin")).toEqual([
       expect.objectContaining({ id: "devin", kind: "agent" }),
     ]);
-    expect(getModelsByProviderId("devin-desktop")).toEqual([]);
+    // The desktop catalog is the curated registry list; live discovery needs the opt-in.
+    const curated = getModelsByProviderId("devin-desktop").map(({ id }) => id);
+    expect(curated).toContain("swe-1-7");
     const { buildModelsList, LLM_KIND } = await import("../../src/app/api/v1/models/buildModelsList.js");
     const models = await buildModelsList([LLM_KIND]);
-    expect(models.filter(({ id }) => /^(devin|devin-desktop)\//.test(id))).toEqual([]);
+    expect(models.filter(({ id }) => /^devin\//.test(id))).toEqual([]);
+    const listed = models.filter(({ id }) => id.startsWith("devin-desktop/")).map(({ id }) => id.slice("devin-desktop/".length));
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.every((id) => curated.includes(id))).toBe(true);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -110,9 +122,10 @@ describe("#1175 devin-desktop is not installed devin", () => {
     const fetcher = vi.fn(() => { throw new Error("Unexpected offline fetch"); });
     vi.stubGlobal("fetch", fetcher);
     const credentials = { accessToken: "offline-desktop-token" };
-    // The translator route builds the URL before headers; rejection stops both paths.
-    const unsupported = expect.objectContaining({ status: 400 });
-    expect(() => getExecutor("devin-desktop").buildUrl("devin", true, 0, credentials)).toThrow(unsupported);
+    // The translator route builds the URL before headers; the URL never depends on the model or
+    // credentials, so a cloud-agent model id cannot redirect the desktop identity elsewhere.
+    expect(getExecutor("devin-desktop").buildUrl("devin", true, 0, credentials))
+      .toBe("https://server.codeium.com/exa.api_server_pb.ApiServerService/GetChatMessage");
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -134,7 +147,7 @@ describe("#1175 devin-desktop is not installed devin", () => {
     const originalConfig = executor.config;
     executor.config = { ...originalConfig, get headers() { return configHeaders(); } };
     try {
-      await expect.soft(executor.execute({
+      const result = await executor.execute({
         model: "devin",
         stream,
         credentials,
@@ -149,12 +162,14 @@ describe("#1175 devin-desktop is not installed devin", () => {
           ],
           tools: [{ type: "function", function: { name: "read_fixture", parameters: { type: "object", properties: {} } } }],
         },
-      })).rejects.toMatchObject({ status: 400 });
+      });
+      expect.soft(result.response.status).toBe(403);
+      expect.soft(await result.response.json()).toMatchObject({ error: { code: "devin_desktop_dispatch_disabled" } });
       expect.soft(buildHeaders).not.toHaveBeenCalled();
       expect.soft(configHeaders).not.toHaveBeenCalled();
       expect.soft(apiKey).not.toHaveBeenCalled();
       expect.soft(accessToken).not.toHaveBeenCalled();
-      expect.soft(fetcher, "Unregistered desktop credentials must never reach OpenAI or another substitute").not.toHaveBeenCalled();
+      expect.soft(fetcher, "Desktop credentials must never reach OpenAI or another substitute while the opt-in is off").not.toHaveBeenCalled();
     } finally {
       executor.config = originalConfig;
       buildHeaders.mockRestore();

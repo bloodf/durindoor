@@ -1,0 +1,8 @@
+{
+  "route": "dialog/AddCustomEmbeddingModal",
+  "stories": [
+    "production-shared-config-addcustomembeddingmodal--open",
+    "production-shared-config-addcustomembeddingmodal--invalid-endpoint",
+    "production-shared-config-addcustomembeddingmodal--editing-existing"
+  ]
+}

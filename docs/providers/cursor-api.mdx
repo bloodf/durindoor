@@ -1,0 +1,63 @@
+---
+title: Cursor API
+description: Opt-in provider that exchanges a Cursor user API key for a session token and reuses the existing Cursor request path. Off by default and unverified against a live account.
+---
+
+Cursor API (`cursor-api`, alias `cua`) is a second Cursor identity next to the Cursor IDE provider (`cursor`, alias `cu`). The connection holds a Cursor user API key (`crsr_...`) instead of an IDE session, so no IDE install or `state.vscdb` import is needed on the gateway host. Chat, streaming, tool handling and the model catalog are the existing Cursor request path, unchanged.
+
+This provider is **unverified**. Tests use an injected fetch for the key exchange, an in-memory fake of the AgentService stream and a stubbed model catalog. No Cursor account, API key, session token or plan has been run against it. Treat every statement here as the contract read from the pinned upstream source, not as tested behavior.
+
+## Read this first
+
+- **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request fail with HTTP 403 `permission_error` ("Cursor API session dispatch is disabled for this connection...") before any key exchange or upstream call. Each connection opts in on its own, and a disabled connection never triggers a key exchange, not even through the automatic credential refresh.
+- **It re-serves a Cursor plan through the gateway.** Every client of this DurinDoor instance spends the plan and rate limits of the account that minted the key. Do not enable it for people who should not use that plan, and check Cursor's terms for your plan first.
+- **The key is a bearer secret.** It is stored on the connection like any other API key. It is sent only to `https://api2.cursor.sh/auth/exchange_user_api_key`, never as the chat bearer, and never appears in error bodies. Session tokens are cached in memory per key and are not persisted.
+
+The Cursor IDE provider is separate and unchanged. API-key and IDE-session connections never share renewal, quota or dashboard semantics.
+
+## Set up
+
+1. Create a user API key at [cursor.com/dashboard/api](https://cursor.com/dashboard/api). It starts with `crsr_`. (`grok_` keys are accepted by the same exchange upstream.)
+2. Add **Cursor API** under **Providers** and paste the key. A key with any other prefix is refused before any network call.
+3. Opt the connection in with **Allow session dispatch** in its edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`). Until then it refuses to dispatch.
+4. Call it as `cursor-api/<model>` or `cua/<model>`.
+
+Cookie capture: **not applicable.** The credential is an API key, not a browser session, so the cookie capture extension, pasted `Cookie:` header, cURL and HAR import flows do not apply.
+
+## How sign-in and refresh work
+
+`api2.cursor.sh` rejects a raw `crsr_...` key as a Bearer token. The executor POSTs the key to `/auth/exchange_user_api_key` (`Authorization: Bearer <key>`, body `{}`) and receives an `accessToken`, a session JWT that expires after one hour, plus a `refreshToken` with the same expiry.
+
+- One exchange per key is shared by concurrent requests and cached until five minutes before the JWT's `exp` (55 minutes if the token carries none).
+- "Refresh" means re-exchanging the key. The token refresh hook forces a new exchange, and an upstream 401 drops the cached session before the refresh-and-retry.
+- Two connections with different keys have separate session tokens and separate derived machine ids, and invalidating one never touches the other.
+- The Cursor checksum header needs a machine id. The executor derives a stable per-key one unless the connection sets `providerSpecificData.machineId`.
+
+## Chat and models
+
+- Both the OpenAI chat route and the Anthropic Messages route work, JSON and streamed, through the existing Cursor translators and AgentService stream.
+- Model discovery exchanges the key, then reads the account's live catalog through the existing Cursor resolver. If that returns nothing, the static Cursor catalog is used with a warning. Other model ids pass through.
+- The shared Cursor translator refuses explicit output-token caps. A Messages request that sends `max_tokens` (or an OpenAI request with `max_tokens` or `max_completion_tokens`) fails with HTTP 400 on both Cursor providers. This is existing behavior, not specific to the key connection.
+
+## Errors
+
+| Situation | Result |
+| --- | --- |
+| Connection did not opt in | 403 `permission_error`, no exchange |
+| Key does not start with `crsr_` or `grok_` | 400 before any network call |
+| Exchange answers 401 or 403 | 401 `authentication_error` (`cursor_api_key_rejected`) |
+| Exchange answers 429 | 429 `rate_limit_error` (`cursor_api_rate_limited`), `Retry-After` kept |
+| Exchange unreachable, non-JSON or without `accessToken` | 502 |
+| Chat answers 401 | 401 `authentication_error`, cached session dropped, one refresh-and-retry |
+| Chat answers 429 | 429 `rate_limit_error`, cached session kept |
+| Other chat failures | Existing Cursor behavior |
+
+The gateway's chat route rewrites the machine-readable `code` on these bodies to its own normalized values (for example `permission_denied`, `invalid_api_key`, `rate_limit_exceeded`). The `type` and the message text are what stay stable. The structured `cursor_api_*` codes are visible to direct executor callers.
+
+## Limits and not verified
+
+- Live behavior is untested: the exchange response shape, the one-hour expiry, whether a `crsr_` key works with the IDE-style checksum headers this path sends (upstream's own `cursor-api` executor sends cursor-agent-style headers with no checksum or machine id), and the key's quota semantics are taken from the pinned upstream source and could differ against the real service.
+- The AgentService stream is HTTP/2 only and cannot carry a proxy. With a proxy configured the request stays on the legacy ChatService path or fails closed, exactly as for the IDE provider.
+- Only the key-exchange identity is ported. OmniRoute's Cursor CLI passthrough (`/api/cursor-cli/*`), its cursor-agent session manager and its Cursor image-generation handler are separate features and are not part of this provider.
+
+## Sources

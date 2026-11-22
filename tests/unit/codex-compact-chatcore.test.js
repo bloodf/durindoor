@@ -398,7 +398,7 @@ describe("Codex compact request context in chatCore", () => {
       physicalModel: "gemini-3.1-pro",
     }));
 
-    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.1-pro" }));
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-pro-agent" }));
     expect(mocks.logRawRequest).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.1-pro" }));
     expect(mocks.appendRequestLog).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.1-pro", provider: "antigravity" }));
     expect(await result.response.text()).toContain(`"model":"${originalModel}"`);

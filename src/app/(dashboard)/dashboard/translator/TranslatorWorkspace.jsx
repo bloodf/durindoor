@@ -15,6 +15,8 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { registerEditorThemes } from "@/shared/ui/editorTheme.js";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 
 const Editor = dynamic(async () => {
   // Bundle Monaco and its only required language worker with Next so the
@@ -56,18 +58,18 @@ const EDITOR_OPTIONS = {
   automaticLayout: true,
 };
 
-function TranslatorNotice({ error, onDismiss }) {
+function TranslatorNotice({ error, onDismiss, v5 }) {
   if (!error) return null;
   return (
     <div role="alert" className="flex items-start gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">
-      <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">error</span>
+      {v5 ? <MotionIcon name="error" size={18} className="text-dd-danger" /> : <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">error</span>}
       <p className="min-w-0 flex-1">{error}</p>
       <IconButton icon="close" label="Dismiss error" size="sm" onClick={onDismiss} />
     </div>
   );
 }
 
-export function TranslatorStepCard({ step, content, expanded, loading, onToggle, onLoad, onFormat, onCopy, action }) {
+export function TranslatorStepCard({ step, content, expanded, loading, onToggle, onLoad, onFormat, onCopy, action, v5 = false }) {
   const { isDark } = useTheme();
   const editorTheme = isDark ? "durin-dark" : "durin-light";
   return (
@@ -76,7 +78,7 @@ export function TranslatorStepCard({ step, content, expanded, loading, onToggle,
         icon={expanded ? "expand_more" : "chevron_right"}
         title={<span className="flex items-center gap-2"><span className="dd-tnum text-xs text-dd-subtle">{step.id}</span>{step.label}</span>}
         subtitle={<span className="font-mono text-xs">{step.file} · {step.desc}</span>}
-        actions={<div className="flex items-center gap-1.5"><StatusDot tone={loading ? "info" : content ? "success" : "neutral"} pulse={loading} label={loading ? "Loading" : content ? `${content.length} chars` : "Not loaded"} /><IconButton icon={expanded ? "expand_less" : "expand_more"} label={`${expanded ? "Collapse" : "Expand"} ${step.label}`} variant="secondary" onClick={onToggle} /></div>}
+        actions={<div className="flex items-center gap-1.5"><StatusDot tone={loading ? "info" : content ? "success" : "neutral"} pulse={loading} label={loading ? "Loading" : content ? `${content.length} chars` : "Not loaded"} /><IconButton icon={expanded ? "expand_less" : "expand_more"} label={`${expanded ? "Collapse" : "Expand"} ${step.label}`} variant="secondary" onClick={onToggle} {...(v5 ? { "aria-expanded": expanded } : {})} /></div>}
       />
       {expanded ? (
         <>
@@ -111,6 +113,7 @@ export function TranslatorStepCard({ step, content, expanded, loading, onToggle,
 }
 
 export function TranslatorWorkspace({ initialContents = {}, initialMeta = null }) {
+  const v5 = useUiV5();
   const [contents, setContents] = useState(initialContents);
   const [expanded, setExpanded] = useState({ 1: true });
   const [loading, setLoading] = useState({});
@@ -219,13 +222,13 @@ export function TranslatorWorkspace({ initialContents = {}, initialMeta = null }
   const getAction = (stepId) => stepId === 1 ? <Button size="md" variant="primary" icon="arrow_forward" loading={loading.toOpenAI} onClick={handleToOpenAI}>To OpenAI</Button> : stepId === 3 ? <Button size="md" variant="primary" icon="arrow_forward" loading={loading.toTarget} onClick={handleToTarget}>To Target</Button> : stepId === 4 ? <Button size="md" variant="primary" icon="send" loading={loading.send} onClick={handleSend}>Send</Button> : null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-4 p-4 text-[13px] sm:p-6 lg:p-8">
-      <PageHeader icon="swap_horiz" title="Translator Debug" subtitle="Replay request flow — matches log files" actions={meta ? <div className="flex flex-wrap justify-end gap-1.5"><MetaBadge label="Source" value={meta.sourceFormat} tone="info" /><span aria-hidden="true" className="material-symbols-outlined self-center text-[18px] text-dd-muted">arrow_forward</span><MetaBadge label="Target" value={meta.targetFormat} tone="warning" /><MetaBadge label="Provider" value={meta.provider} tone="success" /><MetaBadge label="Model" value={meta.model} tone="accent" /></div> : null} />
+    <main className={v5 ? "mx-auto w-full min-w-0 max-w-6xl space-y-4 p-4 text-[13px] text-dd-text sm:p-6 lg:p-8" : "mx-auto w-full max-w-6xl space-y-4 p-4 text-[13px] sm:p-6 lg:p-8"}>
+      <PageHeader icon="swap_horiz" title="Translator Debug" subtitle="Replay request flow — matches log files" actions={meta ? <div className="flex flex-wrap justify-end gap-1.5"><MetaBadge label="Source" value={meta.sourceFormat} tone="info" />{v5 ? <MotionIcon name="arrow_forward" size={18} className="self-center text-dd-muted" /> : <span aria-hidden="true" className="material-symbols-outlined self-center text-[18px] text-dd-muted">arrow_forward</span>}<MetaBadge label="Target" value={meta.targetFormat} tone="warning" /><MetaBadge label="Provider" value={meta.provider} tone="success" /><MetaBadge label="Model" value={meta.model} tone="accent" /></div> : null} />
       {sendStatus && <div className="flex items-center justify-between gap-3" role="status"><span>{sendStatus}</span>{loading.send && <Button icon="stop" variant="secondary" onClick={() => sendRequest.current?.abort()}>Stop response</Button>}</div>}
-      <TranslatorNotice error={error} onDismiss={() => setError("")} />
+      <TranslatorNotice error={error} onDismiss={() => setError("")} v5={v5} />
       {!Object.values(contents).some(Boolean) ? <Card><EmptyState icon="description" title="Load a captured request" message="Start with Client Request to inspect each conversion step and replay it safely." /></Card> : null}
       <section aria-label="Translation steps" className="space-y-3">
-        {STEPS.map((step) => <TranslatorStepCard key={step.id} step={step} content={contents[step.id] || ""} expanded={Boolean(expanded[step.id])} loading={Boolean(loading[`load-${step.id}`])} onToggle={() => toggle(step.id)} onLoad={() => handleLoad(step.id)} onFormat={(value, changed) => handleFormat(step.id, value, changed)} onCopy={() => contents[step.id] && copy(contents[step.id], `translator-step-${step.id}`)} action={getAction(step.id)} />)}
+        {STEPS.map((step) => <TranslatorStepCard key={step.id} step={step} content={contents[step.id] || ""} expanded={Boolean(expanded[step.id])} loading={Boolean(loading[`load-${step.id}`])} onToggle={() => toggle(step.id)} onLoad={() => handleLoad(step.id)} onFormat={(value, changed) => handleFormat(step.id, value, changed)} onCopy={() => contents[step.id] && copy(contents[step.id], `translator-step-${step.id}`)} action={getAction(step.id)} v5={v5} />)}
       </section>
     </main>
   );

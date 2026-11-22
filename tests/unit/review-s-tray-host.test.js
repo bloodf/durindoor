@@ -71,7 +71,7 @@ describe("tray and autostart preserve the selected bind address", () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
     expect(enableAutoStart(cliPath, { host: "127.0.0.1", port: 23456 })).toBe(true);
     const vbs = fs.readFileSync(path.join(winStartupDir, "9router.vbs"), "utf8");
-    expect(vbs).toContain("--host \"127.0.0.1\" --port 23456");
+    expect(vbs).toContain('--host ""127.0.0.1"" --port 23456');
   });
 
   it("includes the running host and port in the updater relaunch", () => {

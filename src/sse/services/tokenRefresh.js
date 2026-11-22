@@ -8,6 +8,7 @@ import {
 "open-sse/services/projectId.js";
 import {
   TOKEN_EXPIRY_BUFFER_MS as BUFFER_MS,
+  isUnrecoverableRefreshError,
   refreshAccessToken as _refreshAccessToken,
   refreshClaudeOAuthToken as _refreshClaudeOAuthToken,
   refreshGoogleToken as _refreshGoogleToken,
@@ -18,8 +19,6 @@ import {
   refreshCopilotToken as _refreshCopilotToken,
   getAccessToken as _getAccessToken,
   refreshTokenByProvider as _refreshTokenByProvider,
-  formatProviderCredentials as _formatProviderCredentials,
-  getAllAccessTokens as _getAllAccessTokens,
   refreshKiroToken as _refreshKiroToken,
   getRefreshLeadMs as _getRefreshLeadMs } from
 "open-sse/services/tokenRefresh.js";
@@ -29,6 +28,7 @@ import {
   resolveCredentialProxyOptions as _resolveCredentialProxyOptions,
   shouldRefreshCredentials as _shouldRefreshCredentials } from
 "open-sse/services/oauthCredentialManager.js";
+import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
@@ -66,12 +66,6 @@ _getAccessToken(provider, credentials, log, proxyOptions);
 
 export const refreshTokenByProvider = (provider, credentials, proxyOptions = null) =>
 _refreshTokenByProvider(provider, credentials, log, proxyOptions);
-
-export const formatProviderCredentials = (provider, credentials) =>
-_formatProviderCredentials(provider, credentials, log);
-
-export const getAllAccessTokens = (userInfo) =>
-_getAllAccessTokens(userInfo, log);
 
 export const shouldRefreshCredentials = (provider, credentials) =>
 _shouldRefreshCredentials(provider, credentials);
@@ -256,6 +250,10 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
   }
   const effectiveProxyOptions = _resolveCredentialProxyOptions(creds, proxyOptions);
   const force = options?.force === true;
+  // CAS fingerprint of the credentials we are about to present. Matches the
+  // request-path guard in refreshAndUpdateCredentials so a concurrent winner
+  // that already rotated is not overwritten with reauth_required.
+  const expectedRefreshContext = providerRefreshContext(credentials);
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
   if (force || _shouldRefreshCredentials(provider, creds)) {
@@ -271,6 +269,36 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
     });
 
     const newCreds = await _refreshProviderCredentials(provider, creds, log, effectiveProxyOptions);
+
+    // Background force-refresh used to drop unrecoverable results silently,
+    // leaving the row "active" after refresh_token_reused / invalid_grant
+    // (durindoor#2280). Pin the same durable reauth_required state the request
+    // path writes, then surface the error (the tick swallows it).
+    if (isUnrecoverableRefreshError(newCreds)) {
+      if (creds.connectionId) {
+        try {
+          await updateProviderConnection(
+            creds.connectionId,
+            {
+              testStatus: "reauth_required",
+              lastError: "OAuth session expired. Reconnect this account.",
+              errorCode: "REAUTH",
+              lastErrorAt: new Date().toISOString()
+            },
+            { expectedRefreshContext }
+          );
+        } catch (persistErr) {
+          log.warn("TOKEN_REFRESH", "Failed to pin reauth_required after unrecoverable refresh", {
+            connectionId: creds.connectionId,
+            error: persistErr?.message ?? String(persistErr)
+          });
+        }
+      }
+      const err = new Error("Failed to refresh credentials. Please re-authorize the connection.");
+      err.code = "PROVIDER_REAUTH_REQUIRED";
+      throw err;
+    }
+
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       const mergedCreds = {
         ...newCreds,

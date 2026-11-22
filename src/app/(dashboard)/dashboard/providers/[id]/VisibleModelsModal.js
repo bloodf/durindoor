@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { isString } from "../../../../../shared/utils/typeChecks.js";
 
@@ -25,6 +26,7 @@ export default function VisibleModelsModal({
   disabledModelIds,
   onSaved,
 }) {
+  const v5 = useUiV5();
   const [available, setAvailable] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [search, setSearch] = useState("");
@@ -179,7 +181,7 @@ export default function VisibleModelsModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Visible models" size="lg" footer={null}>
-      <div className="flex flex-col gap-3 p-4">
+      <div className={v5 ? "flex min-w-0 flex-col gap-3 p-4 text-dd-text" : "flex flex-col gap-3 p-4"}>
         <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/8 px-2.5 py-2 text-xs text-text-muted">
           <span className="material-symbols-outlined shrink-0 text-primary" style={{ fontSize: "14px" }}>info</span>
           <span>
@@ -220,7 +222,7 @@ export default function VisibleModelsModal({
           </Button>
         </div>
 
-        {error && <p className="text-xs text-red-500 break-words">{error}</p>}
+        {error && <p role={v5 ? "alert" : undefined} className="text-xs text-red-500 break-words">{error}</p>}
 
         {loading ? (
           <p className="py-6 text-center text-xs text-text-muted">Loading models...</p>
@@ -266,7 +268,7 @@ export default function VisibleModelsModal({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2">
+        <div className={v5 ? "flex flex-wrap items-center justify-between gap-2" : "flex items-center justify-between gap-2"}>
           <span className="text-[11px] text-text-muted">
             {selected.size === 0
               ? "Nothing selected — all models stay visible."

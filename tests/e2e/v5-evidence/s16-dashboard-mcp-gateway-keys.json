@@ -1,0 +1,20 @@
+{
+  "route": "/dashboard/mcp-gateway/keys",
+  "stories": [
+    "durin-ds-production-pages-mcp-gateway-keys--default",
+    "durin-ds-production-pages-mcp-gateway-keys--delete-key",
+    "durin-ds-production-pages-mcp-gateway-keys--save-grants",
+    "durin-ds-production-pages-mcp-gateway-keys--new-key-keyboard",
+    "durin-ds-production-pages-mcp-gateway-keys--new-key-fresh-mount",
+    "durin-ds-production-pages-mcp-gateway-keys--mobile-new-key-keyboard",
+    "durin-ds-production-pages-mcp-gateway-keys--reveal-existing-key",
+    "durin-ds-production-pages-mcp-gateway-keys--empty-keys",
+    "durin-ds-production-pages-mcp-gateway-keys--error-boundary",
+    "durin-ds-production-pages-mcp-gateway-keys--retained-error-boundary",
+    "durin-ds-production-pages-mcp-gateway-keys--load-failure-and-retry",
+    "durin-ds-production-pages-mcp-gateway-keys--malformed-response-and-retry",
+    "durin-ds-production-pages-mcp-gateway-keys--network-failure-and-retry",
+    "durin-ds-production-pages-mcp-gateway-keys--mint-rejected-and-retry",
+    "durin-ds-production-pages-mcp-gateway-keys--mint-pending"
+  ]
+}

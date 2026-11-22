@@ -1,4 +1,5 @@
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
+import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -28,6 +29,14 @@ import {
   looksLikeEncryptedEnvelope
 } from "@/shared/utils/credentialEnvelope";
 
+// providerSpecificData also carries provider-owned, non-secret keys the dashboard and the update merge
+// round-trip (workspaceId, nested oauthProxy, ...), so an exhaustive allowlist would hide them. Instead a
+// key is shown only when it is not an explicit secret and does not look like one: a new secret stored under
+// a credential-shaped name (copilotToken, dcaToken, ...) stays hidden without being listed here.
+const SECRET_LIKE_PROVIDER_SPECIFIC_KEY = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid/i;
+const NON_SECRET_PROVIDER_SPECIFIC_FIELDS = new Set([
+"tokenEndpoint", "token_endpoint", "enablePromptCacheKey", "copilotTokenExpiresAt"]
+);
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "chatgptPlanAccount",
 "chatgptPlanBindingRevision",
@@ -37,11 +46,36 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "alibabaConsoleCookie",
 "cookie",
 "QWEN_CLOUD_COOKIE",
-// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
 "sessionToken",
-// Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
-"mimoPassToken"]
+"mimoPassToken",
+"app-config-uuid",
+"copilotToken",
+"dcaToken"]
 );
+
+function isSecretProviderSpecificKey(key) {
+  if (SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key)) return true;
+  return !NON_SECRET_PROVIDER_SPECIFIC_FIELDS.has(key) && SECRET_LIKE_PROVIDER_SPECIFIC_KEY.test(key);
+}
+
+const PROVIDER_SECRET_TOP_LEVEL_FIELDS = [
+"managementApiKey", "apiKey", "accessToken", "refreshToken", "idToken", "firecrawlHeaders",
+"sessionToken", "copilotToken", "dcaToken"];
+
+/** providerSpecificData without secrets (see isSecretProviderSpecificKey). */
+export function pickSafeProviderSpecificData(_provider, providerSpecificData) {
+  if (!providerSpecificData) return providerSpecificData;
+  return Object.fromEntries(
+    Object.entries(providerSpecificData).filter(([key]) => !isSecretProviderSpecificKey(key))
+  );
+}
+
+/** Drop top-level credential fields from a connection echoed to a caller. */
+export function stripConnectionSecrets(connection) {
+  const result = { ...connection };
+  for (const key of PROVIDER_SECRET_TOP_LEVEL_FIELDS) delete result[key];
+  return result;
+}
 
 /**
  * The session token to store for a new AWS connection. A client written for 9router may still
@@ -54,25 +88,12 @@ function awsSessionToken(sessionToken, providerSpecificData) {
   return isString(value) && value.trim() ? value.trim() : undefined;
 }
 
-function sanitizeProviderConnection(connection) {
-  const providerSpecificData = connection.providerSpecificData ?
-  Object.fromEntries(
-    Object.entries(connection.providerSpecificData).
-    filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
-  ) :
-  connection.providerSpecificData;
-
-  return {
-    ...connection,
-    managementApiKey: undefined,
-    apiKey: undefined,
-    accessToken: undefined,
-    refreshToken: undefined,
-    idToken: undefined,
-    firecrawlHeaders: undefined,
-    sessionToken: undefined,
-    ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
-  };
+export function sanitizeProviderConnection(connection) {
+  const result = stripConnectionSecrets(connection);
+  if (connection.providerSpecificData) {
+    result.providerSpecificData = pickSafeProviderSpecificData(connection.provider, connection.providerSpecificData);
+  }
+  return result;
 }
 
 // Mirrors src/app/api/providers/[id]/models/route.js branch-for-branch plus
@@ -81,8 +102,12 @@ function sanitizeProviderConnection(connection) {
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
-  if (provider === "t3-web" || provider === "adapta-web") return true; // Curated local catalog.
+  if (LOCAL_CATALOG_WEB_PROVIDERS.has(provider)) return true; // Curated local catalog.
   if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
+  // Zed-hosted discovery exchanges an LLM token per connection, and only after the opt-in.
+  if (provider === "zed-hosted") return connection.providerSpecificData?.enableSessionDispatch === true && Boolean(connection.accessToken || connection.apiKey);
+  // PromptQL lists models through its GraphQL API with the playground JWT, not the session cookie.
+  if (provider === "promptql") return Boolean(connection.providerSpecificData?.token || connection.providerSpecificData?.jwt);
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
     // Compatible servers may expose their catalog without credentials.
@@ -130,6 +155,10 @@ export function canDiscoverModels(connection) {
       case "mlx":
       case "devin-cli-agentic":
         return true;
+      case "cursor-api":
+        return connection.providerSpecificData?.enableSessionDispatch === true && Boolean(connection.apiKey);
+      case "devin-desktop":
+        return connection.providerSpecificData?.enableSessionDispatch === true && Boolean(connection.accessToken || connection.apiKey);
       default:
         return false;
     }

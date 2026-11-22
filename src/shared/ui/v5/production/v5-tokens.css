@@ -1,0 +1,66 @@
+/* V5 forest-neutral tokens. Applied when the root element carries
+   data-ui="v5" (production switch DURINDOOR_UI_V5) or data-v5-review="true"
+   (Storybook review). They override --dd-* values only and add no new names.
+   Import after tokens.css and globals.css. Root scoping also reaches
+   body/dialog portals used by the actual components. */
+html[data-ui="v5"],
+html[data-v5-review="true"] {
+  --dd-bg: #f7f8f7;
+  --dd-bg-alt: #eff1ef;
+  --dd-surface: #ffffff;
+  --dd-surface-2: #f2f4f2;
+  --dd-surface-3: #e8ebe8;
+  --dd-border: #cdd3ce;
+  --dd-border-subtle: #e2e6e2;
+  --dd-text: #202622;
+  --dd-text-muted: #505b53;
+  --dd-text-subtle: #5c675f;
+  --dd-accent: #17623f;
+  --dd-accent-hover: #104b2f;
+  --dd-accent-soft: #e3f1e8;
+  --dd-info: #235e43;
+  --dd-focus-ring: #17623f;
+  --dd-radius: 10px;
+  --dd-radius-lg: 14px;
+  --dd-shadow-raised: 0 2px 6px -3px rgb(0 0 0 / 10%);
+  --dd-shadow-elevated: 0 12px 32px -8px rgb(0 0 0 / 20%);
+  accent-color: var(--dd-accent);
+  caret-color: var(--dd-accent);
+  scrollbar-color: var(--dd-border) var(--dd-bg);
+  --color-primary: var(--dd-accent);
+  --color-primary-hover: var(--dd-accent-hover);
+  --color-bg: var(--dd-bg);
+  --color-bg-alt: var(--dd-bg-alt);
+  --color-surface: var(--dd-surface);
+  --color-surface-2: var(--dd-surface-2);
+  --color-surface-3: var(--dd-surface-3);
+  --color-sidebar: var(--dd-bg-alt);
+  --color-border: var(--dd-border);
+  --color-border-subtle: var(--dd-border-subtle);
+  --color-text: var(--dd-text);
+  --color-text-main: var(--dd-text);
+  --color-text-muted: var(--dd-text-muted);
+  --color-text-subtle: var(--dd-text-subtle);
+  --color-info: var(--dd-info);
+}
+html.dark[data-ui="v5"],
+html.dark[data-v5-review="true"] {
+  --dd-bg: #151817;
+  --dd-bg-alt: #191d1b;
+  --dd-surface: #202522;
+  --dd-surface-2: #292f2b;
+  --dd-surface-3: #363d38;
+  --dd-border: #4c5750;
+  --dd-border-subtle: #363f39;
+  --dd-text: #edf1ed;
+  --dd-text-muted: #c5cdc7;
+  --dd-text-subtle: #b6c0b9;
+  --dd-accent: #9cd9b0;
+  --dd-accent-hover: #b5e8c5;
+  --dd-accent-soft: #2b4836;
+  --dd-on-accent: #132f1e;
+  --dd-info: #b6d6c0;
+  --dd-focus-ring: #9cd9b0;
+  --dd-shadow-raised: 0 2px 6px -3px rgb(0 0 0 / 24%);
+  --dd-shadow-elevated: 0 12px 32px -8px rgb(0 0 0 / 38%);
+}

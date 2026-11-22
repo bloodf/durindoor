@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import {
   buildPrompt,
   buildWsUrl,
@@ -23,6 +24,20 @@ import {
 "./copilot-m365-frames.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { webSocketAuthStatus } from "../utils/webSessionExpiry.js";
+
+async function proxyAgentForWebSocket(proxyUrl) {
+  try {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyUrl);
+  } catch {
+    try {
+      const { SocksProxyAgent } = await import("socks-proxy-agent");
+      return new SocksProxyAgent(proxyUrl);
+    } catch {
+      return null;
+    }
+  }
+}
 
 let WebSocketCtor = WebSocket;
 
@@ -64,7 +79,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
 
   async wsChat(input) {
     return new ReadableStream({
-      start(controller) {
+      async start(controller) {
         const encoder = new TextEncoder();
         let ws = null;
         let settled = false;
@@ -116,13 +131,22 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           const traceId = wsUrlParts.searchParams.get("clientrequestid") ?? crypto.randomUUID().replace(/-/g, "");
           const sessionId = wsUrlParts.searchParams.get("X-SessionId") ?? crypto.randomUUID();
 
-          ws = new WebSocketCtor(input.wsUrl, {
+          const wsOptions = {
             headers: {
               Origin: "https://m365.cloud.microsoft",
               "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
             }
-          });
+          };
+          const proxyRoute = resolveWebSocketProxyRoute(input.wsUrl, input.proxyOptions);
+          if (proxyRoute.enabled && proxyRoute.url) {
+            const agent = await proxyAgentForWebSocket(proxyRoute.url);
+            if (agent) wsOptions.agent = agent;
+            else if (proxyRoute.strict) {
+              throw new Error("WebSocket proxy required but unavailable");
+            }
+          }
+          ws = new WebSocketCtor(input.wsUrl, wsOptions);
 
           const sendChat = () => {
             ws?.send(keepaliveFrame());
@@ -230,7 +254,14 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     }
 
     const wsUrl = buildWsUrl(connectionParams);
-    const wsStream = await this.wsChat({ wsUrl, prompt, model, signal: input.signal, stream });
+    const wsStream = await this.wsChat({
+      wsUrl,
+      prompt,
+      model,
+      signal: input.signal,
+      stream,
+      proxyOptions: input.proxyOptions
+    });
 
     if (stream) {
       return {

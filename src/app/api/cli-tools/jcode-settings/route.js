@@ -8,6 +8,7 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { parseTOML, stringifyTOML } from "confbox";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -120,7 +121,7 @@ export async function GET() {
 
   return NextResponse.json({
     installed: true,
-    config,
+    config: redactSecrets(config),
     has9Router,
     configPath: getConfigPath(),
   });

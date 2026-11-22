@@ -1,0 +1,18 @@
+{
+  "route": "/dashboard/profile",
+  "stories": [
+    "production-profile-profilepage--default",
+    "production-profile-profilepage--oidc-and-proxy",
+    "production-profile-profilepage--shutdown-confirm",
+    "production-profile-profilepage--database-export-prompt",
+    "production-profile-profilepage--selective-transfer-preview",
+    "production-profile-profilepage--settings-unavailable",
+    "production-profile-profilepage--settings-loading",
+    "production-profile-mfacard--setup-api-error",
+    "production-profile-mfacard--enrollment-shows-backup-codes",
+    "production-profile-mfacard--verification-api-error",
+    "production-profile-mfacard--enabled",
+    "production-profile-mfacard--disable-api-error",
+    "production-profile-selectivetransferpanel--load-catalog"
+  ]
+}

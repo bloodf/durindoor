@@ -1,5 +1,7 @@
 // Backup/import must preserve enforcement metadata and durable usage counters
 // without rewriting the API-key secret used by existing clients.
+// SEC-B-02 / #2208: default exportDb() scrubs apiKeys[].key; secret-preserving
+// round-trips must pass includeSecrets: true (same as db-quota-backup-roundtrip).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -52,7 +54,7 @@ describe("API-key database backup", () => {
       ["key-1", 44, 1.25, 3, 2, "2026-01-02T00:00:00.000Z"],
     );
 
-    const snapshot = await database.exportDb();
+    const snapshot = await database.exportDb({ includeSecrets: true });
     expect(snapshot.apiKeys[0]).toMatchObject({
       key: secret,
       name: "Backup key",
@@ -145,7 +147,7 @@ describe("API-key database backup", () => {
     );
 
     database.incrementApiKeyUsageSync(db, "fractional", { tokens: 1.75, cost: 0.01 });
-    const snapshot = await database.exportDb();
+    const snapshot = await database.exportDb({ includeSecrets: true });
     expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 2, totalCost: 0.01, totalRequests: 1 });
     await expect(database.importDb(snapshot)).resolves.toBeDefined();
     expect(await database.getApiKeyUsageTotals("fractional")).toMatchObject({ totalTokens: 2, totalCost: 0.01, totalRequests: 1 });
@@ -346,7 +348,7 @@ describe("API-key database backup", () => {
     await saveRequestUsage({ ...event, billingEpoch: current });
     expect(await database.getApiKeyUsageTotals("legacy")).toMatchObject({ totalTokens: 12, totalCost: 0.75, totalRequests: 4, unknownCostRequests: 2 });
     expect(db.get("SELECT usageEventId FROM usageHistory").usageEventId).toBe(JSON.stringify(["billing", current, "terminal"]));
-    const backup = await database.exportDb();
+    const backup = await database.exportDb({ includeSecrets: true });
     const restored = await database.importDb(backup);
     expect(restored.billingEpoch).not.toBe(current);
     expect(restored.usageEventReceipts).toEqual(backup.usageEventReceipts);
@@ -379,7 +381,7 @@ describe("API-key database backup", () => {
     if (billingEpoch !== null) db.run("INSERT INTO kv(scope, key, value) VALUES('billing', 'epoch', ?)", [JSON.stringify(billingEpoch)]);
     const eventA = { apiKey: "sk-modern", usageEventId: "event-a", billingEpoch, cost: 0.5, tokens: { prompt_tokens: 3 }, strict: true };
     await saveRequestUsage(eventA);
-    const snapshotA = await database.exportDb();
+    const snapshotA = await database.exportDb({ includeSecrets: true });
     expect(snapshotA.usageEventReceiptsVersion).toBe(1);
     const eventB = { ...eventA, usageEventId: "event-b", cost: 0.25 };
     await saveRequestUsage(eventB);
@@ -416,7 +418,7 @@ describe("API-key database backup", () => {
       fallback.run("INSERT INTO apiKeys(id, key, createdAt) VALUES('fallback', 'sk-fallback', ?)", [new Date().toISOString()]);
       const usage = { apiKey: "sk-fallback", usageEventId: "fallback-a", cost: 0.25, strict: true };
       await database.saveRequestUsage(usage);
-      const snapshot = await database.exportDb();
+      const snapshot = await database.exportDb({ includeSecrets: true });
       const before = Buffer.from(fallback.raw.export());
       const run = vi.spyOn(fallback, "run");
       const transaction = vi.spyOn(fallback, "transaction");

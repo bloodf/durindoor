@@ -1,0 +1,8 @@
+{
+  "route": "dialog/ChangelogModal",
+  "stories": [
+    "production-shared-support-changelogmodal--loaded",
+    "production-shared-support-changelogmodal--error-state",
+    "production-shared-support-changelogmodal--empty-body"
+  ]
+}

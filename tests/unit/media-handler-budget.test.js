@@ -140,7 +140,7 @@ describe("rerank raw provider receipt through real core and SQLite policy", () =
 
   it.each([
     ["cost_usd", 0.5],
-    ["cost_in_usd_ticks", 500_000_000_000],
+    ["cost_in_usd_ticks", 5_000_000_000],
   ])("commits raw %s once and denies the next request before HTTP", async (field, value) => {
     const usage = { [field]: value, input_tokens: 7, total_tokens: 7 };
     const text = ranking(usage);

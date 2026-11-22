@@ -1,0 +1,7 @@
+{
+  "route": "dialog/BulkReviewModal",
+  "stories": [
+    "production-providers-components-bulkreviewmodal--open",
+    "production-providers-components-bulkreviewmodal--pending"
+  ]
+}

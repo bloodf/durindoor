@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal";
@@ -32,6 +34,7 @@ export default function GitLabAuthModal({
   proxyPoolsReady = false
 }) {
   const providerId = provider || "gitlab";
+  const uiV5 = useUiV5();
   const [mode, setMode] = useState(null); // null | "oauth" | "pat"
   const [baseUrl, setBaseUrl] = useState(GITLAB_COM);
   const [clientId, setClientId] = useState("");
@@ -111,7 +114,7 @@ export default function GitLabAuthModal({
   }
 
   return (
-    <Modal open={isOpen} title="Connect GitLab Duo" onClose={handleClose} size="lg">
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title="Connect GitLab Duo" onClose={handleClose} size="lg">
       <div className="flex flex-col gap-5">
         {!mode && (
           <div className="flex flex-col gap-3">

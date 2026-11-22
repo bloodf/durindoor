@@ -75,6 +75,24 @@ const nextConfig = {
     };
     return config;
   },
+  // #2251: baseline clickjacking / MIME / referrer / embedding CSP on every response.
+  // Omits script-src/style-src — Next inline runtime scripts would break; nonce CSP is out of scope.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "same-origin" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

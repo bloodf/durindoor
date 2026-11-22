@@ -4,6 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 function getStatusTone(tool, status) {
   if (tool?.configType === "guide") return "info";
@@ -24,10 +26,11 @@ function getStatusLabel(tool, status) {
 }
 
 export default function ToolSummaryCard({ toolId, tool, status }) {
+  const v5 = useUiV5();
   const tone = getStatusTone(tool, status);
   const label = getStatusLabel(tool, status);
   return (
-    <Link href={`/dashboard/cli-tools/${toolId}`} className="block rounded-dd-lg focus-visible:shadow-dd-focus outline-none">
+    <Link href={`/dashboard/cli-tools/${toolId}`} className={v5 ? "block min-w-0 rounded-dd-lg outline-none focus-visible:shadow-dd-focus" : "block rounded-dd-lg focus-visible:shadow-dd-focus outline-none"}>
       <Card padding={false} className="h-full cursor-pointer p-4 transition-colors hover:border-dd-accent/50">
         <div className="flex h-full items-center gap-3">
           <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2 text-dd-muted">
@@ -41,7 +44,7 @@ export default function ToolSummaryCard({ toolId, tool, status }) {
             <h3 className="truncate text-[13px] font-semibold text-dd-text">{tool.name}</h3>
             <Badge tone={tone} size="sm">{label}</Badge>
           </div>
-          <span className="material-symbols-outlined shrink-0 text-[20px] text-dd-muted" aria-hidden="true">chevron_right</span>
+          {v5 ? <MotionIcon name="chevron_right" size={20} className="shrink-0 text-dd-muted" /> : <span className="material-symbols-outlined shrink-0 text-[20px] text-dd-muted" aria-hidden="true">chevron_right</span>}
         </div>
       </Card>
     </Link>

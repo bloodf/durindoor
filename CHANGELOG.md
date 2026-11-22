@@ -23,6 +23,9 @@
 
 ## Breaking
 
+- fix(security): OIDC dashboard login now requires an allowlist (#2195). **Upgrade note:** if you use `authMode` `oidc` or `both`, set at least one of the new settings `oidcAllowedSubjects`, `oidcAllowedEmails` or `oidcAllowedDomains` (Profile > OIDC Dashboard Login) before upgrading, or sign in with a password, from loopback, or with the CLI token afterwards to set them. While all three are empty every OIDC login is refused and the server logs a warning. Email and domain entries only match id_tokens with `email_verified: true`. OIDC sessions are now bound to the server-side session epoch, so a password change or reset ends them.
+- fix(security): The OIDC connection test only sends the stored client secret when the tested issuer equals the saved issuer, and OIDC discovery, token and JWKS fetches use the resolving SSRF guard with per-hop redirect checks (#2196).
+
 - chore(runtime): The runtime is now Node.js 26.13.0 LTS / npm 11.20.0 (was Node.js 20.20.2 / npm 10.8.2). The published CLI requires Node.js >=26.13.0, the Docker image uses `node:26.13.0-alpine`, and better-sqlite3 installs from prebuilt binaries instead of compiling from source.
 
 - fix(providers): Route OpenAI Responses clients (Codex) of Kimi Coding API Key to the native `https://api.kimi.com/coding/v1/responses` endpoint instead of translating to Messages; Chat and Claude clients keep their current transport (upstream 9router 3125ac2, #1368).

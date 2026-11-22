@@ -246,11 +246,13 @@ describe("usage period aggregation", () => {
 
   it("rebuilds the partial cutoff day after a reset without stale rollup totals", async () => {
     await seed();
-    await db.resetUsageHistory("1h");
+    await db.resetUsageHistory("1d");
 
     const stats = await db.getUsageStats("today");
     const chart = await db.getChartData("today");
     expect(stats.totalRequests).toBe(0);
     expect(chart.reduce((sum, point) => sum + point.tokens, 0)).toBe(0);
+    const cutoffDay = await db.getUsageStats("all", { startDate: "2026-07-09", endDate: "2026-07-09" });
+    expect(cutoffDay.totalRequests).toBe(2);
   });
 });

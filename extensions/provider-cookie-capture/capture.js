@@ -8,6 +8,9 @@
  *  - asks for optional permissions on exactly two origins (provider, paired
  *    dashboard) plus `cookies`, and gives back what it was granted afterwards;
  *  - reads only cookie names that are in both the built-in table and the pairing;
+ *  - for a provider whose credential is a localStorage item (TinyCMS), reads only the
+ *    built-in item names, once, from the confirmed tab, through `chrome.scripting`, and only
+ *    while that tab and its page are still on the provider origin;
  *  - sends one request, to the dashboard URL named by the pairing, and never retries;
  *  - never stores, logs or echoes a cookie value or the pairing secret.
  */
@@ -34,6 +37,8 @@ export const MESSAGES = Object.freeze({
   permission_denied: "Permission was not granted, so nothing was read or sent. Click Send to try again, or Cancel.",
   no_cookie_store: "Could not find the browser session for this tab. Nothing was sent.",
   no_cookies: "No approved session cookie was found. Sign in to the provider in this tab, create a new pairing and try again.",
+  no_local_storage: "The provider page holds no approved session value. Open the provider site in this tab, create a new pairing and try again.",
+  tab_navigated: "The tab left the provider site while its session value was being read, so nothing was sent. Return to the provider site in this tab and click Send again.",
   cancelled: "Cancelled. Create a new pairing if you want to try again.",
   network_error: "Could not reach the dashboard. The pairing may be spent; create a new pairing before trying again.",
   pairing_rejected: "The dashboard rejected the pairing (expired or already used). Create a new pairing.",
@@ -99,6 +104,13 @@ export function parsePairing(text, now = Date.now()) {
   const prefixes = Array.isArray(contract.cookiePrefixes) ? contract.cookiePrefixes : [];
   const cookiePrefixes = def.cookiePrefixes.filter((prefix) => prefixes.includes(prefix));
   if (cookieNames.length !== def.cookieNames.length) return fail("invalid_pairing");
+  // Optional cookies are never required: a pairing that omits them (an older dashboard) simply narrows them away.
+  const pairedOptional = Array.isArray(contract.optionalCookies) ? contract.optionalCookies : [];
+  const optionalCookies = (def.optionalCookies ?? []).filter((name) => pairedOptional.includes(name));
+  const builtInKeys = def.localStorageKeys ?? [];
+  const pairedKeys = Array.isArray(contract.localStorageKeys) ? contract.localStorageKeys : [];
+  const localStorageKeys = builtInKeys.filter((key) => pairedKeys.includes(key));
+  if (localStorageKeys.length !== builtInKeys.length) return fail("invalid_pairing");
 
   const expiresAt = isString(pairing.expiresAt) ? Date.parse(pairing.expiresAt) : NaN;
   if (!Number.isFinite(expiresAt) || expiresAt - now > MAX_PAIRING_LIFETIME_MS) return fail("invalid_pairing");
@@ -114,6 +126,8 @@ export function parsePairing(text, now = Date.now()) {
       importUrl: destination.url,
       cookieNames,
       cookiePrefixes,
+      optionalCookies,
+      localStorageKeys,
       expiresAt,
       token: pairing.token,
       ...target,
@@ -131,6 +145,8 @@ export function describePlan(plan) {
     action: plan.action,
     target: plan.action === "create" ? plan.name : plan.connectionId,
     cookieNames: [...plan.cookieNames, ...plan.cookiePrefixes.map((prefix) => `${prefix}<n>`)],
+    optionalCookies: [...(plan.optionalCookies ?? [])],
+    localStorageKeys: [...(plan.localStorageKeys ?? [])],
   };
 }
 
@@ -167,7 +183,11 @@ const permissionPlans = new WeakMap();
 export async function preflightPermissions(chrome, plan) {
   const missing = { permissions: [], origins: [] };
   const origins = [matchPattern(plan.providerOrigin), matchPattern(plan.dashboardOrigin)];
-  if (!(await chrome.permissions.contains({ permissions: ["cookies"] }))) missing.permissions.push("cookies");
+  // Each API is asked for only when the provider's credential needs it.
+  const needed = [...(plan.cookieNames.length ? ["cookies"] : []), ...(plan.localStorageKeys?.length ? ["scripting"] : [])];
+  for (const permission of needed) {
+    if (!(await chrome.permissions.contains({ permissions: [permission] }))) missing.permissions.push(permission);
+  }
   for (const origin of new Set(origins)) {
     if (!(await chrome.permissions.contains({ origins: [origin] }))) missing.origins.push(origin);
   }
@@ -198,6 +218,11 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     await take(name);
     if (cancelled()) return found;
   }
+  // Optional cookies are read the same way but their absence is not an error.
+  for (const name of plan.optionalCookies ?? []) {
+    await take(name);
+    if (cancelled()) return found;
+  }
   for (const prefix of plan.cookiePrefixes) {
     // Chunks are contiguous from .0; stop at the first gap.
     for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
@@ -205,6 +230,59 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     }
   }
   return found;
+}
+
+/**
+ * Injected into the confirmed provider tab by `chrome.scripting.executeScript`. It runs in the
+ * page's origin, reads only the item names it is given and changes nothing.
+ * The second argument is the provider origin the user confirmed. The reader answers nothing
+ * unless the page's own `location.origin` is exactly that origin, so a tab that navigated
+ * elsewhere after Send cannot hand over another site's value. It is read from `arguments` so
+ * the serialized signature stays `(keys)`.
+ * Self-contained on purpose: it is serialized, so it cannot close over module state.
+ */
+export function readLocalStorageItems(keys) {
+  const expectedOrigin = arguments[1];
+  const found = {};
+  // Strict equality with the page's origin string: a missing or non-string origin never matches.
+  if (!expectedOrigin || globalThis.location?.origin !== expectedOrigin) return found;
+  for (const key of keys) {
+    const value = globalThis.localStorage.getItem(key);
+    // getItem answers a string or null.
+    if (value !== null && value !== "") found[key] = value;
+  }
+  return found;
+}
+
+const LOCAL_VALUE_RE = /^[\x21-\x7e]{1,8192}$/;
+
+/** True when the confirmed tab still shows the provider origin. */
+async function tabOnProvider(chrome, plan) {
+  let tab = null;
+  try { tab = await chrome.tabs.get(plan.tabId); } catch { /* treated as navigated away */ }
+  return Boolean(tab) && originOf(tab.url) === plan.providerOrigin;
+}
+
+/**
+ * Read the approved items from the confirmed tab. The tab URL is checked right before and right
+ * after the injection, and the reader itself checks the page origin, so a navigation at any point
+ * yields `tab_navigated` instead of a value.
+ * @returns {Promise<{ ok: true, values: Record<string, string> } | { ok: false }>}
+ */
+async function readApprovedLocalStorage(chrome, plan) {
+  if (!(await tabOnProvider(chrome, plan))) return { ok: false };
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: plan.tabId }, func: readLocalStorageItems, args: [[...plan.localStorageKeys], plan.providerOrigin],
+  });
+  if (!(await tabOnProvider(chrome, plan))) return { ok: false };
+  // Only the top frame of the confirmed tab counts.
+  const top = Array.isArray(results) ? results.find((entry) => isRecord(entry) && entry.frameId === 0) : null;
+  const items = isRecord(top?.result) ? top.result : {};
+  const values = {};
+  for (const key of plan.localStorageKeys) {
+    if (isString(items[key]) && LOCAL_VALUE_RE.test(items[key])) values[key] = items[key];
+  }
+  return { ok: true, values };
 }
 
 function statusCode(status) {
@@ -268,23 +346,38 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     if (!(await permissionsAvailable())) return cancelled() ? fail("cancelled") : fail("permission_denied");
     if (cancelled()) return fail("cancelled");
 
-    // The session is the cookie store that owns this tab (normal, incognito, container).
-    let stores;
-    try { stores = await chrome.cookies.getAllCookieStores(); }
-    catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
-    const store = Array.isArray(stores) ? stores.find((s) => Array.isArray(s.tabIds) && s.tabIds.includes(plan.tabId)) : null;
-    if (cancelled()) return fail("cancelled");
-    if (!store) return fail("no_cookie_store");
+    let cookies = [];
+    if (plan.cookieNames.length) {
+      // The session is the cookie store that owns this tab (normal, incognito, container).
+      let stores;
+      try { stores = await chrome.cookies.getAllCookieStores(); }
+      catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
+      const store = Array.isArray(stores) ? stores.find((s) => Array.isArray(s.tabIds) && s.tabIds.includes(plan.tabId)) : null;
+      if (cancelled()) return fail("cancelled");
+      if (!store) return fail("no_cookie_store");
 
-    let cookies;
-    try { cookies = await readApprovedCookies(chrome, plan, store.id, cancelled); }
-    catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
-    if (cancelled()) return fail("cancelled");
+      try { cookies = await readApprovedCookies(chrome, plan, store.id, cancelled); }
+      catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
+      if (cancelled()) return fail("cancelled");
+    }
+
+    let localStorage = null;
+    if (plan.localStorageKeys?.length) {
+      let read;
+      try { read = await readApprovedLocalStorage(chrome, plan); }
+      catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
+      if (cancelled()) return fail("cancelled");
+      if (!read.ok) return fail("tab_navigated", { expectedOrigin: plan.providerOrigin });
+      localStorage = read.values;
+    }
     if (!(await permissionsAvailable())) return cancelled() ? fail("cancelled") : fail("permission_denied");
     if (cancelled()) return fail("cancelled");
-    if (cookies.length === 0) return fail("no_cookies");
+    if (plan.cookieNames.length && cookies.length === 0) return fail("no_cookies");
+    if (localStorage && Object.keys(localStorage).length !== plan.localStorageKeys.length) return fail("no_local_storage");
 
-    const body = { provider: plan.provider, origin: plan.providerOrigin, cookies };
+    const body = { provider: plan.provider, origin: plan.providerOrigin };
+    if (plan.cookieNames.length) body.cookies = cookies;
+    if (localStorage) body.localStorage = localStorage;
     if (plan.action === "update") body.connectionId = plan.connectionId;
 
     // From here the secret is spent, whatever the outcome.
@@ -292,10 +385,17 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    let response;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
+    const abortedResult = {};
+    let resolveAbort;
+    const aborted = new Promise((resolve) => { resolveAbort = resolve; });
+    const onRequestAbort = () => resolveAbort(abortedResult);
+    controller.signal.addEventListener("abort", onRequestAbort, { once: true });
     try {
-      response = await fetch(plan.importUrl, {
+      let response;
+      try {
+        response = await fetch(plan.importUrl, {
         method: "POST",
         headers: { "content-type": "application/json", [PAIRING_HEADER]: plan.token },
         body: JSON.stringify(body),
@@ -304,23 +404,35 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
         redirect: "error",
         referrerPolicy: "no-referrer",
         signal: controller.signal,
-      });
-    } catch {
-      return cancelled() ? fail("cancelled") : fail("network_error");
+        });
+      } catch {
+        return timedOut ? fail("network_error") : cancelled() ? fail("cancelled") : fail("network_error");
+      }
+      if (response.status !== 200 && response.status !== 201) return fail(statusCode(response.status));
+      let connection = null;
+      try {
+        const bodyResult = await Promise.race([response.json(), aborted]);
+        if (bodyResult === abortedResult) return timedOut ? fail("network_error") : fail("cancelled");
+        connection = bodyResult?.connection ?? null;
+      }
+      catch {
+        if (timedOut) return fail("network_error");
+        if (cancelled()) return fail("cancelled");
+        // The import itself succeeded; unreadable response bodies are still success.
+      }
+      return {
+        ok: true,
+        action: plan.action,
+        cookieCount: cookies.length,
+        ...(localStorage ? { localStorageCount: Object.keys(localStorage).length } : null),
+        connection: isRecord(connection) ? { id: String(connection.id ?? ""), name: String(connection.name ?? "") } : null,
+      };
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
+      controller.signal.removeEventListener("abort", onRequestAbort);
       plan.token = "";
     }
-    if (response.status !== 200 && response.status !== 201) return fail(statusCode(response.status));
-    let connection = null;
-    try { connection = (await response.json())?.connection ?? null; } catch { /* the import itself succeeded */ }
-    return {
-      ok: true,
-      action: plan.action,
-      cookieCount: cookies.length,
-      connection: isRecord(connection) ? { id: String(connection.id ?? ""), name: String(connection.name ?? "") } : null,
-    };
   } finally {
     // Give back what this run was granted. Failures here are not actionable.
     if (granted.permissions.length || granted.origins.length) {

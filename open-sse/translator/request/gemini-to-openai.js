@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
@@ -239,8 +239,6 @@ function extractGeminiText(content) {
 }
 
 // Register
-register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
-register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 
 // Wrapper for geminiToOpenAIRequest that pre-splits contents containing
 // functionResponse parts co-located with other content (functionCall, text, etc.).

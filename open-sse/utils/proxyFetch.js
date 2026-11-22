@@ -28,6 +28,32 @@ const NEXT_FETCH_PATCH = Symbol.for("next-patch");
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const proxyDispatchers = new Map();
 let directDispatcher = null;
+// Remember the actual pool used, including proxy fallback, without exposing it
+// on a response or closing a newer replacement after a late authentication error.
+const responseDispatchers = new WeakMap();
+function rememberDispatcher(response, dispatcher, proxyUrl = null) {
+  if (response && dispatcher) {
+    const route = { dispatcher, proxyUrl };
+    responseDispatchers.set(response, route);
+    if (response.body) responseDispatchers.set(response.body, route);
+  }
+  return response;
+}
+
+/** Retire the pool that served an authentication failure; active requests drain. */
+export function evictResponseDispatcher(responseOrBody) {
+  const route = responseOrBody && responseDispatchers.get(responseOrBody);
+  if (!route) return false;
+  if (route.proxyUrl) {
+    const key = proxyDispatcherKey(route.proxyUrl);
+    if (proxyDispatchers.get(key) !== route.dispatcher) return false;
+    return evictProxyDispatcher(route.proxyUrl);
+  }
+  if (directDispatcher !== route.dispatcher) return false;
+  directDispatcher = null;
+  try { Promise.resolve(route.dispatcher.close()).catch(() => {}); } catch { /* already detached */ }
+  return true;
+}
 let bypassTransportForTesting = null;
 let realIpResolverForTesting = null;
 
@@ -826,7 +852,8 @@ async function directFetch(url, options) {
   isNextPatchedFetch ?
   originalFetch :
   currentFetch;
-  return runProviderAttemptDispatch(() => fetchImpl(url, { ...options, dispatcher }));
+  const response = await runProviderAttemptDispatch(() => fetchImpl(url, { ...options, dispatcher }));
+  return options?.dispatcher ? response : rememberDispatcher(response, dispatcher);
 }
 
 /**
@@ -1064,7 +1091,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
-        return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+        return rememberDispatcher(await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher })), dispatcher, proxyUrl);
       } catch (proxyError) {
         if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
         rethrowTransportAbort(proxyError, options.signal);
@@ -1121,7 +1148,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // 504 is the proxy's own gateway timeout, not an upstream answer.
       if (response?.status === 504) noteProxyDispatcherFailure(proxyUrl);else
       noteProxyDispatcherSuccess(proxyUrl);
-      return response;
+      return rememberDispatcher(response, dispatcher, proxyUrl);
     } catch (proxyError) {
       if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
       rethrowTransportAbort(proxyError, options.signal);

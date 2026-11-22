@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor } from "./base.js";
+import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { PROVIDERS } from "../config/providers.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -19,9 +20,33 @@ const jwt = (value) => /^eyJ[^.]*\.[^.]+\.[^.]+$/.test(value);
 const text = (content) => isString(content) ? content : Array.isArray(content) ? content.map((part) => part?.text || "").join("\n") : "";
 const errorResult = (status, message, body) => ({ response: Response.json({ error: { message, type: status === 401 ? "authentication_error" : status === 429 ? "rate_limit_error" : "api_error" } }, { status }), url: CHAT_URL, headers: {}, transformedBody: body });
 
-/** TwinMind uses a private app chat envelope and Firebase refresh tokens, not OpenAI's wire protocol. */
+async function waitForRefresh(pending, signal) {
+  if (!signal) return pending;
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([pending, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * TwinMind uses a private app chat envelope and Firebase refresh tokens.
+ * It reuses cached tokens and pending refreshes only for the same identified
+ * connection and stored credentials. A disconnected caller stops waiting
+ * without cancelling the shared Firebase request.
+ */
 export class TwinmindExecutor extends BaseExecutor {
-  constructor() { super("twinmind", PROVIDERS.twinmind); this.tokens = new Map(); }
+  constructor() {
+    super("twinmind", PROVIDERS.twinmind);
+    this.tokens = new Map();
+    this.pendingRefreshes = new Map();
+  }
 
   async execute({ model, body, stream, credentials = {}, connectionId, signal, proxyOptions, onCredentialsRefreshed }) {
     if (body?.tools?.length || body?.messages?.some((message) => message.tool_calls || ["tool", "function"].includes(message.role) || (Array.isArray(message.content) && message.content.some((part) => !["text", "input_text"].includes(part.type))))) {
@@ -30,27 +55,47 @@ export class TwinmindExecutor extends BaseExecutor {
     const key = strip(credentials.apiKey);
     const access = strip(credentials.accessToken || (jwt(key) ? key : ""));
     const refresh = strip(credentials.refreshToken || credentials.providerSpecificData?.refreshToken || credentials.providerSpecificData?.refresh_token || credentials.providerSpecificData?.firebaseRefreshToken || (!jwt(key) ? key : ""));
-    // A changed stored credential must invalidate the connection's old cached token.
-    const identity = createHash("sha256").update(`${connectionId || ""}\0${key}\0${refresh}`).digest("hex");
+    const identity = connectionId
+      ? createHash("sha256").update(JSON.stringify([connectionId, key, refresh])).digest("hex")
+      : null;
     const fetcher = (url, init) => proxyAwareFetch(url, init, proxyOptions);
-    let cached = this.tokens.get(identity);
+    let localToken;
+    const getCached = () => identity ? this.tokens.get(identity) : localToken;
     const fresh = (token, expires) => jwt(token) && expires > Date.now() + 300000;
+    const cached = getCached();
     let token = fresh(cached?.token, cached?.expires) ? cached.token : fresh(access, expiry(access)) ? access : "";
-    const refreshAccess = async () => {
-      if (!refresh) return "";
-      const response = await credentialFetch(fetcher, `${REFRESH_URL}?key=${encodeURIComponent(firebaseKey())}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: cached?.refresh || refresh }).toString(), signal });
+    const fetchAccess = async (cached, refreshSignal) => {
+      const response = await credentialFetch(fetcher, `${REFRESH_URL}?key=${encodeURIComponent(firebaseKey())}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: cached?.refresh || refresh }).toString(), signal: refreshSignal });
       if (!response.ok) return "";
       const result = await response.json();
       const next = strip(result.id_token || result.access_token);
       const expires = expiry(next) || (Number(result.expires_in) > 0 ? Date.now() + Number(result.expires_in) * 1000 : 0);
       if (!fresh(next, expires)) return "";
-      cached = { token: next, expires, refresh: result.refresh_token || refresh };
-      this.tokens.set(identity, cached);
+      const entry = { token: next, expires, refresh: result.refresh_token || refresh };
       // Never replace the saved API-key secret with a short-lived token.
-      if (onCredentialsRefreshed && cached.refresh !== refresh) {
-        try { await onCredentialsRefreshed({ refreshToken: cached.refresh, providerSpecificPatch: {} }); } catch { /* The cached token remains usable. */ }
+      if (onCredentialsRefreshed && entry.refresh !== refresh) {
+        try { await onCredentialsRefreshed({ refreshToken: entry.refresh, providerSpecificPatch: {} }); } catch { /* The cached token remains usable. */ }
       }
+      if (identity) this.tokens.set(identity, entry);
+      else localToken = entry;
       return next;
+    };
+    const refreshAccess = (rejectedToken) => {
+      signal?.throwIfAborted();
+      if (!refresh) return "";
+      const latest = getCached();
+      if (latest?.token !== rejectedToken && fresh(latest?.token, latest?.expires)) return latest.token;
+      if (!identity) return fetchAccess(latest, signal);
+
+      let pending = this.pendingRefreshes.get(identity);
+      if (!pending) {
+        // Keep a rotated refresh credential while marking the rejected bearer stale.
+        if (latest?.token === rejectedToken && latest) this.tokens.set(identity, { ...latest, expires: 0 });
+        pending = fetchAccess(latest, AbortSignal.timeout(FETCH_CONNECT_TIMEOUT_MS))
+          .finally(() => this.pendingRefreshes.delete(identity));
+        this.pendingRefreshes.set(identity, pending);
+      }
+      return waitForRefresh(pending, signal);
     };
     try { if (!token) token = await refreshAccess(); } catch (error) { if (signal?.aborted) throw error; return errorResult(401, "TwinMind token refresh failed", body); }
     if (!token) return errorResult(401, "TwinMind credentials expired or invalid", body);
@@ -63,8 +108,7 @@ export class TwinmindExecutor extends BaseExecutor {
     let upstream = await post(token);
     if (upstream.status === 401 && refresh) {
       await upstream.body?.cancel();
-      this.tokens.delete(identity);
-      try { token = await refreshAccess(); } catch (error) { if (signal?.aborted) throw error; token = ""; }
+      try { token = await refreshAccess(token); } catch (error) { if (signal?.aborted) throw error; token = ""; }
       if (!token) return errorResult(401, "TwinMind credentials expired or invalid", body);
       upstream = await post(token);
     }

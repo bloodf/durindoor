@@ -64,7 +64,7 @@ through the normal connection path.
 | DeepSeek Web | Manual token | The credential is the `userToken` from local storage, saved as an API-key credential; there is no cookie to capture. |
 | PromptQL | Extension and dashboard | `prompt.ql.app` profile requires `__Host-next-auth.csrf-token` and `next-auth.session-token`. Chat resolves the playground JWT and project ID through the imported session and saves them on that connection. |
 | Notion AI Web | Extension and dashboard | `app.notion.com` profile requires `token_v2`. |
-| NoTrack Web | Extension and dashboard | `notrack.ai` profile requires `uid`, `si_usr_id` and `si_ses_id`; the optional `nt_session` needs a manual full-header paste. |
+| NoTrack Web | Extension and dashboard | `notrack.ai` profile requires `uid`, `si_usr_id` and `si_ses_id`; the optional `nt_session` is stored when the capture or pasted header carries it and is never required. |
 | Tencent AI Studio Web | Extension and dashboard, unverified | `aistudio.tencent.ai` profile requires `sessionid`. The pinned source forwards the whole header and names no cookie, so this allowlist was not confirmed against a live capture. |
 | Blackbox Web | Extension and dashboard | `app.blackbox.ai` profile requires `next-auth.session-token`. |
 | Conol Web | Extension and dashboard | `conol.ai` profile requires `__Secure-better-auth.session_token`. |
@@ -97,7 +97,7 @@ The stored key is listed in the connections API's sensitive provider-specific fi
 1. **Pair.** The operator, in the dashboard, calls `POST /api/providers/cookie-import/pairing` with either
    `{ "provider", "action": "create", "name" }` or `{ "provider", "action": "update", "connectionId" }`.
    The action is explicit; the other action's fields are rejected. An update target must exist, belong to the provider and be a cookie connection. The response carries the secret once, plus the contract the extension should collect:
-   `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes, localStorageKeys?, extensionCapture? } } }`.
+   `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes, optionalCookies?, localStorageKeys?, extensionCapture? } } }`.
 2. **Import.** The extension reads the approved cookies for the provider origin and calls `POST /api/providers/cookie-import` with header `x-durindoor-pairing-token: <token>` and
    `{ "provider", "origin", "cookies": [{ "name", "value", "domain"?, "secure"?, "expirationDate"? }], "localStorage"?: { "<key>": "<value>" }, "connectionId"? , "name"? }`. `cookies` is omitted for a localStorage-only profile.
    `connectionId` is required and must match for an update pairing, and must be absent for a create pairing. `name` may be repeated for a create pairing and must then match.
@@ -119,7 +119,7 @@ The store is per process (a `globalThis` map, like web-login sessions). A deploy
 
 - **Transport:** HTTPS, or plain HTTP to `localhost`, `127.0.0.1` or `[::1]` for local development. The scheme is the transport's, unless the `Host` is the operator-configured `BASE_URL` / `NEXT_PUBLIC_BASE_URL` (a TLS terminator). Forwarded headers are not trusted.
 - **Origin:** `origin` must equal the contract origin byte for byte. `http://`, a trailing slash, a port, a suffix or a sibling host are rejected.
-- **Cookies:** names must be approved (above); chunked cookies must be contiguous from `.0`; the required cookies must be present (the same `hasRequiredCookies` rule the dashboard capture applies); no duplicates; at most 16 cookies and 8192 characters per value; values must be printable ASCII without `;` or edge whitespace; `domain`, when sent, must be the provider host or a parent of it (never a bare public suffix); `secure: false` and past `expirationDate` (seconds, as browsers report it) are rejected. Cookies outside the allowlist, such as `cf_clearance`, are rejected rather than dropped.
+- **Cookies:** names must be approved (above); chunked cookies must be contiguous from `.0`; the required cookies must be present (the same `hasRequiredCookies` rule the dashboard capture applies); a provider's `optionalCookies` (NoTrack Web `nt_session`) are approved names that are kept when sent and never required; no duplicates; at most 16 cookies and 8192 characters per value; values must be printable ASCII without `;` or edge whitespace; `domain`, when sent, must be the provider host or a parent of it (never a bare public suffix); `secure: false` and past `expirationDate` (seconds, as browsers report it) are rejected. Cookies outside the allowlist, such as `cf_clearance`, are rejected rather than dropped.
 - **Header composition:** `composeCookieHeader` from web-login builds the stored value, required cookies first, chunks in index order.
 - **Size:** the import body is at most 32 KiB and the pairing body 4 KiB, enforced on the declared length and again while streaming. Content type must be `application/json`.
 - Validation is structural. No request is made to the provider.

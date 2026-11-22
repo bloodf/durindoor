@@ -43,6 +43,10 @@ import {
   formatKeyExpiry,
 } from "../endpoint/apiKeyExpiry";
 
+export function KeySecretNotice() {
+  return <p className="text-[13px]">Store this key securely. You can reveal and copy it again from the keys list.</p>;
+}
+
 function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onRotate, onEdit, onDelete, onModelAccess, onLimits, keyUsage, copied, policyInvalid, policyUsage }) {
   const uiV5 = useUiV5();
   const active = apiKey.isActive ?? true;
@@ -238,7 +242,7 @@ export default function KeysPageClient() {
   const [newKeyCustomExpiresAt, setNewKeyCustomExpiresAt] = useState("");
   const [newKeyExpiryEndOfDay, setNewKeyExpiryEndOfDay] = useState(false);
   const [keyStatus, setKeyStatus] = useState(null);
-  // A secret that is shown exactly once: on creation and after a rotation.
+  // Display the secret after creation or rotation; the list masks it.
   // The modal is the only place the literal value is rendered.
   const [oneTimeSecret, setOneTimeSecret] = useState(null);
   const keyWrites = useRef(new Set());
@@ -506,7 +510,7 @@ export default function KeysPageClient() {
   /**
    * Replace a key's secret. The server keeps the key's row, so its id, access
    * and usage survive the swap; only the credential changes. The new secret is
-   * shown once, in the one-time secret modal.
+   * shown in the secret modal and can be revealed again from the keys list.
    */
   const handleRotateKey = (key) => {
     setConfirmState({
@@ -965,7 +969,7 @@ export default function KeysPageClient() {
         </div>
       </Modal>
 
-      {/* One-time secret. Creation and rotation both land here: the literal
+      {/* Creation and rotation both land here: the literal
           value is rendered once and never listed again. */}
       <Modal
         open={!!oneTimeSecret}
@@ -975,8 +979,8 @@ export default function KeysPageClient() {
       >
         <div className="flex flex-col gap-4">
           <div className="rounded-dd-lg border border-dd-warning bg-dd-warning/10 p-4 text-dd-warning">
-            <p className="mb-2 text-[13px] font-semibold">Save this key now!</p>
-            <p className="text-[13px]">This is the only time you will see this key. Store it securely.</p>
+            <p className="mb-2 text-[13px] font-semibold">Store this key securely</p>
+            <KeySecretNotice />
           </div>
           <div className="flex gap-2">
             <Input

@@ -1,17 +1,17 @@
 ---
 title: HyperAgent
-description: Unofficial HyperAgent browser-session integration; the provider is registered but chat dispatch is not ported yet.
+description: Unofficial HyperAgent browser-session integration using its thread API.
 ---
 
-The pinned OmniRoute provider is an unofficial browser-session integration for `hyperagent.com`. It sends a browser `Cookie` header to HyperAgent's thread API and uses a provider-specific SSE protocol and sticky thread/session state. It does not use a documented API key. DurinDoor registers the provider so a connection can be saved, but the thread/SSE executor is not ported yet: a chat request returns HTTP 501 with `type: "provider_port_pending"`, and Validate and Test Connection never send the saved cookie to HyperAgent.
+HyperAgent is an unofficial browser-session integration for `hyperagent.com`. Chat dispatch creates a thread, applies the selected model, and sends the latest user message to the thread chat endpoint with the saved browser `Cookie` header. HyperAgent's SSE text events are converted to OpenAI-compatible responses, including streams consumed through the Anthropic Messages route. Thread and session IDs can be supplied as `hyperagent_thread_id` and `hyperagent_session_id`, or with the matching `X-HyperAgent-*` headers, to continue a conversation.
 
 ## Setup and limits
 
-This integration depends on a reverse-engineered web session and may break when the site changes. Session access and credits are controlled by HyperAgent. No vendor-documented API-key validation or model-discovery endpoint is identified by the pinned provider contract.
+This integration depends on a reverse-engineered web session and may break when the site changes. Session access and credits are controlled by HyperAgent. A local catalog is provided for Fable, Opus and Sonnet variants; no vendor-documented API-key validation or model-discovery endpoint is identified by the pinned provider contract. Expired cookies map to an authentication error and HTTP 429 responses map to quota/rate-limit errors.
 
 ## Cookie capture
 
-Copy the Cookie header from an authenticated `hyperagent.com` request and paste it into the connection as its credential. The browser extension and the dashboard cookie import do not cover this provider: the pinned integration names no session cookie, so there is no cookie allowlist to enforce. Treat the value as a password and remove it before sharing logs or support reports.
+Copy the Cookie header from an authenticated `hyperagent.com` request and paste it into the connection as its credential. The browser extension and the dashboard cookie import do not cover this provider: the integration accepts the full Cookie header rather than naming a single cookie. Treat the value as a password and remove it before sharing logs or support reports. Credentialed requests reject cross-origin redirects.
 
 ## Sources
 

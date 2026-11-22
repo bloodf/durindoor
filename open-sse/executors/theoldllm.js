@@ -1,15 +1,32 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
-import patchedGlobalFetch, { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import * as proxyFetch from "../utils/proxyFetch.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
-/** Credentialed send: proxyAwareFetch, or the live global when tests replace it. */
+const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
+
+/**
+ * Credentialed send through proxyAwareFetch with redirect:"error".
+ * Falls back to the live global when proxyFetch is empty-mocked or when the
+ * DurinDoor-patched global (including Vitest spies that preserve the patch
+ * flag) should observe the call.
+ */
 function routeExecutorFetch(url, init, proxyOptions = null) {
   const options = { ...init, redirect: "error" };
-  if (globalThis.fetch !== patchedGlobalFetch) {
+  let send = null;
+  try {
+    send = proxyFetch.proxyAwareFetch;
+  } catch {
+    send = null;
+  }
+  if (!isFunction(send)) {
     return globalThis.fetch(url, { ...options, proxyOptions });
   }
-  return proxyAwareFetch(url, options, proxyOptions);
+  const live = globalThis.fetch;
+  if (isFunction(live) && live[DURINDOOR_FETCH_PATCH] === true) {
+    return live(url, { ...options, proxyOptions });
+  }
+  return send(url, options, proxyOptions);
 }
 
 const API_URL = "https://theoldllm.vercel.app/api/chatgpt";

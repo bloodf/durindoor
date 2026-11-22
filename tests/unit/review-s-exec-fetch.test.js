@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as proxyFetch from "../../open-sse/utils/proxyFetch.js";
+import "../../open-sse/utils/proxyFetch.js";
 import { GitlabExecutor } from "../../open-sse/executors/gitlab.js";
 import { TraeExecutor } from "../../open-sse/executors/trae.js";
 import { TheOldLlmExecutor } from "../../open-sse/executors/theoldllm.js";
@@ -159,7 +159,7 @@ describe("s-exec-fetch: override proxy + redirect contract (#2308)", () => {
 
   it("threads connection proxyOptions and rejects redirects on GitLab Duo", async () => {
     const proxyOptions = { proxyUrl: "http://proxy.test:8080" };
-    const spy = vi.spyOn(proxyFetch, "proxyAwareFetch").mockResolvedValue(
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({ choices: [{ message: { content: "ok" } }] })
     );
     await new GitlabExecutor().execute({
@@ -170,13 +170,16 @@ describe("s-exec-fetch: override proxy + redirect contract (#2308)", () => {
       proxyOptions
     });
     expect(spy).toHaveBeenCalledOnce();
-    expect(spy.mock.calls[0][1]).toMatchObject({ redirect: "error", method: "POST" });
-    expect(spy.mock.calls[0][2]).toBe(proxyOptions);
+    expect(spy.mock.calls[0][1]).toMatchObject({
+      redirect: "error",
+      method: "POST",
+      proxyOptions
+    });
   });
 
   it("threads connection proxyOptions through TheOldLLM, Trae, Inner.ai, and Mimocode", async () => {
     const proxyOptions = { proxyUrl: "http://proxy.test:9090" };
-    const spy = vi.spyOn(proxyFetch, "proxyAwareFetch").mockImplementation(async (url) => {
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       if (href.includes("/users/profile")) {
         return Response.json({ data: { email: "u@example.com" } });
@@ -248,8 +251,7 @@ describe("s-exec-fetch: override proxy + redirect contract (#2308)", () => {
 
     expect(spy.mock.calls.length).toBeGreaterThan(0);
     for (const call of spy.mock.calls) {
-      expect(call[1]).toMatchObject({ redirect: "error" });
-      expect(call[2]).toBe(proxyOptions);
+      expect(call[1]).toMatchObject({ redirect: "error", proxyOptions });
     }
   });
 });

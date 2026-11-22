@@ -778,7 +778,12 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       // Translators flag a malformed client payload with statusCode 400; anything else is ours.
       if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
       finishTimeline("error", "error", error.message);
-      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+      const result = createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+      if (error.localSchemaError) {
+        result.localSchemaError = true;
+        result.response[Symbol.for("durindoor.localSchemaError")] = true;
+      }
+      return result;
     }
     if (!translatedBody) {
       finishTimeline("error", "error", `Failed to translate request for ${sourceFormat} to ${targetFormat}`);

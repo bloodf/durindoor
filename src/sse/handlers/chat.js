@@ -1587,6 +1587,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       // Process-local admission pressure is terminal for this request. Retrying a
       // sibling would hit the same queue and must not cool a healthy account.
+      if (result.localSchemaError === true) return result.response;
       if (result.localAdmissionRejected === true) {
         // Keep explicit locality on the Response across the outer transient retry.
         result.response.localAdmissionRejected = true;

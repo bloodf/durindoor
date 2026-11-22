@@ -71,3 +71,16 @@ describe("Conol Web staged provider", () => {
     } finally { globalThis.fetch = original; }
   });
 });
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("Conol Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { ConolWebExecutor } = await import("../../open-sse/executors/conol-web.js");
+    expect(registry.filter((entry) => entry.id === "conol-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("conol-web")).toBe(true);
+    expect(getExecutor("conol-web")).toBeInstanceOf(ConolWebExecutor);
+    expect(getExecutor("cnl")).toBe(getExecutor("conol-web"));
+  });
+});

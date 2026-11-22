@@ -114,8 +114,11 @@ describe("NoTrack developer API provider (mocked, not live proof)", () => {
     expect(entry.transport.baseUrl).not.toContain("notrack.ai/api/dispatch");
     // The consumer route (cookie auth, model `notrack-c`, alias `ntw`) is its own provider,
     // `notrack-web` (registration batch C, #2034): this API-key integration never claims it.
-    const aliases = [entry.alias, entry.uiAlias, ...(entry.aliases || [])];
-    expect(aliases).not.toContain("ntw");
+    const ids = REGISTRY.map((candidate) => candidate.id);
+    const aliases = REGISTRY.flatMap((candidate) => [candidate.alias, candidate.uiAlias, ...(candidate.aliases || [])]);
+    expect(ids.filter((id) => id === "notrack" || id === "notrack-web").sort()).toEqual(["notrack", "notrack-web"]);
+    expect(aliases.filter((alias) => alias === "ntw")).toHaveLength(1);
+    expect([entry.alias, entry.uiAlias, ...(entry.aliases || [])]).not.toContain("ntw");
     expect(JSON.stringify(entry.transport)).not.toContain("/api/dispatch");
     const web = REGISTRY.find((candidate) => candidate.id === "notrack-web");
     expect(web).toMatchObject({ alias: "ntw", category: "webCookie", authType: "cookie", transport: { baseUrl: "https://notrack.ai/api/dispatch" } });

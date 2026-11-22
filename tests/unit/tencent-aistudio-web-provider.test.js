@@ -196,3 +196,16 @@ describe("Tencent AI Studio Web chat through the gateway routes", () => {
     expect(chatCalls().every((call) => !call.cookie.includes(";"))).toBe(true);
   });
 });
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("Tencent AI Studio Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { TencentAIStudioWebExecutor } = await import("../../open-sse/executors/tencent-aistudio-web.js");
+    expect(registry.filter((entry) => entry.id === "tencent-aistudio-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("tencent-aistudio-web")).toBe(true);
+    expect(getExecutor("tencent-aistudio-web")).toBeInstanceOf(TencentAIStudioWebExecutor);
+    expect(getExecutor("tasw")).toBe(getExecutor("tencent-aistudio-web"));
+  });
+});

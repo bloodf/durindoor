@@ -137,15 +137,19 @@ describe("manifest and sources", () => {
 
   it("contains no telemetry, persistence, logging or dynamic code", () => {
     const sources = PACKAGE_FILES.filter((f) => f.endsWith(".js") || f.endsWith(".html")).map((f) => [f, fs.readFileSync(path.join(EXTENSION_DIR, f), "utf8")]);
-    const forbidden = [/console\./, /\blocalStorage\s*[.[]/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /XMLHttpRequest/, /sendBeacon/, /WebSocket/, /\beval\(/, /new Function/, /innerHTML/, /document\.cookie/, /https?:\/\/(?!\*)[\w.-]+\.\w+/];
-    // The one injected reader may touch localStorage, and only to read: it is cut out of capture.js
-    // before the forbidden-pattern scan and checked on its own.
+    const forbidden = [/console\./, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /XMLHttpRequest/, /sendBeacon/, /WebSocket/, /\beval\(/, /new Function/, /innerHTML/, /document\.cookie/, /https?:\/\/(?!\*)[\w.-]+\.\w+/];
+    // TinyCMS (#2034 batch C): the one injected reader may touch page storage, and only to read. It is
+    // checked on its own and cut out of capture.js. The plan and request fields that carry item names
+    // (`localStorageKeys`, `localStorageCount`, the `localStorage` body field) are data, not storage
+    // access, so only those names are blanked; any member access on the storage object still fails below.
     const reader = /export function readLocalStorageItems\(keys\) \{[\s\S]*?\n\}\n/;
     const readerSource = fs.readFileSync(path.join(EXTENSION_DIR, "capture.js"), "utf8").match(reader)?.[0] ?? "";
     expect(readerSource.match(/localStorage\.\w+/g)).toEqual(["localStorage.getItem"]);
+    for (const entry of sources) {
+      entry[1] = entry[1].replace(reader, "").replace(/\blocalStorage(?:Keys|Count)\b/g, "storageField").replace(/\blocalStorage\b(?!\s*[.[(])/g, "storageField");
+    }
     for (const [file, text] of sources) {
-      const unscanned = file === "capture.js" ? text.replace(reader, "") : text;
-      const code = file.endsWith(".js") ? unscanned.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "") : unscanned;
+      const code = file.endsWith(".js") ? text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "") : text;
       for (const pattern of forbidden) {
         if (pattern.source.startsWith("https?")) continue; // hosts live in providers.js only; checked below
         expect(code, `${file} ${pattern}`).not.toMatch(pattern);

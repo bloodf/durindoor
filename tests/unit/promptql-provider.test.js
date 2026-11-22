@@ -99,3 +99,16 @@ describe("PromptQL staged provider", () => {
     expect(startCalls[0][2]).toBe(PROJECT); expect(startCalls[1][2]).toBe("synthetic-project-b");
   });
 });
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("PromptQL production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { PromptQlExecutor } = await import("../../open-sse/executors/promptql.js");
+    expect(registry.filter((entry) => entry.id === "promptql")).toHaveLength(1);
+    expect(hasSpecializedExecutor("promptql")).toBe(true);
+    expect(getExecutor("promptql")).toBeInstanceOf(PromptQlExecutor);
+    expect(getExecutor("pql")).toBe(getExecutor("promptql"));
+  });
+});

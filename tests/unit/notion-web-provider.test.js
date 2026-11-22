@@ -54,3 +54,16 @@ describe("Notion Web staged provider", () => {
     expect(fetchMock.mock.calls.map(([, init]) => init.headers.cookie).filter(Boolean)).toEqual(expect.arrayContaining([expect.stringContaining("synthetic-a"), expect.stringContaining("synthetic-b")]));
   });
 });
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("Notion Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { NotionWebExecutor } = await import("../../open-sse/executors/notion-web.js");
+    expect(registry.filter((entry) => entry.id === "notion-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("notion-web")).toBe(true);
+    expect(getExecutor("notion-web")).toBeInstanceOf(NotionWebExecutor);
+    expect(getExecutor("nw")).toBe(getExecutor("notion-web"));
+  });
+});

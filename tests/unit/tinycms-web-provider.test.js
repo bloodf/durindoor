@@ -280,3 +280,16 @@ describe("TinyCMS Web executor guards", () => {
     expect(message).not.toContain("/srv/");
   });
 });
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("TinyCMS Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { TinyCmsExecutor } = await import("../../open-sse/executors/tinycms-web.js");
+    expect(registry.filter((entry) => entry.id === "tinycms-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("tinycms-web")).toBe(true);
+    expect(getExecutor("tinycms-web")).toBeInstanceOf(TinyCmsExecutor);
+    expect(getExecutor("tcw")).toBe(getExecutor("tinycms-web"));
+  });
+});

@@ -9,7 +9,14 @@ import {
 } from "@/lib/auth/dashboardSession";
 import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
 import { verifySecondFactor } from "@/lib/auth/mfa";
-import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
+import {
+  checkLock,
+  recordFail,
+  recordSuccess,
+  getClientIp,
+  reserveAttempt,
+  releaseReservation,
+} from "@/lib/auth/loginLimiter";
 
 export const dynamic = "force-dynamic";
 
@@ -40,15 +47,13 @@ export async function POST(request) {
     // endpoint is the weak point of the whole scheme.
     // Reserve the attempt slot synchronously before any await so concurrent
     // TOTP bursts cannot all evaluate then race recordFail (issue #2242).
-    const preLock = checkLock(ip);
-    if (preLock.locked) return lockedResponse(preLock);
-    const { remainingBeforeLock } = recordFail(ip);
-    const reservedLock = checkLock(ip);
-    if (reservedLock.locked) return lockedResponse(reservedLock);
+    const reserved = reserveAttempt(ip);
+    if (reserved.locked) return lockedResponse(reserved);
 
     const cookieStore = await cookies();
     const pending = await getMfaPendingSession(cookieStore.get(MFA_PENDING_COOKIE)?.value);
     if (!pending) {
+      releaseReservation(ip);
       return NextResponse.json(
         { error: "MFA session expired. Sign in again." },
         { status: 401, headers: NO_STORE_HEADERS },
@@ -59,6 +64,7 @@ export async function POST(request) {
     const result = await verifySecondFactor(code);
 
     if (!result.ok) {
+      const { remainingBeforeLock } = recordFail(ip);
       const postLock = checkLock(ip);
       if (postLock.locked) return lockedResponse(postLock);
       return NextResponse.json(
@@ -67,9 +73,12 @@ export async function POST(request) {
       );
     }
 
-    // Refuse success if concurrent reservations locked the bucket mid-verify.
+    // Refuse success if concurrent confirmed failures locked the bucket mid-verify.
     const successLock = checkLock(ip);
-    if (successLock.locked) return lockedResponse(successLock);
+    if (successLock.locked) {
+      releaseReservation(ip);
+      return lockedResponse(successLock);
+    }
 
     recordSuccess(ip);
     clearMfaPendingCookie(cookieStore);

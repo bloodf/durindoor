@@ -10,11 +10,12 @@ const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
 // than FAIL_WINDOW_MS would naturally expire their entries.
 export const MAX_TRACKED_IPS = 5000;
 
-const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt }
+const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt, inFlight }
 
 function now() { return Date.now(); }
 
 function isExpired(e, t) {
+  if (e.inFlight > 0) return false;
   return e.lastFailAt && t - e.lastFailAt > FAIL_WINDOW_MS && (!e.lockUntil || t >= e.lockUntil);
 }
 
@@ -105,6 +106,27 @@ function getEntry(ip) {
   return e;
 }
 
+function touchEntry(key, e) {
+  attempts.delete(key);
+  attempts.set(key, e);
+}
+
+function emptyEntry() {
+  return { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0, inFlight: 0 };
+}
+
+function ensureEntry(key) {
+  const existing = getEntry(key);
+  if (existing) {
+    if (!existing.inFlight) existing.inFlight = 0;
+    return existing;
+  }
+  evictForNewEntry();
+  const e = emptyEntry();
+  attempts.set(key, e);
+  return e;
+}
+
 // Proactively drops stale entries so IPs that never come back for a retry
 // (and so never hit the lazy per-IP check in getEntry) don't sit in memory
 // forever. Deterministic: full pass in Map insertion order.
@@ -146,7 +168,8 @@ export function recordFail(ip) {
   const key = bucket(ip);
   const existing = attempts.get(key);
   if (!existing) evictForNewEntry();
-  const e = getEntry(key) || { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0 };
+  const e = getEntry(key) || emptyEntry();
+  if (e.inFlight > 0) e.inFlight -= 1;
   e.fails += 1;
   e.lastFailAt = now();
   if (e.fails >= MAX_FAILS_BEFORE_LOCK) {
@@ -155,44 +178,52 @@ export function recordFail(ip) {
     e.lockLevel += 1;
     e.fails = 0;
   }
-  attempts.delete(key);
-  attempts.set(key, e);
+  touchEntry(key, e);
   return { remainingBeforeLock: Math.max(0, MAX_FAILS_BEFORE_LOCK - e.fails) };
 }
 
 /**
- * Atomically check the lock and reserve one attempt slot before any credential
- * work. Callers must not evaluate passwords/TOTP when `{ locked: true }`.
- * On a later success path, re-check {@link checkLock} and refuse if locked.
+ * Atomically check the lock and reserve one in-flight attempt slot before any
+ * credential work. Caps concurrent evaluations at the remaining fail budget so
+ * bursts cannot all pass checkLock then race recordFail (issue #2242).
+ * Callers must {@link recordFail} on auth failure, {@link releaseReservation}
+ * when abandoning a reserved attempt, or {@link recordSuccess} on full login.
  * @param {string} ip
  * @returns {{ locked: true, retryAfter: number } | { locked: false, remainingBeforeLock: number }}
  */
 export function reserveAttempt(ip) {
+  const key = bucket(ip);
   const pre = checkLock(ip);
   if (pre.locked) return { locked: true, retryAfter: pre.retryAfter };
-  const { remainingBeforeLock } = recordFail(ip);
-  const post = checkLock(ip);
-  if (post.locked) return { locked: true, retryAfter: post.retryAfter };
-  return { locked: false, remainingBeforeLock };
+
+  const e = ensureEntry(key);
+  if (e.fails + e.inFlight >= MAX_FAILS_BEFORE_LOCK) {
+    const step = LOCK_STEPS_MS[Math.min(e.lockLevel, LOCK_STEPS_MS.length - 1)];
+    return { locked: true, retryAfter: Math.ceil(step / 1000) };
+  }
+  e.inFlight += 1;
+  e.lastFailAt = now();
+  touchEntry(key, e);
+  return {
+    locked: false,
+    remainingBeforeLock: Math.max(0, MAX_FAILS_BEFORE_LOCK - e.fails - e.inFlight),
+  };
 }
 
 /**
- * Drop one reserved attempt without clearing prior failures or lock level.
- * Used when a credential check succeeds but login is not finished (e.g. MFA
- * pending): the reservation must not burn lockout budget, yet prior fails stay.
- * No-op while the bucket is locked.
+ * Drop one in-flight reservation without recording a failure.
+ * Used when a credential check succeeds but login is not finished (MFA pending),
+ * or when the request is abandoned without an auth failure.
  * @param {string} ip
  */
 export function releaseReservation(ip) {
   const key = bucket(ip);
   const e = getEntry(key);
-  if (!e) return;
-  if (e.lockUntil && e.lockUntil > now()) return;
-  if (e.fails <= 0) return;
-  e.fails -= 1;
-  attempts.delete(key);
-  if (e.fails > 0 || e.lockLevel > 0 || (e.lockUntil && e.lockUntil > now())) {
-    attempts.set(key, e);
+  if (!e || !(e.inFlight > 0)) return;
+  e.inFlight -= 1;
+  touchEntry(key, e);
+  if (e.inFlight <= 0 && e.fails <= 0 && e.lockLevel <= 0 && !(e.lockUntil && e.lockUntil > now())) {
+    attempts.delete(key);
   }
 }
 

@@ -35,30 +35,24 @@ describe("review-m-lockout (#2242)", () => {
     expect(checkLock("2001:db8:1:3::1").locked).toBe(false);
   });
 
-  it("reserveAttempt locks the fifth slot before any credential await can run", () => {
+  it("reserveAttempt caps concurrent slots before credential work without locking confirmed fails yet", () => {
     const outcomes = [];
     for (let i = 0; i < 8; i++) {
       outcomes.push(reserveAttempt("203.0.113.50"));
     }
-    expect(outcomes.filter((o) => !o.locked)).toHaveLength(4);
-    expect(outcomes.filter((o) => o.locked)).toHaveLength(4);
+    expect(outcomes.filter((o) => !o.locked)).toHaveLength(5);
+    expect(outcomes.filter((o) => o.locked)).toHaveLength(3);
+    // In-flight only — lock engages when failures are confirmed.
+    expect(checkLock("203.0.113.50").locked).toBe(false);
+    for (let i = 0; i < 5; i++) recordFail("203.0.113.50");
     expect(checkLock("203.0.113.50").locked).toBe(true);
   });
 
-  it("refuses success while locked after a concurrent reservation burst", () => {
-    // Four reservations leave the bucket one fail from lockout.
-    for (let i = 0; i < 4; i++) {
-      expect(reserveAttempt("198.51.100.20").locked).toBe(false);
+  it("refuses success while locked after concurrent confirmed failures", () => {
+    for (let i = 0; i < 5; i++) {
+      expect(reserveAttempt("198.51.100.21").locked).toBe(false);
     }
-    // A fifth reservation tips into lock; a "correct password" finishing now
-    // must not clear the lock via recordSuccess.
-    expect(reserveAttempt("198.51.100.20").locked).toBe(true);
-    expect(checkLock("198.51.100.20").locked).toBe(true);
-    recordSuccess("198.51.100.20");
-    // recordSuccess clears — callers must checkLock *before* recordSuccess.
-    // Simulate the required guard: success path must no-op when locked.
-    resetLoginLimiter();
-    for (let i = 0; i < 5; i++) reserveAttempt("198.51.100.21");
+    for (let i = 0; i < 5; i++) recordFail("198.51.100.21");
     expect(checkLock("198.51.100.21").locked).toBe(true);
     const wouldSucceed = !checkLock("198.51.100.21").locked;
     expect(wouldSucceed).toBe(false);
@@ -66,16 +60,29 @@ describe("review-m-lockout (#2242)", () => {
     expect(checkLock("198.51.100.21").locked).toBe(true);
   });
 
-  it("releaseReservation undoes one reserved slot without clearing prior fails", () => {
-    recordFail("203.0.113.8");
-    recordFail("203.0.113.8");
-    const reserved = reserveAttempt("203.0.113.8");
-    expect(reserved.locked).toBe(false);
-    // fails was 3 after reserve; releasing returns to 2.
-    releaseReservation("203.0.113.8");
-    // Three more fails should lock (2 remaining + 3 = 5).
+  it("allows a correct attempt after four prior failures (fifth slot)", () => {
+    for (let i = 0; i < 4; i++) {
+      expect(reserveAttempt("203.0.113.8").locked).toBe(false);
+      recordFail("203.0.113.8");
+    }
     expect(reserveAttempt("203.0.113.8").locked).toBe(false);
-    expect(reserveAttempt("203.0.113.8").locked).toBe(false);
-    expect(reserveAttempt("203.0.113.8").locked).toBe(true);
+    expect(checkLock("203.0.113.8").locked).toBe(false);
+    recordSuccess("203.0.113.8");
+    expect(checkLock("203.0.113.8").locked).toBe(false);
+  });
+
+  it("releaseReservation undoes one in-flight slot without clearing prior fails", () => {
+    recordFail("203.0.113.9");
+    recordFail("203.0.113.9");
+    expect(reserveAttempt("203.0.113.9").locked).toBe(false);
+    releaseReservation("203.0.113.9");
+    // Two confirmed fails remain; three more confirmed fails lock.
+    expect(reserveAttempt("203.0.113.9").locked).toBe(false);
+    recordFail("203.0.113.9");
+    expect(reserveAttempt("203.0.113.9").locked).toBe(false);
+    recordFail("203.0.113.9");
+    expect(reserveAttempt("203.0.113.9").locked).toBe(false);
+    recordFail("203.0.113.9");
+    expect(checkLock("203.0.113.9").locked).toBe(true);
   });
 });

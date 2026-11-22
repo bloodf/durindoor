@@ -18,7 +18,7 @@ const models = [
 ];
 
 export default {
-  id: "tencent-aistudio-web", alias: "tasw",
+  id: "tencent-aistudio-web", alias: "tasw", priority: 257,
   display: { name: "Tencent AI Studio Web", icon: "hub", color: "#0052D9", textIcon: "TA", website: "https://aistudio.tencent.ai" },
   category: "webCookie", authType: "cookie", authHint: "Paste the Cookie header from aistudio.tencent.ai.",
   cookieImport: { ...cookieCaptureProfile, extensionCapture: true },

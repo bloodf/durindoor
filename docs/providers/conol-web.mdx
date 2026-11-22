@@ -1,15 +1,16 @@
-# Conol Web
+---
+title: Conol Web
+description: Use a signed-in conol.ai session cookie, the session flow, limits and errors.
+---
 
 Conol Web is an experimental cookie-authenticated integration with [conol.ai](https://conol.ai). Sign in on the site, then add a Conol Web connection.
 
 ## Setup and cookie capture
 
-Capture cookies with the browser extension on `conol.ai`, or paste a `Cookie` request header, cURL command, or HAR containing `__Secure-better-auth.session_token`. The authenticated `/api/agent-servers` endpoint is the validation probe. Store the entire cookie value as a secret.
+Capture cookies with the browser extension on `conol.ai`, or paste a `Cookie` request header, cURL command, or HAR containing `__Secure-better-auth.session_token`. **Validate** sends a read-only `GET /api/agent-servers` with the cookie. Store the entire cookie value as a secret.
 
 Each chat creates an empty session, configures the model preset/model/effort through the session model endpoint, submits the latest user turn, and reads the `logDeltas=1` stream. OpenAI JSON and SSE responses are produced from assistant text deltas. 401/403 mean the session expired or was rejected; 429 and other upstream statuses are preserved. The published model list is a fallback and account availability can vary.
 
 ## Limits and sources
 
-The integration currently forwards plain text turns; Conol owns any agent/tool behavior. Session continuity and advanced multimodal uploads from OmniRoute are not included in this staged implementation. Source: [OmniRoute Conol Web registry at 4265bb2](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/conol-web/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/conol-web.ts), [model catalog](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/conolModels.ts).
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->
+The integration currently forwards plain text turns; Conol owns any agent/tool behavior. Session continuity and advanced multimodal uploads from OmniRoute are not included. Source: [OmniRoute Conol Web registry at 4265bb2](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/conol-web/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/conol-web.ts), [model catalog](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/services/conolModels.ts).

@@ -60,6 +60,21 @@ function getLocaleFromCookie() {
   return normalizeLocale(value);
 }
 
+/** Split a comma/newline separated allowlist field into trimmed entries (#2195). */
+function splitOidcAllowlist(value) {
+  return String(value || "").split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+/** Saved OIDC allowlist arrays as editable textarea drafts. */
+function oidcAllowlistDraft(data) {
+  const join = (list) => (Array.isArray(list) ? list.join("\n") : "");
+  return {
+    oidcAllowedSubjects: join(data?.oidcAllowedSubjects),
+    oidcAllowedEmails: join(data?.oidcAllowedEmails),
+    oidcAllowedDomains: join(data?.oidcAllowedDomains)
+  };
+}
+
 export default function ProfilePage() {
   const uiV5 = useUiV5();
   const { theme, setTheme } = useTheme();
@@ -88,7 +103,10 @@ export default function ProfilePage() {
     oidcIssuerUrl: "",
     oidcClientId: "",
     oidcScopes: "openid profile email",
-    oidcLoginLabel: "Sign in with OIDC"
+    oidcLoginLabel: "Sign in with OIDC",
+    oidcAllowedSubjects: "",
+    oidcAllowedEmails: "",
+    oidcAllowedDomains: ""
   });
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcStatus, setOidcStatus] = useState({ type: "", message: "" });
@@ -143,7 +161,8 @@ export default function ProfilePage() {
         oidcIssuerUrl: data?.oidcIssuerUrl || "",
         oidcClientId: data?.oidcClientId || "",
         oidcScopes: data?.oidcScopes || "openid profile email",
-        oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC"
+        oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC",
+        ...oidcAllowlistDraft(data)
       });
       setOidcClientSecret("");
       if (data?.authMode === "oidc" || data?.authMode === "both") setOidcExpanded(true);
@@ -541,7 +560,10 @@ export default function ProfilePage() {
         oidcIssuerUrl: issuerUrl,
         oidcClientId: clientId,
         oidcScopes: scopes || "openid profile email",
-        oidcLoginLabel: loginLabel || "Sign in with OIDC"
+        oidcLoginLabel: loginLabel || "Sign in with OIDC",
+        oidcAllowedSubjects: splitOidcAllowlist(oidcForm.oidcAllowedSubjects),
+        oidcAllowedEmails: splitOidcAllowlist(oidcForm.oidcAllowedEmails),
+        oidcAllowedDomains: splitOidcAllowlist(oidcForm.oidcAllowedDomains)
       };
       if (secret) {
         payload.oidcClientSecret = secret;
@@ -561,7 +583,8 @@ export default function ProfilePage() {
           oidcIssuerUrl: data?.oidcIssuerUrl || issuerUrl,
           oidcClientId: data?.oidcClientId || clientId,
           oidcScopes: data?.oidcScopes || scopes || "openid profile email",
-          oidcLoginLabel: data?.oidcLoginLabel || loginLabel || "Sign in with OIDC"
+          oidcLoginLabel: data?.oidcLoginLabel || loginLabel || "Sign in with OIDC",
+          ...oidcAllowlistDraft(data)
         });
         setOidcClientSecret("");
         setOidcStatus({
@@ -975,7 +998,7 @@ export default function ProfilePage() {
         onChanged={(patch) => setSettings((current) => ({ ...current, ...patch }))}
       />
 
-      <Card padding={false}><CardHeader icon="badge" title="OIDC Dashboard Login" subtitle={settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik, Keycloak, or Google"} actions={<Button variant="ghost" icon={oidcExpanded ? "expand_less" : "expand_more"} aria-label="Toggle OIDC settings" aria-expanded={oidcExpanded} disabled={loading} onClick={() => setOidcExpanded((v) => !v)} />} />{oidcExpanded ? <CardContent className="flex flex-col gap-5"><Field group label="Auth mode" hint="Choose password login, OIDC, or both."><SegmentedControl aria-label="Auth mode" options={authOptions} value={oidcForm.authMode} onChange={(value) => updateOidcForm("authMode", value)} disabled={loading || oidcLoading} /></Field><div className="grid gap-4 md:grid-cols-2"><Input label="Issuer URL" placeholder="https://auth.example.com/application/o/durindoor/" value={oidcForm.oidcIssuerUrl} onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client ID" placeholder="durindoor-dashboard" value={oidcForm.oidcClientId} onChange={(e) => updateOidcForm("oidcClientId", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client Secret" hint="This value is write-only after saving." type="password" placeholder="Leave blank to keep existing secret" value={oidcClientSecret} onChange={(e) => setOidcClientSecret(e.target.value)} disabled={loading || oidcLoading} /><Input label="Scopes" placeholder="openid profile email" value={oidcForm.oidcScopes} onChange={(e) => updateOidcForm("oidcScopes", e.target.value)} disabled={loading || oidcLoading} /><div className="md:col-span-2"><Input label="Login Button Label" placeholder="Sign in with OIDC" value={oidcForm.oidcLoginLabel} onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)} disabled={loading || oidcLoading} /></div></div><div className="rounded-dd bg-dd-surface-2 p-3"><p className="text-xs font-medium text-dd-muted">Redirect URI</p><code className="block break-all font-mono text-xs text-dd-text">{oidcRedirectUri}</code></div><div className="flex flex-wrap gap-2"><Button variant="primary" loading={oidcLoading} onClick={() => saveOidcSettings()}>Save auth mode</Button><Button variant="secondary" loading={oidcTestLoading} onClick={testOidcConnection}>Test connection</Button></div>{oidcTestStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcTestStatus)}`}>{oidcTestStatus.message}</p> : null}{oidcStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcStatus)}`}>{oidcStatus.message}</p> : null}{settings.authMode === "oidc" ? <p className="text-xs text-dd-warning">OIDC login is active. Password login is disabled until you switch back.</p> : null}{settings.authMode === "both" ? <p className="text-xs text-dd-warning">Password and OIDC login are both active.</p> : null}</CardContent> : null}</Card>
+      <Card padding={false}><CardHeader icon="badge" title="OIDC Dashboard Login" subtitle={settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik, Keycloak, or Google"} actions={<Button variant="ghost" icon={oidcExpanded ? "expand_less" : "expand_more"} aria-label="Toggle OIDC settings" aria-expanded={oidcExpanded} disabled={loading} onClick={() => setOidcExpanded((v) => !v)} />} />{oidcExpanded ? <CardContent className="flex flex-col gap-5"><Field group label="Auth mode" hint="Choose password login, OIDC, or both."><SegmentedControl aria-label="Auth mode" options={authOptions} value={oidcForm.authMode} onChange={(value) => updateOidcForm("authMode", value)} disabled={loading || oidcLoading} /></Field><div className="grid gap-4 md:grid-cols-2"><Input label="Issuer URL" placeholder="https://auth.example.com/application/o/durindoor/" value={oidcForm.oidcIssuerUrl} onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client ID" placeholder="durindoor-dashboard" value={oidcForm.oidcClientId} onChange={(e) => updateOidcForm("oidcClientId", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client Secret" hint="This value is write-only after saving." type="password" placeholder="Leave blank to keep existing secret" value={oidcClientSecret} onChange={(e) => setOidcClientSecret(e.target.value)} disabled={loading || oidcLoading} /><Input label="Scopes" placeholder="openid profile email" value={oidcForm.oidcScopes} onChange={(e) => updateOidcForm("oidcScopes", e.target.value)} disabled={loading || oidcLoading} /><div className="md:col-span-2"><Input label="Login Button Label" placeholder="Sign in with OIDC" value={oidcForm.oidcLoginLabel} onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)} disabled={loading || oidcLoading} /></div></div><div className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><p className="text-xs text-dd-muted">Only identities on these allowlists can sign in through OIDC. Separate entries with commas or new lines. Email and domain entries match only when the IdP reports email_verified.</p><div className="grid gap-4 md:grid-cols-3"><Textarea label="Allowed subjects" placeholder="sub claim values" rows={3} value={oidcForm.oidcAllowedSubjects} onChange={(e) => updateOidcForm("oidcAllowedSubjects", e.target.value)} disabled={loading || oidcLoading} /><Textarea label="Allowed emails" placeholder="ops@example.com" rows={3} value={oidcForm.oidcAllowedEmails} onChange={(e) => updateOidcForm("oidcAllowedEmails", e.target.value)} disabled={loading || oidcLoading} /><Textarea label="Allowed domains" placeholder="example.com" rows={3} value={oidcForm.oidcAllowedDomains} onChange={(e) => updateOidcForm("oidcAllowedDomains", e.target.value)} disabled={loading || oidcLoading} /></div>{!splitOidcAllowlist(oidcForm.oidcAllowedSubjects).length && !splitOidcAllowlist(oidcForm.oidcAllowedEmails).length && !splitOidcAllowlist(oidcForm.oidcAllowedDomains).length ? <p role="alert" className="text-xs text-dd-warning">OIDC allowlist is empty: every OIDC login will be refused until you add a subject, email or domain.</p> : null}</div><div className="rounded-dd bg-dd-surface-2 p-3"><p className="text-xs font-medium text-dd-muted">Redirect URI</p><code className="block break-all font-mono text-xs text-dd-text">{oidcRedirectUri}</code></div><div className="flex flex-wrap gap-2"><Button variant="primary" loading={oidcLoading} onClick={() => saveOidcSettings()}>Save auth mode</Button><Button variant="secondary" loading={oidcTestLoading} onClick={testOidcConnection}>Test connection</Button></div>{oidcTestStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcTestStatus)}`}>{oidcTestStatus.message}</p> : null}{oidcStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcStatus)}`}>{oidcStatus.message}</p> : null}{settings.authMode === "oidc" ? <p className="text-xs text-dd-warning">OIDC login is active. Password login is disabled until you switch back.</p> : null}{settings.authMode === "both" ? <p className="text-xs text-dd-warning">Password and OIDC login are both active.</p> : null}</CardContent> : null}</Card>
       </section>
 
       <section role="tabpanel" aria-label="Routing settings" hidden={activeTab !== "routing"} className="flex flex-col gap-5">

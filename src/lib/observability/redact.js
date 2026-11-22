@@ -8,9 +8,10 @@ export const SENSITIVE_KEY_PARTS = [
   "apikey",
   "setcookie",
   "xgoogapikey",
+  "relaykey",
 ];
 
-const SUBSTRING_SENSITIVE_KEY_PARTS = ["authorization", "xapikey", "cookie", "setcookie", "xgoogapikey"];
+const SUBSTRING_SENSITIVE_KEY_PARTS = ["authorization", "xapikey", "cookie", "setcookie", "xgoogapikey", "relaykey", "password", "secret"];
 
 const TOKEN_USAGE_SUFFIXES = ["tokens", "tokencount"];
 
@@ -44,7 +45,8 @@ const SENSITIVE_QUERY_PARTS = ["key", ...SENSITIVE_KEY_PARTS];
 
 function isSensitiveQueryParam(name) {
   const normalized = normalizeKey(name);
-  return SENSITIVE_QUERY_PARTS.includes(normalized)
+  return ["code", "clientsecret"].includes(normalized)
+    || SENSITIVE_QUERY_PARTS.includes(normalized)
     || SUBSTRING_SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part))
     || normalized.endsWith("apikey")
     || normalized.endsWith("token")
@@ -66,12 +68,19 @@ function redactQueryString(query) {
   return redacted.toString();
 }
 
-const URL_PATTERN = /\bhttps?:\/\/\S*?\?[^\s#"']*/g;
+const URL_PATTERN = /\bhttps?:\/\/[^\s#"']*/g;
 
 function redactString(value) {
   return redactInlineSecrets(value.replace(URL_PATTERN, (match) => {
+    match = match.replace(/^(https?:\/\/)([^/?#\s]*)(.*)$/i, (url, scheme, authority, suffix) => {
+      const atIndex = authority.lastIndexOf("@");
+      return atIndex < 0 ? url : `${scheme}[redacted]@${authority.slice(atIndex + 1)}${suffix}`;
+    });
     const qIndex = match.indexOf("?");
-    return `${match.slice(0, qIndex)}?${redactQueryString(match.slice(qIndex + 1))}`;
+    if (qIndex < 0) return match;
+    const hashIndex = match.indexOf("#", qIndex);
+    const queryEnd = hashIndex < 0 ? match.length : hashIndex;
+    return `${match.slice(0, qIndex)}?${redactQueryString(match.slice(qIndex + 1, queryEnd))}${match.slice(queryEnd)}`;
   }));
 }
 

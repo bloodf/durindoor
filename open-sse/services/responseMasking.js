@@ -382,6 +382,74 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
   });
 }
 
+/**
+ * Line-delimited JSON: each complete line is parsed and masked on its own as
+ * it arrives. Lines that are not JSON pass through; warn mode forwards the
+ * original bytes and only counts.
+ */
+function createNdjsonStream(source, { opts, counts, mask, report }) {
+  const reader = source.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let held = "";
+  const maskLine = (line) => {
+    if (!line.trim()) return line;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return line;
+    }
+    try {
+      return maskJsonBody(parsed, opts, counts) && mask ? JSON.stringify(parsed) : line;
+    } catch (error) {
+      if (mask) throw error;
+      return line;
+    }
+  };
+  const maskLines = (text, final) => {
+    const lines = (held + text).split("\n");
+    held = final ? "" : lines.pop();
+    return lines.map((l) => (l.endsWith("\r") ? `${maskLine(l.slice(0, -1))}\r` : maskLine(l))).join("\n") + (lines.length && !final ? "\n" : "");
+  };
+  return new ReadableStream({
+    async pull(controller) {
+      for (;;) {
+        let chunk;
+        try {
+          chunk = await reader.read();
+        } catch (error) {
+          report();
+          controller.error(error);
+          return;
+        }
+        if (chunk.done) {
+          const out = maskLines(decoder.decode(), true);
+          if (mask && out) controller.enqueue(encoder.encode(out));
+          report();
+          controller.close();
+          return;
+        }
+        const value = isString(chunk.value) ? encoder.encode(chunk.value) : chunk.value;
+        if (held.length > MAX_PENDING_SSE_LINE_BYTES) throw new Error("Response masking NDJSON line exceeds limit");
+        const out = maskLines(decoder.decode(value, { stream: true }), false);
+        if (!mask) {
+          controller.enqueue(value);
+          return;
+        }
+        if (out) {
+          controller.enqueue(encoder.encode(out));
+          return;
+        }
+      }
+    },
+    cancel(reason) {
+      report();
+      return reader.cancel(reason);
+    }
+  });
+}
+
 function maskJsonBody(p, opts, counts) {
   if (!isObject(p)) return false;
   const mask = (obj, field) => isString(obj[field]) && setField(obj, field, maskText(obj[field], opts, counts));
@@ -393,13 +461,26 @@ function maskJsonBody(p, opts, counts) {
       const msg = choice?.message;
       if (!isObject(msg)) continue;
       changed = (isString(msg.content) ? mask(msg, "content") : maskParts(msg.content, (x) => x.type === "text")) || changed;
+      // Refusal text is shown to the user like content; reasoning stays untouched.
+      changed = mask(msg, "refusal") || changed;
+      if (Array.isArray(msg.content)) {
+        changed = msg.content.map((x) => isObject(x) && x.type === "refusal" && mask(x, "refusal")).some(Boolean) || changed;
+      }
     }
   }
   if (p.object === "response") {
     changed = maskResponsesOutput(p.output, (_k, t) => maskText(t, opts, counts)) || changed;
     changed = mask(p, "output_text") || changed;
   }
-  if (p.type === "message") changed = maskParts(p.content, (x) => x.type === "text") || changed;
+  if (p.type === "message") {
+    changed = maskParts(p.content, (x) => x.type === "text") || changed;
+    // Only an unsigned thinking block is plain visible text; signed ones must round-trip byte for byte.
+    if (Array.isArray(p.content)) {
+      for (const block of p.content) {
+        if (isObject(block) && block.type === "thinking" && !block.signature) changed = mask(block, "thinking") || changed;
+      }
+    }
+  }
   const cands = p.candidates ?? p.response?.candidates;
   if (Array.isArray(cands)) {
     for (const cand of cands) changed = maskParts(cand?.content?.parts, (x) => !x.thought) || changed;
@@ -443,6 +524,10 @@ export async function applyResponseMasking(result, config, log) {
   if (contentType.includes("text/event-stream")) {
     if (mask) headers.delete("content-length");
     return rebuild(createMaskingStream(response.body, { opts, counts, mask, report }));
+  }
+  if (contentType.includes("application/x-ndjson")) {
+    if (mask) headers.delete("content-length");
+    return rebuild(createNdjsonStream(response.body, { opts, counts, mask, report }));
   }
   if (!contentType.includes("application/json")) return result;
 

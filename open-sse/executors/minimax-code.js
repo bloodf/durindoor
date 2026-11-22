@@ -14,11 +14,23 @@
 //    MiniMax domain, and the CN region has no known gateway, so it must supply one.
 //  - Refresh uses only that connection's refresh token and persists the rotated one back to
 //    the same connection, so two connections never share or overwrite each other's tokens.
+//  - Budgets (open-sse/services/minimaxCodeBudget.js, MINIMAX_CODE_* settings): an input ceiling
+//    and a default max_tokens/context window are applied before sending, the whole call has one
+//    time budget, and a 429, 5xx or dropped connection is retried with a backoff (once by
+//    default). Any other 4xx is never retried.
 import { DefaultExecutor } from "./default.js";
 import { buildErrorBody } from "../utils/error.js";
 import { MINIMAX_CODE_GATEWAY_URL, MINIMAX_CODE_MODELS } from "../providers/registry/minimax-code.js";
 import { normalizeMinimaxCodeRegion, refreshMinimaxCodeToken } from "../services/minimaxCodeAuth.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import {
+  MINIMAX_CODE_DEFAULT_RETRY_BASE_MS,
+  applyMinimaxCodeBudgets,
+  isRetryableMinimaxCodeStatus,
+  minimaxCodeBackoffMs,
+  resolveMinimaxCodeRetries,
+  resolveMinimaxCodeTimeoutMs,
+} from "../services/minimaxCodeBudget.js";
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const MINIMAX_CODE_OPT_IN_KEY = "enableSessionDispatch";
 const MODEL_IDS = new Set(MINIMAX_CODE_MODELS.map((model) => model.id));
@@ -118,6 +130,22 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
     this.options = options;
   }
 
+  // Backoff before a retry: exponential from the base delay, ignoring Retry-After so the
+  // wait stays inside the call budget. Called by the base retry loop for 429/5xx answers.
+  computeRetryDelay(response, attempt, delayMs) {
+    return minimaxCodeBackoffMs(attempt, delayMs);
+  }
+
+  // The retry count is a deployment setting read on every call (MINIMAX_CODE_GATEWAY_RETRIES).
+  // It covers a 429, any 5xx and a dropped connection (the base loop keys those as 502).
+  #retryConfig() {
+    const attempts = resolveMinimaxCodeRetries();
+    const delayMs = this.options.retryBaseMs ?? MINIMAX_CODE_DEFAULT_RETRY_BASE_MS;
+    const retry = {};
+    for (let status = 400; status <= 599; status += 1) retry[status] = { attempts: isRetryableMinimaxCodeStatus(status) ? attempts : 0, delayMs };
+    return retry;
+  }
+
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     return resolveMinimaxCodeGatewayUrl(credentials).url || MINIMAX_CODE_GATEWAY_URL;
   }
@@ -154,8 +182,35 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
       return failure(401, "minimax_code_not_signed_in", "MiniMax Code connection has no access token. Sign in again from the provider page.");
     }
 
-    const result = await super.execute({ ...input, model: resolution.model });
-    return this.#mapResult(result, input.stream === true || input.body?.stream === true);
+    const body = isRecord(input.body) ? input.body : {};
+    const budgeted = applyMinimaxCodeBudgets(body);
+    if (budgeted.error) {
+      input.log?.warn?.("MINIMAX_CODE", budgeted.error);
+      // 413, not 400: the refusal belongs to the request and says nothing about the model.
+      return failure(413, "context_length_exceeded", budgeted.error);
+    }
+
+    // One time budget for the whole call: the attempt, the backoff and the retry. It stops at
+    // the response headers, so a stream that is already flowing is not cut by it.
+    const timeoutMs = resolveMinimaxCodeTimeoutMs();
+    const budget = new AbortController();
+    const timer = setTimeout(() => budget.abort(new Error(`MiniMax Code gateway call timed out after ${timeoutMs} ms`)), timeoutMs);
+    const signal = input.signal ? AbortSignal.any([input.signal, budget.signal]) : budget.signal;
+    this.config = { ...this.config, retry: this.#retryConfig() };
+    let result;
+    try {
+      result = await super.execute({ ...input, signal, model: resolution.model, body: budgeted.body });
+    } catch (error) {
+      // Our own timeout is not a verdict on the model, so it answers 500 (not 504, which
+      // would take the model out of every fallback combo).
+      if (budget.signal.aborted && !input.signal?.aborted) {
+        return failure(500, "gateway_timeout", `MiniMax Code gateway call timed out after ${timeoutMs} ms.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    return this.#mapResult(result, input.stream === true || body.stream === true);
   }
 
   async #mapResult(result, streaming) {

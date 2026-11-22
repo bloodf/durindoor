@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import ManualConfigModal from "./ManualConfigModal.js";
 
@@ -38,13 +38,19 @@ export const Open = {
   },
   render: (args) => <ManualConfigModal {...args} />,
   play: async () => {
-    const dialog = await within(document.body).findByRole("dialog", { name: "Manual Configuration" });
-    const claudeSection = within(dialog).getByText("claude.json").closest("section");
-    expect(claudeSection).not.toBeNull();
-    // Two config sections render their own Copy button; scope the click to the
-    // section we just resolved to avoid the "multiple elements" collision.
-    await userEvent.click(within(claudeSection).getByRole("button", { name: "Copy" }));
-    await expect(within(claudeSection).getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+    const writeText = spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    try {
+      const dialog = await within(document.body).findByRole("dialog", { name: "Manual Configuration" });
+      const claudeSection = within(dialog).getByText("claude.json").closest("section");
+      expect(claudeSection).not.toBeNull();
+      // Two config sections render their own Copy button; scope the click to the
+      // section we just resolved to avoid the "multiple elements" collision.
+      await userEvent.click(within(claudeSection).getByRole("button", { name: "Copy" }));
+      await expect(within(claudeSection).getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+      expect(writeText).toHaveBeenCalled();
+    } finally {
+      writeText.mockRestore();
+    }
   },
 };
 

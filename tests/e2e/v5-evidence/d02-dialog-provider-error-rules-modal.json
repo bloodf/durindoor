@@ -1,0 +1,4 @@
+{
+  "route": "dialog/ProviderErrorRulesModal",
+  "stories": ["production-providers-providererrorrulesmodal--open", "production-providers-providererrorrulesmodal--validation-error", "production-providers-providererrorrulesmodal--save-error", "production-providers-providererrorrulesmodal--pending"]
+}

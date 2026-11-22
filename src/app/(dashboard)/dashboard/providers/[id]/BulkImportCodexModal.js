@@ -4,7 +4,9 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Select from "@/shared/ui/components/Select.jsx";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { translate } from "@/i18n/runtime";
 import { isFunction, isObject } from "../../../../../shared/utils/typeChecks.js";
@@ -29,6 +31,7 @@ function normalizeToArray(parsed) {
 }
 
 export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
+  const v5 = useUiV5();
   const [jsonText, setJsonText] = useState("");
   const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const [submitting, setSubmitting] = useState(false);
@@ -97,20 +100,20 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const failedItems = result?.results?.filter((r) => !r.ok) || [];
 
   return (
-    <Modal open={isOpen} title={translate("Bulk Add Codex Accounts")} onClose={handleClose}>
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen} title={translate("Bulk Add Codex Accounts")} onClose={handleClose}>
       <div className="flex flex-col gap-4">
         <p className="text-[13px] text-dd-muted">
           {translate(
             "Paste an array of codex account JSON objects. Each must include accessToken (and ideally refreshToken, idToken).",
           )}
         </p>
-        <Select
+        {v5 ? <V5NativeSelect aria-label={translate("OAuth fingerprint mode")} value={codexFingerprintMode} disabled={submitting} onChange={(event) => setCodexFingerprintMode(event.target.value)}>{fingerprintOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</V5NativeSelect> : <Select
           options={fingerprintOptions}
           value={codexFingerprintMode}
           onChange={(value) => setCodexFingerprintMode(value)}
           disabled={submitting}
           aria-label={translate("OAuth fingerprint mode")}
-        />
+        />}
 
         <Textarea
           label={translate("Account JSON")}

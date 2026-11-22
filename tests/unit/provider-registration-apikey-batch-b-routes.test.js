@@ -6,7 +6,7 @@
  * Closed mocks only: the upstream site is a scripted global `fetch` (or, for Arena, a scripted TLS
  * client; for Cloudflare Playground, a scripted transport in place of the browser). Credentials are
  * synthetic placeholders. Nothing here reaches a provider, a browser or the network, and a request to a
- * host outside the provider's own origins fails the test. TwinMind and HyperAgent have no executor yet,
+ * host outside the provider's own origins fails the test. HyperAgent has no executor yet,
  * so their routes must answer 501 without any outbound request.
  */
 import fs from "node:fs";
@@ -82,6 +82,7 @@ const g4f = (id, host, model, answer) => ({
  * answers the site's own requests and returns undefined for anything unexpected.
  */
 const PROVIDERS = [
+  { id: "twinmind", model: "auto", answer: "pong from twinmind", credential: jwt({ exp: Math.floor(Date.now() / 1000) + 3600 }), origins: ["https://api2.twinmind.com"], handle: (url) => url === "https://api2.twinmind.com/api/v3/chat" ? eventStream(sse({ type: "text_delta", content: "pong from twinmind" })) : undefined },
   {
     id: "helyxai", model: "openai/gpt-4o", answer: "pong from helyx", credential: "synthetic-helyx-key", origins: ["https://helyxai.space"],
     handle: (url, init) => (url === "https://helyxai.space/v1/chat/completions/" ? openAiReply(init, "pong from helyx") : undefined),
@@ -143,7 +144,6 @@ const PROVIDERS = [
 ];
 
 const BLOCKED = [
-  { id: "twinmind", credential: "synthetic-firebase-token", model: "auto" },
   { id: "hyperagent", credential: "session=synthetic-hyperagent-cookie", model: "sonnet-latest" },
 ];
 

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
@@ -45,10 +47,12 @@ async function readFileText(file) {
  * go through the same import API the extension uses, so the provider's origin
  * and cookie allowlist are enforced by the server as well.
  *
+ * V5 masks pasted credentials while retaining the same import payload.
  * The pasted text, the parsed cookies and the pairing secret are dropped from
  * the page as soon as the operator submits or dismisses the dialog.
  */
 export default function CookieImportModal({ isOpen, provider, providerName, importContract, webLogin, connections = [], onSuccess, onClose }) {
+  const v5 = useUiV5();
   const [mode, setMode] = useState("paste");
   const [rawText, setRawText] = useState("");
   const [fileLabel, setFileLabel] = useState("");
@@ -246,7 +250,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
     : [["paste", "Paste value"], ["extension", "Browser extension"]];
 
   return (
-    <Modal open={isOpen} title={`Import ${providerName || provider} ${usesCookies ? "cookies" : "session"}`} size="lg" onClose={dismiss} pending={busy}
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen} title={`Import ${providerName || provider} ${usesCookies ? "cookies" : "session"}`} size="lg" onClose={dismiss} pending={busy}
       footer={<>
         <Button variant="ghost" onClick={dismiss} disabled={busy}>Cancel</Button>
         {mode === "extension" ?
@@ -288,7 +292,10 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
             <Input label="Connection name" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /> :
             <label className="flex flex-col gap-1 text-xs text-dd-muted">
               Connection
-              <select
+              {v5 ? <V5NativeSelect aria-label="Connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)} disabled={busy}>
+                <option value="">Choose a connection…</option>
+                {cookieConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name || connection.id}</option>)}
+              </V5NativeSelect> : <select
                 className="min-h-11 rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-sm text-dd-text"
                 value={connectionId}
                 onChange={(event) => setConnectionId(event.target.value)}
@@ -297,7 +304,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
                 {cookieConnections.map((connection) => (
                   <option key={connection.id} value={connection.id}>{connection.name || connection.id}</option>
                 ))}
-              </select>
+              </select>}
             </label>}
         </section>
 
@@ -307,6 +314,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
               <Input
                 key={key}
                 label={`localStorage ${key}`}
+                type={v5 ? "password" : "text"}
                 className="font-mono"
                 autoComplete="off"
                 spellCheck={false}
@@ -322,7 +330,8 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
           <section className="flex flex-col gap-2">
             <Textarea
               label="Cookie header or cURL command"
-              className="min-h-[140px] font-mono"
+              style={v5 ? (globalThis.CSS?.supports?.("-webkit-text-security", "disc") ? { WebkitTextSecurity: "disc" } : { color: "transparent", caretColor: "var(--dd-text)" }) : undefined}
+              className={v5 ? "min-h-[140px] font-mono selection:text-transparent" : "min-h-[140px] font-mono"}
               placeholder="__Secure-next-auth.session-token=…"
               value={rawText}
               onChange={(event) => setRawText(event.target.value)}

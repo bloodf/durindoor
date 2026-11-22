@@ -219,6 +219,13 @@ function googleErrorInfoReset(root, now, maxDelayMs) {
       googleQuotaDelayReset(metadata?.quotaResetDelay, now, maxDelayMs);
     if (reset) return reset;
   }
+  // google.rpc.RetryInfo.retryDelay ("30s") is the weaker hint: only used when no
+  // ErrorInfo reset exists, so a precise quota window always wins (9router #1716).
+  for (const detail of details.slice(0, 50)) {
+    if (!isString(detail?.["@type"]) || !detail["@type"].includes("RetryInfo")) continue;
+    const reset = googleQuotaDelayReset(detail.retryDelay, now, maxDelayMs);
+    if (reset) return reset;
+  }
   return null;
 }
 

@@ -20,17 +20,32 @@ const EXTRA_MARKERS = {
 
 const HEADROOM_PIP_TIMEOUT_MS = 8000;
 
+// Child processes receive only basic execution, locale and proxy settings.
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    /^(PATH|HOME|USER|LANG|LC_.*|TMPDIR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SystemRoot|ComSpec)$/i.test(key)
+  ));
+}
+
 const IS_WIN = process.platform === "win32";
 const WHICH_CMD = IS_WIN ? "where" : "which";
 
 // Extra bin dirs often missing from a packaged/launchd PATH (Python installs headroom here).
 const EXTRA_BINS = IS_WIN ?
 [
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python314\\Scripts`,
 `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
 `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
 `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
 `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
-`${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`] :
+`${process.env.APPDATA || ""}\\Python\\Python314\\Scripts`,
+`${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`,
+// Top-level installs (e.g. C:\Python314) keep python.exe in the root dir.
+"C:\\Python314",
+"C:\\Python313",
+"C:\\Python312",
+"C:\\Python311",
+"C:\\Python310"] :
 
 [
 "/usr/local/bin",
@@ -100,7 +115,7 @@ function probeExtrasViaImportlib(python) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH }
+      env: { ...childEnv(), PATH: EXTENDED_PATH }
     }).toString();
     const parsed = JSON.parse(out);
     const version = parsed.version ?? null;
@@ -119,7 +134,7 @@ function probeExtrasViaPip(python) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH }
+      env: { ...childEnv(), PATH: EXTENDED_PATH }
     }).toString();
     const packages = JSON.parse(out);
     const names = new Set(packages.map((p) => String(p.name || "").toLowerCase()));
@@ -141,7 +156,7 @@ function resolveHeadroomOnPath() {
     const out = execSync(`${WHICH_CMD} headroom`, {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH }
+      env: { ...childEnv(), PATH: EXTENDED_PATH }
     }).toString().trim();
     // Windows `where` may return multiple lines — take the first.
     return out ? out.split(/\r?\n/)[0].trim() : null;

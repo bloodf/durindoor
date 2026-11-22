@@ -34,6 +34,7 @@ import { ChatPlaygroundExecutor } from "../../open-sse/executors/chatplayground.
 import { CloudflarePlaygroundExecutor } from "../../open-sse/executors/cloudflare-playground.js";
 import { LmarenaExecutor } from "../../open-sse/executors/lmarena.js";
 import { MaxaiExecutor } from "../../open-sse/executors/maxai.js";
+import { TwinmindExecutor } from "../../open-sse/executors/twinmind.js";
 import { PoeExecutor } from "../../open-sse/executors/poe.js";
 import { UnsupportedOmniRouteWebSessionExecutor } from "../../open-sse/executors/unsupported-websession.js";
 import { PROVIDERS as EXTENSION_PROVIDERS } from "../../extensions/provider-cookie-capture/providers.js";
@@ -51,7 +52,7 @@ import ModelSelectModal from "../../src/shared/components/ModelSelectModal.js";
 const BATCH = [
   { id: "helyxai", issue: 1193, alias: "helyxai", name: "Helyx AI", model: "Qwen3 235B", models: 12, executor: DefaultExecutor },
   { id: "tabitoken", issue: 1235, alias: "tabitoken", name: "TabiToken", model: "Claude Opus 4.8 Thinking", models: 4, executor: DefaultExecutor },
-  { id: "twinmind", issue: 1240, alias: "twinmind", name: "TwinMind", model: "TwinMind", models: 1, executor: UnsupportedOmniRouteWebSessionExecutor, blocked: true },
+  { id: "twinmind", issue: 1240, alias: "twinmind", name: "TwinMind", model: "TwinMind", models: 13, executor: TwinmindExecutor, localCatalog: true },
   { id: "hyperagent", issue: 1194, alias: "ha", name: "HyperAgent", model: "Claude Opus Latest", models: 3, executor: UnsupportedOmniRouteWebSessionExecutor, blocked: true },
   { id: "maxai", issue: 1202, alias: "mx", name: "MaxAI", model: "GPT-5.6 Luna", models: 13, executor: MaxaiExecutor,
     origin: "https://www.maxai.co", cookieNames: ["access_token", "device_id", "user_id"], cookiePrefixes: [], localCatalog: true },

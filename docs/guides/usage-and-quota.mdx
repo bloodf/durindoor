@@ -72,6 +72,8 @@ There is no CSV export for usage. **Download Backup** under **Profile → Data &
 
 ## Prices
 
+GitHub Copilot requests for `claude-sonnet-5.5` use the built-in Sonnet 5.5 token rates for estimated cost. A custom price for that provider and model can override them.
+
 Estimated cost uses the built-in model prices. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep their original estimate. Compare estimates with provider billing before using them for financial decisions.
 
 Successful media operations preserve provider USD receipts when available, including explicit zero. Without a receipt, supported builtin audio rates or explicitly configured native tariffs can produce an estimate; otherwise native costs remain unknown. Token price overrides alone do not define per-image, per-second, or per-job prices. An unpriced or subscription-backed model is not automatically free. Chat token pricing is an estimate, and its configured rates may differ from subscription billing.

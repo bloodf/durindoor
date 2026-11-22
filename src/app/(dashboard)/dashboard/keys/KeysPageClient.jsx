@@ -26,6 +26,7 @@ import ApiKeyPolicyFields from "../endpoint/components/ApiKeyPolicyFields";
 import { KeyUsageSummary, KeyLimitsModal } from "../endpoint/components/ApiKeyLimits";
 import ApiKeyModelAccessModal from "../endpoint/ApiKeyModelAccessModal";
 import { KEY_USAGE_POLL_MS } from "../endpoint/endpointConstants";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import {
   apiKeyPolicyDraftToPayload,
   apiKeyPolicyPatchFromDraft,
@@ -37,6 +38,7 @@ import {
 import {
   API_KEY_EXPIRY_PRESETS,
   expiryFromSelection,
+  hasDayExpiryPreset,
   expirySelectionFromValue,
   formatKeyExpiry,
 } from "../endpoint/apiKeyExpiry";
@@ -46,6 +48,7 @@ export function KeySecretNotice() {
 }
 
 function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onRotate, onEdit, onDelete, onModelAccess, onLimits, keyUsage, copied, policyInvalid, policyUsage }) {
+  const uiV5 = useUiV5();
   const active = apiKey.isActive ?? true;
   const expiry = formatKeyExpiry(apiKey.expiresAt);
   const overflowReached = policyUsage.tokensExceeded || policyUsage.costExceeded;
@@ -134,7 +137,7 @@ function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onRotate, onE
         </div>
         {keyUsage && <KeyUsageSummary usage={keyUsage} />}
       </div>
-      <div className="flex w-full shrink-0 justify-end gap-1 sm:w-auto">
+      <div className={`flex w-full shrink-0 justify-end gap-1 sm:w-auto${uiV5 ? " flex-wrap" : ""}`}>
         <Toggle
           size="sm"
           checked={active}
@@ -216,6 +219,7 @@ function emptyAddKeyPolicy() {
 }
 
 export default function KeysPageClient() {
+  const uiV5 = useUiV5();
   const [keys, setKeys] = useState([]);
   const [keyUsage, setKeyUsage] = useState({});
   const [limitsKey, setLimitsKey] = useState(null);
@@ -228,12 +232,15 @@ export default function KeysPageClient() {
   const [groupPrompt, setGroupPrompt] = useState(null);
   const [groupConfirm, setGroupConfirm] = useState(null);
   const [loadError, setLoadError] = useState("");
+  // V5 only: a failed key read is not "no keys", so the empty state yields to Retry.
+  const [keysReadFailed, setKeysReadFailed] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyDailyLimitTokens, setNewKeyDailyLimitTokens] = useState("");
   const [newKeyIsAdmin, setNewKeyIsAdmin] = useState(false);
   const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
   const [newKeyCustomExpiresAt, setNewKeyCustomExpiresAt] = useState("");
+  const [newKeyExpiryEndOfDay, setNewKeyExpiryEndOfDay] = useState(false);
   const [keyStatus, setKeyStatus] = useState(null);
   // Display the secret after creation or rotation; the list masks it.
   // The modal is the only place the literal value is rendered.
@@ -252,6 +259,7 @@ export default function KeysPageClient() {
   const [editKeyDailyLimitTokens, setEditKeyDailyLimitTokens] = useState("");
   const [editKeyIsAdmin, setEditKeyIsAdmin] = useState(false);
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
+  const [editKeyExpiryEndOfDay, setEditKeyExpiryEndOfDay] = useState(false);
   const [editKeyStatus, setEditKeyStatus] = useState(null);
   const [editKeyPolicy, setEditKeyPolicy] = useState(emptyAddKeyPolicy);
   const [editKeyProviderConnectionIds, setEditKeyProviderConnectionIds] = useState([]);
@@ -295,6 +303,7 @@ export default function KeysPageClient() {
 
   const fetchData = async () => {
     setLoadError("");
+    setKeysReadFailed(false);
     try {
       const [keysRes, combosRes] = await Promise.all([
         fetch("/api/keys"),
@@ -306,6 +315,7 @@ export default function KeysPageClient() {
         setKeys(keysData.keys || []);
         setGroups(keysData.groups || []);
       } else {
+        setKeysReadFailed(true);
         setLoadError(keysData.error || `API key request failed (${keysRes.status})`);
       }
       if (combosRes.ok) {
@@ -314,6 +324,7 @@ export default function KeysPageClient() {
       }
     } catch (error) {
       console.log("Error fetching data:", error);
+      setKeysReadFailed(true);
       setLoadError(error.message || "Unable to load API keys");
     }
   };
@@ -425,7 +436,7 @@ export default function KeysPageClient() {
       let expiresAt;
       let policy;
       try {
-        expiresAt = expiryFromSelection(newKeyExpiryPreset, newKeyCustomExpiresAt);
+        expiresAt = expiryFromSelection(newKeyExpiryPreset, newKeyCustomExpiresAt, Date.now(), { endOfDay: newKeyExpiryEndOfDay });
         policy = apiKeyPolicyDraftToPayload(newKeyPolicy);
       } catch (error) {
         setKeyStatus({ type: "error", message: error.message });
@@ -445,7 +456,7 @@ export default function KeysPageClient() {
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
         setNewKeyIsAdmin(false);
-        setNewKeyExpiryPreset("never");
+        setNewKeyExpiryPreset("never"); setNewKeyExpiryEndOfDay(false);
         setNewKeyCustomExpiresAt("");
         setNewKeyAllowedCombos([]);
         setNewKeyProviderConnectionIds([]);
@@ -595,7 +606,7 @@ export default function KeysPageClient() {
     setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
     setEditKeyProviderConnectionIds(Array.isArray(key.providerConnectionIds) ? [...key.providerConnectionIds] : []);
     setEditKeyGroupIds(Array.isArray(key.groupIds) ? [...key.groupIds] : []);
-    setEditKeyExpiryPreset(expiry.selection);
+    setEditKeyExpiryPreset(expiry.selection); setEditKeyExpiryEndOfDay(false);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
     setEditKeyDailyLimitTokens(key.dailyLimitTokens == null ? "" : String(key.dailyLimitTokens));
     setEditKeyIsAdmin(key.isAdmin === true);
@@ -610,7 +621,7 @@ export default function KeysPageClient() {
     setNewKeyName("");
     setNewKeyDailyLimitTokens("");
     setNewKeyIsAdmin(false);
-    setNewKeyExpiryPreset("never");
+    setNewKeyExpiryPreset("never"); setNewKeyExpiryEndOfDay(false);
     setNewKeyCustomExpiresAt("");
     setNewKeyAllowedCombos([]);
     setNewKeyPolicy(emptyApiKeyPolicyDraft());
@@ -621,7 +632,7 @@ export default function KeysPageClient() {
   const resetEditModal = () => {
     setEditKey(null);
     setEditKeyAllowedCombos([]);
-    setEditKeyExpiryPreset("never");
+    setEditKeyExpiryPreset("never"); setEditKeyExpiryEndOfDay(false);
     setEditKeyCustomExpiresAt("");
     setEditKeyDailyLimitTokens("");
     setEditKeyProviderConnectionIds([]);
@@ -646,6 +657,7 @@ export default function KeysPageClient() {
     }));
 
   if (loading) {
+    if (uiV5) return <div role="status" aria-busy="true" aria-label="Loading API keys" className="flex h-40 items-center justify-center rounded-dd-lg border border-dd-border bg-dd-surface text-[13px] text-dd-muted">Loading API keys…</div>;
     return <div className="h-40 rounded-dd-lg border border-dd-border bg-dd-surface" aria-label="Loading API keys" />;
   }
 
@@ -656,7 +668,12 @@ export default function KeysPageClient() {
         title="API Keys"
         subtitle="Manage API keys and their access policies"
       />
-      {loadError ? <StatusAlert status={{ type: "error", message: loadError }} /> : null}
+      {loadError && uiV5 && keysReadFailed ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger" role="alert">
+          <span className="min-w-0 break-words">{keys.length ? "Showing the last confirmed keys. " : "API keys could not be loaded. "}{loadError}</span>
+          <Button icon="refresh" variant="secondary" size="sm" onClick={() => { fetchData(); }}>Retry</Button>
+        </div>
+      ) : loadError ? <StatusAlert status={{ type: "error", message: loadError }} /> : null}
       {/* API Keys */}
       <Card padding={false}>
         <CardHeader
@@ -709,7 +726,7 @@ export default function KeysPageClient() {
             </div>
           ) : null}
 
-          {keys.length === 0 ? (
+          {keys.length === 0 && uiV5 && keysReadFailed ? null : keys.length === 0 ? (
             <EmptyState
               icon="vpn_key"
               title="No API keys yet"
@@ -726,7 +743,7 @@ export default function KeysPageClient() {
               action={{ label: "Clear filters", onClick: clearFilters }}
             />
           ) : (
-            <ul className="flex flex-col">
+            <ul className="flex flex-col" {...(uiV5 ? { "aria-label": "API keys" } : {})}>
               {visibleKeys.map((key) => {
                 const policyUsage = formatPolicyUsage(key.usage, key.policy);
                 const policyInvalid = !isEditableApiKeyPolicy(key.policy);
@@ -847,6 +864,14 @@ export default function KeysPageClient() {
               aria-label="Expiry preset"
             />
           </Field>
+          {hasDayExpiryPreset(newKeyExpiryPreset) ? (
+            <Checkbox
+              label="Expire at end of day"
+              hint="Ends the key at 23:59 local time on its last day instead of at this time of day."
+              checked={newKeyExpiryEndOfDay}
+              onChange={setNewKeyExpiryEndOfDay}
+            />
+          ) : null}
           {newKeyExpiryPreset === "custom" ? (
             <Input
               label="Custom expiry (local time)"
@@ -1000,6 +1025,14 @@ export default function KeysPageClient() {
               aria-label="Expiry preset"
             />
           </Field>
+          {hasDayExpiryPreset(editKeyExpiryPreset) ? (
+            <Checkbox
+              label="Expire at end of day"
+              hint="Ends the key at 23:59 local time on its last day instead of at this time of day."
+              checked={editKeyExpiryEndOfDay}
+              onChange={setEditKeyExpiryEndOfDay}
+            />
+          ) : null}
           {editKeyExpiryPreset === "custom" ? (
             <Input
               label="Custom expiry (local time)"
@@ -1153,7 +1186,7 @@ export default function KeysPageClient() {
                 let expiresAt;
                 let policy;
                 try {
-                  expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt);
+                  expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt, Date.now(), { endOfDay: editKeyExpiryEndOfDay });
                   policy = apiKeyPolicyPatchFromDraft(editKeyPolicy, editKeyPolicyDirty);
                 } catch (error) {
                   setEditKeyStatus({ type: "error", message: error.message });
@@ -1182,7 +1215,7 @@ export default function KeysPageClient() {
         title={confirmState?.title || "Confirm"}
         message={<>{confirmState?.message}{confirmState?.error && <p role="alert" className="mt-3 text-dd-danger">{confirmState.error}</p>}</>}
         pending={confirmState?.pending}
-        confirmLabel="Confirm"
+        confirmLabel={uiV5 && confirmState?.error ? "Retry" : "Confirm"}
         tone="danger"
         onConfirm={confirmState?.onConfirm}
         onCancel={() => { if (!confirmState?.pending) setConfirmState(null); }}

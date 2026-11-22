@@ -329,6 +329,10 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : null)
       || (streamError ? `[Streaming failed: ${streamError.message || "unknown error"}]` : "[Empty streaming response]");
     const safeThinking = contentObj?.thinking || null;
+    // An empty stream is not a success: the client gets the in-band error frame
+    // from createEmptyTerminalGuard, so the request detail must say the same
+    // instead of recording a green turn (upstream 9router #5092).
+    const producedNothing = !streamError && isEmptyCompletion(contentObj, usage, summary);
 
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
@@ -339,7 +343,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       providerResponse: summary?.providerResponse ?? safeContent,
       response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming", ...(streamError ? { error: streamError } : null) },
       pxpipe,
-      status: streamError ? "error" : "success"
+      status: streamError || producedNothing ? "error" : "success"
     }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });

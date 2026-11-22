@@ -183,7 +183,7 @@ export const ANTIGRAVITY_DEFAULT_SYSTEM = "You are Antigravity, a powerful agent
 // Covers every known variant ("Hermes"/"Hermes Agent", assistant/agent phrasing,
 // built/created by Nous Research), not just the legacy sentence (upstream a61fc6a0).
 export const ANTIGRAVITY_HERMES_IDENTITY_REWRITE = {
-  from: /You are Hermes(?: Agent)?(?:,\s*(?:an intelligent AI assistant|an AI assistant|an AI agent))?(?:,?\s*(?:built|created)\s+by\s+Nous Research)?\./gi,
+  from: /(?:^|(?<=[.!?]\s))(?:You are\s+)?Hermes(?:\s+Agent)?[^.\n]*?\bNous Research\b[^.\n]*\.?|(?:^|(?<=[.!?]\s))(?:You are\s+)?Hermes(?:\s+Agent)?\s*[,:;\u2014\u2013-]?[^.\n]*?\b(?:AI assistant|AI agent)\b[^.\n]*\.?|(?:^|(?<=[.!?]\s))(?:You are\s+)?Hermes\s+Agent\b(?=\s*(?:[.!?\n]|$))\.?/gi,
   to: "You are an AI assistant."
 };
 export const ANTIGRAVITY_PROMPT_REWRITES = [

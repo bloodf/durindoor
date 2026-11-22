@@ -14,6 +14,8 @@ import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils
 import { isExpiredSessionToken, webSocketAuthStatus } from "../utils/webSessionExpiry.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
+  const { assertSocksProxyUrl } = await import("../utils/socksCredential.js");
+  assertSocksProxyUrl(proxyUrl);
   try {
     const { HttpsProxyAgent } = await import("https-proxy-agent");
     return new HttpsProxyAgent(proxyUrl);

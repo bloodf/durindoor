@@ -92,6 +92,7 @@ const syntheticUpstream = async (url, init = {}) => {
 
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "minimax-code-test-"));
+  vi.stubEnv("MINIMAX_CODE_GATEWAY_RETRIES", "0"); // the retry has its own test file (minimax-code-budget.test.js)
   vi.stubEnv("DATA_DIR", path.join(root, "data")); vi.stubEnv("HOME", path.join(root, "home")); vi.stubEnv("DURINDOOR_DATABASE_ENGINE", "sqlite");
   for (const key of ["DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE", "DURINDOOR_DATABASE_ENV_SOURCE_JSON"]) vi.stubEnv(key, undefined);
   fs.mkdirSync(process.env.HOME, { recursive: true }); delete global._dbAdapter; vi.resetModules();

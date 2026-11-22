@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { killAppProcesses, spawnUpdaterAndExit } from "@/lib/appUpdater";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
+import { normalizeTargetVersion, formatUpdaterPackageSpec } from "@/shared/utils/updaterVersion";
 
-export async function POST() {
+export async function POST(request) {
   if (process.env.NODE_ENV !== "production") {
     return NextResponse.json(
       {
@@ -12,6 +13,17 @@ export async function POST() {
       },
       { status: 403 }
     );
+  }
+
+  let body = {};
+  try {
+    body = request ? await request.json() : {};
+  } catch {
+    body = {};
+  }
+  const targetVersion = normalizeTargetVersion(body?.version);
+  if (targetVersion === null) {
+    return NextResponse.json({ success: false, message: "Invalid DurinDoor version" }, { status: 400 });
   }
 
   try {
@@ -25,12 +37,13 @@ export async function POST() {
   }
 
   // Schedule detached updater then exit current server process.
-  // Pin @latest so npm always prefers registry tip (matches installCmdLatest).
-  spawnUpdaterAndExit(`${UPDATER_CONFIG.npmPackageName}@latest`);
+  // Pin @latest (registry tip, matches installCmdLatest) unless a valid version was selected.
+  spawnUpdaterAndExit(formatUpdaterPackageSpec(UPDATER_CONFIG.npmPackageName, targetVersion));
 
   return NextResponse.json({
     success: true,
     message: "Updater started. This app will exit shortly.",
+    version: targetVersion || "latest",
     statusUrl: `http://127.0.0.1:${UPDATER_CONFIG.statusPort}/update/status`,
   });
 }

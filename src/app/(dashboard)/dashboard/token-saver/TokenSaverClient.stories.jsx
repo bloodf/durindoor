@@ -1,6 +1,6 @@
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
-import TokenSaverClient from "./TokenSaverClient";
+import TokenSaverRoute from "./TokenSaverRoute";
 import pxpipeMeta, { Empty as PxpipeEmpty, Unavailable as PxpipeUnavailable } from "../pxpipe/PxpipeClient.stories.jsx";
 
 const routes = {
@@ -82,7 +82,7 @@ export const Overview = {
   },
 };
 
-const meta = { title: "Production/savers/TokenSaverClient", component: TokenSaverClient, parameters: { layout: "fullscreen" } };
+const meta = { title: "Production/savers/TokenSaverClient", component: TokenSaverRoute, parameters: { layout: "fullscreen" } };
 export default meta;
 
 /** Covers all settings rows, Headroom setup modal, level controls, pxpipe form/chips, and status control private scenarios. */

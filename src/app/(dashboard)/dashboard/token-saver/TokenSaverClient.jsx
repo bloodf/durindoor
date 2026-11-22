@@ -32,21 +32,10 @@ import {
   PONYTAIL_LEVELS } from
 "../endpoint/endpointConstants";
 import { fetchPxpipeStatus, getPxpipeStatusView } from "../pxpipe/pxpipeStatus.js";
-import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
-import TokenSaverDashboard from "@/shared/ui/v5/dashboards/TokenSaverDashboard.jsx";
-import { TOKEN_SAVER_LAYOUT_KEY } from "@/shared/ui/v5/dashboards/model.js";
 
-/** V5 monitoring dashboard; `view="settings"` always renders the incumbent settings below. */
-export default function TokenSaverClient({ view = "overview" }) {
-  const v5 = useUiV5();
-  if (v5 && view !== "settings") {
-    return <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-6 p-4 sm:p-6"><TokenSaverDashboard persistLayout storageKey={TOKEN_SAVER_LAYOUT_KEY} savedNotice="Dashboard layout saved." /></div>;
-  }
-  return <IncumbentTokenSaverClient view={view} v5={v5} />;
-}
-
-function IncumbentTokenSaverClient({ view = "overview", v5 = false }) {
+/** Incumbent client. `TokenSaverRoute` passes `v5` and renders the V5 dashboard instead for the monitoring view. */
+export default function TokenSaverClient({ view = "overview", v5 = false }) {
   const [settingsStatus, setSettingsStatus] = useState("loading");
   const [settingWrites, setSettingWrites] = useState({});
   const pendingSettings = useRef(new Set());

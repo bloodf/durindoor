@@ -11,7 +11,7 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...rest }) => React.cr
 vi.mock("@/shared/ui/v5/motion/MotionIcon.jsx", () => ({ default: () => null }));
 vi.mock("@/shared/ui/components/Modal.jsx", () => ({ default: ({ open, title, children, footer }) => open ? React.createElement("div", { role: "dialog", "aria-label": title }, children, footer) : null }));
 
-import TokenSaverClient from "../../src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx";
+import TokenSaverRoute from "../../src/app/(dashboard)/dashboard/token-saver/TokenSaverRoute.jsx";
 import { SAVER_WIDGETS, TOKEN_SAVER_LAYOUT_KEY } from "../../src/shared/ui/v5/dashboards/model.js";
 
 let root, host, streams, fetchMock, writes;
@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 async function render(view, v5) {
   if (v5) document.documentElement.dataset.ui = "v5"; else delete document.documentElement.dataset.ui;
-  await act(async () => root.render(React.createElement(TokenSaverClient, { view })));
+  await act(async () => root.render(React.createElement(TokenSaverRoute, { view })));
   await act(async () => {});
 }
 const button = (label) => [...host.querySelectorAll("button")].find((item) => item.getAttribute("aria-label") === label || item.textContent.trim().includes(label));

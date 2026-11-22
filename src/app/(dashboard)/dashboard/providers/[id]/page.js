@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, CopilotM365AuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -129,6 +129,8 @@ function ProviderDetail({ providerId }) {
   const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
   const [clearingCooldownId, setClearingCooldownId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
+  // Microsoft 365 Copilot native sign-in, beside its pasted-session connection form.
+  const [showM365SignInModal, setShowM365SignInModal] = useState(false);
   const [showCookieImportModal, setShowCookieImportModal] = useState(false);
   const [showImportTokenModal, setShowImportTokenModal] = useState(false);
   const [importTokenValue, setImportTokenValue] = useState("");
@@ -2300,6 +2302,11 @@ function ProviderDetail({ providerId }) {
                       Import cookies
                     </Button>
               }
+                    {providerId === "copilot-m365-web" &&
+              <Button size="sm" icon="login" variant="secondary" onClick={() => setShowM365SignInModal(true)}>
+                      Microsoft sign-in
+                    </Button>
+              }
                     <Button
                 size="sm"
                 icon="add"
@@ -2396,6 +2403,17 @@ function ProviderDetail({ providerId }) {
               title={translate("Bulk import Grok CLI accounts from JSON")}
               className="w-full sm:w-auto">
                       {translate("Bulk Add")}
+                    </Button>
+            }
+                  {providerId === "copilot-m365-web" &&
+            <Button
+              size="sm"
+              icon="login"
+              variant="secondary"
+              onClick={() => setShowM365SignInModal(true)}
+              title="Sign in with a work or school Microsoft account"
+              className="w-full sm:w-auto">
+                      Microsoft sign-in
                     </Button>
             }
                   {cookieImportContract &&
@@ -2633,6 +2651,14 @@ function ProviderDetail({ providerId }) {
         proxyPools={proxyPools}
         proxyPoolsReady={proxyPoolsReady}
         connectionId={reconnectConnectionId} />
+
+      }
+      {providerId === "copilot-m365-web" &&
+      <CopilotM365AuthModal
+        isOpen={showM365SignInModal}
+        providerInfo={providerInfo}
+        onSuccess={() => {fetchConnections();setShowM365SignInModal(false);}}
+        onClose={() => setShowM365SignInModal(false)} />
 
       }
       {providerId === "iflow" &&

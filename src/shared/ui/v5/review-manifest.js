@@ -2809,6 +2809,25 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/shared/components/CopilotM365AuthModal.stories.jsx",
+    "title": "V5 review/Workflows/shared-oauth/CopilotM365AuthModal",
+    "storyId": "v5-review-workflows-shared-oauth-copilotm365authmodal--intro",
+    "states": [
+      "Intro",
+      "SignInStarted",
+      "ExchangeRejected"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-oauth-copilotm365authmodal--intro",
+      "v5-review-workflows-shared-oauth-copilotm365authmodal--sign-in-started",
+      "v5-review-workflows-shared-oauth-copilotm365authmodal--exchange-rejected"
+    ],
+    "pathname": "/dashboard/providers/copilot-m365-web",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/shared/components/CursorAuthModal.stories.jsx",
     "title": "V5 review/Workflows/shared-kiro/CursorAuthModal",
     "storyId": "v5-review-workflows-shared-kiro-cursorauthmodal--auto-detected",

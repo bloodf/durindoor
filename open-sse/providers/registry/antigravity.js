@@ -53,7 +53,8 @@ export default {
     clientSecret: ANTIGRAVITY_OAUTH_CLIENT.clientSecret, // Set via env var — see SECRETS_AND_CONFIG.md
   },
   models: [
-    { id: "gemini-4-neon-xhigh", name: "Gemini 4 Neon (XHigh)", upstreamModelId: "gemini-4-neon-xhigh(xhigh)" },
+    // XHigh uses the base Neon model with an explicit thinking preset.
+    { id: "gemini-4-neon-xhigh", name: "Gemini 4 Neon (XHigh)", upstreamModelId: "gemini-4-neon(xhigh)" },
     { id: "gemini-4-neon-high", name: "Gemini 4 Neon (High)", upstreamModelId: "gemini-4-neon-high(high)" },
     { id: "gemini-4-neon-medium", name: "Gemini 4 Neon (Medium)", upstreamModelId: "gemini-4-neon-medium(medium)" },
     { id: "gemini-4-neon-low", name: "Gemini 4 Neon (Low)", upstreamModelId: "gemini-4-neon-low(low)" },

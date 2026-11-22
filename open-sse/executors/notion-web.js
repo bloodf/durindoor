@@ -37,7 +37,11 @@ function headers(cookie, spaceId = "", userId = "") {
 }
 
 async function request(url, init, fetcher) {
-  return fetcher(url, init);
+  const response = await fetcher(url, { ...init, redirect: "manual" });
+  if (response.status >= 300 && response.status < 400) {
+    throw Object.assign(new Error("Notion session was rejected"), { status: 401 });
+  }
+  return response;
 }
 
 function parseModels(json) {

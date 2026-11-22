@@ -9,9 +9,9 @@ function cookieOf(c) { return c?.cookie || c?.apiKey || c?.providerSpecificData?
 const error = (status, message) => Response.json({ error: { message, type: status === 401 || status === 403 ? "authentication_error" : "provider_error" } }, { status });
 export async function validateLmarenaSession(credentials, fetcher = tlsFetchLMArena) {
   const cookie = cookieOf(credentials); if (!cookie) return { valid: false, status: null, error: "Arena session cookie is required" };
-  const result = await fetcher(URL, { method: "GET", headers: { Cookie: cookie, Accept: "application/json" }, stream: false });
+  const result = await fetcher(URL, { method: "GET", headers: { Cookie: cookie, Accept: "application/json" }, redirect: "manual", stream: false });
   const status = result.status;
-  if (status === 401 || status === 403) return { valid: false, status, error: "Arena session expired" };
+  if ((status >= 300 && status < 400) || status === 401 || status === 403) return { valid: false, status, error: "Arena session expired" };
   // A 405 from the live endpoint confirms the host and route; authenticated
   // chat calls remain the definitive session check because Arena has no whoami API.
   if (status === 405 || (status >= 200 && status < 300)) return { valid: true, status };

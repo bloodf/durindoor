@@ -16,6 +16,7 @@ import { validateInputAudio, validateOutboundPayload, stripInternalKeys, normali
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
+import { sanitizeIdentity } from "../services/identitySanitizer.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getModelUpstreamThinkingIntent, resolveRequestedModelTier, applyProviderThinkingOverride, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -1066,6 +1067,15 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Re-salvage + re-fix after PXPIPE in case compression removed assistant/tool turns.
   salvageOrphanedToolResults(translatedBody);
   fixMissingToolResponses(translatedBody);
+
+  // Opt-in (DURINDOOR_SANITIZE_IDENTITY=1): neutralise harness names in system text and tool descriptions.
+  {
+    const sanitized = sanitizeIdentity(translatedBody);
+    if (sanitized !== translatedBody) {
+      translatedBody = sanitized;
+      xf.push("IDENTITY");
+    }
+  }
 
   // Pin cache breakpoints to the final Claude body after all request savers.
   if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody, provider);

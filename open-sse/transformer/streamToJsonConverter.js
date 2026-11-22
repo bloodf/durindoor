@@ -38,12 +38,16 @@ function processSSEMessage(msg, state) {
     state.terminal.observe({ rawDone: true, eventName: eventMatch?.[1]?.trim() || null });
     return;
   }
-  if (!eventMatch) {state.terminal.fail();return;}
-  const eventType = eventMatch[1].trim();
 
   let parsed;
   try {parsed = JSON.parse(dataStr);}
   catch {state.terminal.fail();return;}
+
+  // Some providers omit `event:` lines and send data-only SSE. The Responses API
+  // always sets `type` in the payload, so fall back to it (#5607); a frame with
+  // neither is still unusable.
+  const eventType = eventMatch?.[1]?.trim() || (isString(parsed?.type) && parsed.type ? parsed.type : null);
+  if (!eventType) {state.terminal.fail();return;}
 
   state.terminal.observe({ chunk: parsed, eventName: eventType });
 

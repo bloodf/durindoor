@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
@@ -56,7 +56,7 @@ export async function getOidcRuntimeConfig() {
 
 /**
  * Fetch the OIDC discovery document for an issuer.
- * Rejects link-local / private / metadata targets via assertPublicUrl before any network I/O
+ * Rejects non-public targets via the resolving, pinned outbound URL guard
  * (login start, callback, and settings discovery test all share this path).
  *
  * @param {string} issuerUrl Absolute issuer URL (no trailing slash required).
@@ -64,10 +64,16 @@ export async function getOidcRuntimeConfig() {
  */
 export async function fetchOidcDiscovery(issuerUrl) {
   const base = trimTrailingSlashes(issuerUrl);
-  // SSRF guard: block internal/private/metadata issuers before discovery fetch.
-  assertPublicUrl(base);
   const discoveryUrl = `${base}/.well-known/openid-configuration`;
-  const res = await fetch(discoveryUrl, { cache: "no-store" });
+  let res;
+  try {
+    res = await guardedProbeFetch(discoveryUrl, { cache: "no-store" }, "public-only");
+  } catch (error) {
+    if (error?.code === "OUTBOUND_URL_GUARD_BLOCKED") {
+      throw new Error("Blocked URL: internal host");
+    }
+    throw error;
+  }
   if (!res.ok) {
     throw new Error(`Failed to load OIDC discovery document from ${discoveryUrl}`);
   }

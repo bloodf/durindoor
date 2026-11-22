@@ -5,6 +5,7 @@ import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
 import { hasExactRequestOrigin as hasTrustedRequestOrigin } from "@/lib/auth/requestOrigin";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
+import { checkLock, getClientIp, recordFail, recordSuccess } from "@/lib/auth/loginLimiter.js";
 
 import {
   CONTROL_PORT_HEADER,
@@ -739,6 +740,27 @@ export async function proxy(request) {
   }
 
   if (isPublicLlmApi(routePath)) {
+    const method = String(request.method || "GET").toUpperCase();
+    const isModelListRead = (method === "GET" || method === "HEAD") &&
+      (routePath === "/api/models" || routePath === "/api/v1/models" || routePath.startsWith("/api/v1/models/"));
+    const hasLegacyKeyCandidate = extractApiKeyCandidates(request)
+      .some((apiKey) => /^sk-[0-9a-f]{8}$/i.test(apiKey));
+    if (!isLocalRequest(request) && hasLegacyKeyCandidate && !(await hasValidCliToken(request)) &&
+        !(isModelListRead && await hasValidToken(request))) {
+      const ip = getClientIp(request);
+      if (await hasValidApiKey(request)) {
+        recordSuccess(ip);
+      } else {
+        const lock = checkLock(ip);
+        if (lock.locked) {
+          return NextResponse.json({ error: "Too many failed API key attempts" }, {
+            status: 429,
+            headers: { "Retry-After": String(lock.retryAfter) },
+          });
+        }
+        recordFail(ip);
+      }
+    }
     // Loopback identity is not browser authentication: a web page the operator
     // visits reaches the gateway from their own machine. Reject a credential-free
     // local caller that sends a present Origin whose hostname is not loopback,
@@ -844,7 +866,7 @@ export async function proxy(request) {
     // Serve the pre-rewrite dashboard when the reader has opted into it.
     // The rewrite happens only after the auth checks below have passed, so
     // the preview cannot become a way around them.
-    if (!requireLogin) return NextResponse.next();
+    if (!requireLogin && isLocalRequest(request)) return NextResponse.next();
 
     // Verify JWT token
     const token = request.cookies.get("auth_token")?.value;

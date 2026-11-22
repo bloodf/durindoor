@@ -49452,7 +49452,7 @@
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
       "sourcePath": "src/shared/components/ModelSelectModal.js",
       "symbol": "ModelSelectModal",
-      "sourceSha256": "4e0de3f42696c77403c6919fe17e13d532d62576ac559f2a34409554131f86dd",
+      "sourceSha256": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -49477,7 +49477,7 @@
             "search"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4e0de3f42696c77403c6919fe17e13d532d62576ac559f2a34409554131f86dd",
+            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "OpenLLM opens Select Model, waits for Combos, then types into rendered Search models textbox.",
@@ -49492,7 +49492,7 @@
             "selected-model"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4e0de3f42696c77403c6919fe17e13d532d62576ac559f2a34409554131f86dd",
+            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithSelection supplies selected and added Claude Sonnet model; play asserts rendered pressed chip.",
@@ -49507,7 +49507,7 @@
             "selected-combo"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4e0de3f42696c77403c6919fe17e13d532d62576ac559f2a34409554131f86dd",
+            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithCombosAndSelection supplies selected fast combo; play asserts rendered pressed fast chip.",
@@ -49522,7 +49522,7 @@
             "embedding-kind"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4e0de3f42696c77403c6919fe17e13d532d62576ac559f2a34409554131f86dd",
+            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "EmbeddingKind opens Select Embedding Model with kindFilter=embedding; play verifies Combos is absent.",
@@ -49537,7 +49537,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4e0de3f42696c77403c6919fe17e13d532d62576ac559f2a34409554131f86dd",
+            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false; play asserts Select Model dialog absent.",
@@ -95066,7 +95066,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "cf7fde7bda097b303f64b42332f0ea61f50eb273fda409c0d548d5fafcc02298",
-    "sourceCensusSha256": "a650577d4bf96cb81b407989533c4f7eb2cec81c51f47ce73684413d08e276a7",
+    "sourceCensusSha256": "18898a0b2d77d309b64a69566c5b0a5c7aa9097781df4170c1f0702e6d63b1af",
     "pendingRows": 363,
     "retainedApprovedRows": 260,
     "pendingReferences": 1350,

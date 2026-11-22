@@ -4,6 +4,18 @@ import { getSettings } from "@/lib/localDb";
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
+// Keep redirects manual and use the connection-pinned guard for every OIDC endpoint.
+async function fetchPublic(url, init = {}) {
+  try {
+    const response = await guardedProbeFetch(url, init, "public-only");
+    if (response.status >= 300 && response.status < 400) throw new Error("Blocked URL: redirect");
+    return response;
+  } catch (error) {
+    if (error?.code === "OUTBOUND_URL_GUARD_BLOCKED") throw new Error("Blocked URL: internal host");
+    throw error;
+  }
+}
+
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
   nonce: "oidc_nonce",
@@ -82,7 +94,7 @@ export async function fetchOidcDiscovery(issuerUrl) {
   const discoveryUrl = `${base}/.well-known/openid-configuration`;
   let res;
   try {
-    res = await guardedProbeFetch(discoveryUrl, { cache: "no-store" }, "public-only");
+    res = await fetchPublic(discoveryUrl, { cache: "no-store" });
   } catch (error) {
     if (error?.code === "OUTBOUND_URL_GUARD_BLOCKED") {
       throw new Error("Blocked URL: internal host");

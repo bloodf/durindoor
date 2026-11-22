@@ -413,6 +413,7 @@ export default function CombosPage() {
       return { ok: true };
     } catch (error) {
       console.log("Error updating combo strategy:", error);
+      alert(error.message);
       return { ok: false, error: error.message };
     }
   };

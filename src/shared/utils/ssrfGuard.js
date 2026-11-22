@@ -165,6 +165,13 @@ export function isBlockedHost(host) {
   return false;
 }
 
+// Validate a literal URL before any network access.
+export function assertPublicUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+  if (isBlockedHost(parsed.hostname)) throw new Error("Blocked URL: internal host");
+  return parsed;
+}
+
 // Resolve and validate non-literal hostnames, so a
 // domain that merely *resolves* to a private/loopback/metadata address (wildcard-DNS
 // services like nip.io/sslip.io, or an attacker-controlled domain with an A record

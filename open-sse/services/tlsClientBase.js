@@ -833,9 +833,9 @@ export function createTlsClientModule(config) {
   async function tlsFetch(url, options = {}) {
     if (!options.sameOriginRedirects) return tlsFetchOnce(url, options);
     let current = String(url);
-    // The streaming API exposes status only after the stream completes. Buffer guarded
-    // calls so no redirect can be mistaken for a successful stream.
-    let request = { ...options, redirect: "manual", stream: false };
+    // Redirect following stays disabled at the TLS layer, including for streams.
+    // A response with no streamed bytes exposes its status before any next hop.
+    let request = { ...options, redirect: "manual" };
     for (let count = 0; count <= 20; count++) {
       const result = await tlsFetchOnce(current, request);
       if (result.status < 300 || result.status >= 400) return result;

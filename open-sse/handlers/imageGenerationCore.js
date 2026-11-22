@@ -116,7 +116,8 @@ export async function handleImageGenerationCore({
         credentials,
         log,
         proxyOptions,
-        signal
+        signal,
+        onCredentialsRefreshed
       );
       if (onRequestSuccess) await onRequestSuccess();
       const accounting = mediaAccounting(responseBody, provider, "image");

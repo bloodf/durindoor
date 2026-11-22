@@ -58,7 +58,7 @@ export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
   const normalized = normalizeProxyUrl(proxyUrl);
   if (!normalized) return;
   proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
-  if (dispatcher && typeof dispatcher === "object" && typeof dispatcher.close !== "function") {
+  if (dispatcher && !dispatcher.close) {
     pinnedTestDispatchers.add(dispatcher);
   }
 }

@@ -1,3 +1,4 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getNoAuthProviderCredentials,
@@ -312,6 +313,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
     log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(providerId, credentials);
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
     const result = await handleFetchCore({
       url: targetUrl,
@@ -324,7 +326,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
     });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true, usedCredential: credentials.accessToken || credentials.apiKey || null });
+      await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true, usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
       const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -338,7 +340,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
       providerId,
       null,
       null,
-      { webFetch: true }
+      { webFetch: true, ...dispatch }
     );
 
     if (shouldFallback) {

@@ -133,7 +133,7 @@ describe("music handler credential fallback", () => {
       ["suno", [], "suno-override"],
       ["suno", ["conn-1"], "suno-override"],
     ]);
-    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith("conn-1", 503, "rate limit", "suno", "suno-override", null, { usedCredential: "ak" });
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith("conn-1", 503, "rate limit", "suno", "suno-override", null, { usedCredential: "ak", credentialFingerprint: null, dispatchedAt: expect.any(Number) });
     expect(JSON.parse(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value)).toMatchObject({ apiKeyId: "music-owner", connectionId: "conn-2", resourceId: "song-1" });
     expect(adapter.all("SELECT * FROM usageHistory")).toEqual([]);
   });

@@ -1,5 +1,5 @@
 import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
-import { connectionHasCredential, credentialFingerprint } from "@/shared/utils/credentialFingerprint.js";
+import { connectionHasCredential, credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
 import {
@@ -1404,13 +1404,18 @@ async function applyEgressBucketCooldown(connections, connectionId, provider, co
   }
 }
 
+/** Attempt-start watermark: explicit attempt stamp, then dispatch snapshot. */
+function dispatchStamp(context) {
+  if (Number.isSafeInteger(context?.attemptStartedAt)) return context.attemptStartedAt;
+  if (Number.isSafeInteger(context?.dispatchedAt) && context.dispatchedAt > 0) return context.dispatchedAt;
+  return Date.now();
+}
+
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
   throwIfAborted(signal);
-  const observedAt = Number.isSafeInteger(context?.attemptStartedAt) ?
-  context.attemptStartedAt :
-  Date.now();
+  const observedAt = dispatchStamp(context);
   const connections = await getProviderConnections({ provider });
 
   throwIfAborted(signal);
@@ -1660,7 +1665,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         cooldownMs: legacyCooldownMs,
         backoffLevel: newBackoffLevel ?? backoffLevel,
         observedAt,
-        credentialFingerprint: context?.credentialFingerprint || credentialFingerprint(context?.usedCredential),
+        credentialFingerprint: context?.credentialFingerprint || null,
         webFetch: context?.webFetch === true,
         webSearch: isolatedSearch,
         videoPoll: context?.videoPoll === true
@@ -1668,7 +1673,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       // The atomic path ran; never fall through to the compatibility writer,
       // even when applied is false (stale watermark or reauth guard).
       atomicApplied = true;
-      const fingerprint = context?.credentialFingerprint || credentialFingerprint(context?.usedCredential);
+      const fingerprint = context?.credentialFingerprint || null;
       if (recorded?.applied === false && fingerprint && !connectionHasCredential(recorded.connection, fingerprint)) {
         return { shouldFallback: true, cooldownMs: 0 };
       }
@@ -1783,10 +1788,12 @@ export async function clearAccountError(connectionId, currentConnection, model =
   const conn = currentConnection._connection || currentConnection;
   const signal = context?.signal || null;
   throwIfAborted(signal);
-  const now = Number.isSafeInteger(context?.attemptStartedAt) ?
-  context.attemptStartedAt :
-  Date.now();
+  const now = dispatchStamp(context);
   const provider = context?.provider || conn?.provider;
+  // An explicit dispatch snapshot wins, even a null one (derived/refreshed token).
+  const fingerprint = context && Object.hasOwn(context, "credentialFingerprint") ?
+  context.credentialFingerprint || null :
+  credentialDispatchSnapshot(currentConnection).credentialFingerprint;
   const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true, webSearch: context?.webSearch === true, videoPoll: context?.videoPoll === true });
   let atomicApplied = false;
   try {
@@ -1795,12 +1802,11 @@ export async function clearAccountError(connectionId, currentConnection, model =
       const cleared = await db.clearProviderConnectionFallbackState(connectionId, {
         model: fallbackModel,
         observedAt: now,
-        credentialFingerprint: context?.credentialFingerprint || credentialFingerprint(currentConnection?.accessToken || currentConnection?.apiKey),
+        credentialFingerprint: fingerprint,
         webFetch: context?.webFetch === true,
         webSearch: context?.webSearch === true
       }, { signal });
       atomicApplied = true;
-      const fingerprint = context?.credentialFingerprint || credentialFingerprint(currentConnection?.accessToken || currentConnection?.apiKey);
       if (cleared?.applied === false && !connectionHasCredential(cleared.connection, fingerprint)) return;
     }
   } catch (error) {

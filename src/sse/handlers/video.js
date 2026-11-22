@@ -1,3 +1,4 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { randomUUID } from "node:crypto";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
@@ -320,6 +321,7 @@ async function handleVideoCreateHandler(request, action) {
 
   const usageEventId = `video:${randomUUID()}`;
   const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+  const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
   const result = await handleVideoProxyCore({
     provider,
@@ -341,7 +343,7 @@ async function handleVideoCreateHandler(request, action) {
   });
 
   if (result.success) {
-    await clearAccountError(credentials.connectionId, credentials, model);
+    await clearAccountError(credentials.connectionId, credentials, model, dispatch);
     log.info("VIDEO", `${provider.toUpperCase()} | ${action} accepted (connection ${credentials.connectionId})`);
     if (!result.job?.resourceId) return errorResponse(HTTP_STATUS.BAD_GATEWAY, "Video provider did not return a job identity");
     await createMediaJob({
@@ -363,7 +365,8 @@ async function handleVideoCreateHandler(request, action) {
       credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, model, null, {
         // The credential this attempt actually presented, so a durable-key
         // provider can mark exactly the generation that was rejected.
-        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null
+        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null,
+        ...dispatch
       }
     );
   }
@@ -440,6 +443,7 @@ async function handleVideoGetHandler(request, requestId) {
   }
 
   const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+  const dispatch = credentialDispatchSnapshot(refreshedCredentials);
   const db = await getAdapter();
   db.transaction(() => assertBillingEpochSync(db, job.billingEpoch));
 
@@ -460,7 +464,7 @@ async function handleVideoGetHandler(request, requestId) {
   });
 
   if (result.success) {
-    await clearAccountError(credentials.connectionId, credentials, null, { videoPoll: true });
+    await clearAccountError(credentials.connectionId, credentials, null, { videoPoll: true, ...dispatch });
     if (result.job?.resourceId && result.job.resourceId !== job.resourceId) {
       return errorResponse(HTTP_STATUS.BAD_GATEWAY, "Video provider returned a different job identity");
     }
@@ -483,7 +487,8 @@ async function handleVideoGetHandler(request, requestId) {
     await markAccountUnavailable(
       credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null, null, {
         videoPoll: true,
-        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null
+        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null,
+        ...dispatch
       }
     );
   }

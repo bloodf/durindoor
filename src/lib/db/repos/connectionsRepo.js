@@ -22,7 +22,12 @@ import {
 
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
-import { connectionHasCredential } from "../../../shared/utils/credentialFingerprint.js";
+import {
+  connectionCredentialKeyIds,
+  connectionHasCredential,
+  connectionHasMultipleCredentials,
+  credentialKeyId
+} from "../../../shared/utils/credentialFingerprint.js";
 
 export { SENSITIVE_CONNECTION_FIELDS };
 
@@ -594,6 +599,30 @@ function activeTimestamp(value, now) {
 }
 
 /**
+ * Per-key health for multi-key connections (#20993). Applies one key's verdict
+ * to the map read inside the write transaction, so concurrent outcomes for
+ * different keys both survive. Entries for keys no longer stored are pruned.
+ * A failure stamped in the same millisecond as a stored verdict wins; a
+ * success needs a strictly newer stamp.
+ */
+function credentialHealthDelta(existing, fingerprint, { healthy, eventMs, status = null }) {
+  const keyId = credentialKeyId(fingerprint);
+  if (!keyId || !connectionHasMultipleCredentials(existing)) return null;
+  const live = connectionCredentialKeyIds(existing);
+  const current = isObject(existing.credentialHealth) ? existing.credentialHealth : {};
+  const pruned = Object.fromEntries(Object.entries(current).filter(([id]) => live.has(id)));
+  const previousAt = Date.parse(pruned[keyId]?.observedAt || "") || 0;
+  if (healthy ? eventMs <= previousAt : eventMs < previousAt) return null;
+  const observedAt = new Date(eventMs).toISOString();
+  return {
+    ...pruned,
+    [keyId]: healthy ?
+      { status: "healthy", observedAt } :
+      { status: "unavailable", observedAt, statusCode: Number(status) || null }
+  };
+}
+
+/**
  * Atomically extend one legacy model lock. The attempt-start watermark fences
  * late completions and the max-expiry merge prevents concurrent 429s from
  * shortening an already accepted cooldown.
@@ -650,7 +679,16 @@ export async function recordProviderConnectionFallbackState(id, {
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
     const storedVersion = Date.parse(existing[versionKey] || "") || 0;
+    const credentialHealth = credentialHealthDelta(existing, credentialFingerprint, { healthy: false, eventMs, status });
+    // Connection scope keeps the R-02 contract (equal stamps lose); the
+    // per-key verdict above lets a same-millisecond failure win.
     if (eventMs <= storedVersion) {
+      if (credentialHealth) {
+        const keyOnly = { ...existing, credentialHealth, updatedAt: existing.updatedAt };
+        upsert(db, keyOnly);
+        result = { applied: false, keyHealthApplied: true, connection: keyOnly };
+        return;
+      }
       result = { applied: false, connection: existing };
       return;
     }
@@ -666,6 +704,7 @@ export async function recordProviderConnectionFallbackState(id, {
       // dedupe and OAuth compare-and-swap keys.
       updatedAt: existing.updatedAt
     };
+    if (credentialHealth) merged.credentialHealth = credentialHealth;
     if (webSearch && scope.startsWith("websearch:")) {
       merged[`modelError_${scope}`] = Number(status) || 503;
     }
@@ -711,21 +750,27 @@ export async function clearProviderConnectionFallbackState(id, {
     const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch });
     const relevantScopes = webFetch || webSearch || scope === "__all" ? [scope] : [scope, "__all"];
     const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;
-    if (eventMs <= primaryVersion) {
-      result = { applied: false, connection: existing };
-      return;
-    }
+    const credentialHealth = credentialHealthDelta(existing, credentialFingerprint, { healthy: true, eventMs });
+    const rejectKeepingKeyHealth = () => {
+      if (!credentialHealth) {
+        result = { applied: false, connection: existing };
+        return;
+      }
+      const keyOnly = { ...existing, credentialHealth, updatedAt: existing.updatedAt };
+      upsert(db, keyOnly);
+      result = { applied: false, keyHealthApplied: true, connection: keyOnly };
+    };
+    // A success stamped in the same millisecond as a failure never clears it.
+    if (eventMs <= primaryVersion) return rejectKeepingKeyHealth();
     const scopes = relevantScopes;
     const acceptedScopes = scopes.filter((candidate) => {
       const version = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] || "") || 0;
       return eventMs > version;
     });
-    if (acceptedScopes.length === 0) {
-      result = { applied: false, connection: existing };
-      return;
-    }
+    if (acceptedScopes.length === 0) return rejectKeepingKeyHealth();
 
     const merged = { ...existing };
+    if (credentialHealth) merged.credentialHealth = credentialHealth;
     for (const candidate of acceptedScopes) {
       merged[`${MODEL_LOCK_PREFIX}${candidate}`] = null;
       merged[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] = new Date(eventMs).toISOString();

@@ -799,7 +799,7 @@ function startServer(updatePromise) {
           // Enable auto startup once, without overriding later user choices.
           try {
             const { ensureAutoStart } = require("./src/cli/tray/autostart");
-            ensureAutoStart(__filename);
+            ensureAutoStart(__filename, { host, port });
           } catch (e) { }
 
           if (process.platform === "darwin") {
@@ -829,7 +829,7 @@ function startServer(updatePromise) {
           console.log(`\n⏳ Starting background process...`);
 
           /** Keep the detached tray CLI on IPv4-first DNS ordering (upstream #2699). */
-          const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "-p", port.toString()], {
+          const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "--host", host, "--port", port.toString()], {
             detached: true,
             stdio: "ignore",
             windowsHide: true,

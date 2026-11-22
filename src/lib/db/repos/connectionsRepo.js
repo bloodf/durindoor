@@ -15,6 +15,10 @@ import {
   decryptField,
   isEncryptedBlob } from
 "@/lib/crypto/columnCrypto.js";
+import {
+  decryptProviderSpecificData,
+  encryptProviderSpecificData } from
+"../helpers/providerSpecificDataSecrets.js";
 
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
@@ -120,6 +124,9 @@ function rowToConn(row) {
       extra[field] = decryptField(value, row.id);
     }
   }
+  if (extra.providerSpecificData) {
+    extra.providerSpecificData = decryptProviderSpecificData(extra.providerSpecificData, row.id);
+  }
   return {
     ...extra,
     id: row.id,
@@ -162,6 +169,9 @@ function connToRow(c) {
     if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
       rest[field] = encryptField(value, id);
     }
+  }
+  if (rest.providerSpecificData) {
+    rest.providerSpecificData = encryptProviderSpecificData(rest.providerSpecificData, id);
   }
   return {
     id,

@@ -1,6 +1,6 @@
 # V5 production acceptance audit (#1300)
 
-Status: **COMPLETE** for the tested checkout. Candidate requested: `31cfbb7d70c1` ([PR #2347](https://github.com/bloodf/durindoor/pull/2347), V5 default). Tested checkout: `78aef4edadc5`. The requested commit exists locally but is not an ancestor of this checkout, so these results do not establish exact-head evidence for `31cfbb7d70c1`.
+Status: **COMPLETE** for the tested checkout. Candidate requested: `31cfbb7d70c1` ([PR #2347](https://github.com/bloodf/durindoor/pull/2347), V5 default). Tested checkout: `78aef4edadc5`. The tested checkout `78aef4edadc5` and main's squash commit `31cfbb7d70c1` have the identical tree `cb50714a0ff2f43d2761ee4366253cec4ccc316f` (verified with `git rev-parse 78aef4edadc5^{tree} 31cfbb7d70c1^{tree}`), so the evidence applies exactly to that main commit.
 
 ## Method
 

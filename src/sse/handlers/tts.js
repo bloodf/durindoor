@@ -193,7 +193,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { ...body, provider, model, input: body.input, credentials, responseFormat, language, signal: request.signal };
+    const coreOptions = { ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, language, signal: request.signal };
     const result = await handleTtsCore(coreOptions);
     if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
@@ -228,7 +228,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const dispatch = credentialDispatchSnapshot(credentials);
-    const result = await handleTtsCore({ ...body, provider, model, input: body.input, credentials, responseFormat, language, signal: request.signal });
+    const result = await handleTtsCore({ ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, language, signal: request.signal });
 
     if (result.success) return recordSuccess(result, credentials);
 

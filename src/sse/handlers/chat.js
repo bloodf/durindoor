@@ -1146,6 +1146,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       comboNoLog: comboRouting?.noLog === true,
       comboPrompts,
       log,
+      routingPolicy: settings?.openrouterRouting,
       providerConcurrencyLimit: settings?.providerConcurrencyLimits,
       globalConcurrentRequests: settings?.globalConcurrentRequests,
       sourceFormatOverride: detectFormatByEndpoint(pathname, body),
@@ -1458,6 +1459,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           }
         },
         providerThinking,
+        routingPolicy: chatSettings.openrouterRouting,
         providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
         globalConcurrentRequests: chatSettings.globalConcurrentRequests,
         claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat) ?

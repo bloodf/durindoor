@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -128,6 +129,11 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  if (provider === "openrouter") {
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, "image"); }
+    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
+
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   // Shut-down image ids answer 410 with their replacement before any account

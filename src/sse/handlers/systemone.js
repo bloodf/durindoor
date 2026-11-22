@@ -135,6 +135,7 @@ async function handleSystemoneHandler(request) {
     }
     const result = toCoreResult(
       await handleSystemoneCore({
+        routingPolicy: (await getSettings()).openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials,
@@ -185,6 +186,7 @@ async function handleSystemoneHandler(request) {
     const dispatch = credentialDispatchSnapshot(credentials);
     const result = toCoreResult(
       await handleSystemoneCore({
+        routingPolicy: (await getSettings()).openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),

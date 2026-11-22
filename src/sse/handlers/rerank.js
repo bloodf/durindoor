@@ -69,6 +69,14 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   }
 
   const { provider, model } = modelInfo;
+  // OpenRouter's dedicated rerank endpoint has no verified routing controls.
+  if (provider === "openrouter") {
+    const policy = (await getSettings()).openrouterRouting;
+    if (policy?.zdr || policy?.quantizations?.length || body.provider?.zdr || body.provider?.quantizations) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "OpenRouter rerank cannot enforce the configured routing restrictions");
+    }
+  }
+
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const kindError = await modelKindError(provider, model, await getSettings(), "rerank");

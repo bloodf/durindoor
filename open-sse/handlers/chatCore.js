@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
@@ -335,7 +336,7 @@ async function cancelResponseBody(response) {
  * @param {object} [options.executorOverride] - Server-bound executor for a scoped dispatch.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -1371,6 +1372,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       })).catch(() => { });
       finishTimeline("error", "error", "outbound validation failed");
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, errMsg);
+    }
+  }
+  if (provider === "openrouter") {
+    try {
+      const routingBody = { ...translatedBody };
+      if (body.provider !== undefined) routingBody.provider = body.provider;
+      if (body.models !== undefined) routingBody.models = body.models;
+      translatedBody = applyOpenRouterRouting(routingBody, routingPolicy, "completion");
+    } catch (error) {
+      finishActiveDashboardSession("error");
+      finishTimeline("error", "error", "OpenRouter routing policy conflict");
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
     }
   }
   // Defensive strip AFTER the gate.

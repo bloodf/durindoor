@@ -234,6 +234,9 @@ export default function UpdatePanel({
   }, [startStatusPoll, failToManual]);
 
   const handleCopyAndShutdown = async () => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = null;
+    setCountdown(UPDATER_CONFIG.shutdownCountdownSec);
     try {
       await navigator.clipboard.writeText(installCmd);
     } catch {

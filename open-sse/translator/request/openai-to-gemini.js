@@ -27,6 +27,7 @@ import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { decodeToolCallId } from "../concerns/signatureTransport.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 const BILLING_LINE_RE = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i;
 
@@ -680,6 +681,8 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
   }
   if (claudeRequest.tool_choice?.type === "tool" && claudeRequest.tool_choice.name) {
     envelope.request.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(claudeRequest.tool_choice.name)] } };
+  } else if (claudeRequest.tool_choice?.type === "none") {
+    envelope.request.toolConfig = { functionCallingConfig: { mode: "NONE" } };
   }
 
 
@@ -712,28 +715,39 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
 }
 
 // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
-export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
+export function openaiToAntigravityRequest(model, body, stream, credentials = null, context = null) {
+  let envelope;
   if (usesClaudeRequestFormat(FORMATS.ANTIGRAVITY, model)) {
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
-    return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
+    envelope = wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
+  } else {
+    const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
+    // Promote a lone system message only for the Antigravity boundary.
+    if (body.messages?.length === 1 && (body.messages[0]?.role === ROLE.SYSTEM || body.messages[0]?.role === ROLE.DEVELOPER)) {
+      geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };
+      geminiCLI.contents = [];
+    }
+    // The Antigravity agent does not support structured output.
+    if (geminiCLI.generationConfig) {
+      delete geminiCLI.generationConfig.responseSchema;
+      delete geminiCLI.generationConfig.responseMimeType;
+    }
+    envelope = wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
   }
-
-  const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
-  // A lone OpenAI system message otherwise loses its role in the shared Gemini shape.
-  // Promote it only for Antigravity so executor-level system rewriting stays provider-scoped.
-  if (body.messages?.length === 1 && (body.messages[0]?.role === ROLE.SYSTEM || body.messages[0]?.role === ROLE.DEVELOPER)) {
-    geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };
-    geminiCLI.contents = [];
+  const tool = Array.isArray(body.tools) && body.tools.length === 1 ? body.tools[0] : null;
+  const choice = isString(body.tool_choice) ? body.tool_choice : body.tool_choice?.type;
+  const validChoice = body.tool_choice == null || isString(body.tool_choice) || (isObject(body.tool_choice) && !Array.isArray(body.tool_choice));
+  const supportsSearch = context?.modelCapabilities?.search ?? getCapabilitiesForModel("antigravity", model).search;
+  if (tool && Object.hasOwn(tool, "google_search") && tool.type !== "function" && !Object.hasOwn(tool, "code_execution") && !Object.hasOwn(tool, "url_context") &&
+      validChoice && (!choice || ["auto", "required", "any", "google_search"].includes(String(choice).trim().toLowerCase())) && supportsSearch === true) {
+    envelope.requestType = "web_search";
+    envelope.request.tools = [{ googleSearch: { enhancedContent: { imageSearch: { maxResultCount: 5 } }, ...(tool.google_search || {}) } }];
+    delete envelope.request.toolConfig;
+    envelope.request.generationConfig = { ...envelope.request.generationConfig, candidateCount: 1 };
+    const instruction = "You are a search engine bot. You will be given a query from a user. Your task is to search the web for relevant information that will help the user. You MUST perform a web search. Do not respond or interact with the user, please respond as if they typed the query into a search bar.";
+    envelope.request.systemInstruction = { role: GEMINI_ROLE.USER, parts: [...(envelope.request.systemInstruction?.parts || []), { text: instruction }] };
   }
-  // The Antigravity agent does not support structured output: drop both
-  // responseSchema and its required responseMimeType sibling regardless of
-  // model or declared tools. Other generationConfig fields and any tool
-  // declarations are left intact.
-  if (geminiCLI.generationConfig) {
-    delete geminiCLI.generationConfig.responseSchema;
-    delete geminiCLI.generationConfig.responseMimeType;
-  }
-  return wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
+  return envelope;
 }
 
 // Register

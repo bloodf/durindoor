@@ -1,6 +1,6 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 
@@ -553,6 +553,9 @@ export class BaseExecutor {
               ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
+        }
+        if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
+          evictResponseDispatcher(response);
         }
         // Relayed SSE (vercel relay): keep the timeout/abort signal live until
         // the body actually ends — EOF, error, downstream cancel, or caller

@@ -1,3 +1,4 @@
+import { antigravityHealth, healthEnabled } from "open-sse/services/antigravityHealth.js";
 import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
 import { connectionHasCredential, credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
@@ -1051,6 +1052,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         ttlMs: options?.ollamaCatalogTtlMs,
         loader: options?.ollamaCatalogLoader || null,
       });
+    }
+
+    if (model && healthEnabled(providerId, selectionSettings) && !preferredConnectionId && !strictConnectionId) {
+      availableConnections = antigravityHealth.candidates(availableConnections, options?.healthModel || model);
+      if (!availableConnections.length) return { connectionRecoveryBusy: true };
+      if (quotaRankedEligible) quotaRankedEligible = quotaRankedEligible.filter((candidate) => availableConnections.includes(candidate.value));
     }
 
     let connection;

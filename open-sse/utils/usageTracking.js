@@ -496,7 +496,9 @@ export function extractUsage(chunk) {
       prompt_tokens: chunk.usage.prompt_tokens,
       completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
-      cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
+      cached_tokens: [chunk.usage.prompt_tokens_details?.cached_tokens, chunk.usage.input_tokens_details?.cached_tokens,
+        chunk.usage.cache_read_input_tokens, chunk.usage.prompt_cache_hit_tokens, chunk.usage.cached_tokens]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
       // OpenRouter reports cost as a bare USD number on usage; same unit as cost_usd.
       cost_usd: isUsdReceipt(chunk.usage.cost) ? chunk.usage.cost : chunk.usage.cost_usd,
@@ -530,7 +532,7 @@ export function extractUsage(chunk) {
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
-      cached_tokens: usageMeta.cachedContentTokenCount,
+      cached_tokens: usageMeta.cachedContentTokenCount ?? usageMeta.cached_content_token_count,
       reasoning_tokens: usageMeta.thoughtsTokenCount
     }));
   }

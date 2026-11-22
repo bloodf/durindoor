@@ -260,7 +260,7 @@ export {
 // Provider connections
 export {
   getProviderConnections, getProviderConnectionById,
-  createProviderConnection, updateProviderConnection, claimProviderConnectionPing,
+  createProviderConnection, updateProviderConnection, claimProviderConnectionPing, compareAndSwapProviderSpecificData,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, reorderProviderConnectionsByIds, cleanupProviderConnections } from
@@ -523,7 +523,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
       usageEventReceiptsVersion: db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'receiptsVersion'")?.value === "1" ? 1 : null,
       billingCutoverVersion: db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'cutoverVersion'")?.value === "1" ? 1 : null,
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
-      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, allowedConnectionIds: parseJson(r.allowedConnectionIds, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      combos: db.all(`SELECT * FROM combos`).map((r) => ({ noLog: !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", r.id, "true"]), id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, allowedConnectionIds: parseJson(r.allowedConnectionIds, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
       connectionGroups: db.all(`SELECT * FROM connectionGroups`).map((r) => ({ id: r.id, name: r.name, description: r.description, createdAt: r.createdAt, updatedAt: r.updatedAt })),
       connectionGroupMembers: db.all(`SELECT * FROM connectionGroupMembers`).map((r) => ({ groupId: r.groupId, connectionId: r.connectionId, createdAt: r.createdAt })),
       modelAliases: {},
@@ -592,6 +592,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     if (!combo || !isObject(combo) || Array.isArray(combo) || !Array.isArray(combo.models)) {
       throw new Error("Combo import row is invalid");
     }
+    if (Object.hasOwn(combo, "noLog") && !isBoolean(combo.noLog)) throw new Error("Combo noLog must be a boolean");
     return { ...combo, members: normalizeComboMembers(combo.models, combo.members) };
   });
   const db = await getAdapter();
@@ -668,6 +669,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     db.run('DELETE FROM "sessionCaptureTurns"');
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
+    db.run(`DELETE FROM kv WHERE scope = ?`, ["comboNoLog"]);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
 
     // Settings — re-apply live MFA/password fields so import cannot strip 2FA.
@@ -778,6 +780,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       );
     }
     for (const c of comboWrites) {
+      if (c.noLog === true) db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)`, ["comboNoLog", c.id, "true"]);
       db.run(
         `INSERT OR REPLACE INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [c.id, c.name, c.kind || null, stringifyJson(c.models), c.members == null ? null : stringifyJson(c.members), c.invariant == null ? null : stringifyJson(c.invariant), c.capabilities == null ? null : stringifyJson(c.capabilities), stringifyJson(c.allowedConnectionIds || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
@@ -958,7 +961,7 @@ export async function exportSelectiveDb(selection, { includeSecrets = false } = 
       if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
       return transferPublic(c, { includeSecrets });
     }) : [],
-    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map(transferCombo).map((combo) => {
+    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ ...transferCombo(row), noLog: !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", row.id, "true"]) })).map((combo) => {
       const missing = (combo.allowedConnectionIds || []).filter((id) => !providers.includes(id));
       if (missing.length > 0) throw new Error(`Combo transfer "${combo.name}" requires selected provider connections: ${missing.join(", ")}`);
       return combo;
@@ -976,7 +979,7 @@ export async function getSelectiveTransferCatalog() {
 
 const TRANSFER_COMBO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
 const TRANSFER_COMBO_FIELDS = new Set([
-  "id", "name", "kind", "models", "members", "invariant", "capabilities", "allowedConnectionIds", "createdAt", "updatedAt"
+  "id", "name", "kind", "models", "members", "invariant", "capabilities", "allowedConnectionIds", "noLog", "createdAt", "updatedAt"
 ]);
 
 function transferCombo(row) {
@@ -1000,6 +1003,7 @@ function validateTransferCombo(row) {
     if (TRANSFER_BLOCKED_KEYS.has(key) || !TRANSFER_COMBO_FIELDS.has(key)) throw new Error(`Combo transfer row has unsupported field: ${key}`);
   }
   if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  if (Object.hasOwn(row, "noLog") && !isBoolean(row.noLog)) throw new Error("Combo transfer noLog must be a boolean");
   if (row.members != null && !Array.isArray(row.members)) throw new Error("Combo transfer members must be an array or null");
   if (row.invariant != null && !isTransferObject(row.invariant)) throw new Error("Combo transfer invariant must be an object or null");
   if (row.capabilities != null && !isTransferObject(row.capabilities)) throw new Error("Combo transfer capabilities must be an object or null");
@@ -1129,6 +1133,7 @@ export async function importSelectiveDb(bundle, selection) {
       invariant: combo.invariant ? stringifyJson(combo.invariant) : null,
       capabilities: capabilities === null ? null : stringifyJson(capabilities),
       allowedConnectionIds: stringifyJson(allowedConnectionIds),
+      noLog: Object.hasOwn(combo, "noLog") ? combo.noLog : !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", id, "true"]),
       createdAt: existingRow?.createdAt || combo.createdAt || new Date().toISOString(),
       updatedAt: combo.updatedAt || new Date().toISOString(),
     };
@@ -1150,6 +1155,8 @@ export async function importSelectiveDb(bundle, selection) {
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, capabilities=excluded.capabilities, allowedConnectionIds=excluded.allowedConnectionIds, updatedAt=excluded.updatedAt`,
         [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.capabilities, w.allowedConnectionIds, w.createdAt, w.updatedAt]
       );
+      db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, ["comboNoLog", w.id]);
+      if (w.noLog) db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)`, ["comboNoLog", w.id, "true"]);
       imported.combos.push(w.id);
     }
   });

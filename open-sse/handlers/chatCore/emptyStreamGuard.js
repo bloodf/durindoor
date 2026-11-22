@@ -172,7 +172,8 @@ export function createEmptyRetryStream({
   stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
   baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS,
   onAttemptDiscarded,
-  onExhausted
+  onExhausted,
+  onInBandError
 }) {
   const encoder = new TextEncoder();
   let currentReader = null;
@@ -319,6 +320,7 @@ export function createEmptyRetryStream({
                   try { parsed = JSON.parse(payload); }
                   catch { emit(line); }
                   if (parsed !== undefined) {
+                    if (hasErrorEnvelope(parsed)) onInBandError?.(parsed.error || parsed.response?.error, currentBody);
                     const decision = classifyEvent(parsed, meaningfulSeen);
                     if (decision.meaningful) meaningfulSeen = true;
                     if (decision.action === "hold") {
@@ -379,6 +381,7 @@ export function createEmptyRetryStream({
               continue;
             }
 
+            if (hasErrorEnvelope(parsed)) onInBandError?.(parsed.error || parsed.response?.error, currentBody);
             const decision = classifyEvent(parsed, meaningfulSeen);
             if (decision.meaningful) meaningfulSeen = true;
             if (decision.action === "hold") {

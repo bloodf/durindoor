@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 import { serveDirectory } from "../utils/staticServer.mjs";
 import { chromiumLaunchOptions } from "../utils/chromiumLaunch.mjs";
+import { buildV5EvidenceReport } from "../utils/v5EvidenceReport.mjs";
 
 /**
  * Browser evidence for V5 production surfaces.
@@ -146,7 +147,7 @@ describe.skipIf(!enabled)("v5 production route evidence", () => {
     await server?.close();
     if (evidenceReport) {
       mkdirSync(resolve(evidenceReport, ".."), { recursive: true });
-      writeFileSync(evidenceReport, `${JSON.stringify({ candidate: "31cfbb7d70c1", generatedAt: new Date().toISOString(), cases: evidenceRows }, null, 2)}\n`);
+      writeFileSync(evidenceReport, `${JSON.stringify(buildV5EvidenceReport(evidenceRows, root), null, 2)}\n`);
     }
   });
 

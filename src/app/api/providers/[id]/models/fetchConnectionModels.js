@@ -1,5 +1,11 @@
 import { isPromptQlSessionError, readPromptQlCredentials } from "open-sse/executors/promptql.js";
-import { antigravityForbiddenBackoff, recordAntigravityForbidden } from "open-sse/services/antigravityCatalog.js";
+import {
+  antigravityCatalogRouteFingerprint,
+  antigravityForbiddenBackoff,
+  buildAntigravityCapabilityHintsPsdPatch,
+  recordAntigravityForbidden,
+  reuseAntigravityCapabilityHints
+} from "open-sse/services/antigravityCatalog.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
@@ -14,6 +20,7 @@ import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
+import { updateProviderConnection } from "@/lib/localDb";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
 // Safety cap on paginated list endpoints (1000 models/page for Gemini).
@@ -156,6 +163,23 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   // egress contract once and reuse it for initial, refresh, and retry calls.
   const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
+  // Antigravity capability hints: when a prior probe for this connection,
+  // project, endpoint and route fingerprint is still fresh, reuse it instead
+  // of hitting Cloud Code again. Hints live in connection PSD under
+  // `antigravity_capability_hints` (nested, transfer-filtered, credential-free).
+  if (connection.provider === "antigravity" && connection.id) {
+    const reused = reuseAntigravityCapabilityHints(connection, { proxyOptions });
+    if (reused) {
+      return {
+        provider: connection.provider,
+        connectionId: connection.id,
+        models: reused.models,
+        source: reused.source,
+        routeFingerprint: reused.routeFingerprint
+      };
+    }
+  }
+
   if (connection.provider === "cerebrium") {
     const baseUrl = cerebriumBaseUrl(connection.providerSpecificData?.baseUrl);
     if (!baseUrl || !connection.apiKey) return { error: "Cerebrium requires a deployment /run URL and project API key", status: 400 };
@@ -247,6 +271,13 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   const requestBody = isFunction(config.buildBody) ? config.buildBody(token, connection) : config.body;
   if (requestBody && config.method === "POST") fetchOptions.body = JSON.stringify(requestBody);
 
+  // Antigravity applies the Hub User-Agent and a credential-free route
+  // fingerprint (proxy URL + UA) to every catalog probe so persisted hints
+  // stay bound to the egress contract that produced them.
+  const antigravityRouteFingerprint = connection.provider === "antigravity"
+    ? antigravityCatalogRouteFingerprint(proxyOptions, headers["User-Agent"] || headers["user-agent"])
+    : null;
+
   // A provider may declare how its probe outcome is classified, so a caller
   // can tell an auth rejection (the credential is the problem) from a
   // transient upstream failure (the catalog is temporarily unavailable).
@@ -302,7 +333,26 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     }
     models.push(...(parsed || []));
     pageToken = isFunction(config.nextPageToken) ? config.nextPageToken(data) : null;
-    if (!pageToken) return { models };
+    if (!pageToken) {
+      if (connection.provider === "antigravity" && connection.id) {
+        const psdPatch = buildAntigravityCapabilityHintsPsdPatch(connection, data, { proxyOptions });
+        if (psdPatch) {
+          try {
+            // Only touch capability hints in PSD. Deep-merge leaves tokens alone;
+            // transfer still filters the nested hints object out of exports.
+            await updateProviderConnection(connection.id, { providerSpecificData: psdPatch });
+          } catch {
+            // Persistence failure must not fail a successful live catalog answer.
+          }
+        }
+        const result = { models };
+        if (antigravityRouteFingerprint) {
+          result.routeFingerprint = antigravityRouteFingerprint;
+        }
+        return result;
+      }
+      return { models };
+    }
     // A repeated cursor would loop forever; a truncated list must not pass as complete.
     if (seenTokens.has(pageToken)) return { error: "Models list pagination cursor repeated", status: 502 };
     seenTokens.add(pageToken);

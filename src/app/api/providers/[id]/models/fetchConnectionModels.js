@@ -21,11 +21,13 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   if (!baseUrl) return { error: "Missing custom base URL", status: 400 };
   const token = connection.accessToken || connection.apiKey;
   // Stored URLs are API bases (including any /v1), just like native chat URLs.
-  const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
+  // Provider-node credentials must not follow an unvalidated redirect. The
+  // outbound guard validates the initial URL and forces manual redirect mode.
+  const res = await guardedProbeFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     method: "GET",
     headers: headersFor(token),
     cache: "no-store"
-  }, proxyOptions);
+  }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
   if (!res.ok) {
     const text = await res.text();
     return { error: sanitizeErrorMessage(text || res.statusText), status: res.status };

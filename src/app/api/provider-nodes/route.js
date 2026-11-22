@@ -8,6 +8,17 @@ import REGISTRY from "open-sse/providers/registry/index.js";
 import { generateId } from "@/shared/utils";
 
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
+import { isString } from "@/shared/utils/typeChecks.js";
+import { assertOutboundUrlAllowed } from "open-sse/utils/outboundUrlGuard.js";
+
+function isAllowedNodeBaseUrl(value) {
+  try {
+    assertOutboundUrlAllowed(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +54,9 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type, iconUrl } = body;
+    if (baseUrl !== undefined && baseUrl !== null && !isString(baseUrl)) {
+      return NextResponse.json({ error: "Invalid base URL" }, { status: 400 });
+    }
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -62,13 +76,15 @@ export async function POST(request) {
       if (!apiType || !["chat", "responses"].includes(apiType)) {
         return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
       }
+      const nodeBaseUrl = (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim();
+      if (!isAllowedNodeBaseUrl(nodeBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
 
       const node = await createProviderNode({
         id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
         type: "openai-compatible",
         prefix: prefix.trim(),
         apiType,
-        baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
+        baseUrl: nodeBaseUrl,
         name: name.trim(),
         ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
       });
@@ -81,6 +97,7 @@ export async function POST(request) {
       if (sanitizedBaseUrl.endsWith("/embeddings")) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
       }
+      if (!isAllowedNodeBaseUrl(sanitizedBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
 
       const node = await createProviderNode({
         id: `${CUSTOM_EMBEDDING_PREFIX}${generateId()}`,
@@ -103,6 +120,7 @@ export async function POST(request) {
       try { normalizedBaseUrl = normalizeSystemoneBaseUrl(baseUrl); } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      if (!isAllowedNodeBaseUrl(normalizedBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
       const node = await createProviderNode({
         id: `${SYSTEMONE_COMPATIBLE_PREFIX}${generateId()}`,
         type: "systemone-compatible",
@@ -121,6 +139,7 @@ export async function POST(request) {
       if (sanitizedBaseUrl.endsWith("/messages")) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
       }
+      if (!isAllowedNodeBaseUrl(sanitizedBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
 
       const node = await createProviderNode({
         id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,

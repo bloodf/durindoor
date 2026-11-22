@@ -121,7 +121,7 @@ export function createRoutingFixture(options = {}) {
   for (const key of state.keys) {
     add("PUT", `/api/keys/${key.id}`, (payload) => {
       const previous = state.keys.find((item) => item.id === key.id);
-      const policyFields = ["allowedModels", "modelAccess", "maxTokens", "maxCostUsd", "rpmLimit", "tpmLimit", "dailyInputTokenLimit", "dailyOutputTokenLimit", "monthlyTokenLimit", "monthlyInputTokenLimit", "monthlyOutputTokenLimit", "monthlyRequestLimit", "monthlyBudget"];
+      const policyFields = ["allowedModels", "modelAccess", "maxTokens", "maxCostUsd", "rpmLimit", "tpmLimit", "dailyInputTokenLimit", "dailyOutputTokenLimit", "dailyBudget", "weeklyTokenLimit", "weeklyInputTokenLimit", "weeklyOutputTokenLimit", "weeklyBudget", "monthlyTokenLimit", "monthlyInputTokenLimit", "monthlyOutputTokenLimit", "monthlyRequestLimit", "monthlyBudget"];
       const policyPatch = Object.fromEntries(policyFields.filter((field) => Object.hasOwn(payload, field)).map((field) => [field, payload[field]]));
       const next = { ...previous, ...payload, policy: { ...previous.policy, ...payload.policy, ...policyPatch } };
       state.keys = state.keys.map((item) => item.id === key.id ? next : item);

@@ -209,7 +209,18 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json({ connections: safeConnections });
+    // Keep the original response for callers that do not request filtering.
+    const params = new URL(request.url).searchParams;
+    const provider = params.get("provider") || "";
+    const query = (params.get("q") || "").trim().toLowerCase();
+    const paging = params.has("page") || params.has("pageSize");
+    if (!provider && !query && !paging) return NextResponse.json({ connections: safeConnections });
+    const filtered = safeConnections.filter((c) => (!provider || c.provider === provider) &&
+      (!query || [c.email, c.name, c.displayName, c.id].some((v) => String(v || "").toLowerCase().includes(query))));
+    const page = Math.max(1, Number.parseInt(params.get("page"), 10) || 1);
+    const pageSize = Math.min(200, Math.max(1, Number.parseInt(params.get("pageSize"), 10) || 100));
+    return NextResponse.json({ connections: paging ? filtered.slice((page - 1) * pageSize, page * pageSize) : filtered,
+      total: filtered.length, page: paging ? page : 1, pageSize: paging ? pageSize : filtered.length });
   } catch (error) {
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });

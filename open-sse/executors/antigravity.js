@@ -387,6 +387,13 @@ export class AntigravityExecutor extends BaseExecutor {
       return c;
     }));
 
+    // Native requests bypass the translator's response schema normalization.
+    if (body.request?.generationConfig?.responseSchema) {
+      body.request.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
+        structuredClone(body.request.generationConfig.responseSchema), { preserveNullable: true }
+      );
+    }
+
     // Sanitize tool schemas and function names before sending to Antigravity.
     let tools = body.request?.tools;
     const { alias: sanitizeFunctionName, aliases: toolNameMap } = createGeminiToolNameAliaser();

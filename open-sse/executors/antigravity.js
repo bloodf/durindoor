@@ -261,6 +261,36 @@ function buildIdeRequestId({ body, request, credentials, model, requestType }) {
   return `agent/${conversationId}/${Date.now()}/${trajectoryId}/${step}`;
 }
 
+// Port of upstream decolua/9router #5809. Antigravity refuses some requests (for example a system
+// prompt carrying fingerprinted third-party agent text) with a bare gRPC RESOURCE_EXHAUSTED: a fixed
+// message and no details. Real quota errors carry ErrorInfo/RetryInfo/reset metadata. The bare form
+// repeats for the same body, so it is request-scoped: retrying, refreshing quota or locking the
+// account cannot help.
+const ANTIGRAVITY_BARE_EXHAUSTED_MESSAGE = /^Resource has been exhausted \(e\.g\. check quota\)\.?$/;
+export const ANTIGRAVITY_PROMPT_REJECTED_MESSAGE = "Antigravity rejected this request (upstream 429 RESOURCE_EXHAUSTED with no quota details, so this is not your quota). " +
+"Antigravity refuses system prompts that carry certain third-party agent text. DurinDoor rewrites the known strings " +
+"(ANTIGRAVITY_PROMPT_REWRITES) and retries a refused prompt once with the system text moved into the first user turn, " +
+"but this request was still refused.";
+
+export function isAntigravityPromptRejection(status, bodyText) {
+  if (status !== HTTP_STATUS.RATE_LIMITED || !bodyText) return false;
+  let err;
+  try {err = JSON.parse(bodyText)?.error;} catch {return false;}
+  if (err?.status !== "RESOURCE_EXHAUSTED") return false;
+  if (!ANTIGRAVITY_BARE_EXHAUSTED_MESSAGE.test(String(err.message || "").trim())) return false;
+  return !(Array.isArray(err.details) && err.details.length > 0);
+}
+
+// Antigravity fingerprints systemInstruction only: the same text in a user turn passes. Returns a
+// copy of the envelope with the system text moved to the front of the contents, or null when there
+// is no system text to move.
+export function moveSystemInstructionToContents(body) {
+  const { systemInstruction, ...request } = body?.request || {};
+  const parts = (systemInstruction?.parts || []).filter((p) => isString(p?.text) && p.text.trim());
+  if (parts.length === 0) return null;
+  return { ...body, request: { ...request, contents: [{ role: "user", parts }, ...(request.contents || [])] } };
+}
+
 export class AntigravityExecutor extends BaseExecutor {
   constructor(provider = "antigravity") {
     super(provider, PROVIDERS[provider] || PROVIDERS.antigravity);
@@ -278,7 +308,26 @@ export class AntigravityExecutor extends BaseExecutor {
         transformedBody: null
       };
     }
-    return super.execute(options);
+    const result = await super.execute(options);
+    // A bare detail-free 429 means systemInstruction carries text Google fingerprints that the rewrite
+    // list does not cover yet. Retry once with that text moved into the first user turn. Image models
+    // never send systemInstruction, so there is nothing to move.
+    if (result?.response?.status === HTTP_STATUS.RATE_LIMITED && !isImageModel(options.model)) {
+      const moved = moveSystemInstructionToContents(options.body);
+      if (moved) {
+        let bodyText = "";
+        try {
+          bodyText = await readBoundedResponseText(result.response.clone(), { signal: options.signal });
+        } catch (error) {
+          if (error?.name === "AbortError" || options.signal?.aborted) throw error;
+        }
+        if (isAntigravityPromptRejection(result.response.status, bodyText)) {
+          options.log?.warn?.("ANTIGRAVITY", "System prompt rejected (fingerprinted text not in ANTIGRAVITY_PROMPT_REWRITES); retrying with it in the first user turn");
+          return super.execute({ ...options, body: moved });
+        }
+      }
+    }
+    return result;
   }
   buildUrl(model, stream, urlIndex = 0) {
     const baseUrls = this.getBaseUrls();
@@ -774,6 +823,9 @@ export class AntigravityExecutor extends BaseExecutor {
       // ignore parse errors → fall through to status/message based retry
     }
 
+    // The same body is refused the same way every time; retries only add backoff delay.
+    if (isAntigravityPromptRejection(response.status, bodyText)) return false;
+
     const errorMessage = this.extractErrorMessage(errorJson, bodyText);
 
     if (isAntigravityCapacityError(response.status, errorMessage)) return false;
@@ -905,6 +957,10 @@ export class AntigravityExecutor extends BaseExecutor {
    * @returns {{status: number, message: string, resetsAtMs?: number}}
    */
   parseError(response, bodyText) {
+    // Request-scoped (400): no account lock, no quota refresh; combos move to their next model.
+    if (isAntigravityPromptRejection(response.status, bodyText)) {
+      return { status: HTTP_STATUS.BAD_REQUEST, message: ANTIGRAVITY_PROMPT_REJECTED_MESSAGE };
+    }
     if (response.status !== 429) return super.parseError(response, bodyText);
 
     try {

@@ -1,6 +1,7 @@
 // OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft)
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { prepareImageOutputOptions } from "./outputFormat.js";
 
 const imageCfg = (id) => PROVIDER_MEDIA[id]?.imageConfig || {};
 const imageUrl = (id) => imageCfg(id).baseUrl;
@@ -22,6 +23,7 @@ function appendOpenAIImageOptions(full, body) {
 export default function createOpenAIAdapter(providerId) {
   const cfg = imageCfg(providerId);
   return {
+    reportOutputFormat: true,
     buildUrl: () => imageUrl(providerId),
     buildHeaders: (creds) => {
       const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
@@ -38,7 +40,9 @@ export default function createOpenAIAdapter(providerId) {
       if (aspect_ratio) full.aspect_ratio = aspect_ratio;
       if (resolution) full.resolution = resolution;
       if (background) full.background = background;
-      if (output_format) full.output_format = output_format;
+      // Providers with a native bodyFields whitelist keep their own contract.
+      if (!Array.isArray(cfg.bodyFields)) Object.assign(full, prepareImageOutputOptions(body));
+      else if (output_format) full.output_format = output_format;
       if (output_compression !== undefined) full.output_compression = output_compression;
       if (providerId === "openai" ? moderation !== undefined : moderation) full.moderation = moderation;
       if (providerId === "openai") appendOpenAIImageOptions(full, body);

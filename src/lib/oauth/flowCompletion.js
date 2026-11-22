@@ -68,6 +68,15 @@ flowClaim = null)
       error.code = "OAUTH_RECONNECT_TARGET_MISMATCH";
       throw error;
     }
+    // Never let a Microsoft sign-in for another tenant/object replace this account's tokens, even
+    // when both accounts share an email address.
+    if (provider === "copilot-m365-web" && (
+    !isString(providerSpecificData?.chathubPath) ||
+    providerSpecificData.chathubPath !== existing.providerSpecificData?.chathubPath)) {
+      const error = new Error("Reconnect target is a different Microsoft account");
+      error.code = "OAUTH_RECONNECT_TARGET_MISMATCH";
+      throw error;
+    }
     // Replace credentials + routing metadata and clear the reauth state. The
     // token fields here are explicit non-empty replacements, so the repo merge
     // overwrites the dead tokens rather than preserving them.

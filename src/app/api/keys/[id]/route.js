@@ -68,7 +68,10 @@ export async function PUT(request, { params }) {
       if (!trimmedName) return NextResponse.json({ error: "Name is required" }, { status: 400 });
       updateData.name = trimmedName;
     }
-    if (body.isActive !== undefined) updateData.isActive = body.isActive;
+    if ("isActive" in body) {
+      if (!isBoolean(body.isActive)) return NextResponse.json({ error: "isActive must be a boolean" }, { status: 400 });
+      updateData.isActive = body.isActive;
+    }
     if ("isAdmin" in body) {
       if (!isBoolean(body.isAdmin)) return NextResponse.json({ error: "isAdmin must be a boolean" }, { status: 400 });
       if (body.isAdmin !== (existing.isAdmin === true) && !(await isOperatorRequest(request))) {
@@ -76,7 +79,13 @@ export async function PUT(request, { params }) {
       }
       updateData.isAdmin = body.isAdmin;
     }
-    if (body.allowedCombos !== undefined) updateData.allowedCombos = body.allowedCombos;
+    if ("allowedCombos" in body) {
+      // Reject malformed scopes rather than clearing an existing restriction.
+      if (!Array.isArray(body.allowedCombos) || body.allowedCombos.some((value) => !isString(value))) {
+        return NextResponse.json({ error: "allowedCombos must be an array of strings" }, { status: 400 });
+      }
+      updateData.allowedCombos = body.allowedCombos;
+    }
     if ("dailyLimitTokens" in body) updateData.dailyLimitTokens = body.dailyLimitTokens;
     if ("expiresAt" in body) updateData.expiresAt = body.expiresAt;
     if ("providerConnectionIds" in body) {

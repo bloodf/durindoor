@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, normalizeAnthropicHeaders } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
@@ -734,10 +734,12 @@ export class DefaultExecutor extends BaseExecutor {
     (!credentials.accessToken || credentials.accessToken === "public");
     if (credentials.authType === "none" && isSyntheticPublicCredential) {
       if (stream) headers["Accept"] = "text/event-stream";
+      normalizeAnthropicHeaders(headers);
       return headers;
     }
     if (!credentials.apiKey && !credentials.accessToken) {
       if (stream) headers["Accept"] = "text/event-stream";
+      normalizeAnthropicHeaders(headers);
       return headers;
     }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
@@ -878,6 +880,7 @@ export class DefaultExecutor extends BaseExecutor {
       if (filtered) headers["Anthropic-Beta"] = [...new Set(filtered.split(","))].join(",");
     }
     if (stream) headers["Accept"] = "text/event-stream";
+    normalizeAnthropicHeaders(headers);
     return headers;
   }
 

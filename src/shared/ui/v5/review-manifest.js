@@ -1678,11 +1678,15 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-operations-quotapage--empty-providers",
     "states": [
       "EmptyProviders",
-      "Loading"
+      "Loading",
+      "AccountRows",
+      "QuotaFailure"
     ],
     "storyIds": [
       "v5-review-pages-operations-quotapage--empty-providers",
-      "v5-review-pages-operations-quotapage--loading"
+      "v5-review-pages-operations-quotapage--loading",
+      "v5-review-pages-operations-quotapage--account-rows",
+      "v5-review-pages-operations-quotapage--quota-failure"
     ],
     "pathname": "/dashboard/quota",
     "routePattern": "/dashboard/quota",
@@ -1749,14 +1753,16 @@ export const REVIEW_SURFACES = [
       "StartupEnvFromEnvironment",
       "StartupEnvFromFile",
       "PostgresCutoverTarget",
-      "StatusUnavailable"
+      "StatusUnavailable",
+      "CutoverConfirm"
     ],
     "storyIds": [
       "v5-review-pages-settings-databasesettingspage--default",
       "v5-review-pages-settings-databasesettingspage--startup-env-from-environment",
       "v5-review-pages-settings-databasesettingspage--startup-env-from-file",
       "v5-review-pages-settings-databasesettingspage--postgres-cutover-target",
-      "v5-review-pages-settings-databasesettingspage--status-unavailable"
+      "v5-review-pages-settings-databasesettingspage--status-unavailable",
+      "v5-review-pages-settings-databasesettingspage--cutover-confirm"
     ],
     "pathname": "/dashboard/settings/database",
     "routePattern": "/dashboard/settings/database",
@@ -2251,11 +2257,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-profile-pricingsettingspage--default",
     "states": [
       "Default",
-      "EmptyPricing"
+      "EmptyPricing",
+      "PricingLoadFailure"
     ],
     "storyIds": [
       "v5-review-pages-profile-pricingsettingspage--default",
-      "v5-review-pages-profile-pricingsettingspage--empty-pricing"
+      "v5-review-pages-profile-pricingsettingspage--empty-pricing",
+      "v5-review-pages-profile-pricingsettingspage--pricing-load-failure"
     ],
     "pathname": "/dashboard/settings/pricing",
     "routePattern": "/dashboard/settings/pricing",

@@ -21,6 +21,7 @@ import { isBrowser, isUndefined, isObject } from "../../../../shared/utils/typeC
 import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
 import useSettingsStore from "@/store/settingsStore";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const DATA_RETENTION_PRESETS = [7, 15, 30, 60, 90];
 const MODEL_AUTO_SYNC_INTERVALS = [
@@ -60,6 +61,7 @@ function getLocaleFromCookie() {
 }
 
 export default function ProfilePage() {
+  const uiV5 = useUiV5();
   const { theme, setTheme } = useTheme();
   const [locale, setLocale] = useState("en");
   const [activeTab, setActiveTab] = useState("general");
@@ -906,6 +908,11 @@ export default function ProfilePage() {
     { value: "oidc", label: "OIDC only", hint: "Require OIDC for dashboard access." },
     { value: "both", label: "Both", hint: "Allow either password or OIDC." },
   ];
+
+  if (!settingsReady && uiV5) return <main aria-label="Profile settings" className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6">
+    <h1 className="text-xl font-semibold tracking-tight text-dd-text">Settings</h1>
+    <Card padding={false}><CardContent>{loading ? <p role="status" className="text-[13px] text-dd-muted">Loading settings…</p> : <div role="alert" className="flex flex-wrap items-center justify-between gap-3"><p className="text-[13px] text-dd-danger">{settingsError}</p><Button icon="refresh" variant="secondary" onClick={loadSettings}>Retry settings</Button></div>}</CardContent></Card>
+  </main>;
 
   if (!settingsReady) return <main aria-label="Profile settings" className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6">
     <h1 className="text-2xl font-semibold">Settings</h1>

@@ -43,12 +43,12 @@ describe("verifySecondFactor", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("accepts a valid TOTP code without consuming any backup code", async () => {
+  it("accepts a valid TOTP code, records its counter and does not consume a backup code", async () => {
     mocks.getSettings.mockResolvedValue({ mfaEnabled: true, mfaSecret: secret, mfaBackupCodes: ["h1", "h2"] });
     const code = generateTotpCode(secret, totpCounter());
     const result = await verifySecondFactor(code);
     expect(result).toEqual({ ok: true, method: "totp", backupCodesRemaining: 2 });
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ mfaLastTotpCounter: totpCounter() });
   });
 
   it("rejects an invalid 6-digit TOTP code", async () => {
@@ -99,6 +99,6 @@ describe("isMfaEnabledNow / disableMfa", () => {
 
   it("wipes every mfa field", async () => {
     await disableMfa();
-    expect(mocks.updateSettings).toHaveBeenCalledWith({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [] });
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [], mfaLastTotpCounter: null });
   });
 });

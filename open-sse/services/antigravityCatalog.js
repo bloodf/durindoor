@@ -28,7 +28,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 import { normalizeCloudCodeProjectId } from "./usage/shared.js";
 
@@ -302,7 +302,7 @@ function coerceTime(value) {
     const ms = value.getTime();
     return Number.isFinite(ms) ? ms : null;
   }
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (isNumber(value) && Number.isFinite(value)) return value;
   return parsePersistedTime(value);
 }
 

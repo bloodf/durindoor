@@ -345,10 +345,11 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
             // Persistence failure must not fail a successful live catalog answer.
           }
         }
-        return {
-          models,
-          ...(antigravityRouteFingerprint ? { routeFingerprint: antigravityRouteFingerprint } : {})
-        };
+        const result = { models };
+        if (antigravityRouteFingerprint) {
+          result.routeFingerprint = antigravityRouteFingerprint;
+        }
+        return result;
       }
       return { models };
     }

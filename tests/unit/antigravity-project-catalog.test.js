@@ -237,6 +237,16 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(reused.body.source).toBe("persisted_capability_hints");
     expect(reused.body.models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
 
+    // Without reusable hints, a later transient failure must not answer with
+    // an empty catalog that would replace the catalog the dashboard already knows.
+    await db.updateProviderConnection(connection.id, {
+      providerSpecificData: { antigravity_capability_hints: null }
+    });
+    providerFetch.mockImplementation(async () => new Response("upstream busy", { status: 503 }));
+    const failed = await getModels(connection.id);
+    expect(failed.response.status).toBe(503);
+    expect(failed.body.models).toBeUndefined();
+
     // The auto-sync path keeps the previous catalog on a failed attempt.
     const { saveSyncedModelCatalog, getSyncedModelCatalog } = db;
     await saveSyncedModelCatalog("antigravity", {

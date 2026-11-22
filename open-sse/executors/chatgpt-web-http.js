@@ -36,7 +36,7 @@ import {
   buildNextAuthSessionCookie,
   mergeRefreshedCookie,
 } from "../../src/lib/providers/webCookieAuth.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -2095,6 +2095,12 @@ async function registerWebSocket(ctx) {
   return null;
 }
 
+/**
+ * Wait on the celsius WebSocket for an async image_gen asset pointer.
+ * Non-object frames (e.g. JSON `null` or primitives) and per-frame handler
+ * errors are skipped so a bad frame cannot escape `ws.onmessage` or abort
+ * the wait.
+ */
 async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) {
   return new Promise((resolve) => {
     const found = new Map();
@@ -2142,78 +2148,88 @@ async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) 
     ws.onmessage = (event) => {
       gotAnyMessage = true;
       let payload;
-      const raw = isString(event.data) ? event.data : event.data.toString();
       try {
+        const raw = isString(event?.data) ? event.data : event?.data?.toString?.();
         payload = JSON.parse(raw);
       } catch {
         console.warn("[chatgpt-web] WebSocket event JSON parse failed");
         return;
       }
-      // chatgpt.com's celsius WS frames look like:
-      //   { type: "conversation-update",
-      //     payload: { conversation_id: "...",
-      //                update_content: { message: { ... }, ... } } }
-      // Older deployments wrapped the conversation event directly as { data }.
-      const obj = payload;
-      const candidates = [];
-      const innerPayload = obj.payload;
-      const updateContent = innerPayload?.update_content;
-      if (updateContent?.message) {
-        candidates.push({
-          message: updateContent.message,
-          conversation_id: innerPayload?.conversation_id,
-        });
+      if (!isRecord(payload)) {
+        return;
       }
-      // OmniRoute #7357: some deployments deliver the completion via update_content.messages[]
-      // (plural array of { message: {...} } wrappers), not the singular field above.
-      for (const entry of Array.isArray(updateContent?.messages) ? updateContent.messages : []) {
-        const wrapped = entry?.message;
-        if (wrapped) {
+      try {
+        // chatgpt.com's celsius WS frames look like:
+        //   { type: "conversation-update",
+        //     payload: { conversation_id: "...",
+        //                update_content: { message: { ... }, ... } } }
+        // Older deployments wrapped the conversation event directly as { data }.
+        const obj = payload;
+        const candidates = [];
+        const innerPayload = obj.payload;
+        const updateContent = innerPayload?.update_content;
+        if (updateContent?.message) {
           candidates.push({
-            message: wrapped,
+            message: updateContent.message,
             conversation_id: innerPayload?.conversation_id,
           });
         }
-      }
-      if (innerPayload?.message) {
-        candidates.push({
-          message: innerPayload.message,
-          conversation_id: innerPayload.conversation_id,
-        });
-      }
-      if (obj.data?.message) {
-        candidates.push(obj.data);
-      }
+        // OmniRoute #7357: some deployments deliver the completion via update_content.messages[]
+        // (plural array of { message: {...} } wrappers), not the singular field above.
+        for (const entry of Array.isArray(updateContent?.messages) ? updateContent.messages : []) {
+          const wrapped = entry?.message;
+          if (wrapped) {
+            candidates.push({
+              message: wrapped,
+              conversation_id: innerPayload?.conversation_id,
+            });
+          }
+        }
+        if (innerPayload?.message) {
+          candidates.push({
+            message: innerPayload.message,
+            conversation_id: innerPayload.conversation_id,
+          });
+        }
+        if (obj.data?.message) {
+          candidates.push(obj.data);
+        }
 
-      for (const data of candidates) {
-        if (data?.conversation_id && data.conversation_id !== conversationId) continue;
-        const m = data?.message;
-        // The async image_gen result arrives as a TOOL-role message
-        // ({"author":{"role":"tool","name":"t2uay3k.sj1i4kz"}}), so we
-        // accept tool messages here too — extractImagePointers does the
-        // actual content_type filtering.
-        if (Array.isArray(m?.content?.parts)) {
-          for (const ptr of extractImagePointers(m.content?.parts ?? [])) {
-            const existing = found.get(ptr);
-            found.set(
-              ptr,
-              existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
-            );
+        for (const data of candidates) {
+          if (data?.conversation_id && data.conversation_id !== conversationId) continue;
+          const m = data?.message;
+          // The async image_gen result arrives as a TOOL-role message
+          // ({"author":{"role":"tool","name":"t2uay3k.sj1i4kz"}}), so we
+          // accept tool messages here too — extractImagePointers does the
+          // actual content_type filtering.
+          if (Array.isArray(m?.content?.parts)) {
+            for (const ptr of extractImagePointers(m.content?.parts ?? [])) {
+              const existing = found.get(ptr);
+              found.set(
+                ptr,
+                existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
+              );
+            }
+          }
+          if (m?.metadata && isObject(m.metadata)) {
+            const md = m.metadata;
+            const ptr = md.asset_pointer ?? md.image_asset_pointer;
+            if (isString(ptr)) {
+              const existing = found.get(ptr);
+              found.set(
+                ptr,
+                existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
+              );
+            }
           }
         }
-        if (m?.metadata && isObject(m.metadata)) {
-          const md = m.metadata;
-          const ptr = md.asset_pointer ?? md.image_asset_pointer;
-          if (isString(ptr)) {
-            const existing = found.get(ptr);
-            found.set(
-              ptr,
-              existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
-            );
-          }
-        }
+        if (found.size > 0) finish();
+      } catch (err) {
+        ctx?.log?.debug?.(
+          "CGPT-WEB",
+          `WebSocket frame handling failed: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
-      if (found.size > 0) finish();
     };
   });
 }
@@ -2819,3 +2835,4 @@ export function __resetChatGptWebCachesForTesting() {
 }
 
 export const __derivePublicBaseUrlForTesting = derivePublicBaseUrl;
+export const __waitForImageViaWebSocketForTesting = waitForImageViaWebSocket;

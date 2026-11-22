@@ -342,11 +342,12 @@ async function canAccessPublicLlmApi(request) {
  * @param {Request} request
  * @returns {Promise<boolean>}
  */
-export async function canAccessLocalOnlyRoute(request) {
+export async function canAccessLocalOnlyRoute(request, routePath = decodePathname(request.nextUrl.pathname)) {
+  if (routePath === null) return false;
   if (await hasValidCliToken(request)) return true;
   if (!isLocalRequest(request)) return false;
 
-  const pathname = request.nextUrl.pathname;
+  const pathname = routePath;
   const method = String(request.method || "GET").toUpperCase();
   // Loopback identity is not browser authentication. Require the exact request
   // Origin for every unsafe mutation; machine-bound CLI callers passed above.
@@ -664,7 +665,7 @@ export async function proxy(request) {
   // and must use the same dashboard JWT / CLI auth as the other dashboard APIs.
   const isMcpControlPath = routePath === "/api/mcp/control" || routePath.startsWith("/api/mcp/control/");
   if (!isMcpControlPath && LOCAL_ONLY_PATHS.some((p) => routePath.startsWith(p))) {
-    if (!(await canAccessLocalOnlyRoute(request))) {
+    if (!(await canAccessLocalOnlyRoute(request, routePath))) {
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
     }
   }

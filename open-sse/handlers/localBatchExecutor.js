@@ -1,13 +1,13 @@
 // Default batch executor: re-dispatch each JSONL row through the real route
 // handlers (handleChat / handleEmbeddings) via an internal Request. Auth
-// headers captured at batch-creation time are forwarded so per-key policy and
-// usage accounting still apply — batch rows never bypass handler auth.
+// headers captured at batch creation are forwarded. Stored-key batches also
+// retain their admitted identity and recheck it for every row.
 //
 // ponytail: in-process self-dispatch; upgrade path = provider-native batch.
 
 import { initTranslators } from "open-sse/translator/index.js";
 import { getApiKeyById } from "@/lib/localDb";
-import { bindBatchRequestKey, getAdmittedRequestKeyId } from "@/sse/services/auth.js";
+import { bindBatchRequestKey, getAdmittedRequestKeyId } from "@/sse/services/batchKeyIdentity.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 
 let initialized = false;
@@ -19,8 +19,8 @@ async function ensureInit() {
 }
 
 /**
- * Build an executor bound to the captured auth headers of the creating request.
- * @param {Headers|object} authHeaders - headers to forward on each row request
+ * Build an executor bound to the creating request's admitted identity and headers.
+ * @param {Request|Headers|object} authSource - request or headers to forward
  * @returns {(row:{url,method,body,custom_id}) => Promise<{status_code,body}>}
  */
 export function makeDefaultExecutor(authSource) {

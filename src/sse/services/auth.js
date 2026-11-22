@@ -43,20 +43,9 @@ import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
 import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
+import { getBatchRequestKeyId, rememberAdmittedRequestKey } from "./batchKeyIdentity.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
-const admittedRequestKeys = new WeakMap();
-const batchRequestKeys = new WeakMap();
-
-/** Return the stored identity admitted for this exact request, if any. */
-export function getAdmittedRequestKeyId(request) {
-  return admittedRequestKeys.get(request) || null;
-}
-
-/** Bind an internal batch row to its admitted stored identity, never a header. */
-export function bindBatchRequestKey(request, keyId) {
-  batchRequestKeys.set(request, keyId);
-}
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 const CODEX_PERMANENT_OAUTH_ERRORS = [
 "invalidated oauth token",
@@ -1889,7 +1878,7 @@ export function extractApiKeyCandidates(request) {
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
   const billingEpoch = await captureRequestBillingEpoch(request);
-  const batchKeyId = batchRequestKeys.get(request);
+  const batchKeyId = getBatchRequestKeyId(request);
   if (batchKeyId) {
     const record = await getApiKeyById(batchKeyId);
     const valid = record?.isActive === true && !isApiKeyExpired(record.expiresAt, now);
@@ -1902,7 +1891,7 @@ export async function resolveClientApiKey(request, { required = false, now = Dat
   for (const apiKey of candidates) {
     const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
     if (auth.ok) {
-      if (auth.apiKeyId) admittedRequestKeys.set(request, auth.apiKeyId);
+      if (auth.apiKeyId) rememberAdmittedRequestKey(request, auth.apiKeyId);
       return { apiKey, auth: { ...auth, billingEpoch } };
     }
   }

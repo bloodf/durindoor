@@ -16,6 +16,7 @@ import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
 import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
 import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
+import { isPromptQlSessionError, promptQlSessionRequest, readPromptQlCredentials, readPromptQlExchange } from "open-sse/executors/promptql.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -245,6 +246,10 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
     ? cfg.baseUrl.replace("{accountId}", normalizeAccountIdPlaceholder(provider, providerSpecificData?.accountId))
     : cfg.baseUrl;
 
+  if (provider === "promptql") {
+    const { cookie, projectId } = readPromptQlCredentials({ apiKey, providerSpecificData });
+    return { url: cfg.validateUrl, options: promptQlSessionRequest(cookie, projectId, AbortSignal.timeout(8000)), accepts: "promptql-session", projectId };
+  }
   const headers = buildProviderProbeHeaders(cfg, apiKey);
   if (cfg.noAuth && !apiKey) return { url: cfg.validateUrl || baseUrl, options: { headers }, accepts: "always" };
 
@@ -414,6 +419,9 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };
+  if (probe.accepts === "promptql-session" && !probe.options.headers.cookie) {
+    return { valid: false, status: 401, error: "Missing PromptQL playground session cookie" };
+  }
 
   // SSRF guard (#6542): provider validation hits a caller-controllable baseUrl
   // (e.g. OpenAI-compatible `${baseUrl}/models` + the chat fallback). Validate
@@ -455,6 +463,15 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
       };
     }
     if (!probe.fallback) return temporaryFailure();
+  }
+  if (probe.accepts === "promptql-session") {
+    if (isPromptQlSessionError(res.status) || res.status === 400) {
+      return { valid: false, status: 401, error: "PromptQL session expired or invalid. Re-import your playground session." };
+    }
+    if (res.ok) {
+      try { await readPromptQlExchange(res, probe.projectId); }
+      catch { return { valid: false, status: 401, error: "PromptQL session did not resolve playground credentials." }; }
+    }
   }
   if (probe.accepts === "non-auth-failure") {
     if (res.status >= 500) return temporaryFailure(res.status);

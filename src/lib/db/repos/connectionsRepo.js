@@ -16,18 +16,10 @@ import {
   isEncryptedBlob } from
 "@/lib/crypto/columnCrypto.js";
 
-// SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
-// inside providerConnections.data. All other fields stay plaintext.
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
-export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
-"accessToken",
-"refreshToken",
-"apiKey", "managementApiKey",
-"idToken",
-"firecrawlHeaders",
-// STS session token for temporary AWS keys (Bedrock static-key mode).
-"sessionToken"]
-);
+import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
+
+export { SENSITIVE_CONNECTION_FIELDS };
 
 const OPTIONAL_FIELDS = [
 "displayName", "email", "globalPriority", "defaultModel",

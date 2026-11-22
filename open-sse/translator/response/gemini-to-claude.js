@@ -47,6 +47,20 @@ export function geminiToClaudeResponse(chunk, state) {
       continue;
     }
     if (part.functionCall) {
+      // A later chunk can re-send a growing snapshot of a call that was already
+      // emitted, with the same id. The first occurrence is kept; a second tool_use
+      // with that id would run the call twice. Calls without an id stay unchanged.
+      const providerCallId = part.functionCall.id;
+      if (isString(providerCallId) && providerCallId.length > 0) {
+        const emittedIds = (state.emittedToolUseIds ??= new Set());
+        if (emittedIds.has(providerCallId)) {
+          if (inlineSignature) {
+            storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, providerCallId), inlineSignature);
+          }
+          continue;
+        }
+        emittedIds.add(providerCallId);
+      }
       if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
       const call = part.functionCall;

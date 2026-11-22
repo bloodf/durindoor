@@ -78,7 +78,12 @@ function canonicalizeRuntimePaths() {
 }
 
 function isMitmMutation(req) {
-  const pathname = new URL(req.url || "/", "http://localhost").pathname;
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url || "/", "http://localhost").pathname);
+  } catch {
+    return false;
+  }
   const method = String(req.method || "GET").toUpperCase();
   return ((pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) && method !== "GET") ||
   (pathname === REALTIME_NATIVE_CONTROL_PATH && method === "POST");

@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 379 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 386 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -56,6 +56,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | BigModel | `bigmodel` | apikey | 2 | [site](https://open.bigmodel.cn) |
 | Black Forest Labs | `black-forest-labs` | apikey | 7 | [site](https://blackforestlabs.ai) |
 | Blackbox AI | `blackbox` | apikey | 10 | [site](https://blackbox.ai) |
+| Blackbox Web | `blackbox-web` | cookie | 6 | [site](https://app.blackbox.ai) |
 | BluesMinds | `bluesminds` | apikey | 22 | [site](https://www.bluesminds.com) |
 | Brave Search | `brave-search` | apikey | 0 | [site](https://brave.com/search/api) |
 | BytePlus ModelArk | `byteplus` | freeTier | 7 | [site](https://console.byteplus.com/ark) |
@@ -94,6 +95,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | ComfyUI | `comfyui` | apikey | 2 | [site](https://github.com/comfyanonymous/ComfyUI) |
 | Command Code | `command-code` | apikey | 18 | [site](https://commandcode.ai) |
 | Command Code | `commandcode` | apikey | 28 | [site](https://commandcode.ai) |
+| Conol Web | `conol-web` | cookie | 28 | [site](https://conol.ai) |
 | Context7 | `context7` | apikey | 0 | [site](https://context7.com) |
 | Microsoft 365 Copilot Web | `copilot-m365-web` | cookie | 1 | [site](https://m365.cloud.microsoft/chat) |
 | Copilot Web | `copilot-web` | cookie | 3 | [site](https://copilot.microsoft.com) |
@@ -262,7 +264,9 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Nimble | `nimble` | apikey | 0 | [site](https://docs.nimbleway.com/nimble-sdk/web-tools/search) |
 | NLP Cloud | `nlpcloud` | apikey | 6 | [site](https://nlpcloud.com) |
 | Nomic | `nomic` | hidden | 0 | [site](https://nomic.ai) |
+| Notion AI Web | `notion-web` | cookie | 1 | [site](https://www.notion.so) |
 | NoTrack | `notrack` | apikey | 1 | [site](https://notrack.ai) |
+| NoTrack Web | `notrack-web` | cookie | 1 | [site](https://notrack.ai) |
 | Nous Research | `nous-research` | apikey | 2 | [site](https://portal.nousresearch.com/help) |
 | Novita AI | `novita` | apikey | 4 | [site](https://novita.ai) |
 | nScale | `nscale` | apikey | 6 | [site](https://nscale.com) |
@@ -301,6 +305,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Poixe AI | `poixe-ai` | apikey | 0 |  |
 | Pollinations | `pollinations` | apikey | 31 | [site](https://pollinations.ai) |
 | Poolside | `poolside` | apikey | 3 | [site](https://poolside.ai) |
+| PromptQL (Experimental) | `promptql` | cookie | 6 | [site](https://prompt.ql.app) |
 | PublicAI | `publicai` | apikey | 7 |  |
 | Puter | `puter` | apikey | 34 | [site](https://puter.com) |
 | Baidu Qianfan | `qianfan` | apikey | 3 | [site](https://cloud.baidu.com/product/wenxinworkshop) |
@@ -343,8 +348,10 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | TabiToken | `tabitoken` | apikey | 4 | [site](https://tabitoken.com) |
 | Tavily | `tavily` | apikey | 0 | [site](https://tavily.com) |
 | Tencent Hunyuan | `tencent` | freeTier | 6 | [site](https://hunyuan.tencent.com) |
+| Tencent AI Studio Web | `tencent-aistudio-web` | cookie | 3 | [site](https://aistudio.tencent.ai) |
 | TheB.AI | `thebai` | apikey | 0 | [site](https://theb.ai) |
 | The Old LLM | `theoldllm` | none | 26 | [site](https://theoldllm.vercel.app) |
+| TinyCMS Web | `tinycms-web` | apikey | 22 | [site](https://site.tinycms.xyz) |
 | TinyFish Fetch | `tinyfish` | apikey | 0 | [site](https://docs.tinyfish.ai/fetch-api) |
 | Together AI | `together` | apikey | 83 | [site](https://www.together.ai) |
 | Token Kiosk | `token-kiosk` | apikey | 0 |  |

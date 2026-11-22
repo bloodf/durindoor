@@ -13,6 +13,9 @@ import { validateClaudeWebSession } from "open-sse/executors/claude-web.js";
 import { validateGeminiWebSession } from "open-sse/executors/gemini-web.js";
 import { validateMaxaiSession } from "open-sse/executors/maxai.js";
 import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
+import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
+import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
+import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -43,6 +46,11 @@ const SPECIALTY_VALIDATORS = {
   "gemini-web": validateGeminiWebSession,
   maxai: ({ apiKey, fetcher, providerSpecificData }) => validateMaxaiSession({ apiKey, providerSpecificData }, fetcher),
   lmarena: ({ apiKey, fetcher, providerSpecificData }) => validateLmarenaSession({ apiKey, providerSpecificData }, fetcher),
+  // Read-only checks: workspace and model list, the user info GET, and the signed-challenge GET.
+  // None of them reaches a chat endpoint, so no conversation is created on the account.
+  "notion-web": ({ apiKey, fetcher, providerSpecificData }) => validateNotionWebSession({ apiKey, providerSpecificData, fetcher }),
+  "tencent-aistudio-web": ({ apiKey, fetcher }) => validateTencentAIStudioSession({ apiKey, fetcher }),
+  "tinycms-web": ({ apiKey, fetcher, providerSpecificData }) => validateTinyCmsSession({ apiKey, providerSpecificData, fetcher }),
 };
 
 const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";

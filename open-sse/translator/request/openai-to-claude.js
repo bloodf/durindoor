@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";

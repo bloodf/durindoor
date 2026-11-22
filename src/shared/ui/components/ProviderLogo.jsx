@@ -42,6 +42,7 @@ const ALIASES = {
   "gemini-web": "gemini",
   "zai-web": "glm",
   "cloudflare-playground": "cloudflare-ai",
+  "tencent-aistudio-web": "tencent",
 };
 
 // Local asset availability; provider metadata is not imported (it starts runtime services).

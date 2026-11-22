@@ -1403,7 +1403,14 @@ export const REVIEW_SURFACES = [
       "G4fGeminiConnection",
       "G4fNvidiaConnection",
       "G4fOllamaConnection",
-      "G4fPollinationsConnection"
+      "G4fPollinationsConnection",
+      "PromptqlConnection",
+      "NotionWebConnection",
+      "NotrackWebConnection",
+      "TencentAistudioWebConnection",
+      "TinycmsWebConnection",
+      "BlackboxWebConnection",
+      "ConolWebConnection"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerdetailpage--open-ai-detail",
@@ -1429,7 +1436,14 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-providers-providerdetailpage--g-4-f-gemini-connection",
       "v5-review-pages-providers-providerdetailpage--g-4-f-nvidia-connection",
       "v5-review-pages-providers-providerdetailpage--g-4-f-ollama-connection",
-      "v5-review-pages-providers-providerdetailpage--g-4-f-pollinations-connection"
+      "v5-review-pages-providers-providerdetailpage--g-4-f-pollinations-connection",
+      "v5-review-pages-providers-providerdetailpage--promptql-connection",
+      "v5-review-pages-providers-providerdetailpage--notion-web-connection",
+      "v5-review-pages-providers-providerdetailpage--notrack-web-connection",
+      "v5-review-pages-providers-providerdetailpage--tencent-aistudio-web-connection",
+      "v5-review-pages-providers-providerdetailpage--tinycms-web-connection",
+      "v5-review-pages-providers-providerdetailpage--blackbox-web-connection",
+      "v5-review-pages-providers-providerdetailpage--conol-web-connection"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",

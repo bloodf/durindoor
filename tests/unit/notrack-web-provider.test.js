@@ -4,10 +4,9 @@ import "../translator/registerAll.js";
 const mock = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("@/lib/usageDb.js", () => ({ appendRequestLog: vi.fn(async () => {}), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
-vi.mock("../../open-sse/providers/registry/index.js", async (original) => { const o = await original(); const { default: entry } = await import("../../open-sse/providers/private/notrack-web.js"); return { ...o, default: [...o.default, entry] }; });
 vi.mock("../../open-sse/executors/index.js", async (original) => { const o = await original(); const { NotrackWebExecutor } = await import("../../open-sse/executors/notrack-web.js"); const executor = new NotrackWebExecutor(mock.fetch); return { ...o, getExecutor: (id) => id === "notrack-web" || id === "ntw" ? executor : o.getExecutor(id), hasSpecializedExecutor: (id) => id === "notrack-web" || o.hasSpecializedExecutor(id) }; });
 
-import entry, { notrackWebCookieProfile } from "../../open-sse/providers/private/notrack-web.js";
+import entry, { notrackWebCookieProfile } from "../../open-sse/providers/registry/notrack-web.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
 import { hasNotrackSession } from "../../open-sse/executors/notrack-web.js";

@@ -34,6 +34,10 @@ const MODELS = [
  * Cookie header, cURL or HAR carries nothing to import; the extension reads the
  * localStorage key instead. The validation probe is the signed-challenge endpoint,
  * which needs the `uuid` header and answers 200 with a challenge for a live device.
+ *
+ * The same profile is the provider's `cookieImport` block: the dashboard import and
+ * the extension send the value as a named localStorage item, and the import API
+ * stores it in `providerSpecificData["app-config-uuid"]` (see `apiKeyOptionalWith`).
  */
 export const TINYCMS_WEB_CREDENTIAL_PROFILE = Object.freeze({
   origin: "https://site.tinycms.xyz",
@@ -52,10 +56,14 @@ export const TINYCMS_WEB_CREDENTIAL_PROFILE = Object.freeze({
 export default {
   id: "tinycms-web",
   alias: "tcw",
+  priority: 258,
   display: { name: "TinyCMS Web", icon: "hub", color: "#5B5BD6", textIcon: "TC", website: "https://site.tinycms.xyz" },
   category: "apikey",
   authType: "apikey",
   authHint: "Use the device UUID beginning with R from site.tinycms.xyz (localStorage app-config-uuid).",
+  // An imported device UUID is stored here instead of in the API-key field.
+  apiKeyOptionalWith: "app-config-uuid",
+  cookieImport: { ...TINYCMS_WEB_CREDENTIAL_PROFILE, extensionCapture: true },
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://gov.freegpt.win/api/openai/oneapi/v1/chat/completions",

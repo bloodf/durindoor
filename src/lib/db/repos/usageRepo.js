@@ -1714,6 +1714,10 @@ export async function getUsageStats(period = "all", opts = {}) {
     for (const entry of Object.values(stats[bucket])) Object.assign(entry, deriveLatencyRates(entry));
   }
 
+  // Prompt tokens are cache-inclusive, so cached / prompt is the hit ratio (port of 9router #1900).
+  stats.cacheHitRatio = stats.totalPromptTokens > 0
+    ? Math.min(1, stats.totalCachedTokens / stats.totalPromptTokens) : 0;
+
   // Aggregate Token Saver telemetry for the dashboard (port of 9router #2562).
   stats.tokenSaver = await getTokenSaverStats(period);
   return stats;

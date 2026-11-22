@@ -40,7 +40,8 @@ export function extractThinking(body, model = null, provider = null, modelCapabi
     return { mode: "level", level: e };
   }
 
-  const effort = body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
+  // camelCase `reasoningEffort` (OpenCode provider options, port of 9router #1936) wins over snake_case.
+  const effort = body.reasoningEffort ?? body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
 
   /**
    * Explicit Claude disable/budget intent wins over provider-injected effort.

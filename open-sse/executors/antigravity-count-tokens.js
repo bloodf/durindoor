@@ -2,6 +2,7 @@ import { AntigravityExecutor } from "./antigravity.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { translateRequest } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
+import { isRecord } from "../../src/shared/utils/typeChecks.js";
 
 const executor = new AntigravityExecutor();
 
@@ -16,7 +17,7 @@ export async function countAntigravityTokens({ body, model, credentials, signal 
   delete request.toolConfig;
   delete request.labels;
   const sanitize = (schema) => {
-    if (!schema || typeof schema !== "object") return;
+    if (!isRecord(schema)) return;
     for (const key of ["title", "$schema", "additionalProperties", "default", "examples"]) delete schema[key];
     for (const value of Object.values(schema)) {
       if (Array.isArray(value)) value.forEach(sanitize);

@@ -68,6 +68,7 @@ it("identifies each account whose bulk status update failed", async () => {
   await click(host.querySelector('[aria-label="Select Alpha"]'));
   await click(host.querySelector('[aria-label="Select Beta"]'));
   await click(button("Off Selected"));
+  await click([...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Confirm"));
   expect(host.textContent).toContain("Beta");
   expect(host.textContent).toContain("HTTP 500");
 });
@@ -97,6 +98,7 @@ it("requires confirmation before deleting and identifies the failed account", as
 it("reports which accounts failed the all-account proxy assignment", async () => {
   await click(button("Apply Proxy"));
   await click([...document.querySelectorAll("button")].find((node) => node.textContent.includes("None (unbind all)")));
+  await click([...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Confirm"));
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Beta (b): HTTP 500");
   expect(fetch.mock.calls.filter(([url, options]) => String(url).startsWith("/api/providers/") && options?.method === "PUT")).toHaveLength(2);
 });
@@ -112,6 +114,7 @@ it("does not restore old-provider selections after a pending status update", asy
   });
   await click(host.querySelector('[aria-label="Select Alpha"]'));
   await click(button("Off Selected"));
+  await click([...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Confirm"));
   route.id = "siliconflow";
   await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
   await act(async () => { finish({ ok: false, status: 500 }); await Promise.resolve(); });
@@ -127,6 +130,7 @@ it("preserves selection changes made during a pending status update", async () =
     ? new Promise((resolve) => { finish = resolve; }) : previous(url, options));
   await click(host.querySelector('[aria-label="Select Alpha"]'));
   await click(button("Off Selected"));
+  await click([...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Confirm"));
   await click(host.querySelector('[aria-label="Select Beta"]'));
   await act(async () => { finish({ ok: false, status: 500 }); await Promise.resolve(); });
   expect(host.textContent).toContain("2 selected");
@@ -161,6 +165,7 @@ it("stops applying proxy assignments after switching providers", async () => {
   });
   await click(button("Apply Proxy"));
   await click([...document.querySelectorAll("button")].find((node) => node.textContent.includes("None (unbind all)")));
+  await click([...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Confirm"));
   route.id = "siliconflow";
   await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
   await act(async () => { finish({ ok: false, status: 500 }); await Promise.resolve(); });

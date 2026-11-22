@@ -416,6 +416,12 @@ export async function persistCopilotEndpointContract(connection, rows) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  // ChatPlayground's catalog is read with the session Cookie header and lists each bot by `botId`.
+  chatplayground: {
+    url: "https://app.chatplayground.ai/api/models", method: "GET", headers: {},
+    buildHeaders: (_token, connection) => ({ Cookie: connection.apiKey }),
+    parseResponse: (data) => (data?.data || data?.models || []).filter((row) => row?.botId).map((row) => ({ id: row.botId, name: row.displayName || row.modelName || row.botId })),
+  },
   empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {

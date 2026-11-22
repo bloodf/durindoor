@@ -11,6 +11,7 @@ import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import { Chip } from "@/shared/ui/components/Chip.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import CapacityBadges from "./CapacityBadges";
+import { passthroughAliasModels } from "../utils/passthroughAliasModels.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
@@ -449,13 +450,7 @@ export default function ModelSelectModal({
       }
 
       if (providerInfo.passthroughModels) {
-        const aliasModels = Object.entries(modelAliases).
-        filter(([, fullModel]) => isString(fullModel) && fullModel.startsWith(`${alias}/`)).
-        map(([aliasName, fullModel]) => ({
-          id: fullModel.replace(`${alias}/`, ""),
-          name: aliasName,
-          value: fullModel
-        }));
+        const aliasModels = passthroughAliasModels(modelAliases, providerId, alias);
         const customRegisteredModels = customModels.
         filter((m) => m.providerAlias === alias).
         map((m) => ({

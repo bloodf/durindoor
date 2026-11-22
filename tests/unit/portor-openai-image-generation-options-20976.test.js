@@ -20,11 +20,21 @@ describe("OmniRoute #20976: OpenAI image generation options", () => {
   beforeEach(() => { global.fetch = vi.fn(); });
   afterEach(() => { global.fetch = realFetch; });
 
-  it("forwards complexity and moderation, and drops compression for GIF", async () => {
-    const sent = await generate({ output_format: " GIF ", complexity: "low", moderation: "auto", output_compression: 50 });
+  it("forwards complexity and moderation for GIF", async () => {
+    const sent = await generate({ output_format: " GIF ", complexity: "low", moderation: "auto" });
     expect(sent.complexity).toBe("low");
     expect(sent.moderation).toBe("auto");
     expect("output_compression" in sent).toBe(false);
+  });
+
+  it("rejects GIF compression without an upstream request", async () => {
+    const result = await handleImageGenerationCore({
+      body: { prompt: "An animated bird", output_format: "gif", output_compression: 50 },
+      modelInfo: { provider: "openai", model: "gpt-image-2.5-sunburst" },
+      credentials: { apiKey: "test-key" },
+    });
+    expect(result.status).toBe(400);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it.each([

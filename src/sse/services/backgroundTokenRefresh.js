@@ -60,7 +60,7 @@ export function selectConnectionsNeedingRefresh(connections, nowMs = Date.now())
     const expiresAtMs = getCredentialExpiryMs(conn);
     if (expiresAtMs === null) continue;
 
-    const providerLead = getRefreshLeadMs(conn.provider);
+    const providerLead = getRefreshLeadMs(conn.provider, conn.providerSpecificData);
     const leadMs = Math.max(
       Number.isFinite(providerLead) ? providerLead : 0,
       BACKGROUND_REFRESH_LEAD_MS

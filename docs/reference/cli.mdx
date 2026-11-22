@@ -98,6 +98,8 @@ durindoor
 
 `npm update --global durindoor` is another manual update path.
 
+In the dashboard, manual **Copy & Shutdown** copies the install command and a restart command. When the launcher is in tray mode, the restart command includes `--tray`.
+
 ## Process lifecycle
 
 Before startup, the launcher recovers stale MITM ownership, removes leftover app processes, and tries to free the listen port. If MITM cleanup cannot be confirmed, startup stops to preserve redirect ownership. A missing bundled server exits `1` with a reinstall message.

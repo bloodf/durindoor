@@ -345,6 +345,8 @@ export function createResponsesApiTransformStream(logger = null) {
 
         // Handle text content (may contain <think> tags)
         if (delta.content) {
+          // Finish the reasoning item before emitting the assistant's answer.
+          closeReasoning(controller);
           let content = delta.content;
 
           // Regular text content

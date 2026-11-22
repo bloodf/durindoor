@@ -89,7 +89,7 @@ export function antigravityToOpenAIRequest(model, body, stream) {
  * Recursively normalize an Antigravity/Gemini tool-parameter schema for the
  * OpenAI-shaped tool surface: lowercase `type` keywords (OBJECT -> object), convert
  * safe ProtoJSON int64 schema constraints to numbers, strip unsupported fields
- * (e.g. `enumDescriptions`), recurse through nested values, and add a placeholder
+ * (e.g. `enumDescriptions`), remove property defaults, recurse through nested values, and add a placeholder
  * `properties` map to bare object nodes (Gemini rejects those without properties).
  *
  * @param {object} schema - Antigravity tool parameter schema.
@@ -107,6 +107,14 @@ function normalizeSchemaTypes(schema) {
     if (PROTOJSON_INT64_SCHEMA_KEYS.has(key) && isString(value) && /^\d+$/.test(value.trim())) {
       const parsed = Number(value);
       result[key] = Number.isSafeInteger(parsed) ? parsed : value;
+      continue;
+    }
+    if (key === "properties" && isObject(value) && !Array.isArray(value)) {
+      result[key] = Object.fromEntries(Object.entries(value).map(([name, property]) => {
+        if (!property || !isObject(property) || Array.isArray(property)) return [name, normalizeSchemaTypes(property)];
+        const { default: _default, ...rest } = property;
+        return [name, normalizeSchemaTypes(rest)];
+      }));
       continue;
     }
     result[key] = normalizeSchemaTypes(value);

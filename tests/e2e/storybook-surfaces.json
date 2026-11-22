@@ -4817,7 +4817,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js#DroidToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js",
       "symbol": "DroidToolCard",
-      "sourceSha256": "ea0921408882510edfca4b6e81bd2f14add613524b34b006c7abbf3c038aebd6",
+      "sourceSha256": "20d4cb406e66ab77ed429d3a5df8da2d3de830ef48606aed4bdfa2cde27cc4dc",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -4837,7 +4837,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js": "ea0921408882510edfca4b6e81bd2f14add613524b34b006c7abbf3c038aebd6",
+            "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js": "20d4cb406e66ab77ed429d3a5df8da2d3de830ef48606aed4bdfa2cde27cc4dc",
             "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.stories.jsx": "2643729172eabf3c3a804df0c3119feda4a693d8e2677e61f23b82e660deb212",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -6993,7 +6993,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9"
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
           "expectedConsoleErrors": [],
@@ -7263,7 +7263,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+      "sourceSha256": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7283,7 +7283,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7394,7 +7394,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboFormModal",
-      "sourceSha256": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+      "sourceSha256": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7421,7 +7421,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7436,7 +7436,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7456,7 +7456,7 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7472,7 +7472,7 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7675,7 +7675,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+      "sourceSha256": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7704,7 +7704,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7722,7 +7722,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7740,7 +7740,7 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7763,7 +7763,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7782,7 +7782,7 @@
             "asserted modal unmount"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7801,7 +7801,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7817,7 +7817,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7833,7 +7833,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           }
@@ -7848,7 +7848,7 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacing play opens live Create Combo dialog and proves footer controls plus model row geometry.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7864,7 +7864,7 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacingMobile executes same live dialog and geometry assertions at mobile viewport.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -8305,7 +8305,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ModelItem",
-      "sourceSha256": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+      "sourceSha256": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -8325,7 +8325,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "ed1869f1fcbcdc691b65dbd6c618a2591202e366e2849581355d8eb1e930f9e9",
+            "src/app/(dashboard)/dashboard/combos/page.js": "ea1163ad6968f4e39c76030a9f2ea761b2126ddd1187bd7fb9d88f6bdeafe7d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -13673,7 +13673,7 @@
       "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow",
       "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       "symbol": "ApiKeyRow",
-      "sourceSha256": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+      "sourceSha256": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -13694,7 +13694,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Default fixture",
@@ -13710,7 +13710,7 @@
           ],
           "proposedSourceEvidence": "KeysPageClient KeyLimits fixture renders real API key row named Production key; play proves limits card content.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
           },
           "expectedVisibleText": "Production key"
@@ -13777,10 +13777,116 @@
       ]
     },
     {
+      "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#KeySecretNotice",
+      "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
+      "symbol": "KeySecretNotice",
+      "sourceSha256": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-api-keys--default",
+        "durin-ds-production-pages-api-keys--empty",
+        "durin-ds-production-pages-api-keys--key-limits",
+        "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+        "durin-ds-production-pages-api-keys--revocation-pending",
+        "durin-ds-production-pages-api-keys--rotation"
+      ],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-api-keys--default",
+          "storyId": "durin-ds-production-pages-api-keys--default",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--default",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--empty",
+          "storyId": "durin-ds-production-pages-api-keys--empty",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--empty",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--key-limits",
+          "storyId": "durin-ds-production-pages-api-keys--key-limits",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--key-limits",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+          "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--revocation-pending",
+          "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--revocation-pending",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "durin-ds-production-pages-api-keys--rotation",
+          "storyId": "durin-ds-production-pages-api-keys--rotation",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--rotation",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#KeysPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       "symbol": "KeysPageClient",
-      "sourceSha256": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+      "sourceSha256": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -13803,7 +13909,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Default",
@@ -13819,7 +13925,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#Empty",
@@ -13834,7 +13940,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
             "src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b"
           },
           "proposedSourceEvidence": "KeysPageClient.stories.jsx#KeyLimits",
@@ -13850,7 +13956,7 @@
           ],
           "proposedSourceEvidence": "Actual lightweight KeysPage wrapper imports KeysPageClient; empty API fixture and play assert Create Key.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "a4d320bbdbbfdee0b6562b3b61bf5b9292c915f7213b2b2dd867549b8db684fc",
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "1a98712b8189e9be351f233970de06c2a843cf19ef738502f782e9c5c623928d",
             "src/app/(dashboard)/dashboard/keys/page.stories.jsx": "424765edd9d3d04399f7d7881f176ab33708d3e21949efca2f01fbbf84eee642"
           },
           "expectedVisibleText": "Create Key"
@@ -52558,7 +52664,7 @@
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
       "sourcePath": "src/shared/components/ModelSelectModal.js",
       "symbol": "ModelSelectModal",
-      "sourceSha256": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
+      "sourceSha256": "dc77ab7939f492a35552c70b3a4deae7dc138f774969ef0609f59804c0d62ba3",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -52583,7 +52689,7 @@
             "search"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
+            "src/shared/components/ModelSelectModal.js": "dc77ab7939f492a35552c70b3a4deae7dc138f774969ef0609f59804c0d62ba3",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "OpenLLM opens Select Model, waits for Combos, then types into rendered Search models textbox.",
@@ -52598,7 +52704,7 @@
             "selected-model"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
+            "src/shared/components/ModelSelectModal.js": "dc77ab7939f492a35552c70b3a4deae7dc138f774969ef0609f59804c0d62ba3",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithSelection supplies selected and added Claude Sonnet model; play asserts rendered pressed chip.",
@@ -52613,7 +52719,7 @@
             "selected-combo"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
+            "src/shared/components/ModelSelectModal.js": "dc77ab7939f492a35552c70b3a4deae7dc138f774969ef0609f59804c0d62ba3",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithCombosAndSelection supplies selected fast combo; play asserts rendered pressed fast chip.",
@@ -52628,7 +52734,7 @@
             "embedding-kind"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
+            "src/shared/components/ModelSelectModal.js": "dc77ab7939f492a35552c70b3a4deae7dc138f774969ef0609f59804c0d62ba3",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "EmbeddingKind opens Select Embedding Model with kindFilter=embedding; play verifies Combos is absent.",
@@ -52643,7 +52749,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a7acff9d41f49fe9e29acf97db29085f4d620594ac775ef4e75c02e5b7551fe2",
+            "src/shared/components/ModelSelectModal.js": "dc77ab7939f492a35552c70b3a4deae7dc138f774969ef0609f59804c0d62ba3",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false; play asserts Select Model dialog absent.",
@@ -55057,7 +55163,7 @@
       "id": "src/shared/components/Sidebar.js#Sidebar",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "Sidebar",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55080,7 +55186,7 @@
             "update-dialog-final"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "GroupsAndUpdate opens Token Saver, confirms Statistics, then clicks Update now; final play leaves Sidebar's Update available modal visible.",
@@ -55095,7 +55201,7 @@
             "expanded-by-route"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "MediaExpanded pathname /dashboard/media-providers/embedding makes renderMediaGroup active and open, rendering media children.",
@@ -55110,7 +55216,7 @@
             "current-page"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "TokenSaverActiveHierarchy pathname /dashboard/token-saver opens Token Saver and final play verifies Statistics aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55129,7 +55235,7 @@
             "geometry"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "CollapsibleRail collapses then expands controlled Sidebar. Final state restores full rail and Usage link after measured 44px row geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55245,7 +55351,7 @@
       "id": "src/shared/components/Sidebar.js#SidebarTooltip",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "SidebarTooltip",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55267,7 +55373,7 @@
           ],
           "sourceHashes": {
             "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "CollapsedTooltip renders controlled Sidebar initially collapsed, hovers real Expand sidebar control, and final play waits for SidebarTooltip's visible Expand sidebar bubble.",
@@ -55388,7 +55494,7 @@
       "id": "src/shared/components/Sidebar.js#renderGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderGroup",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55409,7 +55515,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "renderGroup creates Token Saver button and child links. TokenSaverActiveHierarchy final play verifies expanded parent and Statistics current-page child. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55471,7 +55577,7 @@
       "id": "src/shared/components/Sidebar.js#renderItem",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderItem",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55491,7 +55597,7 @@
             "active-link"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "renderGroup maps Token Saver children through renderItem. At /dashboard/token-saver, renderItem renders Statistics with aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55552,7 +55658,7 @@
       "id": "src/shared/components/Sidebar.js#renderMediaGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderMediaGroup",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55573,7 +55679,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "MediaExpanded pathname starts with /dashboard/media-providers. renderMediaGroup builds visible kinds and renders Embedding active in opened Media Providers group. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56063,7 +56169,7 @@
       "id": "src/shared/components/UpdatePanel.js#PanelHeader",
       "sourcePath": "src/shared/components/UpdatePanel.js",
       "symbol": "PanelHeader",
-      "sourceSha256": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+      "sourceSha256": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56085,7 +56191,7 @@
             "success state"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "PanelHeader receives update title and auto-install subtitle throughout AutoSuccess; title is visible within panel.",
@@ -56099,7 +56205,7 @@
             "manual fallback header"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "Fallback PanelHeader receives subtitle Auto-update unavailable — install manually.",
@@ -56113,7 +56219,7 @@
             "manual header"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "Manual PanelHeader is rendered after Prefer manual install action with copy-install subtitle.",
@@ -56198,7 +56304,7 @@
       "id": "src/shared/components/UpdatePanel.js#UpdatePanel",
       "sourcePath": "src/shared/components/UpdatePanel.js",
       "symbol": "UpdatePanel",
-      "sourceSha256": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+      "sourceSha256": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56219,7 +56325,7 @@
             "auto success"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "AutoSuccess opens panel, starts update, asserts Install succeeded and installed durindoor@3.19.0; Dashboard reloaded is harness output.",
@@ -56234,7 +56340,7 @@
             "manual fallback"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "AutoFailedFallsBackToManual asserts Auto-update unavailable, install command, and Copy & Shutdown.",
@@ -56248,7 +56354,7 @@
             "manual mode"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "ManualInstallOpensFromIdle chooses manual install and asserts command and Copy & Shutdown.",
@@ -61401,7 +61507,7 @@
       "id": "src/shared/ui/components/Pagination.jsx#Pagination",
       "sourcePath": "src/shared/ui/components/Pagination.jsx",
       "symbol": "Pagination",
-      "sourceSha256": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+      "sourceSha256": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -61427,7 +61533,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export FirstPage resolves to durin-ds-data-pagination--first-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61444,7 +61550,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export MiddlePage resolves to durin-ds-data-pagination--middle-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61460,7 +61566,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export LastPage resolves to durin-ds-data-pagination--last-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61475,7 +61581,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export TotalFallback resolves to durin-ds-data-pagination--total-fallback; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61491,7 +61597,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export WithRowsPerPage resolves to durin-ds-data-pagination--with-rows-per-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61507,7 +61613,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export SinglePage resolves to durin-ds-data-pagination--single-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -83536,6 +83642,36 @@
       "reviewEvidence": null
     },
     {
+      "storyId": "v5-review-workflows-shared-oauth-copilotm365authmodal--intro",
+      "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-copilotm365authmodal.stories.jsx",
+      "sourceSha256": "2a0677efeb9c95449ff4f670e846adb26554d08474061c89d7dcafbb8050bd56",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-workflows-shared-oauth-copilotm365authmodal--sign-in-started",
+      "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-copilotm365authmodal.stories.jsx",
+      "sourceSha256": "2a0677efeb9c95449ff4f670e846adb26554d08474061c89d7dcafbb8050bd56",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-workflows-shared-oauth-copilotm365authmodal--exchange-rejected",
+      "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-copilotm365authmodal.stories.jsx",
+      "sourceSha256": "2a0677efeb9c95449ff4f670e846adb26554d08474061c89d7dcafbb8050bd56",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
       "storyId": "v5-review-workflows-shared-kiro-cursorauthmodal--auto-detected",
       "sourcePath": "./src/shared/ui/v5/stories/src-shared-components-cursorauthmodal.stories.jsx",
       "sourceSha256": "ed37d7f51787c268cb168324f81d53b43b7c0171477b00522916d599e33a5f19",
@@ -89966,86 +90102,6 @@
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
       "reviewEvidence": null
-    },
-    {
-      "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
-      "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-      "sourceSha256": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null,
-      "historicalReferenceReview": {
-        "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
-        "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-        "sourceSha256": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3",
-        "reviewStatus": "pending",
-        "reviewedBy": null,
-        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-        "runtimeStatus": "pending",
-        "reviewEvidence": null,
-        "historicalReferenceReview": {
-          "storyId": "durin-ds-production-pages-api-keys--revocation-rejected-and-retry",
-          "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-          "sourceSha256": "975fab85824f65994b0054e7d05de84a3e10d59442d5970c49cb2887a826454c",
-          "reviewStatus": "pending",
-          "reviewedBy": null,
-          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-          "runtimeStatus": "pending",
-          "reviewEvidence": null
-        }
-      }
-    },
-    {
-      "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
-      "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-      "sourceSha256": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null,
-      "historicalReferenceReview": {
-        "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
-        "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-        "sourceSha256": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3",
-        "reviewStatus": "pending",
-        "reviewedBy": null,
-        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-        "runtimeStatus": "pending",
-        "reviewEvidence": null,
-        "historicalReferenceReview": {
-          "storyId": "durin-ds-production-pages-api-keys--revocation-pending",
-          "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-          "sourceSha256": "975fab85824f65994b0054e7d05de84a3e10d59442d5970c49cb2887a826454c",
-          "reviewStatus": "pending",
-          "reviewedBy": null,
-          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-          "runtimeStatus": "pending",
-          "reviewEvidence": null
-        }
-      }
-    },
-    {
-      "storyId": "durin-ds-production-pages-api-keys--rotation",
-      "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-      "sourceSha256": "0b5438266df29027d7efd96f5efa0f896ae02dd0dbb926d2e98e839056e2bb5b",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null,
-      "historicalReferenceReview": {
-        "storyId": "durin-ds-production-pages-api-keys--rotation",
-        "sourcePath": "./src/app/(dashboard)/dashboard/keys/KeysPageClient.stories.jsx",
-        "sourceSha256": "1210c59175254cc3068c6a75512d3e3004ce4f63f071a46ec4d6f7b595c350c3",
-        "reviewStatus": "pending",
-        "reviewedBy": null,
-        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-        "runtimeStatus": "pending",
-        "reviewEvidence": null
-      }
     },
     {
       "storyId": "durin-ds-production-pages-api-keys--v-5-load-failure-and-retry",
@@ -102478,9 +102534,9 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "36d759440c26647b72a35331573a36ec08115ee0a350861e672d0eb77fd1a206",
-    "sourceCensusSha256": "7c496cc56b7e454dd5bbc96b7002028b0a7fed0364e637a0580767fc4da6d48a",
-    "pendingRows": 427,
+    "builtIndexSha256": "b430a5c01511d3c7b5c19217ca869033d19ea4de587bc795727dce1c88b332d5",
+    "sourceCensusSha256": "1b2b624d4d5a07a1f7fe65048ee2ccec55da249dfa0ea174f62d46493653fb4d",
+    "pendingRows": 428,
     "retainedApprovedRows": 210,
     "pendingReferences": 1486,
     "runtimeStatus": "pending"

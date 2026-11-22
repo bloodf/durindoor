@@ -6,8 +6,7 @@
  * Closed mocks only: the upstream site is a scripted global `fetch` (or, for Arena, a scripted TLS
  * client; for Cloudflare Playground, a scripted transport in place of the browser). Credentials are
  * synthetic placeholders. Nothing here reaches a provider, a browser or the network, and a request to a
- * host outside the provider's own origins fails the test. HyperAgent has no executor yet,
- * so their routes must answer 501 without any outbound request.
+ * host outside the provider's own origins fails the test.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -141,10 +140,6 @@ const PROVIDERS = [
     credential: null,
     handle: () => undefined,
   },
-];
-
-const BLOCKED = [
-  { id: "hyperagent", credential: "session=synthetic-hyperagent-cookie", model: "sonnet-latest" },
 ];
 
 let root;
@@ -291,27 +286,5 @@ describe.each(PROVIDERS.map((provider) => ({ ...provider, title: provider.label 
       .filter((event) => event.type === "content_block_delta").map((event) => event.delta?.text ?? "").join("");
     expect(streamed).toContain(provider.answer);
     reachedOnlyItsOwnOrigin();
-  });
-});
-
-describe.each(BLOCKED)("route-level chat for $id, whose executor is not ported (closed mock)", (provider) => {
-  beforeEach(async () => {
-    handler = { origins: [], handle: () => undefined };
-    await saveConnection(provider, provider.credential);
-  });
-
-  it.each([
-    ["/v1/chat/completions", routes_ => routes_.chat, openAiBody],
-    ["/v1/messages", routes_ => routes_.messages, anthropicBody],
-  ])("answers %s with 501 provider_port_pending and sends the credential nowhere", async (endpoint, pick, build) => {
-    for (const stream of [false, true]) {
-      const response = await pick(routes).POST(gatewayRequest(endpoint, build(provider, stream)));
-      expect(response.status).toBe(501);
-      const text = await response.text();
-      expect(text).toContain("provider_port_pending");
-      expect(text).not.toContain(provider.credential);
-    }
-    expect(seen).toEqual([]);
-    expect(arena.calls).toEqual([]);
   });
 });

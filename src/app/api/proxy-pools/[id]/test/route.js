@@ -2,18 +2,23 @@ import { NextResponse } from "next/server";
 import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
-async function testVercelRelay(relayUrl, timeoutMs = 30000) {
+async function testVercelRelay(relayUrl, relaySecret = "", timeoutMs = 30000) {
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = {
+      "x-relay-target": "https://api.ipify.org",
+      "x-relay-path": "/?format=json",
+    };
+    if (isString(relaySecret) && relaySecret !== "") {
+      headers["x-relay-secret"] = relaySecret;
+    }
     const res = await undiciFetch(relayUrl, {
       method: "GET",
-      headers: {
-        "x-relay-target": "https://api.ipify.org",
-        "x-relay-path": "/?format=json",
-      },
+      headers,
       signal: controller.signal,
     });
     return {
@@ -44,7 +49,7 @@ export async function POST(request, { params }) {
     }
 
     const result = proxyPool.type === "vercel" || proxyPool.type === "cloudflare"
-      ? await testVercelRelay(proxyPool.proxyUrl)
+      ? await testVercelRelay(proxyPool.proxyUrl, proxyPool.relaySecret || "")
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
 

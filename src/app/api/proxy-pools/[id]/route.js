@@ -7,7 +7,7 @@ import {
 "@/models";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
-import { sanitizeProxyPool } from "@/shared/utils/proxyUrlRedaction.js";
+import { sanitizePoolResponse } from "../sanitizePoolResponse.js";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -63,7 +63,7 @@ export async function GET(request, { params }) {
     }
 
     const privileged = await isOperatorRequest(request);
-    return NextResponse.json({ proxyPool: sanitizeProxyPool(proxyPool, privileged) });
+    return NextResponse.json({ proxyPool: sanitizePoolResponse(proxyPool, privileged) });
   } catch (error) {
     console.log("Error fetching proxy pool:", error);
     return NextResponse.json({ error: "Failed to fetch proxy pool" }, { status: 500 });
@@ -91,7 +91,7 @@ export async function PUT(request, { params }) {
     // A mutation response is also a read: without this an API-key caller could
     // PUT an unrelated field and get the stored credential back.
     const privileged = await isOperatorRequest(request);
-    return NextResponse.json({ proxyPool: sanitizeProxyPool(updated, privileged) });
+    return NextResponse.json({ proxyPool: sanitizePoolResponse(updated, privileged) });
   } catch (error) {
     console.log("Error updating proxy pool:", error);
     return NextResponse.json({ error: "Failed to update proxy pool" }, { status: 500 });

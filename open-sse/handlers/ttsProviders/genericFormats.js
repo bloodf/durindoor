@@ -53,7 +53,7 @@ async function nvidia({ baseUrl, apiKey, text, modelId, voiceId, language, proxy
 // HuggingFace: POST {baseUrl}/{modelId} { inputs: text } → binary
 async function huggingface({ baseUrl, apiKey, text, modelId }) {
   if (!modelId || modelId.includes("..")) throw new Error("Invalid HuggingFace model ID");
-  const res = await fetch(`${baseUrl}/${modelId}`, {
+  const res = await fetch(`${baseUrl}/${encodeURIComponent(modelId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({ inputs: text })

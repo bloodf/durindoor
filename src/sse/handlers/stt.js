@@ -18,6 +18,7 @@ import { annotateClientAdmissionFailure } from "open-sse/services/operationalMet
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
+import { MAX_AUDIO_BYTES } from "open-sse/handlers/codexSttAudio.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -28,12 +29,16 @@ const CREDENTIALED_PROVIDERS = new Set(
 
 async function handleSttHandler(request, { kind = "transcription" } = {}) {
   await captureRequestBillingEpoch(request);
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
   let formData;
   try {
     formData = await request.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart form data");
   }
+  const audioFile = formData.get("file");
+  if (audioFile instanceof Blob && audioFile.size > MAX_AUDIO_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
 
   const modelStr = formData.get("model");
   log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);

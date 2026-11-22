@@ -23,6 +23,11 @@ export function trackStreamTokenLimit(body, hasTokenLimitTerminal) {
   tokenLimitEvidence.set(body, hasTokenLimitTerminal);
 }
 
+export function inheritStreamTokenLimit(source, target) {
+  const evidence = tokenLimitEvidence.get(source);
+  if (evidence) tokenLimitEvidence.set(target, evidence);
+}
+
 function nonEmptyString(value) {
   return isString(value) && value.length > 0;
 }

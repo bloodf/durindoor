@@ -1,3 +1,4 @@
+import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
 import { CAPTURE_CONSENT_HEADER, CAPTURE_SESSION_HEADER, prepareMessageCapture } from "../utils/messageCapture.js";
 import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
 import { normalizeModelReference } from "open-sse/services/model.js";
@@ -1190,6 +1191,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           connectionRecovery: true,
           signal: requestSignal,
           modelCandidates,
+          healthModel: upstreamModel || model,
           quotaFamily,
           resourceKeys: quotaResourceKeys,
           sessionId: routingSessionId,
@@ -1384,7 +1386,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           providerSpecificData: refreshedCredentials.providerSpecificData
         })
         : null;
-      const result = await runWithConnectionRecovery(handleChatCore, {
+      const healthAttempt = model && healthEnabled(provider, chatSettings) ? antigravityHealth.begin(credentials.connectionId, upstreamModel || model, true) : null;
+      if (model && healthEnabled(provider, chatSettings) && !healthAttempt) {
+        if (preferredConnectionId) return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
+        excludeConnectionIds.add(credentials.connectionId);
+        continue;
+      }
+      const cancelHealthAttempt = () => healthAttempt?.finish("ignored");
+      requestSignal?.addEventListener("abort", cancelHealthAttempt, { once: true });
+      if (requestSignal?.aborted) cancelHealthAttempt();
+      let result;
+      try {
+        result = await runWithConnectionRecovery(handleChatCore, {
         body: { ...structuredClone(body), model: `${provider}/${model}` },
         modelInfo: { provider, model },
         modelCapabilities: resolvedModelCapabilities,
@@ -1531,6 +1544,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           });
         }
       }, activeConnection, model, resolveFallbackModelScope(provider, model), requestSignal);
+      } catch (error) {
+        cancelHealthAttempt();
+        throw error;
+      } finally {
+        requestSignal?.removeEventListener("abort", cancelHealthAttempt);
+      }
+      if (result.success) result.response = trackHealthResponse(result.response, healthAttempt, requestSignal);
+      else healthAttempt?.finish(!requestAborted(request, requestSignal) && result.antigravityPreResponseTimeout === true ? "timeout" : "ignored");
 
       if (result.connectionRecoveryBusy) {
         if (preferredConnectionId) {

@@ -163,3 +163,21 @@ describe("pxpipe health route", () => {
     expect(Object.keys(getRes.body).sort()).toEqual(Object.keys(postRes.body).sort());
   });
 });
+
+describe("Antigravity adaptive health settings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.updateSettings.mockImplementation(async (patch) => ({ ...patch }));
+    mocks.getSettings.mockResolvedValue({});
+  });
+  it.each([{ enabled: "true" }, {}, { enabled: true, extra: 1 }, null])("rejects invalid configuration %j", async (value) => {
+    const response = await settingsRoute.PATCH({ json: async () => ({ antigravityAdaptiveHealth: value }) });
+    expect(response.status).toBe(400);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+  it("persists an explicit false", async () => {
+    const response = await settingsRoute.PATCH({ json: async () => ({ antigravityAdaptiveHealth: { enabled: false } }) });
+    expect(response.status).toBe(200);
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ antigravityAdaptiveHealth: { enabled: false } });
+  });
+});

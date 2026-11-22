@@ -125,6 +125,10 @@ export async function PATCH(request) {
       }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
+    if (Object.hasOwn(body, "antigravityAdaptiveHealth") &&
+        (!isRecord(body.antigravityAdaptiveHealth) || Object.keys(body.antigravityAdaptiveHealth).some((key) => key !== "enabled") || !isBoolean(body.antigravityAdaptiveHealth.enabled))) {
+      return NextResponse.json({ error: "antigravityAdaptiveHealth.enabled must be a boolean" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
     // CWE-915: never mass-assign secrets; auth-critical keys need JWT/CLI proof.
     stripSettingKeys(body, SECRET_SETTING_KEYS);
     const mayModifySecurityCritical = await canModifySecurityCriticalSettings(request);

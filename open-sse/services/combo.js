@@ -753,16 +753,26 @@ function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyL
   }
 }
 
-function pruneConversationAffinity(now = Date.now()) {
+// Each caller has its own LRU budget; local callers share the legacy scope.
+function affinityKeyFor(rotationKey, conversationKey, apiKeyId) {
+  return apiKeyId ? `${rotationKey}:${conversationKey}:key:${JSON.stringify(apiKeyId)}` : `${rotationKey}:${conversationKey}`;
+}
+
+function pruneConversationAffinity(scope, now = Date.now()) {
+  let count = 0;
   for (const [key, value] of comboConversationAffinity) {
     if (!value || now - value.lastUsed > CONVERSATION_AFFINITY_TTL_MS) {
       comboConversationAffinity.delete(key);
+    } else if ((value.scope || null) === scope) {
+      count++;
     }
   }
-
-  while (comboConversationAffinity.size > MAX_CONVERSATION_AFFINITY_ENTRIES) {
-    const oldestKey = comboConversationAffinity.keys().next().value;
-    comboConversationAffinity.delete(oldestKey);
+  for (const [key, value] of comboConversationAffinity) {
+    if (count < MAX_CONVERSATION_AFFINITY_ENTRIES) break;
+    if ((value.scope || null) === scope) {
+      comboConversationAffinity.delete(key);
+      count--;
+    }
   }
 }
 
@@ -1189,9 +1199,10 @@ export function getWeightedModels(models, members = [], random = Math.random) {
  * @param {number|string} [stickyLimit=1] - Requests per combo model before switching
  * @param {string|null} [conversationCacheKey=null] - Stable key used to keep a conversation on one model
  * @param {{id: string, weight: number}[]} [members=[]] - Persisted weights for weighted selection
+ * @param {string|null} [apiKeyId=null] - Isolates conversation pins and their LRU budget
  * @returns {string[]} Rotated models array
  */
-export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null, members = []) {
+export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null, members = [], apiKeyId = null) {
   if (strategy === "weighted") return getWeightedModels(models, members);
   if (!models || models.length <= 1 || strategy !== "round-robin") {
     return models;
@@ -1234,18 +1245,17 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
   // only active when sticky rotation is explicitly configured above 1.
   if (normalizedStickyLimit > 1 && conversationCacheKey) {
     const now = Date.now();
-    pruneConversationAffinity(now);
-
-    const affinityKey = `${rotationKey}:${conversationCacheKey}`;
+    const affinityKey = affinityKeyFor(rotationKey, conversationCacheKey, apiKeyId);
     const affinity = comboConversationAffinity.get(affinityKey);
-    if (affinity) {
+    if (affinity && now - affinity.lastUsed <= CONVERSATION_AFFINITY_TTL_MS) {
       const pinnedIndex = affinity.index % models.length;
       comboConversationAffinity.delete(affinityKey);
-      comboConversationAffinity.set(affinityKey, { index: pinnedIndex, lastUsed: now });
+      comboConversationAffinity.set(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
       return rotateModelsFromIndex(models, pinnedIndex);
     }
 
-    comboConversationAffinity.set(affinityKey, { index: currentIndex, lastUsed: now });
+    pruneConversationAffinity(apiKeyId, now);
+    comboConversationAffinity.set(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
   }
 
   const rotatedModels = rotateModelsFromIndex(models, currentIndex);
@@ -1462,6 +1472,7 @@ export async function handleComboChat({
   comboName,
   comboStrategy,
   comboStickyLimit = 1,
+  apiKeyId = null,
   autoSwitch = true,
   // Chat-only: retry once, then fall through, on a 200 whose chat payload is
   // empty. Media routes turn it off; an empty transcript or fetch is a result.
@@ -1528,7 +1539,7 @@ export async function handleComboChat({
   if (comboStrategy === "smart-scoring") {
     rotatedModels = getSmartScoredModels(activeModels, comboName);
   } else {
-    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey, comboMembers);
+    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey, comboMembers, apiKeyId);
   }
 
   // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
@@ -1631,15 +1642,15 @@ export async function handleComboChat({
   // #6733: release the round-robin conversation-affinity pin when the
   // affinity-pinned FIRST member fails. Affinity only exists when the sticky
   // limit keeps >1 request on the same model, and the key is exactly
-  // `${comboName || "__default__"}:${conversationCacheKey}` (mirrors
-  // getRotatedModels). Release only when i===0 (the pinned first member) AND
+  // the caller-scoped key from getRotatedModels. Release only when i===0
+  // (the pinned first member) AND
   // the stored index still maps to the failed model — guards against a race
   // that re-pointed the entry to a different member. Idempotent per request.
   const stickyLimit = normalizeStickyLimit(comboStickyLimit);
   const rrRotationKey = comboName || "__default__";
   const rrAffinityKey =
   comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey ?
-  `${rrRotationKey}:${conversationCacheKey}` :
+  affinityKeyFor(rrRotationKey, conversationCacheKey, apiKeyId) :
   null;
   let affinityReleased = false;
   const releaseFailedAffinity = (failedModelStr, idx) => {

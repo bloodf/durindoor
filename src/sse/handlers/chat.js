@@ -684,6 +684,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // across attempts and persist after handleComboChat returns.
     const tokenSaverCollector = { latest: null };
     const comboResult = await handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m, attemptSignal, attemptOptions) => {
@@ -908,6 +909,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const nestedCollector = tokenSaverCollector || { latest: null };
       const nestedCapabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       const nestedResult = await handleComboChat({
+        apiKeyId,
         body,
         models: comboModels,
         handleSingleModel: (b, m, attemptSignal, attemptOptions) => {

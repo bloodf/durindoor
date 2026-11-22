@@ -57,6 +57,7 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
     const route = await resolveMediaRoute("stt", { settings, supports, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body: {},
       models: route.models,
       handleSingleModel: (_b, m) => handleSingleModelStt(formData, m, kind, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),

@@ -330,8 +330,8 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
           <section className="flex flex-col gap-2">
             <Textarea
               label="Cookie header or cURL command"
-              style={v5 ? { WebkitTextSecurity: "disc" } : undefined}
-              className="min-h-[140px] font-mono"
+              style={v5 ? (globalThis.CSS?.supports?.("-webkit-text-security", "disc") ? { WebkitTextSecurity: "disc" } : { color: "transparent", caretColor: "var(--dd-text)" }) : undefined}
+              className={v5 ? "min-h-[140px] font-mono selection:text-transparent" : "min-h-[140px] font-mono"}
               placeholder="__Secure-next-auth.session-token=…"
               value={rawText}
               onChange={(event) => setRawText(event.target.value)}

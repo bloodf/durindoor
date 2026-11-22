@@ -275,6 +275,10 @@ it("masks V5 cookie and local storage credentials", async () => {
   host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
   await act(async () => root.render(React.createElement(Modal, { isOpen: true, provider: "tiny", importContract: { origin: "https://example.com", cookieNames: [], localStorageKeys: ["token"] }, onClose: vi.fn() })));
   expect(document.querySelector('input[type="password"]')).toBeTruthy();
+  vi.stubGlobal("CSS", { supports: () => false });
+  await act(async () => root.render(React.createElement(Modal, { isOpen: true, provider: "grok-web", importContract: { origin: "https://example.com", cookieNames: ["sso"] }, onClose: vi.fn() })));
+  expect(document.querySelector("textarea").style.color).toBe("transparent");
+  expect(document.querySelector("textarea").className).toContain("selection:text-transparent");
 });
 
 it("keeps provider page API key, custom model, and rule writes identical across the switch", async () => {

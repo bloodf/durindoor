@@ -25559,7 +25559,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js#CookieImportModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js",
       "symbol": "CookieImportModal",
-      "sourceSha256": "b491b3c535123551a13e9aeb55dce07eae8cd1d033a68c350ba662e7cc159903",
+      "sourceSha256": "8ae2a33de6f436249e65af2dc7139f77b67da174f84df9ebe8adec7be6020306",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -25579,7 +25579,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b491b3c535123551a13e9aeb55dce07eae8cd1d033a68c350ba662e7cc159903",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "8ae2a33de6f436249e65af2dc7139f77b67da174f84df9ebe8adec7be6020306",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -100711,7 +100711,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "995a32a93e92cfd3ce086eedc05bb35562766101293c16b5b8d5881cbc370d93",
-    "sourceCensusSha256": "9c7962f02404c9ace3996fb649bb3933b931453075dc4b4363ce573edf0ef2c6",
+    "sourceCensusSha256": "17f140140d45513bc3b864a1eb2d335f43fb2b1620e7cc62f33314fcb76445f8",
     "pendingRows": 404,
     "retainedApprovedRows": 232,
     "pendingReferences": 1470,

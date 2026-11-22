@@ -1,7 +1,10 @@
 import { isBoolean, isNumber, isString } from "../../../utils/typeChecks.js";
 
-/** Storybook review layout preferences. These never modify gateway settings or data. */
-export const USAGE_LAYOUT_KEY = "durindoor:v5-review:usage-layout";
+/**
+ * Usage widget layout preference. A browser-local presentation choice: it is the
+ * only thing the layout writes, and it never modifies gateway settings or usage data.
+ */
+export const USAGE_LAYOUT_KEY = "durindoor:usage-layout:v1";
 export const USAGE_WIDGETS = Object.freeze([
   { id: "overview", title: "Usage overview", span: 12, visible: true },
   { id: "topology", title: "Provider connections", span: 8, visible: true },

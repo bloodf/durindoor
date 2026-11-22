@@ -1964,14 +1964,34 @@ export const REVIEW_SURFACES = [
       "Settings",
       "UnavailableServices",
       "RejectedCompressionSettings",
-      "RetryCompressionSave"
+      "RetryCompressionSave",
+      "DashboardOverview",
+      "Empty",
+      "ServiceUnavailable",
+      "LoadingMetrics",
+      "PxpipeInitialLoading",
+      "PxpipeStatsUnavailable",
+      "PxpipeEventsRetry",
+      "V5Settings",
+      "V5RejectedCompressionSettings",
+      "V5RetryCompressionSave"
     ],
     "storyIds": [
       "v5-review-pages-savers-tokensaverclient--overview",
       "v5-review-pages-savers-tokensaverclient--settings",
       "v5-review-pages-savers-tokensaverclient--unavailable-services",
       "v5-review-pages-savers-tokensaverclient--rejected-compression-settings",
-      "v5-review-pages-savers-tokensaverclient--retry-compression-save"
+      "v5-review-pages-savers-tokensaverclient--retry-compression-save",
+      "v5-review-pages-savers-tokensaverclient--dashboard-overview",
+      "v5-review-pages-savers-tokensaverclient--empty",
+      "v5-review-pages-savers-tokensaverclient--service-unavailable",
+      "v5-review-pages-savers-tokensaverclient--loading-metrics",
+      "v5-review-pages-savers-tokensaverclient--pxpipe-initial-loading",
+      "v5-review-pages-savers-tokensaverclient--pxpipe-stats-unavailable",
+      "v5-review-pages-savers-tokensaverclient--pxpipe-events-retry",
+      "v5-review-pages-savers-tokensaverclient--v-5-settings",
+      "v5-review-pages-savers-tokensaverclient--v-5-rejected-compression-settings",
+      "v5-review-pages-savers-tokensaverclient--v-5-retry-compression-save"
     ],
     "pathname": "/dashboard/token-saver",
     "routePattern": "/dashboard/token-saver",
@@ -2115,6 +2135,29 @@ export const REVIEW_SURFACES = [
     ],
     "pathname": "/dashboard/translator",
     "routePattern": "/dashboard/translator",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/usage/UsageLayout.stories.jsx",
+    "title": "V5 review/Pages/usage/Layout",
+    "storyId": "v5-review-pages-usage-layout--overview-widgets",
+    "states": [
+      "OverviewWidgets",
+      "LayoutCancelRestoresOrder",
+      "LayoutSaveAndResetConfirm",
+      "LayoutStorageBlocked",
+      "UsageStatsUnavailable"
+    ],
+    "storyIds": [
+      "v5-review-pages-usage-layout--overview-widgets",
+      "v5-review-pages-usage-layout--layout-cancel-restores-order",
+      "v5-review-pages-usage-layout--layout-save-and-reset-confirm",
+      "v5-review-pages-usage-layout--layout-storage-blocked",
+      "v5-review-pages-usage-layout--usage-stats-unavailable"
+    ],
+    "pathname": "/dashboard/usage",
+    "routePattern": "/dashboard/usage",
     "routePriority": 0,
     "standalone": false
   },

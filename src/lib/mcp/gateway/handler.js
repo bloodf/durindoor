@@ -61,6 +61,9 @@ async function authenticate(request) {
  * @param {unknown} body
  * @param {object} [opts]
  * Usage retains the admission epoch across credential reads and tool completion.
+ * A message with no `id` is a notification (the HTTP routes answer 202
+ * with an empty body). A missing method is an invalid request (-32600),
+ * including when `id` is also absent.
  * @returns {Promise<{kind: "notification"} | {kind: "response", status: number, body: object}>}
  */
 export async function handleJsonRpc(request, body, opts = {}) {
@@ -75,6 +78,14 @@ export async function handleJsonRpc(request, body, opts = {}) {
   if (!obj || obj.jsonrpc !== "2.0") {
     return { kind: "response", status: 400, body: jsonRpcErr(obj?.id ?? null, -32600, "invalid jsonrpc envelope") };
   }
+  if (!isString(obj.method)) {
+    return { kind: "response", status: 400, body: jsonRpcErr(obj.id ?? null, -32600, "missing method") };
+  }
+  // JSON-RPC notification: the id member is absent. Checked after method
+  // so a body with no method still returns -32600.
+  if (!Object.hasOwn(obj, "id")) {
+    return { kind: "notification" };
+  }
 
   const respond = async (rpcBody) => ({ kind: "response", status: 200, body: rpcBody });
 
@@ -88,6 +99,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
         };
         return respond(jsonRpcOk(obj.id, result));
       }
+    // Clients sometimes attach an id. Id-less messages already returned above.
     case "notifications/initialized":
       return { kind: "notification" };
     case "ping":

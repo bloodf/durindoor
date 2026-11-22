@@ -73,7 +73,7 @@ export class AzureExecutor extends DefaultExecutor {
     const deployment = this.resolveDeployment(model, credentials);
 
     const endpoint = azureEndpoint.replace(/\/$/, "");
-    return `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+    return `${endpoint}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${apiVersion}`;
   }
 
   buildHeaders(credentials, stream = true) {
@@ -83,8 +83,7 @@ export class AzureExecutor extends DefaultExecutor {
     };
 
     const apiKey = credentials?.apiKey
-      || credentials?.accessToken
-      || process.env.OPENAI_API_KEY;
+      || credentials?.accessToken;
 
     if (apiKey) {
       headers["api-key"] = apiKey;

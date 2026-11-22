@@ -23,6 +23,10 @@ export default function createOpenAIEmbeddingAdapter(providerId) {
       // Asymmetric embedding models (e.g. NVIDIA NIM nvidia/llama-nemotron-embed-*)
       // require input_type ("query" | "passage"); forward it when the client sends it.
       if (input_type != null && input_type !== "") body.input_type = input_type;
+      // NVIDIA's EmbedQA model requires a retrieval input type even when omitted.
+      if (providerId === "nvidia" && model === "nvidia/nv-embedqa-e5-v5" && !body.input_type) {
+        body.input_type = "query";
+      }
       if (dimensions != null && dimensions !== "") {
         const dim = Number(dimensions);
         if (Number.isFinite(dim) && dim > 0) body.dimensions = dim;

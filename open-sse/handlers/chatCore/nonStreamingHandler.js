@@ -1,3 +1,4 @@
+import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
@@ -675,6 +676,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
     }
 
+    if (clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && responseFormat === FORMATS.ANTIGRAVITY) {
+      // Validate and account for the same completed native response we return.
+      const normalized = antigravityGeminiResponse(responseBody, toolNameMap, true);
+      responseBody = responseBody.response ? { ...responseBody, response: normalized } : normalized;
+    }
+
     // Unwrap ClinePass {success, data} envelope before marking success: a
     // {success:false, error} body must surface as a 502, never as a successful call.
     {
@@ -766,7 +773,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // so neither path is mistaken for a retryable empty-content gateway fault.
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
     if (!isNativeClaudeRefusal && !isTokenLimited &&
-        !hasUsefulContent(translatedResponse) && !isTrustedEmptyStop(translatedResponse, provider)) {
+        !hasUsefulContent(translatedResponse) && !(clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && hasUsefulContent(responseBody)) && !isTrustedEmptyStop(translatedResponse, provider)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(
@@ -879,6 +886,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }, { endpoint: clientRawRequest?.endpoint || null })).catch((err) => {
       console.error("[RequestDetail] Failed to save:", err.message);
     });
+
+    const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && responseFormat === FORMATS.ANTIGRAVITY;
+    if (nativeGemini) {
+      const nativeResponse = antigravityGeminiResponse(responseBody, toolNameMap, true);
+      await markSuccess();
+      return { success: true, response: new Response(streamToClient ? formatSSE(nativeResponse, FORMATS.GEMINI) : JSON.stringify(nativeResponse), {
+        headers: { "Content-Type": streamToClient ? "text/event-stream" : "application/json", "Access-Control-Allow-Origin": "*", "x-durindoor-internal-gemini-native": "1", ...resolvedModelHeaders(provider, model) }
+      }) };
+    }
 
     // Client requested streaming but the provider only returned a non-stream JSON
     if (streamToClient === true) {

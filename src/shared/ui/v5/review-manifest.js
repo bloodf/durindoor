@@ -938,17 +938,23 @@ export const REVIEW_SURFACES = [
   {
     "source": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.stories.jsx",
     "title": "V5 review/Pages/media/ProviderDetail",
-    "storyId": "v5-review-pages-media-providerdetail--embedding-example",
+    "storyId": "v5-review-pages-media-providerdetail--loaded",
     "states": [
+      "Loaded",
       "EmbeddingExample",
       "RunExample",
       "TtsExample",
+      "SttExample",
+      "GenericExample",
       "CustomEmbeddingDetail"
     ],
     "storyIds": [
+      "v5-review-pages-media-providerdetail--loaded",
       "v5-review-pages-media-providerdetail--embedding-example",
       "v5-review-pages-media-providerdetail--run-example",
       "v5-review-pages-media-providerdetail--tts-example",
+      "v5-review-pages-media-providerdetail--stt-example",
+      "v5-review-pages-media-providerdetail--generic-example",
       "v5-review-pages-media-providerdetail--custom-embedding-detail"
     ],
     "pathname": "/dashboard/media-providers/embedding/openai",
@@ -1062,13 +1068,15 @@ export const REVIEW_SURFACES = [
       "AutomaticAndCustom",
       "CustomizeAddRemoveAndSave",
       "LoadError",
-      "EmptyRoute"
+      "EmptyRoute",
+      "CustomUnavailable"
     ],
     "storyIds": [
       "v5-review-pages-media-mediaroutes--automatic-and-custom",
       "v5-review-pages-media-mediaroutes--customize-add-remove-and-save",
       "v5-review-pages-media-mediaroutes--load-error",
-      "v5-review-pages-media-mediaroutes--empty-route"
+      "v5-review-pages-media-mediaroutes--empty-route",
+      "v5-review-pages-media-mediaroutes--custom-unavailable"
     ],
     "pathname": "/dashboard/media-routes",
     "routePattern": "/dashboard/media-routes",
@@ -2131,6 +2139,29 @@ export const REVIEW_SURFACES = [
     ],
     "pathname": "/dashboard/translator",
     "routePattern": "/dashboard/translator",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/usage/UsageLayout.stories.jsx",
+    "title": "V5 review/Pages/usage/Layout",
+    "storyId": "v5-review-pages-usage-layout--overview-widgets",
+    "states": [
+      "OverviewWidgets",
+      "LayoutCancelRestoresOrder",
+      "LayoutSaveAndResetConfirm",
+      "LayoutStorageBlocked",
+      "UsageStatsUnavailable"
+    ],
+    "storyIds": [
+      "v5-review-pages-usage-layout--overview-widgets",
+      "v5-review-pages-usage-layout--layout-cancel-restores-order",
+      "v5-review-pages-usage-layout--layout-save-and-reset-confirm",
+      "v5-review-pages-usage-layout--layout-storage-blocked",
+      "v5-review-pages-usage-layout--usage-stats-unavailable"
+    ],
+    "pathname": "/dashboard/usage",
+    "routePattern": "/dashboard/usage",
     "routePriority": 0,
     "standalone": false
   },

@@ -336,6 +336,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
           currentVersion={updateInfo?.currentVersion || APP_CONFIG.version}
           latestVersion={updateInfo?.latestVersion}
           installCmd={INSTALL_CMD}
+          isTrayMode={updateInfo?.isTrayMode === true}
           onClose={() => setIsUpdating(false)}
         />
       </Modal>

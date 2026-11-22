@@ -31,7 +31,8 @@ const DEFAULT_ACCESS_TTL_SECONDS = 10_800;
 const PLAN = "SenseNova Token Plan";
 
 const defaultDeps = {
-  fetch: proxyAwareFetch,
+  // Resolved per call so importing this module never reads the export eagerly.
+  fetch: (...args) => proxyAwareFetch(...args),
   now: () => Date.now(),
   clientId: () => process.env.SENSENOVA_CLIENT_ID || "nova",
   async readConnection(id) {

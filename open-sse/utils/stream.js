@@ -1805,7 +1805,7 @@ export function createSSEStream(options = {}) {
             sanitizePublicErrorEnvelope(parsed, errorSecrets);
             /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
             if (parsed && !parsed.done) {
-              recordCompletionData(parsed, { trackUsage: false, content: true });
+              recordCompletionData(parsed, { trackUsage: false });
               const extracted = extractUsage(parsed);
               if (extracted) state.usage = mergeUsage(state.usage, extracted);
             }

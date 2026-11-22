@@ -29,11 +29,24 @@ import ConnectionGroupsPanel from "./ConnectionGroupsPanel.jsx";
 import ComboAllowListEditor from "./ComboAllowListEditor.jsx";
 import { sortComboModels } from "@/lib/combos/comboSort.js";
 import ComboUsageReport from "./components/ComboUsageReport";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import ModelSummary from "@/shared/ui/v5/combos/ModelSummary.jsx";
+import "@/shared/ui/v5/combos/combos.css";
+import { createSettingsQueue } from "../providers/workflowRequests.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 export default function CombosPage() {
+  const v5 = useUiV5();
+  const [strategyQueue] = useState(() => createSettingsQueue({}, async (updated) => {
+    const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comboStrategies: updated }) });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || translate("Could not save routing strategy. Retry."));
+    }
+    setComboStrategies(updated);
+  }));
   const [combos, setCombos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -54,6 +67,8 @@ export default function CombosPage() {
   const { copied, copy } = useCopyToClipboard();
 
   const loadRequest = useRef(0);
+  const strategyVersion = useRef(0);
+  const strategyWrites = useRef(0);
 
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
   const allSelected = combos.length > 0 && selectedIds.length === combos.length;
@@ -148,6 +163,8 @@ export default function CombosPage() {
 
   const fetchData = async () => {
     const request = ++loadRequest.current;
+    const version = strategyVersion.current;
+    const writesInFlight = strategyWrites.current;
     const isCurrent = () => loadRequest.current === request;
     try {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
@@ -165,7 +182,10 @@ export default function CombosPage() {
       if (!isCurrent()) return;
       // Show every non-media combo here (llm, embedding, tts, ...); media/web
       // combos belong to media-providers/web (#2686).
-      const visibleCombos = (combosData.combos || []).filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind));
+      // Older or malformed records may omit models; cards and editors expect an array.
+      const visibleCombos = (Array.isArray(combosData.combos) ? combosData.combos : [])
+        .filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind))
+        .map(c => ({ ...c, models: Array.isArray(c.models) ? c.models : [] }));
       setLoadError("");
       setCombos(visibleCombos);
       const alive = new Set(visibleCombos.map((combo) => combo.id));
@@ -176,7 +196,11 @@ export default function CombosPage() {
         setActiveProviders(filterActiveConnections(connections));
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
-      setComboStrategies(settingsData.comboStrategies || {});
+      // A read overlapping a strategy write may contain the pre-write map.
+      if (!v5 || (!writesInFlight && !strategyWrites.current && version === strategyVersion.current)) {
+        setComboStrategies(settingsData.comboStrategies || {});
+        strategyQueue.replace(settingsData.comboStrategies || {});
+      }
       await fetchPrunedCombos(isCurrent);
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -240,7 +264,20 @@ export default function CombosPage() {
     return updated;
   };
 
-  const persistComboStrategies = async (updated) => {
+  // V5 serializes strategy edits against the last accepted settings map so
+  // edits to separate rows cannot overwrite each other while a request is pending.
+  const persistComboStrategies = async (change) => {
+    if (v5) {
+      strategyVersion.current += 1;
+      strategyWrites.current += 1;
+      try {
+        return await strategyQueue.update(change);
+      } finally {
+        strategyWrites.current -= 1;
+        strategyVersion.current += 1;
+      }
+    }
+    const updated = change(comboStrategies);
     const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -267,7 +304,7 @@ export default function CombosPage() {
           const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
           if (!res.ok) throw new Error("Failed to delete combo");
           if (combo?.name) {
-            await persistComboStrategies(pruneStrategiesForNames([combo.name]));
+            await persistComboStrategies((current) => pruneStrategiesForNames([combo.name], current));
           }
           setCombos((prev) => prev.filter((c) => c.id !== id));
           setSelectedIds((prev) => prev.filter((x) => x !== id));
@@ -288,6 +325,7 @@ export default function CombosPage() {
     const count = selectedCombos.length;
     let remaining = selectedCombos;
     let strategies = comboStrategies;
+    const deletedNames = new Set();
     let pending = false;
     setConfirmState({
       title: "Delete Selected Combos",
@@ -309,18 +347,23 @@ export default function CombosPage() {
           ));
           const ids = succeeded.map((combo) => combo.id);
           remaining = remaining.filter((combo) => !ids.includes(combo.id));
+          succeeded.forEach((combo) => deletedNames.add(combo.name));
           strategies = pruneStrategiesForNames(succeeded.map((combo) => combo.name), strategies);
           setCombos((prev) => prev.filter((combo) => !ids.includes(combo.id)));
           setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
           if (ids.length > 0 || remaining.length === 0) {
             // Keep cleanup retryable until the settings boundary accepts it.
-            const response = await fetch("/api/settings", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ comboStrategies: strategies }),
-            });
-            if (!response.ok) throw new Error("Failed to update combo strategies");
-            setComboStrategies(strategies);
+            if (v5) {
+              await persistComboStrategies((current) => pruneStrategiesForNames([...deletedNames], current));
+            } else {
+              const response = await fetch("/api/settings", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ comboStrategies: strategies }),
+              });
+              if (!response.ok) throw new Error("Failed to update combo strategies");
+              setComboStrategies(strategies);
+            }
           }
           if (remaining.length > 0) {
             const failed = remaining.length;
@@ -349,7 +392,8 @@ export default function CombosPage() {
   // patch (strategy back to default "fallback") drops the entry entirely.
   const handleSetComboStrategy = async (comboName, patch) => {
     try {
-      const updated = { ...comboStrategies };
+      const update = (current) => {
+      const updated = { ...current };
       const next = { ...(updated[comboName] || {}), ...patch };
       // Prune to keep settings clean: default fallback with no extras = no entry.
       if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
@@ -363,10 +407,13 @@ export default function CombosPage() {
         updated[comboName] = next;
       }
 
-      await persistComboStrategies(updated);
+      return updated;
+      };
+      await persistComboStrategies(update);
+      return { ok: true };
     } catch (error) {
       console.log("Error updating combo strategy:", error);
-      alert(error.message || "Failed to update combo strategy");
+      return { ok: false, error: error.message };
     }
   };
 
@@ -374,7 +421,8 @@ export default function CombosPage() {
     if (selectedCombos.length === 0 || !strategy) return;
     setBulkBusy(true);
     try {
-      const updated = { ...comboStrategies };
+      const update = (current) => {
+      const updated = { ...current };
       for (const combo of selectedCombos) {
         if (!strategy || strategy === "fallback") {
           delete updated[combo.name];
@@ -385,7 +433,9 @@ export default function CombosPage() {
           };
         }
       }
-      await persistComboStrategies(updated);
+      return updated;
+      };
+      await persistComboStrategies(update);
     } catch (error) {
       console.log("Error bulk updating combo strategy:", error);
       alert("Failed to update strategy for selected combos");
@@ -404,8 +454,9 @@ export default function CombosPage() {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className={`${v5 ? "v5-combos-page " : ""}flex min-w-0 flex-col gap-6 px-1 sm:px-0`}>
       <PageHeader
+        className={v5 ? "v5-combo-page-heading" : undefined}
         icon="layers"
         title={translate("Combos")}
         subtitle={translate("Group models under one name, then pick a strategy per combo.")}
@@ -540,6 +591,7 @@ export default function CombosPage() {
                 <ComboCard
                   key={combo.id}
                   combo={combo}
+                  v5={v5}
                   getCaps={getCaps}
                   comboByName={comboByName}
                   activeProviders={activeProviders}
@@ -558,7 +610,8 @@ export default function CombosPage() {
                       connections={providerConnections}
                       groups={groups}
                       onChange={async (allowedConnectionIds) => {
-                        await handleUpdate(combo.id, { allowedConnectionIds });
+                        const result = await handleUpdate(combo.id, { allowedConnectionIds });
+                        if (v5) return result;
                       }}
                     />
                   }
@@ -633,8 +686,34 @@ function getStrategyOptions() {
   ];
 }
 
-function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
+function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
+  const [timeoutDraft, setTimeoutDraft] = useState(null);
+  const [writeState, setWriteState] = useState({ pending: false, error: "", retry: false });
+  const rowPending = useRef(false);
+  const retryPatch = useRef(null);
+  const savePatch = async (patch) => {
+    if (rowPending.current) return;
+    rowPending.current = true;
+    retryPatch.current = patch;
+    setWriteState({ pending: true, error: "", retry: false });
+    const result = await onSetStrategy(patch);
+    if (result?.ok === false) setWriteState({ pending: false, error: result.error || translate("Routing change could not be saved."), retry: true });
+    else {
+      if (Object.hasOwn(patch, "timeoutMs")) setTimeoutDraft(null);
+      setWriteState({ pending: false, error: "", retry: false });
+    }
+    rowPending.current = false;
+  };
+  const saveTimeout = () => {
+    if (timeoutDraft === null || rowPending.current) return;
+    const seconds = Number(timeoutDraft);
+    if (timeoutDraft.trim() === "" || !Number.isSafeInteger(seconds) || seconds < 0 || !Number.isSafeInteger(seconds * 1000)) {
+      setWriteState({ pending: false, error: translate("Enter a whole number of seconds, zero or greater."), retry: false });
+      return;
+    }
+    savePatch({ timeoutMs: seconds * 1000 });
+  };
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
@@ -642,8 +721,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   const comboCaps = overlayComboCapabilities(derivedCaps, combo.capabilities);
 
   return (
-    <Card className={`group ${selected ? "ring-1 ring-dd-accent/40 bg-dd-accent-soft/30" : ""}`}>
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card className={`group ${v5 ? "v5-combo-row " : ""}${selected ? "ring-1 ring-dd-accent/40 bg-dd-accent-soft/30" : ""}`}>
+      <div className={v5 ? "v5-combo-row-body" : "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"}>
         <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
           <Checkbox
             checked={selected}
@@ -661,7 +740,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 {prunedMembers.length === 1 ? "1 model no longer listed" : `${prunedMembers.length} models no longer listed`}
               </Badge>
             )}
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            {v5 ? <ModelSummary models={combo.models} getCaps={getCaps} comboByName={comboByName} /> : <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
               {combo.models.length === 0 ? (
                 <span className="text-xs italic text-dd-subtle">No models</span>
               ) : (
@@ -679,7 +758,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               {combo.models.length > 3 && (
                 <span className="text-[10px] text-dd-subtle">+{combo.models.length - 3} more</span>
               )}
-            </div>
+            </div>}
             {comboCaps && (
               <div className="mt-1 flex items-center gap-2 text-[10px] text-dd-subtle dd-tnum">
                 <span>ctx {fmtK(comboCaps.contextWindow)}</span>
@@ -715,14 +794,15 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
         </div>
 
         {/* Actions */}
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
+        <div className={v5 ? "v5-combo-actions" : "flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0"}>
           {/* Strategy selector — always visible */}
           <div className="w-full sm:w-[200px]">
             <Select
               aria-label={`Strategy for ${combo.name}`}
               options={getStrategyOptions()}
               value={current}
-              onChange={(value) => onSetStrategy({ fallbackStrategy: value })}
+              disabled={v5 && writeState.pending}
+              onChange={(value) => v5 ? savePatch({ fallbackStrategy: value }) : onSetStrategy({ fallbackStrategy: value })}
               size="sm"
             />
           </div>
@@ -732,14 +812,18 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             <div className="flex items-center gap-1.5">
               <span className="whitespace-nowrap text-[10px] text-dd-muted">{translate("Timeout")}</span>
               <Input
+                aria-label={v5 ? `Timeout for ${combo.name}` : undefined}
                 type="number"
                 min="0"
                 step="1"
                 size="sm"
-                value={(strategy.timeoutMs || 0) / 1000}
+                value={v5 ? (timeoutDraft ?? String((strategy.timeoutMs || 0) / 1000)) : (strategy.timeoutMs || 0) / 1000}
+                disabled={v5 && writeState.pending}
+                onBlur={v5 ? saveTimeout : undefined}
+                onKeyDown={v5 ? (event) => { if (event.key === "Enter") { event.preventDefault(); saveTimeout(); } } : undefined}
                 onChange={(e) => {
-                  const sec = parseInt(e.target.value, 10) || 0;
-                  onSetStrategy({ timeoutMs: sec * 1000 });
+                  if (v5) { setTimeoutDraft(e.target.value); setWriteState({ pending: false, error: "", retry: false }); }
+                  else { const sec = parseInt(e.target.value, 10) || 0; onSetStrategy({ timeoutMs: sec * 1000 }); }
                 }}
                 className="w-14 text-center dd-tnum [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 placeholder="0"
@@ -749,6 +833,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             </div>
           )}
 
+          {v5 && writeState.pending && <span role="status" className="text-xs text-dd-muted">{translate("Saving…")}</span>}
+          {v5 && writeState.error && <div role="alert" className="text-xs text-dd-danger">{writeState.error}{writeState.retry && <Button variant="ghost" size="sm" onClick={() => savePatch(retryPatch.current)}>{translate("Retry")}</Button>}</div>}
           <div className="flex flex-wrap items-center justify-end gap-1">
             <IconButton
               icon={copied === `combo-${combo.id}` ? "check" : "content_copy"}

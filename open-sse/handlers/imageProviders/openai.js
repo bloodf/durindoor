@@ -1,8 +1,23 @@
 // OpenAI-compatible adapter (used by openai, minimax, openrouter, recraft)
 import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const imageCfg = (id) => PROVIDER_MEDIA[id]?.imageConfig || {};
 const imageUrl = (id) => imageCfg(id).baseUrl;
+
+// OpenAI Images only accepts a compression percentage for JPEG and WebP.
+// Forward it together with the normalized format so the request does not fall back to PNG.
+function appendOpenAIImageOptions(full, body) {
+  if (body.complexity !== undefined) full.complexity = body.complexity;
+  if (body.output_compression === undefined) return;
+  const format = isString(body.output_format) ? body.output_format.trim().toLowerCase() : "";
+  if ((format === "jpeg" || format === "webp") && Number.isFinite(body.output_compression)) {
+    full.output_format = format;
+    full.output_compression = body.output_compression;
+  } else {
+    delete full.output_compression;
+  }
+}
 
 export default function createOpenAIAdapter(providerId) {
   const cfg = imageCfg(providerId);
@@ -25,7 +40,8 @@ export default function createOpenAIAdapter(providerId) {
       if (background) full.background = background;
       if (output_format) full.output_format = output_format;
       if (output_compression !== undefined) full.output_compression = output_compression;
-      if (moderation) full.moderation = moderation;
+      if (providerId === "openai" ? moderation !== undefined : moderation) full.moderation = moderation;
+      if (providerId === "openai") appendOpenAIImageOptions(full, body);
       // bodyFields whitelist applies only provider-supported native fields.
       if (Array.isArray(cfg.bodyFields)) {
         const req = {};

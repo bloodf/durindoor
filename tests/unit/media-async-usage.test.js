@@ -59,7 +59,8 @@ async function reload() {
 
 async function importCutover() {
   const { exportDb, importDb } = await import("@/lib/db/index.js");
-  const backup = await exportDb();
+  // SEC-B-02 / #2208: scrubbed exports omit apiKeys[].key; cutover needs secrets.
+  const backup = await exportDb({ includeSecrets: true });
   await importDb({ ...backup, billingCutoverVersion: 1, billingEpoch: backup.billingEpoch || "imported-generation" });
 }
 // Transforming the handler and DB graph is the slow part. Warm it once so

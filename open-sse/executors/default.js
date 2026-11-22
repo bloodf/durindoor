@@ -167,6 +167,42 @@ export function normalizeOpenAIToolCallIds(body) {
   return body;
 }
 
+// OpenAI's automatic prompt cache covers `input` (+ tools) but not the top-level
+// Responses `instructions` field, so a stateless Responses request re-bills its
+// system prompt every turn. Move non-empty string `instructions` to the front of
+// `input` as a developer message. Stateful continuations (previous_response_id /
+// conversation) and Chat Completions bodies (`messages`) are left untouched.
+// Source: OmniRoute #20854 (issue #20846).
+function hasResponsesContinuation(body) {
+  const prev = body.previous_response_id;
+  if (isString(prev) ? prev.trim().length > 0 : prev !== undefined && prev !== null) return true;
+  const conversation = body.conversation;
+  return isString(conversation) ? conversation.trim().length > 0 : isRecord(conversation);
+}
+
+function responsesInputItems(input) {
+  if (Array.isArray(input)) return input;
+  if (isString(input)) {
+    return input.length > 0 ? [{ type: "message", role: "user", content: [{ type: "input_text", text: input }] }] : [];
+  }
+  return isRecord(input) ? [input] : [];
+}
+
+export function hoistOpenAIResponsesInstructionsToInput(body) {
+  if (!isRecord(body) || Array.isArray(body.messages)) return body;
+  if (hasResponsesContinuation(body)) return body;
+  if (!isString(body.instructions) || body.instructions.trim().length === 0) return body;
+
+  const { instructions, ...rest } = body;
+  return {
+    ...rest,
+    input: [
+      { type: "message", role: "developer", content: [{ type: "input_text", text: instructions }] },
+      ...responsesInputItems(body.input)
+    ]
+  };
+}
+
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
 const XAPIKEY = { combined: true, header: "x-api-key", scheme: "raw" };
@@ -211,19 +247,27 @@ function setAuth(headers, spec, token) {
   headers[spec.header] = token;
 }
 
+// Header names are case-insensitive; preserve a configured version exactly once.
+function ensureAnthropicVersion(headers) {
+  const keys = Object.keys(headers).filter((key) => key.toLowerCase() === "anthropic-version");
+  const value = headers["anthropic-version"] ?? headers[keys[0]] ?? ANTHROPIC_API_VERSION;
+  for (const key of keys) delete headers[key];
+  headers["anthropic-version"] = value;
+}
+
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
     applyExtraHeaders(headers, desc.extraHeaders, credentials);
-    if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+    if (desc.anthropicVersion) ensureAnthropicVersion(headers);
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);else
   if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
   applyExtraHeaders(headers, desc.extraHeaders, credentials);
-  if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+  if (desc.anthropicVersion) ensureAnthropicVersion(headers);
 }
 
 function applyExtraHeaders(headers, extraHeaders, credentials) {
@@ -423,6 +467,7 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "openai") {
         normalizeOpenAIToolCallIds(transformed);
+        transformed = hoistOpenAIResponsesInstructionsToInput(transformed);
       }
       // NVIDIA rejects the long opaque tool-call IDs other providers mint.
       if (this.provider === "nvidia") {
@@ -440,6 +485,9 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "opencode-go" && credentials) {
         credentials._openCodeGoSession = openCodeGoSessionHeader(credentials, transformed);
+        // buildHeaders() never sees the body; record whether the Claude lane carries
+        // context_management so the paired beta flag can travel with it (#4876).
+        credentials._openCodeGoContextManagement = Boolean(transformed.context_management);
       }
       if (this.provider?.startsWith("openai-compatible-") &&
         !this.provider.startsWith("openai-compatible-responses-") &&
@@ -469,6 +517,12 @@ export class DefaultExecutor extends BaseExecutor {
         applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       }
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
+      // Luna Chat Completions rejects function tools with reasoning enabled.
+      if (this.provider === "openai" && model === "gpt-5.6-luna" &&
+        transportFormat === FORMATS.OPENAI && ![FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(requestContext?.sourceFormat) &&
+        Array.isArray(transformed.tools) && transformed.tools.some((tool) => tool?.type === "function")) {
+        transformed.reasoning_effort = "none";
+      }
       // Native DeepSeek V4 rejects forced tool calls while thinking is enabled.
       const deepseekModel = String(model || "").split("/").pop();
       const thinking = transformed.thinking;
@@ -754,6 +808,18 @@ export class DefaultExecutor extends BaseExecutor {
       const modelBeta = selectAnthropicBeta(model, { firstParty: firstPartyHost });
       const runtimeBeta = officialApiKey && rt?.headers ? new Headers(rt.headers).get("anthropic-beta") : null;
       headers["Anthropic-Beta"] = [modelBeta, runtimeBeta].filter(Boolean).join(",");
+    }
+    // OpenCode Go's Claude lane is a strict Anthropic proxy: context_management is
+    // rejected (400) unless its paired beta flag is on the request. Forward the client's
+    // flags (minus Claude Code identity flags) and add the pair when the body needs it.
+    // Port of decolua/9router#4876; other opencode-go models keep no beta header.
+    if (this.provider === "opencode-go" && isClaudeModel) {
+      const clientBeta = withoutClaudeCodeIdentityBetas(
+        requestContext?.clientHeaders?.["anthropic-beta"] ?? requestContext?.clientHeaders?.["Anthropic-Beta"]
+      );
+      const flags = new Set([clientBeta, credentials?._openCodeGoContextManagement ? "context-management-2025-06-27" : null]
+        .filter(Boolean).flatMap((v) => v.split(",")).map((f) => f.trim()).filter(Boolean));
+      if (flags.size > 0) headers["Anthropic-Beta"] = Array.from(flags).join(",");
     }
     if (this.provider === "claude" || (this.provider === "anthropic" && officialApiKey) || compatibleClaudeModel) {
       mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });

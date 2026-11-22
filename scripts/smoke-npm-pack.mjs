@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
 import { smokeInstalledArtifact } from "./smoke-installed-artifact.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 // Copy cache data only. Keep npm writes and credentials out of the seed.
 function copyCacheData(source, destination) {
@@ -47,11 +47,10 @@ export async function smokeNpmPack(tarball) {
     fs.mkdirSync(home);
     const cache = path.join(temp, "npm-cache");
     if (process.env.npm_config_offline === "true" && process.env.npm_config_cache) {
-      const seed = path.resolve(process.env.npm_config_cache);
-      for (let dir = seed; ; dir = path.dirname(dir)) {
-        if (fs.lstatSync(dir).isSymbolicLink()) throw new Error(`Cache symlink rejected: ${dir}`);
-        if (dir === path.dirname(dir)) break;
-      }
+      const seedPath = path.resolve(process.env.npm_config_cache);
+      if (fs.lstatSync(seedPath).isSymbolicLink()) throw new Error(`Cache symlink rejected: ${seedPath}`);
+      // Resolve system symlink ancestors while rejecting a symlinked seed itself.
+      const seed = fs.realpathSync(seedPath);
       copyCacheData(path.join(seed, "_cacache"), path.join(cache, "_cacache"));
     }
     const install = spawnSync("npm", [
@@ -70,7 +69,7 @@ export async function smokeNpmPack(tarball) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (isMainModule(import.meta.url)) {
   if (process.argv.length !== 3) {
     console.error("Usage: node scripts/smoke-npm-pack.mjs /absolute/durindoor-x.y.z.tgz");
     process.exitCode = 1;

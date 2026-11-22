@@ -7,6 +7,13 @@ const { spawn } = require("child_process");
 const crypto = require("crypto");
 const { LOCAL_STDIO_PLUGINS } = require("@/shared/constants/coworkPlugins");
 
+// Child processes receive only basic execution, locale and proxy settings.
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    /^(PATH|HOME|USER|LANG|LC_.*|TMPDIR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SystemRoot|ComSpec)$/i.test(key)
+  ));
+}
+
 const G_KEY = "__9routerMcpBridges";
 const MAX_TEXT_CHARS = 50000;
 const COLLAPSE_THRESHOLD = 30;
@@ -116,7 +123,7 @@ function getOrSpawn(name) {
   const plugin = findPlugin(name);
   if (!plugin) throw new Error(`Unknown local plugin: ${name}`);
 
-  const proc = spawn(plugin.command, plugin.args, { stdio: ["pipe", "pipe", "pipe"], env: process.env });
+  const proc = spawn(plugin.command, plugin.args, { stdio: ["pipe", "pipe", "pipe"], env: childEnv() });
   entry = { proc, sessions: new Map(), buffer: "", nextId: 1, pending: new Map() };
   store.set(name, entry);
 

@@ -36,3 +36,7 @@ Wire exactly these:
 12. Dependencies: playwright is already a root dependency (1.63.0); the executor imports it lazily, so hosts without it fail only Gemini Web requests (503). Confirm the Docker/web image installs Chromium or document it.
 13. Tests: in `tests/unit/gemini-web-provider.test.js` drop the registry and executor `vi.mocks` and import the real registry entry; keep the playwright mock. Run the provider-cookie-import and extension suites.
 14. Close issue #1190 in the registration commit (`Closes #1190`, `Refs #2034`).
+
+## Main integration provenance
+
+Tracking: issue #1190, tracker #2034.

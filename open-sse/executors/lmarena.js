@@ -9,9 +9,9 @@ function cookieOf(c) { return c?.cookie || c?.apiKey || c?.providerSpecificData?
 const error = (status, message) => Response.json({ error: { message, type: status === 401 || status === 403 ? "authentication_error" : "provider_error" } }, { status });
 export async function validateLmarenaSession(credentials, fetcher = tlsFetchLMArena) {
   const cookie = cookieOf(credentials); if (!cookie) return { valid: false, status: null, error: "Arena session cookie is required" };
-  const result = await fetcher(URL, { method: "GET", headers: { Cookie: cookie, Accept: "application/json" }, stream: false });
+  const result = await fetcher(URL, { method: "GET", headers: { Cookie: cookie, Accept: "application/json" }, redirect: "manual", stream: false });
   const status = result.status;
-  if (status === 401 || status === 403) return { valid: false, status, error: "Arena session expired" };
+  if ((status >= 300 && status < 400) || status === 401 || status === 403) return { valid: false, status, error: "Arena session expired" };
   // A 405 from the live endpoint confirms the host and route; authenticated
   // chat calls remain the definitive session check because Arena has no whoami API.
   if (status === 405 || (status >= 200 && status < 300)) return { valid: true, status };
@@ -30,7 +30,7 @@ export class LmarenaExecutor extends BaseExecutor {
     const { model, body, stream, credentials, signal } = input; const cookie = cookieOf(credentials);
     if (!cookie) return { response: error(401, "Arena session cookie is missing"), url: URL, headers: {}, transformedBody: null };
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Origin: "https://arena.ai", Referer: "https://arena.ai/", Cookie: cookie };
-    const result = await tlsFetchLMArena(URL, { method: "POST", headers, body: JSON.stringify(upstreamBody(model, body?.messages, credentials)), signal, stream: !!stream });
+    const result = await tlsFetchLMArena(URL, { method: "POST", headers, body: JSON.stringify(upstreamBody(model, body?.messages, credentials)), signal, stream: !!stream, sameOriginRedirects: true });
     if (result.status >= 400) return { response: error(result.status, result.text || `Arena returned HTTP ${result.status}`), url: URL, headers, transformedBody: body };
     const upstream = new Response(result.text || "", { status: result.status, headers: { "content-type": "text/event-stream" } });
     if (stream) return { response: new Response(openAIStream(result.body || result.response?.body, model), { status: 200, headers: { "content-type": "text/event-stream" } }), url: URL, headers, transformedBody: body };

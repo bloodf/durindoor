@@ -7,6 +7,7 @@ import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
@@ -288,7 +289,13 @@ export class AntigravityExecutor extends BaseExecutor {
       const contents = [];
       const srcContents = body.request?.contents || body.contents || [];
       for (const c of srcContents) {
-        const validParts = (c.parts || []).filter((p) => p.text !== undefined || p.inlineData !== undefined);
+        // Keep text and inline image parts; normalize snake_case inline_data (#4724).
+        const validParts = (c.parts || []).
+        filter((p) => p.text !== undefined || p.inlineData !== undefined || p.inline_data !== undefined).
+        map((p) => {
+          const inline = p.inlineData || p.inline_data;
+          return inline ? { inlineData: inline } : p;
+        });
         if (validParts.length > 0) {
           contents.push({ role: c.role || "user", parts: validParts });
         }
@@ -386,6 +393,13 @@ export class AntigravityExecutor extends BaseExecutor {
       }
       return c;
     }));
+
+    // Native requests bypass the translator's response schema normalization.
+    if (body.request?.generationConfig?.responseSchema) {
+      body.request.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
+        structuredClone(body.request.generationConfig.responseSchema), { preserveNullable: true }
+      );
+    }
 
     // Sanitize tool schemas and function names before sending to Antigravity.
     let tools = body.request?.tools;
@@ -584,7 +598,7 @@ export class AntigravityExecutor extends BaseExecutor {
     if (!credentials.refreshToken) return null;
 
     try {
-      const response = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
+      const response = await credentialFetch((url, init) => proxyAwareFetch(url, init, proxyOptions), OAUTH_ENDPOINTS.google.token, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
         body: new URLSearchParams({
@@ -593,7 +607,7 @@ export class AntigravityExecutor extends BaseExecutor {
           client_id: this.config.clientId,
           client_secret: this.config.clientSecret
         })
-      }, proxyOptions);
+      });
 
       if (!response.ok) return null;
 

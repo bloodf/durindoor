@@ -1,0 +1,21 @@
+{
+  "route": "/login",
+  "stories": [
+    "production-public-login--default",
+    "production-public-login--password-entry",
+    "production-public-login--oidc-and-password",
+    "production-public-login--rate-limited",
+    "production-public-login--password-change-required",
+    "production-public-login--login-error-and-reset-hint",
+    "production-public-login--oidc-only",
+    "production-public-login--oidc-misconfigured",
+    "production-public-login--rejected-password",
+    "production-public-login--mfa-challenge",
+    "production-public-login--mfa-rejected",
+    "production-public-login--password-update",
+    "production-public-login--remote-default-password-blocked",
+    "production-public-login--unconfigured-password",
+    "production-public-login--configured-oidc",
+    "production-public-login--updated-password-requires-reauthentication"
+  ]
+}

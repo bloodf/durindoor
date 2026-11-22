@@ -1,0 +1,8 @@
+{
+  "route": "dialog/CopilotM365AuthModal",
+  "stories": [
+    "production-shared-oauth-copilotm365authmodal--intro",
+    "production-shared-oauth-copilotm365authmodal--sign-in-started",
+    "production-shared-oauth-copilotm365authmodal--exchange-rejected"
+  ]
+}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { translate } from "@/i18n/runtime";
 import { isFunction, isObject } from "../../../../../shared/utils/typeChecks.js";
@@ -32,6 +33,7 @@ function normalizeAccounts(parsed) {
  * Keep retry input and feedback until a response replaces it or the user closes.
  */
 export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
+  const v5 = useUiV5();
   const [jsonText, setJsonText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -83,7 +85,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
   const failedItems = result?.results?.filter((item) => !item.ok) || [];
 
   return (
-    <Modal open={isOpen} title={translate("Bulk Add Grok CLI Accounts")} onClose={handleClose}>
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen} title={translate("Bulk Add Grok CLI Accounts")} onClose={handleClose}>
       <div className="flex flex-col gap-4">
         <p className="text-[13px] text-dd-muted">
           {translate("Paste one Grok CLI credential object, an array, or an object containing accounts. Snake-case and camelCase token keys are accepted.")}

@@ -40,23 +40,6 @@ The same models are served on `/v1/chat/completions` and `/v1/messages`, as JSON
 
 Availability, quotas and rate limits are set by Tencent and can change. A cookie session is tied to your account and may be revoked at any time. DurinDoor sends `stream` in the request body in addition to the `model` and `messages` fields the source sends.
 
-Two details are not named by the pinned source and were not confirmed against a live session: the `sessionid` cookie name and the `/api/user/info` validation path. Confirm both from a real capture when registering the provider.
+Live capture is unverified. The pinned OmniRoute source forwards the whole Cookie header and names neither a session cookie nor a validation request, so the `sessionid` allowlist that **Import cookies** and the extension use, and the `GET /api/user/info` validation request, are this port's assumptions. Neither was confirmed against a real signed-in capture. If an import with only `sessionid` fails to chat, paste the full Cookie header in the add dialog instead; the executor forwards it unchanged.
 
 ## Sources
-
-- [OmniRoute provider entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/tencent-aistudio-web/index.ts)
-- [OmniRoute executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/tencent-aistudio-web.ts)
-
-<!--
-Registration steps (batch unit; this provider unit edits none of these files):
-1. Registry: promote open-sse/providers/private/tencent-aistudio-web.js to open-sse/providers/registry/ and register it in registry/index.js.
-2. open-sse/executors/index.js: map "tencent-aistudio-web" to TencentAIStudioWebExecutor (open-sse/executors/tencent-aistudio-web.js).
-3. Validation: wire validateTencentAIStudioSession (same executor module) into the provider validate/test path (providerProbe.js SPECIALTY_VALIDATORS), passing the connection's proxy-aware fetcher.
-4. Extension: add the aistudio.tencent.ai profile (domain, `sessionid`) to extensions/provider-cookie-capture/providers.js and the host permission to its manifest.json.
-5. Dashboard: enable the Import cookies dialog for the provider and list it in src/lib/providers/cookieImport/README.md.
-6. UI: ProviderIcon and ProviderLogo entries (icon "hub", color #0052D9, text "TA").
-7. Catalog: docs/providers/catalog.mdx, docs/providers/index.mdx, docs/providers/meta.json and docs/providers/web-cookie.mdx.
-8. modelsConfig.js entry for the three models; open-sse/AGENT-INDEX.md row.
-9. Stories: providers/[id]/page.stories.jsx and tests/e2e/storybook-surfaces.json.
-10. Confirm the `sessionid` cookie name and /api/user/info probe against a real signed-in capture before release.
--->

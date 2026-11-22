@@ -1,5 +1,6 @@
 import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadata.js";
 import { exchangeTokens } from "@/lib/oauth/providers.js";
+import { throwIfOAuthCancelled } from "@/lib/oauth/cancellation.js";
 import {
   buildOAuthProxyMetadataPatch,
   resolveOAuthProxySelection } from
@@ -67,6 +68,15 @@ flowClaim = null)
       error.code = "OAUTH_RECONNECT_TARGET_MISMATCH";
       throw error;
     }
+    // Never let a Microsoft sign-in for another tenant/object replace this account's tokens, even
+    // when both accounts share an email address.
+    if (provider === "copilot-m365-web" && (
+    !isString(providerSpecificData?.chathubPath) ||
+    providerSpecificData.chathubPath !== existing.providerSpecificData?.chathubPath)) {
+      const error = new Error("Reconnect target is a different Microsoft account");
+      error.code = "OAUTH_RECONNECT_TARGET_MISMATCH";
+      throw error;
+    }
     // Replace credentials + routing metadata and clear the reauth state. The
     // token fields here are explicit non-empty replacements, so the repo merge
     // overwrites the dead tokens rather than preserving them.
@@ -117,8 +127,10 @@ flowClaim = null)
 /**
  * Complete a server-bound authorization-code flow. Redirect URI, verifier,
  * provider metadata, and routing all come from the claimed server record.
+ * An optional `signal` cancels the exchange; a cancelled flow rejects with
+ * `OAUTH_CANCELLED` and nothing is saved.
  */
-export async function exchangeAndSaveAuthorizationCode(provider, code, state, flowClaim) {
+export async function exchangeAndSaveAuthorizationCode(provider, code, state, flowClaim, signal = null) {
   const resolvedProxy = await resolveFlowProxySelection(flowClaim);
   const payload = flowClaim?.payload || {};
   let tokenData;
@@ -130,7 +142,9 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
       payload.codeVerifier,
       state,
       payload.meta,
-      resolvedProxy.proxyOptions
+      resolvedProxy.proxyOptions,
+      // Only sent when the caller can cancel, so existing call shapes stay as they were.
+      ...(signal ? [signal] : [])
     );
   } catch (error) {
     if (isString(error?.code) && error.code.startsWith("OAUTH_")) throw error;
@@ -147,6 +161,8 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
       codexFingerprintMode: payload.codexFingerprintMode
     };
   }
+  // A cancelled sign-in saves nothing, even when the exchange finished first.
+  throwIfOAuthCancelled(signal);
   const connection = await saveOAuthConnection(
     provider,
     tokenData,

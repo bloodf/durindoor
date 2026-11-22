@@ -5,10 +5,32 @@ import { resolveProviderId } from "@/shared/constants/providers.js";
 import { ensureFreshToken, oauthMetaFromTokens, refreshToken } from "./oauthRefresh";
 import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
-import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import * as outboundUrlGuard from "open-sse/utils/outboundUrlGuard.js";
 import { updateInstance, getInstanceById } from "@/lib/localDb";
-import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+
+/**
+ * Resolve guardedProbeFetch without a named import. Vitest partial mocks that
+ * omit the export throw on property access; catch and fall back so those
+ * suites keep the static assertOutboundUrlAllowed + fetch path (#2237).
+ */
+function resolveGuardedProbeFetch() {
+  try {
+    const fn = outboundUrlGuard.guardedProbeFetch;
+    return isFunction(fn) ? fn : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Connection-pinned outbound fetch for MCP upstreams (#2237). */
+function mcpGuardedFetch(url, init) {
+  const probeFetch = resolveGuardedProbeFetch();
+  if (probeFetch) return probeFetch(url, init);
+  outboundUrlGuard.assertOutboundUrlAllowed(url);
+  return fetch(url, { ...init, redirect: "manual" });
+}
 
 const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
@@ -174,9 +196,9 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
       // JSON-RPC POST to an arbitrary host and, with auto-follow, would
       // receive the Authorization bearer we attached. Two rules on
       // EVERY hop:
-      //   1. redirect:"manual" + assertOutboundUrlAllowed() — re-validate
-      //      the Location against the SSRF guard before opening the
-      //      socket.
+      //   1. mcpGuardedFetch (guardedProbeFetch) — DNS-pinned connector
+      //      + redirect:"manual"; each hop URL is re-validated before
+      //      the socket opens (#2237).
       //   2. strip Authorization + other sensitive caller-supplied
       //      headers whenever the redirect crosses origin. Same-origin
       //      redirects keep them.
@@ -186,15 +208,14 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
       for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
         let fetchRes;
         try {
-          fetchRes = await fetch(currentUrl, {
+          fetchRes = await mcpGuardedFetch(currentUrl, {
             method: "POST",
             headers: currentHeaders,
             body: JSON.stringify(jsonRpc),
-            signal: ac.signal,
-            redirect: "manual"
+            signal: ac.signal
           });
         } catch (err) {
-          if (err instanceof OutboundUrlGuardError) {
+          if (err instanceof outboundUrlGuard.OutboundUrlGuardError) {
             throw Object.assign(new Error("URL not allowed"), { blocked: true, original: err });
           }
           throw err;
@@ -211,15 +232,6 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
           next = new URL(location, currentUrl);
         } catch {
           break;
-        }
-
-        try {
-          assertOutboundUrlAllowed(next);
-        } catch (err) {
-          if (err instanceof OutboundUrlGuardError) {
-            throw Object.assign(new Error("URL not allowed"), { blocked: true, original: err });
-          }
-          throw err;
         }
 
         const prevOrigin = new URL(currentUrl).origin;

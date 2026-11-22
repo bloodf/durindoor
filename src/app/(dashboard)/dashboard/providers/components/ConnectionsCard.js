@@ -529,6 +529,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       {/* Laya needs a server URL and an optional key; the provider page's modal handles both. */}
       {providerId === "laya" ?
       <HostAwareAddApiKeyModal
+        key={showAddModal ? "add-api-key-open" : "add-api-key-closed"}
         isOpen={showAddModal}
         provider={providerId}
         providerName="Laya (local)"

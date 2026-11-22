@@ -7,3 +7,4 @@ const meta = { ...originalMeta, title: "V5 review/Pages/providers/components/Add
 export default meta;
 export const OpenAIOpen = { ...reviewStory(original.OpenAIOpen, {"source":"src/app/(dashboard)/dashboard/providers/components/AddCompatibleModal.stories.jsx","standalone":false}) };
 export const AnthropicInvalid = { ...reviewStory(original.AnthropicInvalid, {"source":"src/app/(dashboard)/dashboard/providers/components/AddCompatibleModal.stories.jsx","standalone":false}) };
+export const CreatePending = { ...reviewStory(original.CreatePending, {"source":"src/app/(dashboard)/dashboard/providers/components/AddCompatibleModal.stories.jsx","standalone":false}) };

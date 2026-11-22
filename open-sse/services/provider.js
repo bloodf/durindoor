@@ -25,7 +25,7 @@ export function getOpenAICompatibleType(provider, credentials = null) {
   if (!isOpenAICompatible(provider)) return "chat";
   const apiType = credentials?.providerSpecificData?.apiType;
   if (apiType === "responses" || apiType === "chat") return apiType;
-  return provider.includes("responses") ? "responses" : "chat";
+  return provider.startsWith(`${OPENAI_COMPATIBLE_PREFIX}responses-`) ? "responses" : "chat";
 }
 
 // Detect request format from body structure

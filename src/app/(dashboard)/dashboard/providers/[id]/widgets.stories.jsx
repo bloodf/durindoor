@@ -100,7 +100,7 @@ export const ConnectionRowCooldown = {
     cooldownNowMs = Date.parse(COOLDOWN_UNTIL_ISO) + 1000;
     await waitFor(() => {
       expect(countdown).not.toBeInTheDocument();
-      expect(canvas.getByText("active", { exact: true })).toBeVisible();
+      expect(canvas.getByText("Operational: active", { exact: true })).toBeVisible();
     }, { timeout: 2500 });
   },
 };

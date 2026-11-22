@@ -21,8 +21,9 @@ import { describeChatGptWebHttpError } from "./chatgptWebErrors.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { sha3_512Hex } from "../utils/sha3-512.js";
-import { tlsFetchChatGpt, TlsClientUnavailableError } from "../services/chatgptTlsClient.js";
+import { tlsFetchChatGpt as tlsFetchChatGptRaw, TlsClientUnavailableError } from "../services/chatgptTlsClient.js";
 import {
   storeChatGptImage,
   getChatGptImageConversationContext,
@@ -32,11 +33,32 @@ import { resolveChatGptModel, resolveChatGptSystemHints } from "./chatgpt-web/mo
 import { cleanChatGptText } from "./chatgpt-web/citations.js";
 import { resumeChatGptHandoff } from "./chatgpt-web/handoff.js";
 import { runWithTlsProxyOptions } from "../services/tlsClientBase.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import {
   buildNextAuthSessionCookie,
   mergeRefreshedCookie,
 } from "../../src/lib/providers/webCookieAuth.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+
+// Request-local so concurrent ChatGPT Web and Codex calls retain their own policy.
+const redirectPolicy = new AsyncLocalStorage();
+const tlsFetchChatGpt = (url, options) => tlsFetchChatGptRaw(
+  url, redirectPolicy.getStore() === true ? { ...options, sameOriginRedirects: true } : options
+);
+
+async function proxyAgentForWebSocket(proxyUrl) {
+  try {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyUrl);
+  } catch {
+    try {
+      const { SocksProxyAgent } = await import("socks-proxy-agent");
+      return new SocksProxyAgent(proxyUrl);
+    } catch {
+      return null;
+    }
+  }
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -2095,12 +2117,36 @@ async function registerWebSocket(ctx) {
   return null;
 }
 
+/**
+ * Wait on the celsius WebSocket for an async image_gen asset pointer.
+ * Non-object frames (e.g. JSON `null` or primitives) and per-frame handler
+ * errors are skipped so a bad frame cannot escape `ws.onmessage` or abort
+ * the wait.
+ */
 async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) {
+  let wsOptions;
+  if (ctx.proxyOptions) {
+    const route = resolveWebSocketProxyRoute(wssUrl, ctx.proxyOptions);
+    if (route.enabled && route.url) {
+      const agent = await proxyAgentForWebSocket(route.url);
+      if (agent) wsOptions = { agent };
+      else if (route.strict) throw new Error("WebSocket proxy required but unavailable");
+    }
+  }
+  // Keep the global WebSocket when no agent is required so unit tests can stub
+  // globalThis.WebSocket. Load `ws` only for proxied sockets that need an agent.
+  let WebSocketCtor = WebSocket;
+  if (wsOptions?.agent) {
+    const wsModule = await import("ws");
+    WebSocketCtor = wsModule.default;
+  }
+
   return new Promise((resolve) => {
     const found = new Map();
     let resolved = false;
     let errored = false;
     let gotAnyMessage = false;
+    const ws = wsOptions ? new WebSocketCtor(wssUrl, wsOptions) : new WebSocketCtor(wssUrl);
     const finish = () => {
       if (resolved) return;
       resolved = true;
@@ -2116,7 +2162,6 @@ async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) 
         gotAnyMessage,
       });
     };
-    const ws = new WebSocket(wssUrl);
     const timer = setTimeout(() => {
       ctx.log?.warn?.("CGPT-WEB", `WebSocket image wait timed out after ${timeoutMs}ms`);
       finish();
@@ -2142,78 +2187,88 @@ async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) 
     ws.onmessage = (event) => {
       gotAnyMessage = true;
       let payload;
-      const raw = isString(event.data) ? event.data : event.data.toString();
       try {
+        const raw = isString(event?.data) ? event.data : event?.data?.toString?.();
         payload = JSON.parse(raw);
       } catch {
         console.warn("[chatgpt-web] WebSocket event JSON parse failed");
         return;
       }
-      // chatgpt.com's celsius WS frames look like:
-      //   { type: "conversation-update",
-      //     payload: { conversation_id: "...",
-      //                update_content: { message: { ... }, ... } } }
-      // Older deployments wrapped the conversation event directly as { data }.
-      const obj = payload;
-      const candidates = [];
-      const innerPayload = obj.payload;
-      const updateContent = innerPayload?.update_content;
-      if (updateContent?.message) {
-        candidates.push({
-          message: updateContent.message,
-          conversation_id: innerPayload?.conversation_id,
-        });
+      if (!isRecord(payload)) {
+        return;
       }
-      // OmniRoute #7357: some deployments deliver the completion via update_content.messages[]
-      // (plural array of { message: {...} } wrappers), not the singular field above.
-      for (const entry of Array.isArray(updateContent?.messages) ? updateContent.messages : []) {
-        const wrapped = entry?.message;
-        if (wrapped) {
+      try {
+        // chatgpt.com's celsius WS frames look like:
+        //   { type: "conversation-update",
+        //     payload: { conversation_id: "...",
+        //                update_content: { message: { ... }, ... } } }
+        // Older deployments wrapped the conversation event directly as { data }.
+        const obj = payload;
+        const candidates = [];
+        const innerPayload = obj.payload;
+        const updateContent = innerPayload?.update_content;
+        if (updateContent?.message) {
           candidates.push({
-            message: wrapped,
+            message: updateContent.message,
             conversation_id: innerPayload?.conversation_id,
           });
         }
-      }
-      if (innerPayload?.message) {
-        candidates.push({
-          message: innerPayload.message,
-          conversation_id: innerPayload.conversation_id,
-        });
-      }
-      if (obj.data?.message) {
-        candidates.push(obj.data);
-      }
+        // OmniRoute #7357: some deployments deliver the completion via update_content.messages[]
+        // (plural array of { message: {...} } wrappers), not the singular field above.
+        for (const entry of Array.isArray(updateContent?.messages) ? updateContent.messages : []) {
+          const wrapped = entry?.message;
+          if (wrapped) {
+            candidates.push({
+              message: wrapped,
+              conversation_id: innerPayload?.conversation_id,
+            });
+          }
+        }
+        if (innerPayload?.message) {
+          candidates.push({
+            message: innerPayload.message,
+            conversation_id: innerPayload.conversation_id,
+          });
+        }
+        if (obj.data?.message) {
+          candidates.push(obj.data);
+        }
 
-      for (const data of candidates) {
-        if (data?.conversation_id && data.conversation_id !== conversationId) continue;
-        const m = data?.message;
-        // The async image_gen result arrives as a TOOL-role message
-        // ({"author":{"role":"tool","name":"t2uay3k.sj1i4kz"}}), so we
-        // accept tool messages here too — extractImagePointers does the
-        // actual content_type filtering.
-        if (Array.isArray(m?.content?.parts)) {
-          for (const ptr of extractImagePointers(m.content?.parts ?? [])) {
-            const existing = found.get(ptr);
-            found.set(
-              ptr,
-              existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
-            );
+        for (const data of candidates) {
+          if (data?.conversation_id && data.conversation_id !== conversationId) continue;
+          const m = data?.message;
+          // The async image_gen result arrives as a TOOL-role message
+          // ({"author":{"role":"tool","name":"t2uay3k.sj1i4kz"}}), so we
+          // accept tool messages here too — extractImagePointers does the
+          // actual content_type filtering.
+          if (Array.isArray(m?.content?.parts)) {
+            for (const ptr of extractImagePointers(m.content?.parts ?? [])) {
+              const existing = found.get(ptr);
+              found.set(
+                ptr,
+                existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
+              );
+            }
+          }
+          if (m?.metadata && isObject(m.metadata)) {
+            const md = m.metadata;
+            const ptr = md.asset_pointer ?? md.image_asset_pointer;
+            if (isString(ptr)) {
+              const existing = found.get(ptr);
+              found.set(
+                ptr,
+                existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
+              );
+            }
           }
         }
-        if (m?.metadata && isObject(m.metadata)) {
-          const md = m.metadata;
-          const ptr = md.asset_pointer ?? md.image_asset_pointer;
-          if (isString(ptr)) {
-            const existing = found.get(ptr);
-            found.set(
-              ptr,
-              existing?.messageId ? existing : imagePointerEntry(ptr, m?.id)
-            );
-          }
-        }
+        if (found.size > 0) finish();
+      } catch (err) {
+        ctx?.log?.debug?.(
+          "CGPT-WEB",
+          `WebSocket frame handling failed: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
-      if (found.size > 0) finish();
     };
   });
 }
@@ -2392,7 +2447,9 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
    * stream's start(), inherits the connection's proxy options.
    */
   async execute(input) {
-    return runWithTlsProxyOptions(input.proxyOptions ?? null, () => this.executeDirect(input));
+    return redirectPolicy.run(input.sameOriginRedirects === true, () =>
+      runWithTlsProxyOptions(input.proxyOptions ?? null, () => this.executeDirect(input))
+    );
   }
 
   async executeDirect({
@@ -2405,6 +2462,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     onCredentialsRefreshed,
     clientHeaders: explicitClientHeaders,
     requestContext,
+    proxyOptions = null,
   }) {
     const clientHeaders = explicitClientHeaders ?? requestContext?.clientHeaders ?? null;
     const messages = body?.messages;
@@ -2723,6 +2781,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
       signal,
       log,
       publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),
+      proxyOptions,
     };
     const imageResolver = makeImageResolver(resolverCtx);
     const pollAsyncImage = (conversationId) => pollForAsyncImage(conversationId, resolverCtx);
@@ -2819,3 +2878,4 @@ export function __resetChatGptWebCachesForTesting() {
 }
 
 export const __derivePublicBaseUrlForTesting = derivePublicBaseUrl;
+export const __waitForImageViaWebSocketForTesting = waitForImageViaWebSocket;

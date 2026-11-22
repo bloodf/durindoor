@@ -1341,7 +1341,10 @@ export function createSSEStream(options = {}) {
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
-          streamDoneSent = true;
+          // A translated stream for an OpenAI chat client swallows the upstream
+          // sentinel; flush() emits the one terminator after the translator's
+          // own closing chunks (decolua/9router#4375).
+          if (keepsOpenAIResponsesFormat || keepsOpenAIChatFormat || sourceFormat !== FORMATS.OPENAI) streamDoneSent = true;
           if (keepsOpenAIResponsesFormat) openAIResponsesDoneSent = true;
           continue;
         }
@@ -1809,7 +1812,10 @@ export function createSSEStream(options = {}) {
           openAIResponsesTerminalSeen = true;
         }
 
-        if (keepsOpenAIResponsesFormat && !openAIResponsesDoneSent && !streamDoneSent) {
+        // Every OpenAI-shaped client stream ends with the [DONE] sentinel, whatever
+        // the upstream protocol: Gemini and Ollama upstreams close without one.
+        const needsOpenAIDone = sourceFormat === FORMATS.OPENAI || keepsOpenAIResponsesFormat;
+        if (needsOpenAIDone && !openAIResponsesDoneSent && !streamDoneSent) {
           const doneOutput = "data: [DONE]\n\n";
           reqLogger?.appendConvertedChunk?.(doneOutput);
           controller.enqueue(sharedEncoder.encode(doneOutput));

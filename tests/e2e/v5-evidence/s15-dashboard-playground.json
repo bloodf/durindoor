@@ -1,0 +1,8 @@
+{
+  "route": "/dashboard/playground",
+  "stories": [
+    "production-playground-playgroundpageclient--empty-conversation",
+    "production-playground-playgroundpageclient--completion-error",
+    "production-playground-playgroundcompare--two-columns"
+  ]
+}

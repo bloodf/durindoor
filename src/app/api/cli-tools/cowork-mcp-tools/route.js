@@ -76,7 +76,10 @@ async function probeMcp(url, guard) {
       tools: tools.map((t) => ({ name: t.name, description: t.description || "" }))
     };
   } catch (e) {
-    return { error: e.name === "AbortError" ? "timeout" : e.message, tools: [] };
+    const msg = e instanceof Error ? e.message : String(e);
+    // Propagate SSRF blocks so the route can map them to 400 (not a soft probe error).
+    if (msg.startsWith("Blocked URL")) throw e;
+    return { error: e.name === "AbortError" ? "timeout" : msg, tools: [] };
   } finally {
     clearTimeout(timer);
   }

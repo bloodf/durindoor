@@ -1,6 +1,33 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import * as proxyFetch from "../utils/proxyFetch.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+
+const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
+
+/**
+ * Credentialed send through proxyAwareFetch with redirect:"error".
+ * Falls back to the live global when proxyFetch is empty-mocked or when the
+ * DurinDoor-patched global (including Vitest spies that preserve the patch
+ * flag) should observe the call.
+ */
+function routeExecutorFetch(url, init, proxyOptions = null) {
+  const options = { ...init, redirect: "error" };
+  let send = null;
+  try {
+    send = proxyFetch.proxyAwareFetch;
+  } catch {
+    send = null;
+  }
+  if (!isFunction(send)) {
+    return globalThis.fetch(url, { ...options, proxyOptions });
+  }
+  const live = globalThis.fetch;
+  if (isFunction(live) && live[DURINDOOR_FETCH_PATCH] === true) {
+    return live(url, { ...options, proxyOptions });
+  }
+  return send(url, options, proxyOptions);
+}
 
 const API_URL = "https://theoldllm.vercel.app/api/chatgpt";
 const CHROME_UA =
@@ -98,14 +125,14 @@ export function generateRequestToken() {
 
 export const tokenCache = { value: "", expiresAt: 0 };
 
-async function directFetch(bodyStr, signal) {
+async function directFetch(bodyStr, signal, proxyOptions = null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
   const onSignal = signal ? () => controller.abort(signal.reason) : null;
   if (signal && onSignal) signal.addEventListener("abort", onSignal, { once: true });
 
   try {
-    return await fetch(API_URL, {
+    return await routeExecutorFetch(API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -115,7 +142,7 @@ async function directFetch(bodyStr, signal) {
       },
       body: bodyStr,
       signal: controller.signal
-    });
+    }, proxyOptions);
   } finally {
     clearTimeout(timer);
     if (signal && onSignal) signal.removeEventListener("abort", onSignal);
@@ -202,7 +229,7 @@ export class TheOldLlmExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log } = input;
+    const { model, stream, body, signal, log, proxyOptions = null } = input;
     const headers = this.buildHeaders();
 
     if (signal?.aborted) {
@@ -221,12 +248,12 @@ export class TheOldLlmExecutor extends BaseExecutor {
       const reqBody = { ...(body || {}), model: mapModel(model), stream: true };
       // Serialize a wire-only copy once so token retries cannot duplicate error markers.
       const bodyStr = JSON.stringify(this.prepareOpenAIToolMessagesForWire(reqBody));
-      let upstream = await directFetch(bodyStr, signal);
+      let upstream = await directFetch(bodyStr, signal, proxyOptions);
       let upstreamText = await upstream.text();
 
       if (isTokenRejected(upstream.status, upstreamText)) {
         log?.warn?.("THEOLDLLM", `Token rejected (${upstream.status}), retrying with fresh token`);
-        upstream = await directFetch(bodyStr, signal);
+        upstream = await directFetch(bodyStr, signal, proxyOptions);
         upstreamText = await upstream.text();
       }
 

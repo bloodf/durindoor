@@ -43,6 +43,6 @@ describe("Responses usage in Claude conversion", () => {
   it("prefers numeric Chat fields, including zero, and falls back per detail", () => {
     const state = {};
     openaiToClaudeResponse({ choices: [], usage: { prompt_tokens: 0, input_tokens: 100, completion_tokens: 0, output_tokens: 8, prompt_tokens_details: { cached_tokens: 0, cache_creation_tokens: "bad" }, input_tokens_details: { cached_tokens: 20, cache_creation_tokens: 0 } } }, state);
-    expect(state.usage).toEqual({ input_tokens: 0, output_tokens: 0 });
+    expect(state.usage).toEqual({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 });
   });
 });

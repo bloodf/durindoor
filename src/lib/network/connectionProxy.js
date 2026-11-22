@@ -22,6 +22,7 @@ function directProxyConfig() {
     connectionProxyUrl: "",
     connectionNoProxy: "",
     vercelRelayUrl: "",
+    relaySecret: "",
     strictProxy: false,
     disableEnvProxy: true
   };
@@ -37,9 +38,38 @@ function failedStrictProxyConfig(proxyPoolId, reason) {
     connectionProxyUrl: "",
     connectionNoProxy: "",
     vercelRelayUrl: "",
+    relaySecret: "",
     strictProxy: true,
     disableEnvProxy: true
   };
+}
+
+/**
+ * Carry the deploy secret through the existing vercelRelayUrl credential field
+ * as URL userinfo so auth/chatCore keep forwarding a single relay URL. proxyFetch
+ * strips the userinfo and sends x-relay-secret instead of fetching with it.
+ */
+function embedRelaySecretInUrl(proxyUrl, relaySecret) {
+  const secret = normalizeString(relaySecret);
+  if (!secret) return proxyUrl;
+  try {
+    const url = new URL(proxyUrl);
+    url.username = secret;
+    url.password = "";
+    return url.toString();
+  } catch {
+    return proxyUrl;
+  }
+}
+
+/** Drop relaySecret from the pool object returned to callers. */
+function publicProxyPool(proxyPool) {
+  if (!proxyPool || !Object.prototype.hasOwnProperty.call(proxyPool, "relaySecret")) {
+    return proxyPool;
+  }
+  const rest = { ...proxyPool };
+  delete rest.relaySecret;
+  return rest;
 }
 
 // ─── Proxy pool rotation state (in-memory) ─────────────────────────
@@ -154,11 +184,12 @@ providerSpecificData = {})
          * instead of HTTP_PROXY environment variables.
          */
         if (proxyPool.type === "vercel" || proxyPool.type === "cloudflare") {
+          const relaySecret = normalizeString(proxyPool.relaySecret);
           return {
             source: proxyPool.type,
 
             proxyPoolId,
-            proxyPool,
+            proxyPool: publicProxyPool(proxyPool),
 
             connectionProxyEnabled: false,
             connectionProxyUrl: "",
@@ -167,7 +198,11 @@ providerSpecificData = {})
             strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
             disableEnvProxy: strictOAuthPool,
 
-            vercelRelayUrl: proxyUrl // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
+            // Still mapped to vercelRelayUrl in the unified payload since they
+            // use the exact same header spec. Secret rides as URL userinfo for
+            // credential hops that only forward vercelRelayUrl; proxyFetch strips it.
+            vercelRelayUrl: embedRelaySecretInUrl(proxyUrl, relaySecret),
+            relaySecret
           };
         }
 
@@ -178,14 +213,15 @@ providerSpecificData = {})
           source: "pool",
 
           proxyPoolId,
-          proxyPool,
+          proxyPool: publicProxyPool(proxyPool),
 
           connectionProxyEnabled: true,
           connectionProxyUrl: proxyUrl,
           connectionNoProxy: noProxy,
 
           strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
-          disableEnvProxy: strictOAuthPool
+          disableEnvProxy: strictOAuthPool,
+          relaySecret: ""
         };
       }
 
@@ -210,6 +246,8 @@ providerSpecificData = {})
         proxyPool: null,
 
         ...legacy,
+        vercelRelayUrl: "",
+        relaySecret: "",
         strictProxy: false,
         disableEnvProxy: false
       };
@@ -227,6 +265,8 @@ providerSpecificData = {})
       proxyPool: null,
 
       ...legacy,
+      vercelRelayUrl: "",
+      relaySecret: "",
       strictProxy: false,
       disableEnvProxy: false
     };
@@ -251,6 +291,8 @@ providerSpecificData = {})
       connectionProxyEnabled: false,
       connectionProxyUrl: "",
       connectionNoProxy: "",
+      vercelRelayUrl: "",
+      relaySecret: "",
 
       strictProxy: false,
       disableEnvProxy: false

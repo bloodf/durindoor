@@ -68,6 +68,8 @@ docker compose logs --tail 100 durindoor
 
 Compose mounts the named volume `durindoor-data` at `/app/data`. It does not define a DurinDoor health check. PostgreSQL profiles are optional and have their own volumes; follow the [Postgres runbook](../operations/postgres.mdx) before starting one.
 
+The image includes the shared host mapping required by the MITM DNS process. See [MITM Proxy](../features/mitm.mdx) for host and certificate setup; container networking and hosts-file changes must be configured for the client machine.
+
 ## Check optional browser support
 
 The image includes Chromium and Xvfb for [ChatGPT Web](../providers/chatgpt-web.mdx). Xvfb starts when needed unless `DURINDOOR_XVFB=0`. A custom build with `CHATGPT_WEB_BROWSER=false` omits those browser packages. Other browser requirements remain provider-specific.

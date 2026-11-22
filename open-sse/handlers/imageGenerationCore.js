@@ -49,7 +49,7 @@ function binaryImageResponse(base64, outputFormat) {
  * @param {object} options.credentials - Provider credentials
  * @param {object} [options.log] - Logger
  * @param {boolean} [options.streamToClient] - Pipe SSE to client (codex)
- * @param {boolean} [options.binaryOutput] - Return raw image bytes
+ * @param {boolean} [options.binaryOutput] - Return raw image bytes (rejects n > 1 with 400 before dispatch)
  * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
@@ -90,6 +90,20 @@ export async function handleImageGenerationCore({
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
   }
 
+  // Binary output carries a single image response; reject n > 1 before billing upstream.
+  if (binaryOutput && Number(body.n) > 1) {
+    return createErrorResult(
+      HTTP_STATUS.BAD_REQUEST,
+      "Binary image output (response_format=binary) supports at most n=1"
+    );
+  }
+
+  // OpenAI GIF output cannot be combined with output compression.
+  if (provider === "openai" && isString(body.output_format) &&
+      body.output_format.trim().toLowerCase() === "gif" && body.output_compression != null) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "GIF output does not support output_compression");
+  }
+
   const adapter = getImageAdapter(provider);
   if (!adapter) {
     return createErrorResult(
@@ -108,7 +122,8 @@ export async function handleImageGenerationCore({
         credentials,
         log,
         proxyOptions,
-        signal
+        signal,
+        onCredentialsRefreshed
       );
       if (onRequestSuccess) await onRequestSuccess();
       const accounting = mediaAccounting(responseBody, provider, "image");

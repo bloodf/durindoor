@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
@@ -134,7 +135,7 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
     api: "openai-completions",
     models: [{ id: model, name: model.split("/").pop() || model }]
   };
-  await fs.writeFile(modelsPath, JSON.stringify(existing, null, 2));
+  await writeConfigAtomic(modelsPath, JSON.stringify(existing, null, 2));
 };
 
 // POST - Update DurinDoor settings (merge with existing settings)
@@ -225,7 +226,7 @@ export async function POST(request) {
       );
     }
 
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    await writeConfigAtomic(settingsPath, JSON.stringify(settings, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -285,7 +286,7 @@ export async function DELETE() {
     }
 
     // Write updated settings
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    await writeConfigAtomic(settingsPath, JSON.stringify(settings, null, 2));
 
     return NextResponse.json({
       success: true,

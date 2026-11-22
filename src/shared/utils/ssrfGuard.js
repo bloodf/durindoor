@@ -48,6 +48,7 @@ const BLOCKED_V4_RANGES = [
   [ipv4ToInt("192.0.0.0"), 24], // special-use protocol assignments
   [ipv4ToInt("224.0.0.0"), 4], // multicast
   [ipv4ToInt("240.0.0.0"), 4], // reserved, including limited broadcast
+  [ipv4ToInt("198.18.0.0"), 15], // benchmarking 198.18.0.0/15
 ];
 
 function isBlockedIpv4Int(ip) {
@@ -126,11 +127,12 @@ function isBlockedIpv6Groups(g) {
   if (g.every((x) => x === 0)) return true;
   // link-local fe80::/10
   if ((g[0] & 0xffc0) === 0xfe80) return true;
-  // deprecated site-local and multicast address space
+  // deprecated site-local fec0::/10 (RFC 3879) — still routed on some internal networks
   if ((g[0] & 0xffc0) === 0xfec0) return true;
-  if ((g[0] & 0xff00) === 0xff00) return true;
   // unique local fc00::/7
   if ((g[0] & 0xfe00) === 0xfc00) return true;
+  // multicast ff00::/8
+  if ((g[0] & 0xff00) === 0xff00) return true;
   // IPv4-mapped ::ffff:0:0/96 (0:0:0:0:0:ffff:a.b.c.d — the 0xffff marker is
   // group index 5) and NAT64 well-known prefix 64:ff9b::/96 — both embed a
   // real IPv4 address in the low 32 bits; check it against the same IPv4

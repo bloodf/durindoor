@@ -1,5 +1,5 @@
-import TokenSaverClient from "../TokenSaverClient";
+import TokenSaverRoute from "../TokenSaverRoute";
 
 export default function TokenSaverSettingsPage() {
-  return <TokenSaverClient view="settings" />;
+  return <TokenSaverRoute view="settings" />;
 }

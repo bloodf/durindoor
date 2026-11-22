@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/token-saver/settings",
+  "stories": [
+    "production-savers-tokensaverclient--v-5-settings",
+    "production-savers-tokensaverclient--unavailable-services",
+    "production-savers-tokensaverclient--v-5-rejected-compression-settings",
+    "production-savers-tokensaverclient--v-5-retry-compression-save"
+  ]
+}

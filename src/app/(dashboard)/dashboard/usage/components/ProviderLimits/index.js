@@ -65,6 +65,7 @@ import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { getClaudeWeeklyWindowNames, withClaudeWeeklyPlaceholders } from "./claudeQuotaRows";
 
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
@@ -427,6 +428,7 @@ function formatTimeRemaining(value) {
 }
 
 export default function ProviderLimits() {
+  const uiV5 = useUiV5();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -875,7 +877,7 @@ export default function ProviderLimits() {
       }));
       setQuotaCache(connectionId, quotaEntry);
     } catch (error) {
-      console.error(
+      if (!uiV5) console.error(
         `[ProviderLimits] Error fetching quota for ${provider} (${connectionId}):`,
         error
       );
@@ -886,7 +888,7 @@ export default function ProviderLimits() {
     } finally {
       setLoading((prev) => ({ ...prev, [connectionId]: false }));
     }
-  }, []);
+  }, [uiV5]);
 
   // Manual refresh bypasses the provider's valid in-process quota cache.
   const refreshProvider = useCallback(

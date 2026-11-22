@@ -10,6 +10,7 @@ import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
  * @param {number|"all"} [props.rowsPerPage]
  * @param {Array<number|"all">} [props.rowsPerPageOptions=[10,25,50,100,"all"]]
  * @param {(value: number|"all") => void} [props.onRowsPerPageChange]
+ * Small screens show the current page and previous/next controls.
  */
 function toSafePage(value) {
   const n = Number(value);
@@ -83,11 +84,14 @@ export default function Pagination({
         <button type="button" aria-label="Previous page" disabled={clampedPage <= 1} onClick={() => onPage?.(clampedPage - 1)} className={NAV_BUTTON}>
           <span aria-hidden="true" className="material-symbols-outlined rtl:rotate-180 text-[18px] leading-none">chevron_left</span>
         </button>
+        <span className="whitespace-nowrap px-2 text-xs text-dd-muted sm:hidden" aria-label={`Page ${clampedPage} of ${safePageCount}`}>{clampedPage} / {safePageCount}</span>
+        <span className="hidden items-center gap-1 sm:flex">
         {getPageItems(clampedPage, safePageCount).map((item) => item.kind === "gap" ? (
           <span key={item.key} aria-hidden="true" className="flex size-11 items-center justify-center text-xs text-dd-subtle">…</span>
         ) : (
           <button key={item.n} type="button" aria-label={`Page ${item.n}`} aria-current={item.n === clampedPage ? "page" : undefined} onClick={() => onPage?.(item.n)} className={item.n === clampedPage ? PAGE_CURRENT : PAGE_GHOST}>{item.n}</button>
         ))}
+        </span>
         <button type="button" aria-label="Next page" disabled={clampedPage >= safePageCount} onClick={() => onPage?.(clampedPage + 1)} className={NAV_BUTTON}>
           <span aria-hidden="true" className="material-symbols-outlined rtl:rotate-180 text-[18px] leading-none">chevron_right</span>
         </button>

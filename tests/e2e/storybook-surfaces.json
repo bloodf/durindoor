@@ -55099,7 +55099,7 @@
       "id": "src/shared/components/Sidebar.js#Sidebar",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "Sidebar",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55122,7 +55122,7 @@
             "update-dialog-final"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "GroupsAndUpdate opens Token Saver, confirms Statistics, then clicks Update now; final play leaves Sidebar's Update available modal visible.",
@@ -55137,7 +55137,7 @@
             "expanded-by-route"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "MediaExpanded pathname /dashboard/media-providers/embedding makes renderMediaGroup active and open, rendering media children.",
@@ -55152,7 +55152,7 @@
             "current-page"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "TokenSaverActiveHierarchy pathname /dashboard/token-saver opens Token Saver and final play verifies Statistics aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55171,7 +55171,7 @@
             "geometry"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "CollapsibleRail collapses then expands controlled Sidebar. Final state restores full rail and Usage link after measured 44px row geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55287,7 +55287,7 @@
       "id": "src/shared/components/Sidebar.js#SidebarTooltip",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "SidebarTooltip",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55309,7 +55309,7 @@
           ],
           "sourceHashes": {
             "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "CollapsedTooltip renders controlled Sidebar initially collapsed, hovers real Expand sidebar control, and final play waits for SidebarTooltip's visible Expand sidebar bubble.",
@@ -55430,7 +55430,7 @@
       "id": "src/shared/components/Sidebar.js#renderGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderGroup",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55451,7 +55451,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "renderGroup creates Token Saver button and child links. TokenSaverActiveHierarchy final play verifies expanded parent and Statistics current-page child. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55513,7 +55513,7 @@
       "id": "src/shared/components/Sidebar.js#renderItem",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderItem",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55533,7 +55533,7 @@
             "active-link"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "renderGroup maps Token Saver children through renderItem. At /dashboard/token-saver, renderItem renders Statistics with aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -55594,7 +55594,7 @@
       "id": "src/shared/components/Sidebar.js#renderMediaGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderMediaGroup",
-      "sourceSha256": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -55615,7 +55615,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "3e9a5e05455291911a335c72a854e75a5da705a9a8ce09bbffb6326c66b8159c",
+            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "MediaExpanded pathname starts with /dashboard/media-providers. renderMediaGroup builds visible kinds and renders Embedding active in opened Media Providers group. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56105,7 +56105,7 @@
       "id": "src/shared/components/UpdatePanel.js#PanelHeader",
       "sourcePath": "src/shared/components/UpdatePanel.js",
       "symbol": "PanelHeader",
-      "sourceSha256": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+      "sourceSha256": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56127,7 +56127,7 @@
             "success state"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "PanelHeader receives update title and auto-install subtitle throughout AutoSuccess; title is visible within panel.",
@@ -56141,7 +56141,7 @@
             "manual fallback header"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "Fallback PanelHeader receives subtitle Auto-update unavailable — install manually.",
@@ -56155,7 +56155,7 @@
             "manual header"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "Manual PanelHeader is rendered after Prefer manual install action with copy-install subtitle.",
@@ -56240,7 +56240,7 @@
       "id": "src/shared/components/UpdatePanel.js#UpdatePanel",
       "sourcePath": "src/shared/components/UpdatePanel.js",
       "symbol": "UpdatePanel",
-      "sourceSha256": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+      "sourceSha256": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56261,7 +56261,7 @@
             "auto success"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "AutoSuccess opens panel, starts update, asserts Install succeeded and installed durindoor@3.19.0; Dashboard reloaded is harness output.",
@@ -56276,7 +56276,7 @@
             "manual fallback"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "AutoFailedFallsBackToManual asserts Auto-update unavailable, install command, and Copy & Shutdown.",
@@ -56290,7 +56290,7 @@
             "manual mode"
           ],
           "sourceHashes": {
-            "src/shared/components/UpdatePanel.js": "119228cc5387a6379b339ea3e29274718acf345a7941f08395a5166f185d3676",
+            "src/shared/components/UpdatePanel.js": "0604c175a5949d27411010195edfde2d936ad15eee5f2f4e425c6422fb027ebd",
             "src/shared/components/UpdatePanel.stories.jsx": "418cde87855d6a0d835564228ba314f192debfb0662498a6d6d63ddaa9b20c77"
           },
           "proposedSourceEvidence": "ManualInstallOpensFromIdle chooses manual install and asserts command and Copy & Shutdown.",
@@ -61429,7 +61429,7 @@
       "id": "src/shared/ui/components/Pagination.jsx#Pagination",
       "sourcePath": "src/shared/ui/components/Pagination.jsx",
       "symbol": "Pagination",
-      "sourceSha256": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+      "sourceSha256": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -61455,7 +61455,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export FirstPage resolves to durin-ds-data-pagination--first-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61472,7 +61472,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export MiddlePage resolves to durin-ds-data-pagination--middle-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61488,7 +61488,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export LastPage resolves to durin-ds-data-pagination--last-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61503,7 +61503,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export TotalFallback resolves to durin-ds-data-pagination--total-fallback; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61519,7 +61519,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export WithRowsPerPage resolves to durin-ds-data-pagination--with-rows-per-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -61535,7 +61535,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/shared/ui/components/Pagination.jsx": "0d286ad3c5215d267a34221a8684be917bc9bf47afd43a1865ec4e3a89ec618f",
+            "src/shared/ui/components/Pagination.jsx": "40ecd8b0f6d276dc602bc19aced6e76f9821b5c0259c676fe641d84dc66966ec",
             "src/shared/ui/components/Pagination.stories.jsx": "e3813ede994e10d550d7e0713e04ce9db4064bb2bca7a95b01b5b9ef35f94e30"
           },
           "proposedSourceEvidence": "src/shared/ui/components/Pagination.stories.jsx meta title Durin DS/Data/Pagination export SinglePage resolves to durin-ds-data-pagination--single-page; its actual production component parent reaches src/shared/ui/components/Pagination.jsx#Pagination.",
@@ -102427,7 +102427,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "d9a156638879baa993532dedea723475fd5ede54154687829436213e19ca7ee7",
-    "sourceCensusSha256": "826f1907099126582ebc07d5367d7c9e814e384479f14d997f77011e851297b9",
+    "sourceCensusSha256": "1196709817e14754a311009f0adb100d1cd4f0ecf6c63f482fea17480442eaec",
     "pendingRows": 426,
     "retainedApprovedRows": 211,
     "pendingReferences": 1483,

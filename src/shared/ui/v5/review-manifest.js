@@ -401,7 +401,10 @@ export const REVIEW_SURFACES = [
       "LoadFailureError",
       "CreateComboSpacing",
       "CreateComboSpacingMobile",
-      "ConnectionUsage"
+      "ConnectionUsage",
+      "RetainedError",
+      "RejectedClearAndRetry",
+      "Retry"
     ],
     "storyIds": [
       "v5-review-pages-combos-combospage--default",
@@ -414,7 +417,10 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-combos-combospage--load-failure-error",
       "v5-review-pages-combos-combospage--create-combo-spacing",
       "v5-review-pages-combos-combospage--create-combo-spacing-mobile",
-      "v5-review-pages-combos-combospage--connection-usage"
+      "v5-review-pages-combos-combospage--connection-usage",
+      "v5-review-pages-combos-combospage--retained-error",
+      "v5-review-pages-combos-combospage--rejected-clear-and-retry",
+      "v5-review-pages-combos-combospage--retry"
     ],
     "pathname": "/dashboard/combos",
     "routePattern": "/dashboard/combos",

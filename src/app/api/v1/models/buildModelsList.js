@@ -1484,6 +1484,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       if (!isModelExposureAllowed(provider, modelId, settings, (p) => aliasToProviderId[p])) continue;
       enforceCursorCapabilities(aliasToProviderId[provider] ?? provider, model.capabilities);
     }
+    // Codex clients consume effort objects; advertise only the levels already
+    // resolved for this model rather than a provider-wide guessed list.
+    if ((aliasToProviderId[prefix] ?? prefix) === "codex" && model.thinking_levels?.length) {
+      model.supported_reasoning_levels = model.thinking_levels.map((effort) => ({
+        effort,
+        description: effort === "none" ? "Disable Thinking" : effort === "xhigh" ? "Extra High" : effort.charAt(0).toUpperCase() + effort.slice(1),
+      }));
+    }
     dedupedModels.push(model);
   }
 

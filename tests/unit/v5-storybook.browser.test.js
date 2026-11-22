@@ -4,15 +4,35 @@ import { resolve } from "node:path";
 import { chromium, firefox, webkit } from "playwright";
 import { REVIEW_SURFACES } from "../../src/shared/ui/v5/review-manifest.js";
 import AxeBuilder from "@axe-core/playwright";
+import { afterAll } from "vitest";
+import { existsSync } from "node:fs";
+import { serveDirectory } from "../utils/staticServer.mjs";
+import { ensureFontConfig } from "../utils/chromiumLaunch.mjs";
 
 const enabled = process.env.RUN_V5_STORYBOOK === "1";
+// V5_STORYBOOK_DIR: serve that built directory (relative to the working directory) on an
+// ephemeral port instead of expecting a running Storybook at V5_STORYBOOK_URL.
+let staticServer;
+if (enabled && process.env.V5_STORYBOOK_DIR) {
+  const directory = resolve(process.cwd(), process.env.V5_STORYBOOK_DIR);
+  if (!existsSync(resolve(directory, "index.json"))) throw new Error(`${directory}/index.json is missing: run \`pnpm run storybook:build\` first`);
+  staticServer = await serveDirectory(directory);
+  process.env.V5_STORYBOOK_URL = staticServer.url;
+}
+afterAll(async () => { await staticServer?.close(); });
 const baseURL = process.env.V5_STORYBOOK_URL || "http://localhost:6006";
 const root = resolve(import.meta.dirname, "../..");
+// Hosts without fontconfig data crash Chromium on first text render; use the repo fonts.
+ensureFontConfig(root);
 const reportDir = resolve(root, ".impeccable/review/v5");
 const firefoxDriver = process.env.V5_FIREFOX_DRIVER
   ? (await import(process.env.V5_FIREFOX_DRIVER)).firefox
   : firefox;
 const engines = { chromium, firefox: firefoxDriver, webkit };
+// V5_ENGINES: comma list of engines to run (default: all three).
+const requestedEngines = (process.env.V5_ENGINES || "chromium,firefox,webkit").split(",").map((name) => name.trim()).filter(Boolean);
+if (enabled && (!requestedEngines.length || requestedEngines.some((name) => !(name in engines)))) throw new Error(`V5_ENGINES must list chromium, firefox or webkit; got ${JSON.stringify(process.env.V5_ENGINES)}`);
+for (const name of Object.keys(engines)) if (!requestedEngines.includes(name)) delete engines[name];
 const launch = (name) =>
   engines[name].launch({
     executablePath:

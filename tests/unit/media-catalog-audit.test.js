@@ -16,7 +16,11 @@ vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: vi.fn(async () => (
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => null) }));
 vi.mock("@/sse/services/tokenRefresh", () => ({ updateProviderCredentials: vi.fn() }));
 // Live catalogs are offline here; the static registry is the fixture.
+// resolveLiveOpenAIModels uses globalThis.fetch unless a connection proxy is
+// active, so stubbing only proxyAwareFetch still lets noAuth live discovery
+// (e.g. AI Horde) reach the network and publish slash-ids with no catalog row.
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn(async () => { throw new Error("offline"); }) }));
+vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
 
 const { buildModelsList } = await import("../../src/app/api/v1/models/buildModelsList.js");
 const { default: REGISTRY } = await import("../../open-sse/providers/registry/index.js");

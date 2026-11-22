@@ -380,6 +380,23 @@ export {
   countRequestDetailsSince, iterateRequestDetailsSince } from
 "./repos/requestDetailsRepo.js";
 
+/** Settings keys dropped from scrubbed portable exports (issue #2208). */
+const SCRUBBED_SETTING_SECRET_KEYS = Object.freeze([
+  "postgresUrl",
+  "oidcClientSecret",
+  "mfaSecret",
+  "mfaBackupCodes",
+]);
+
+/** Auth settings importDb must keep from the live install (issue #2297). */
+const IMPORT_PRESERVED_AUTH_KEYS = Object.freeze([
+  "mfaEnabled",
+  "mfaSecret",
+  "mfaBackupCodes",
+  "password",
+  "passwordSessionEpoch",
+]);
+
 // Export/import full DB
 export async function exportDb({ now = Date.now(), includeSecrets = false } = {}) {
   const db = await getAdapter();
@@ -438,8 +455,15 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         } catch {
           throw new Error(`API key ${r.id} has invalid expiresAt storage`);
         }
-        return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, isAdmin: r.isAdmin === 1 || r.isAdmin === true, createdAt: r.createdAt };
+        const keyRow = { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, isAdmin: r.isAdmin === 1 || r.isAdmin === true, createdAt: r.createdAt };
+        // Scrubbed exports must not carry the bearer secret (issue #2208).
+        if (!includeSecrets) delete keyRow.key;
+        return keyRow;
       }),
+      apiKeyGroups: db.all(`SELECT id, name, description, createdAt, updatedAt FROM apiKeyGroups ORDER BY name COLLATE NOCASE ASC`),
+      apiKeyGroupMembers: db.all(
+        `SELECT groupId, apiKeyId, createdAt FROM apiKeyGroupMembers ORDER BY groupId ASC, apiKeyId ASC`
+      ),
       apiKeyProviderConnections: db.all(
         `SELECT apiKeyId, connectionId FROM apiKeyProviderConnections ORDER BY apiKeyId ASC, connectionId ASC`
       ),
@@ -451,6 +475,48 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         unknownCostRequests: Number(r.unknownCostRequests) || 0,
         updatedAt: r.updatedAt || null
       })),
+      mcpInstances: db.all(`SELECT * FROM mcpInstances ORDER BY createdAt ASC`).map((r) => ({
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        kind: r.kind,
+        transport: r.transport,
+        url: r.url,
+        command: r.command,
+        args: parseJson(r.args, null),
+        env: parseJson(r.env, null),
+        headers: parseJson(r.headers, null),
+        oauth: r.oauth === 1 || r.oauth === true,
+        oauthTokens: parseJson(r.oauthTokens, null),
+        providerConnectionId: r.providerConnectionId ?? null,
+        enabled: r.enabled === 1 || r.enabled === true,
+        createdAt: r.createdAt,
+      })),
+      mcpGatewayKeys: db.all(`SELECT * FROM mcpGatewayKeys ORDER BY createdAt ASC`).map((r) => {
+        const row = {
+          id: r.id,
+          name: r.name ?? null,
+          key: r.key,
+          machineId: r.machineId,
+          isActive: r.isActive === 1 || r.isActive === true,
+          createdAt: r.createdAt,
+        };
+        if (!includeSecrets) delete row.key;
+        return row;
+      }),
+      mcpKeyGrants: db.all(
+        `SELECT keyId, instanceId, toolAllowlist FROM mcpKeyGrants ORDER BY keyId ASC, instanceId ASC`
+      ).map((r) => ({
+        keyId: r.keyId,
+        instanceId: r.instanceId,
+        toolAllowlist: r.toolAllowlist == null || r.toolAllowlist === "" ? null : parseJson(r.toolAllowlist, null),
+      })),
+      modelCapabilityOverrides: db.all(
+        `SELECT provider, modelId, overrideKey, overrideValue, refreshedAt FROM modelCapabilityOverrides`
+      ),
+      sessionCaptureTurns: db.all(
+        `SELECT "id", "apiKeyId", "sessionId", "content", "byteSize", "createdAt", "expiresAt" FROM "sessionCaptureTurns"`
+      ),
       usageEventReceipts: db.all(`SELECT key FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key`).map((row) => row.key),
       billingEpoch: getBillingEpochSync(db),
       // Receipt presence/backfill proves individual events, not complete history.
@@ -472,7 +538,10 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
     for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
 
     if (!includeSecrets && out.settings) {
+      // #2281: scrub nested outboundProxyUrl / operatorWebhooks secrets.
       out.settings = scrubSettingsSecretsForExport(out.settings);
+      // #2208: drop top-level settings credential keys from scrubbed exports.
+      for (const key of SCRUBBED_SETTING_SECRET_KEYS) delete out.settings[key];
     }
 
     return out;
@@ -533,10 +602,22 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     throw new Error("Database import requires a transactional engine with shared writer fencing; sql.js cutover is unsupported");
   }
 
+  const apiKeyGroups = Array.isArray(payload.apiKeyGroups) ? payload.apiKeyGroups : [];
+  const apiKeyGroupMembers = Array.isArray(payload.apiKeyGroupMembers) ? payload.apiKeyGroupMembers : [];
+  const mcpInstances = Array.isArray(payload.mcpInstances) ? payload.mcpInstances : [];
+  const mcpGatewayKeys = Array.isArray(payload.mcpGatewayKeys) ? payload.mcpGatewayKeys : [];
+  const mcpKeyGrants = Array.isArray(payload.mcpKeyGrants) ? payload.mcpKeyGrants : [];
+  const modelCapabilityOverrides = Array.isArray(payload.modelCapabilityOverrides) ? payload.modelCapabilityOverrides : [];
+  const sessionCaptureTurns = Array.isArray(payload.sessionCaptureTurns) ? payload.sessionCaptureTurns : [];
+
   db.transaction(() => {
     // Acquire SQLite's writer lock and recheck inside the destructive
     // transaction so another process cannot reserve between guard and wipe.
     assertNoActiveQuotaReservationsSync(db, { now: quotaNow });
+    // Keep live MFA/password material across restore (issue #2297). Read before
+    // the settings wipe so a backup cannot disable MFA or swap the password.
+    const priorSettingsRow = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const priorSettings = priorSettingsRow ? parseJson(priorSettingsRow.data, {}) : {};
     const billingEpoch = randomUUID();
     db.run(`INSERT INTO kv(scope, key, value) VALUES('billing', 'epoch', ?)
       ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [stringifyJson(billingEpoch)]);
@@ -577,15 +658,34 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeyUsageTotals`);
     db.run(`DELETE FROM apiKeyProviderConnections`);
+    db.run(`DELETE FROM apiKeyGroupMembers`);
+    db.run(`DELETE FROM apiKeyGroups`);
+    db.run(`DELETE FROM mcpKeyGrants`);
+    db.run(`DELETE FROM mcpGatewayKeys`);
+    db.run(`DELETE FROM mcpInstances`);
+    db.run(`DELETE FROM modelCapabilityOverrides`);
     // Captures belong to the pre-import keys, even when an imported ID matches.
     db.run('DELETE FROM "sessionCaptureTurns"');
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
 
-    // Settings
+    // Settings — re-apply live MFA/password fields so import cannot strip 2FA.
     if (payload.settings) {
-      db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(payload.settings)]);
+      const nextSettings = { ...payload.settings };
+      for (const key of IMPORT_PRESERVED_AUTH_KEYS) {
+        if (Object.hasOwn(priorSettings, key)) nextSettings[key] = priorSettings[key];
+        else delete nextSettings[key];
+      }
+      db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(nextSettings)]);
+    } else if (Object.keys(priorSettings).length > 0) {
+      const kept = {};
+      for (const key of IMPORT_PRESERVED_AUTH_KEYS) {
+        if (Object.hasOwn(priorSettings, key)) kept[key] = priorSettings[key];
+      }
+      if (Object.keys(kept).length > 0) {
+        db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(kept)]);
+      }
     }
 
     for (const c of payload.providerConnections || []) {
@@ -623,6 +723,20 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       db.run(
         `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, isAdmin, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(normalizeApiKeyPolicy(k.policy)), k.expiresAt || null, k.isAdmin === true ? 1 : 0, k.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const group of apiKeyGroups) {
+      if (!group || !isString(group.id) || !isString(group.name)) continue;
+      db.run(
+        `INSERT INTO apiKeyGroups(id, name, description, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+        [group.id, group.name, group.description ?? null, group.createdAt || new Date().toISOString(), group.updatedAt || new Date().toISOString()]
+      );
+    }
+    for (const member of apiKeyGroupMembers) {
+      if (!member || !isString(member.groupId) || !isString(member.apiKeyId)) continue;
+      db.run(
+        `INSERT OR IGNORE INTO apiKeyGroupMembers(groupId, apiKeyId, createdAt) VALUES(?, ?, ?)`,
+        [member.groupId, member.apiKeyId, member.createdAt || new Date().toISOString()]
       );
     }
     for (const relation of apiKeyProviderConnections) {
@@ -669,6 +783,65 @@ export async function importDb(payload, { now = Date.now() } = {}) {
         [c.id, c.name, c.kind || null, stringifyJson(c.models), c.members == null ? null : stringifyJson(c.members), c.invariant == null ? null : stringifyJson(c.invariant), c.capabilities == null ? null : stringifyJson(c.capabilities), stringifyJson(c.allowedConnectionIds || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
       );
     }
+    for (const inst of mcpInstances) {
+      if (!inst || !isString(inst.id) || !isString(inst.slug)) continue;
+      db.run(
+        `INSERT INTO mcpInstances(id, slug, title, kind, transport, url, command, args, env, headers, oauth, oauthTokens, providerConnectionId, enabled, createdAt)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          inst.id,
+          inst.slug,
+          inst.title ?? null,
+          inst.kind || "custom",
+          inst.transport || "stdio",
+          inst.url ?? null,
+          inst.command ?? null,
+          inst.args == null ? null : stringifyJson(inst.args),
+          inst.env == null ? null : stringifyJson(inst.env),
+          inst.headers == null ? null : stringifyJson(inst.headers),
+          inst.oauth ? 1 : 0,
+          inst.oauthTokens == null ? null : stringifyJson(inst.oauthTokens),
+          inst.providerConnectionId ?? null,
+          inst.enabled === false ? 0 : 1,
+          inst.createdAt || new Date().toISOString(),
+        ]
+      );
+    }
+    for (const gk of mcpGatewayKeys) {
+      if (!gk || !isString(gk.id) || !isString(gk.key)) continue;
+      db.run(
+        `INSERT INTO mcpGatewayKeys(id, name, key, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
+        [gk.id, gk.name ?? null, gk.key, gk.machineId ?? null, gk.isActive === false ? 0 : 1, gk.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const grant of mcpKeyGrants) {
+      if (!grant || !isString(grant.keyId) || !isString(grant.instanceId)) continue;
+      db.run(
+        `INSERT OR IGNORE INTO mcpKeyGrants(keyId, instanceId, toolAllowlist) VALUES(?, ?, ?)`,
+        [grant.keyId, grant.instanceId, grant.toolAllowlist == null ? null : stringifyJson(grant.toolAllowlist)]
+      );
+    }
+    for (const row of modelCapabilityOverrides) {
+      if (!row || !isString(row.provider) || !isString(row.modelId) || !isString(row.overrideKey)) continue;
+      db.run(
+        `INSERT INTO modelCapabilityOverrides(provider, modelId, overrideKey, overrideValue, refreshedAt)
+         VALUES(?, ?, ?, ?, ?)
+         ON CONFLICT(provider, modelId, overrideKey) DO UPDATE SET
+           overrideValue = excluded.overrideValue,
+           refreshedAt = excluded.refreshedAt`,
+        [row.provider, row.modelId, row.overrideKey, row.overrideValue ?? "", row.refreshedAt || new Date().toISOString()]
+      );
+    }
+    for (const turn of sessionCaptureTurns) {
+      if (!turn || !isString(turn.id) || !isString(turn.apiKeyId) || !isString(turn.sessionId)) continue;
+      const byteSize = Number(turn.byteSize);
+      if (!Number.isSafeInteger(byteSize) || byteSize < 1 || byteSize > 16384) continue;
+      db.run(
+        `INSERT OR REPLACE INTO "sessionCaptureTurns" ("id", "apiKeyId", "sessionId", "content", "byteSize", "createdAt", "expiresAt")
+         VALUES(?, ?, ?, ?, ?, ?, ?)`,
+        [turn.id, turn.apiKeyId, turn.sessionId, turn.content ?? "", byteSize, turn.createdAt || new Date().toISOString(), turn.expiresAt || new Date().toISOString()]
+      );
+    }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('modelAliases', ?, ?)`, [a, stringifyJson(m)]);
     }
@@ -684,7 +857,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
   });
 
-  return await exportDb({ now: quotaNow });
+  // Return a secret-preserving snapshot so in-process callers can re-import the
+  // post-restore state. HTTP handlers never forward this object to clients.
+  return await exportDb({ now: quotaNow, includeSecrets: true });
 }
 const TRANSFER_CONNECTION_FIELDS = new Set([
   "id", "provider", "authType", "name", "email", "priority", "isActive", "createdAt", "updatedAt",

@@ -7,7 +7,7 @@
  * (apply_patch) stream via custom_tool_call_input.* events, and output_index
  * is offset past a preceding reasoning item so items never collide at 0.
  */
-import { register, initState } from "../index.js";
+import { register, initState } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";

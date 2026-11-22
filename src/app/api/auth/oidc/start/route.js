@@ -17,6 +17,9 @@ export async function GET(request) {
     if (!config) {
       return NextResponse.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(request)));
     }
+    if (config.allowlistEmpty === true) {
+      return NextResponse.redirect(new URL("/login?error=oidc_allowlist_empty", getPublicOrigin(request)));
+    }
 
     const discovery = await fetchOidcDiscovery(config.issuerUrl);
     const state = createOidcState();

@@ -2,14 +2,16 @@
 
 import { NextResponse } from "next/server";
 import { isLocalRequest } from "@/dashboardGuard";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { assertPublicUrlResolved, fetchPublic } from "@/shared/utils/ssrfGuard.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 8000;
 
 // Probe MCP server: initialize + tools/list. No auth header — works for authless servers.
 // OAuth servers return 401, signal client to skip tool listing.
-async function probeMcp(url) {
+// `fetchImpl` defaults to global fetch (local peers probing loopback). Remote
+// callers pass fetchPublic so DNS resolution and every redirect hop are checked.
+async function probeMcp(url, fetchImpl = fetch) {
   const headers = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
@@ -18,7 +20,7 @@ async function probeMcp(url) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
   try {
-    const initRes = await fetch(url, {
+    const initRes = await fetchImpl(url, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -40,14 +42,14 @@ async function probeMcp(url) {
     if (sessionId) listHeaders["mcp-session-id"] = sessionId;
 
     // Step 2: notifications/initialized (required by spec before tools/list)
-    await fetch(url, {
+    await fetchImpl(url, {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
       signal: ac.signal
     }).catch(() => {});
 
-    const listRes = await fetch(url, {
+    const listRes = await fetchImpl(url, {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
@@ -76,7 +78,10 @@ async function probeMcp(url) {
       tools: tools.map((t) => ({ name: t.name, description: t.description || "" }))
     };
   } catch (e) {
-    return { error: e.name === "AbortError" ? "timeout" : e.message, tools: [] };
+    const msg = e instanceof Error ? e.message : String(e);
+    // Propagate SSRF blocks so the route can map them to 400 (not a soft probe error).
+    if (msg.startsWith("Blocked URL")) throw e;
+    return { error: e.name === "AbortError" ? "timeout" : msg, tools: [] };
   } finally {
     clearTimeout(timer);
   }
@@ -90,16 +95,27 @@ export async function POST(request) {
     }
     // SSRF guard: remote callers must not pivot this endpoint at internal services
     // (loopback, RFC1918, metadata, localhost). Local peers are exempt so a self-hosted
-    // MCP server bound to 127.0.0.1 keeps working.
-    if (!isLocalRequest(request)) {
+    // MCP server bound to 127.0.0.1 keeps working. Remote path uses the resolving
+    // guard (assertPublicUrlResolved + fetchPublic) so DNS names and redirect hops
+    // cannot bypass the string-only check (#2202).
+    const local = isLocalRequest(request);
+    if (!local) {
       try {
-        assertPublicUrl(url);
+        await assertPublicUrlResolved(url);
       } catch {
         return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
       }
     }
-    const result = await probeMcp(url);
-    return NextResponse.json(result);
+    try {
+      const result = await probeMcp(url, local ? fetch : (u, init) => fetchPublic(u, init));
+      return NextResponse.json(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!local && msg.startsWith("Blocked URL")) {
+        return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
+      }
+      throw e;
+    }
   } catch (e) {
     return NextResponse.json({ error: e.message, tools: [] }, { status: 500 });
   }

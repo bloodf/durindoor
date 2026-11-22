@@ -1,24 +1,13 @@
 // Tencent AI Studio Web. Every upstream call is a local mock: no Tencent
-// account, cookie or network request is involved. The staged provider and its
-// executor are composed into the registry and executor map with vi.mock, so
-// the OpenAI chat route and the Anthropic Messages route dispatch normally.
+// account, cookie or network request is involved. The production registry and
+// executor map serve the provider, so the OpenAI chat route and the Anthropic
+// Messages route dispatch normally.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const wire = vi.hoisted(() => ({ calls: [], mode: "json" }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const provider = (await import("../../open-sse/providers/private/tencent-aistudio-web.js")).default;
-  return { ...actual, default: [...actual.default, provider] };
-});
-vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  const { TencentAIStudioWebExecutor } = await import("../../open-sse/executors/tencent-aistudio-web.js");
-  const executor = new TencentAIStudioWebExecutor();
-  return { ...actual, getExecutor: (id) => (id === "tencent-aistudio-web" ? executor : actual.getExecutor(id)) };
-});
 vi.mock("@/lib/usageDb.js", async (importOriginal) => ({ ...(await importOriginal()), appendRequestLog: vi.fn(() => Promise.resolve()), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), saveRequestDetail: vi.fn(() => Promise.resolve()), saveRequestUsage: vi.fn(() => Promise.resolve()) }));
 
 const ORIGIN = "https://aistudio.tencent.ai";
@@ -57,7 +46,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(upstream));
   routes = { providers: await import("../../src/app/api/providers/route.js"), models: await import("../../src/app/api/v1/models/route.js"), messages: await import("../../src/app/api/v1/messages/route.js") };
   executorModule = await import("../../open-sse/executors/tencent-aistudio-web.js");
-  providerModule = await import("../../open-sse/providers/private/tencent-aistudio-web.js");
+  providerModule = await import("../../open-sse/providers/registry/tencent-aistudio-web.js");
   ({ handleChat } = await import("../../src/sse/handlers/chat.js"));
 }, 60000);
 
@@ -205,5 +194,18 @@ describe("Tencent AI Studio Web chat through the gateway routes", () => {
     // Nothing but a stored credential ever reaches the wire, one cookie per request.
     expect(cookies.every((cookie) => ["sessionid=stale", "sessionid=beta"].includes(cookie))).toBe(true);
     expect(chatCalls().every((call) => !call.cookie.includes(";"))).toBe(true);
+  });
+});
+
+// Registration batch C (#2034): the registry and executor map are no longer composed by this file.
+describe("Tencent AI Studio Web production registration", () => {
+  it("is served by the unmocked production registry and executor map", async () => {
+    const { default: registry } = await import("../../open-sse/providers/registry/index.js");
+    const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
+    const { TencentAIStudioWebExecutor } = await import("../../open-sse/executors/tencent-aistudio-web.js");
+    expect(registry.filter((entry) => entry.id === "tencent-aistudio-web")).toHaveLength(1);
+    expect(hasSpecializedExecutor("tencent-aistudio-web")).toBe(true);
+    expect(getExecutor("tencent-aistudio-web")).toBeInstanceOf(TencentAIStudioWebExecutor);
+    expect(getExecutor("tasw")).toBe(getExecutor("tencent-aistudio-web"));
   });
 });

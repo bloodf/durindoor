@@ -95,10 +95,11 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
   const isTray = process.env.TRAY_MODE === "1";
   const relaunch = resolveRelaunchCommand();
   const appPort = String(process.env.PORT || UPDATER_CONFIG.appPort);
+  const appHost = String(process.env.HOSTNAME || "0.0.0.0");
   // Relaunch matching original env: tray stays tray, foreground stays foreground
   const relaunchArgs = isTray
-    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort]
-    : [...relaunch.args, "--skip-update", "--port", appPort];
+    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort, "--host", appHost]
+    : [...relaunch.args, "--skip-update", "--port", appPort, "--host", appHost];
 
   spawn(process.execPath, [updaterPath], {
     detached: true,

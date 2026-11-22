@@ -44,7 +44,7 @@ it("initializes exclusive creation before writes, rotates restore epochs, and ne
   expect(rejected.usageEventReceipts).toEqual(restored.usageEventReceipts);
   expect(rejected.apiKeyUsageTotals).toEqual(restored.apiKeyUsageTotals);
   await database.saveRequestUsage({ ...event, billingEpoch: restored.billingEpoch });
-  const snapshot = await database.exportDb();
+  const snapshot = await database.exportDb({ includeSecrets: true });
   expect(snapshot.billingCutoverVersion).toBe(1);
   expect(snapshot.usageEventReceiptsVersion).toBeNull();
   expect(snapshot.apiKeyUsageTotals).toEqual([expect.objectContaining({ apiKeyId: "key", totalTokens: 2, totalCost: 0.5, totalRequests: 1 })]);

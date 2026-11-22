@@ -1,15 +1,16 @@
-# Blackbox Web
+---
+title: Blackbox Web
+description: Use a signed-in app.blackbox.ai session cookie, the pinned catalog, limits and errors.
+---
 
 Blackbox Web is an experimental cookie-authenticated provider backed by the Blackbox web application. Sign in at [app.blackbox.ai](https://app.blackbox.ai), then add a Blackbox Web connection.
 
 ## Setup and cookie capture
 
-Use the browser cookie capture extension on `app.blackbox.ai`, or paste a `Cookie` request header, cURL command, or HAR containing `next-auth.session-token`. The session endpoint is used as the connection validation probe. Keep the complete cookie value private; DurinDoor stores credentials in the encrypted provider connection.
+Use the browser cookie capture extension on `app.blackbox.ai`, or paste a `Cookie` request header, cURL command, or HAR containing `next-auth.session-token`. **Validate** sends a read-only `GET /api/auth/session` with the cookie. Keep the complete cookie value private; DurinDoor stores credentials in the encrypted provider connection.
 
 The pinned chat contract bootstraps `/api/auth/session`, optionally checks `/api/check-subscription`, then submits the OpenAI message history in Blackbox's `/api/chat` envelope. Responses are converted to OpenAI JSON or SSE chunks. The catalog currently lists the models in the pinned OmniRoute entry; account access and plan limits are controlled upstream. HTTP 401/403 indicate an invalid or expired session, 429 indicates rate limiting, and an in-band upgrade message maps to 402.
 
 ## Limits and sources
 
 Tool calling is not advertised by the pinned catalog. Blackbox may change its web protocol or subscription behavior without notice. Source: [OmniRoute Blackbox Web registry at 4265bb2](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/blackbox/web/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/blackbox-web.ts).
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

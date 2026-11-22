@@ -6,7 +6,9 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Select from "@/shared/ui/components/Select.jsx";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 
 const API_TYPE_OPTIONS = [
   { value: "chat", label: "Chat Completions" },
@@ -15,6 +17,7 @@ const API_TYPE_OPTIONS = [
 
 /** Keep edits visible until save settles; pending dismissal could hide a failed update. */
 export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose, isAnthropic }) {
+  const v5 = useUiV5();
   const [formData, setFormData] = useState({
     name: "",
     prefix: "",
@@ -89,7 +92,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   if (!node) return null;
 
   return (
-    <Modal open={isOpen} title={`Edit ${isAnthropic ? "Anthropic" : "OpenAI"} Compatible`} onClose={onClose} pending={saving}>
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen} title={`Edit ${isAnthropic ? "Anthropic" : "OpenAI"} Compatible`} onClose={onClose} pending={saving}>
       <div className="flex flex-col gap-4">
         <Input
           label="Name"
@@ -105,14 +108,16 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           placeholder={isAnthropic ? "ac-prod" : "oc-prod"}
           hint="Required. Used as the provider prefix for model IDs."
         />
-        {!isAnthropic ? (
+        {!isAnthropic ? (v5 ? (
+          <V5NativeSelect aria-label="API Type" value={formData.apiType} onChange={(event) => setFormData({ ...formData, apiType: event.target.value })}>{API_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</V5NativeSelect>
+        ) : (
           <Select
             options={API_TYPE_OPTIONS}
             value={formData.apiType}
             onChange={(value) => setFormData({ ...formData, apiType: value })}
             aria-label="API Type"
           />
-        ) : null}
+        )) : null}
         <Input
           label="Base URL"
           value={formData.baseUrl}

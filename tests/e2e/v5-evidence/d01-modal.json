@@ -1,0 +1,8 @@
+{
+  "route": "dialog/Modal",
+  "stories": [
+    "production-shared-overlays-modal--default",
+    "production-shared-overlays-modal--open-confirmation",
+    "production-shared-overlays-modal--confirmation"
+  ]
+}

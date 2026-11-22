@@ -44,6 +44,10 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "oidcClientSecret",
   "oidcScopes",
   "oidcLoginLabel",
+  /** Who may become an operator through OIDC login (#2195). */
+  "oidcAllowedSubjects",
+  "oidcAllowedEmails",
+  "oidcAllowedDomains",
   "tunnelDashboardAccess",
   "enableObservability",
   "enableSessionCapture",

@@ -1,0 +1,7 @@
+{
+  "route": "error/dashboard/mcp-gateway",
+  "stories": [
+    "durin-ds-production-pages-mcp-gateway--error-boundary",
+    "durin-ds-production-pages-mcp-gateway--retained-error-boundary"
+  ]
+}

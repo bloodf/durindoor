@@ -1349,6 +1349,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           if (error?.name === "AbortError" || requestAborted(request, requestSignal)) {
             return errorResponse(499, "Request aborted");
           }
+          if ((provider === "antigravity" || provider === "agy") && error?.credentialScoped) {
+            lastStatus = error.status || HTTP_STATUS.SERVICE_UNAVAILABLE;
+            lastError = "Antigravity credential project validation failed";
+            await markAccountUnavailable(credentials.connectionId, lastStatus, lastError, provider, model, null, { signal: requestSignal });
+            excludeConnectionIds.add(credentials.connectionId);
+            continue;
+          }
         }
       }
       if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
@@ -1664,8 +1671,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset && result.antigravityQuotaSignal === true ?
       recordAntigravity429Strike(credentials.connectionId, model) :
       null;
-      const fallbackResetAt = strikeBreakerResetAt ?? result.resetsAtMs;
-      const fallbackEvidence = strikeBreakerResetAt === null ?
+      // A locally synthesized short 429 delay is not a quota reset. Let the
+      // Antigravity account policy choose its exhaustion default instead.
+      const creditsExhausted = antigravityProvider && result.status === 429 && !authoritativeReset &&
+        /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|g1_credits/i.test(`${result.error || ""} ${JSON.stringify(resultErrorBody || {})}`);
+      const fallbackResetAt = creditsExhausted ? null : strikeBreakerResetAt ?? result.resetsAtMs;
+      const fallbackEvidence = creditsExhausted ? { state: "exhausted", resetAtMs: null, source: "antigravity_credits" } : strikeBreakerResetAt === null ?
       result.rateLimitEvidence || null :
       { state: result.rateLimitEvidence?.state === "exhausted" ? "exhausted" : "cooldown", resetAtMs: strikeBreakerResetAt, source: "antigravity_strike_breaker" };
 

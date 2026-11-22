@@ -36607,7 +36607,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js#QuotaProgressBar",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js",
       "symbol": "QuotaProgressBar",
-      "sourceSha256": "2cbdb4fe4f3f43e5bc4b8c8373406a56a51424f66451cafaf1cdd069677d8e60",
+      "sourceSha256": "c05bbeaac9dc57f56e8a7611a9c65608f29228ffa8efd10e43551d0265435670",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -36628,7 +36628,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js": "2cbdb4fe4f3f43e5bc4b8c8373406a56a51424f66451cafaf1cdd069677d8e60",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js": "c05bbeaac9dc57f56e8a7611a9c65608f29228ffa8efd10e43551d0265435670",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "716eecf6bd51651d3e00996c779be23c6a62bf4695b11b1218ba53148a6321eb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "2137a92d4451ae9a5c0dbcfc3d7922aa3d93f8f0306da6a6df46cd05869393fe",
@@ -36652,7 +36652,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js": "2cbdb4fe4f3f43e5bc4b8c8373406a56a51424f66451cafaf1cdd069677d8e60",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js": "c05bbeaac9dc57f56e8a7611a9c65608f29228ffa8efd10e43551d0265435670",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "716eecf6bd51651d3e00996c779be23c6a62bf4695b11b1218ba53148a6321eb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "2137a92d4451ae9a5c0dbcfc3d7922aa3d93f8f0306da6a6df46cd05869393fe",
@@ -36894,7 +36894,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js#QuotaTable",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js",
       "symbol": "QuotaTable",
-      "sourceSha256": "5c9a878d93d7d60ec2facdeb6f2c602ab14099515dea92f67539344d8643b45c",
+      "sourceSha256": "44189df3427a7de21c40b1eb8b51145d28affed1b39c50384ce6c63a5c8d6c4e",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -36914,7 +36914,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js": "5c9a878d93d7d60ec2facdeb6f2c602ab14099515dea92f67539344d8643b45c",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js": "44189df3427a7de21c40b1eb8b51145d28affed1b39c50384ce6c63a5c8d6c4e",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "716eecf6bd51651d3e00996c779be23c6a62bf4695b11b1218ba53148a6321eb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "2137a92d4451ae9a5c0dbcfc3d7922aa3d93f8f0306da6a6df46cd05869393fe",
@@ -37083,7 +37083,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js#resetNode",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js",
       "symbol": "resetNode",
-      "sourceSha256": "5c9a878d93d7d60ec2facdeb6f2c602ab14099515dea92f67539344d8643b45c",
+      "sourceSha256": "44189df3427a7de21c40b1eb8b51145d28affed1b39c50384ce6c63a5c8d6c4e",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -37585,7 +37585,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js",
       "symbol": "[module]",
-      "sourceSha256": "ef8dd5991cc63a03c4e1411390b0b38ec3efc279ef82c80fae685c3aa1874f00",
+      "sourceSha256": "7668efa4d466530dafe46e1995cb4f557326e8843b44aec71e19ae635a412966",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -95066,7 +95066,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "cf7fde7bda097b303f64b42332f0ea61f50eb273fda409c0d548d5fafcc02298",
-    "sourceCensusSha256": "18898a0b2d77d309b64a69566c5b0a5c7aa9097781df4170c1f0702e6d63b1af",
+    "sourceCensusSha256": "e9072e2c023e6f735d9c4bdbb238cbc64584631d1c71b075083a75f5b36ed940",
     "pendingRows": 363,
     "retainedApprovedRows": 260,
     "pendingReferences": 1350,

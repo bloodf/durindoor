@@ -321,7 +321,8 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       };
 
       // Non-blocking: discover only when this connection has no stored project ID.
-      if (!creds.projectId) {
+      if (!creds.projectId && (provider !== "antigravity" && provider !== "agy" ||
+          creds.isActive !== false && creds._connection?.isActive !== false)) {
         _refreshProjectId(provider, creds.connectionId, creds.accessToken, effectiveProxyOptions);
       }
     }

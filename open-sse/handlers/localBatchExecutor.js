@@ -6,6 +6,9 @@
 // ponytail: in-process self-dispatch; upgrade path = provider-native batch.
 
 import { initTranslators } from "open-sse/translator/index.js";
+import { getApiKeyById } from "@/lib/localDb";
+import { bindBatchRequestKey, getAdmittedRequestKeyId } from "@/sse/services/auth.js";
+import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 
 let initialized = false;
 async function ensureInit() {
@@ -24,6 +27,7 @@ export function makeDefaultExecutor(authSource) {
   // Snapshot only the auth-relevant headers; never trust row bodies to set them.
   const forward = new Headers();
   const sourceRequest = authSource instanceof Request ? authSource : null;
+  const admittedKeyId = sourceRequest ? getAdmittedRequestKeyId(sourceRequest) : null;
   const src = sourceRequest
     ? sourceRequest.headers
     : (authSource instanceof Headers ? authSource : new Headers(authSource || {}));
@@ -37,8 +41,18 @@ export function makeDefaultExecutor(authSource) {
   }
 
   return async ({ url, body }) => {
-    await ensureInit();
     const headers = new Headers(forward);
+    if (admittedKeyId) {
+      // Re-read the admitted identity on every row so rotation preserves the
+      // current policy while deletion, deactivation and expiry fail closed.
+      const key = await getApiKeyById(admittedKeyId);
+      if (!key || key.isActive !== true || isApiKeyExpired(key.expiresAt, Date.now())) {
+        return { status_code: 401, body: { error: { message: "Invalid API key" } } };
+      }
+      for (const name of ["authorization", "x-api-key", "x-goog-api-key", "x-9r-cli-token"]) headers.delete(name);
+      headers.set("authorization", `Bearer ${key.key}`);
+    }
+    await ensureInit();
     headers.set("content-type", "application/json");
     headers.set("accept", "application/json");
 
@@ -47,6 +61,7 @@ export function makeDefaultExecutor(authSource) {
       headers,
       body: JSON.stringify(body),
     });
+    if (admittedKeyId) bindBatchRequestKey(req, admittedKeyId);
 
     let res;
     if (url === "/v1/embeddings") {

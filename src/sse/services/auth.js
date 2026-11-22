@@ -2,7 +2,7 @@ import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
 import {
-  getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
+  getProviderConnections, getProviderConnectionById, getApiKeyByKey, getApiKeyById, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
   getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
 "@/lib/localDb";
@@ -45,6 +45,18 @@ import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
 import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
+const admittedRequestKeys = new WeakMap();
+const batchRequestKeys = new WeakMap();
+
+/** Return the stored identity admitted for this exact request, if any. */
+export function getAdmittedRequestKeyId(request) {
+  return admittedRequestKeys.get(request) || null;
+}
+
+/** Bind an internal batch row to its admitted stored identity, never a header. */
+export function bindBatchRequestKey(request, keyId) {
+  batchRequestKeys.set(request, keyId);
+}
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 const CODEX_PERMANENT_OAUTH_ERRORS = [
 "invalidated oauth token",
@@ -1877,13 +1889,22 @@ export function extractApiKeyCandidates(request) {
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
   const billingEpoch = await captureRequestBillingEpoch(request);
+  const batchKeyId = batchRequestKeys.get(request);
+  if (batchKeyId) {
+    const record = await getApiKeyById(batchKeyId);
+    const valid = record?.isActive === true && !isApiKeyExpired(record.expiresAt, now);
+    return { apiKey: valid ? record.key : null, auth: { ok: valid, reason: valid ? null : "invalid", stored: true, apiKeyId: valid ? batchKeyId : undefined, billingEpoch } };
+  }
   const candidates = extractApiKeyCandidates(request);
   if (await hasValidCliToken(request)) {
     return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true, billingEpoch } };
   }
   for (const apiKey of candidates) {
     const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
-    if (auth.ok) return { apiKey, auth: { ...auth, billingEpoch } };
+    if (auth.ok) {
+      if (auth.apiKeyId) admittedRequestKeys.set(request, auth.apiKeyId);
+      return { apiKey, auth: { ...auth, billingEpoch } };
+    }
   }
   const apiKey = candidates[0] || null;
   return { apiKey, auth: { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch } };

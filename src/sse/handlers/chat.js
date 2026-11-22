@@ -1666,8 +1666,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
        * exact model quota. Refresh the shared repository before creating any
        * legacy lock; only a fresh exact-source blocker owns the reselect.
        */
+      // A parsed detail-free response is request-scoped; keep the account selectable.
+      const requestScopedAntigravity = antigravityProvider && result.noQuotaMetadata === true && !authoritativeReset && !result.antigravityQuotaSignal;
       const shouldRefreshAntigravityQuota =
-        antigravityProvider &&
+        antigravityProvider && !requestScopedAntigravity &&
         (result.status === 409 || (result.status === 429 && !authoritativeReset)) &&
         activeConnection &&
         !refreshedQuotaConnectionIds.has(credentials.connectionId);
@@ -1713,6 +1715,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const fallbackEvidence = creditsExhausted ? { state: "exhausted", resetAtMs: null, source: "antigravity_credits" } : strikeBreakerResetAt === null ?
       result.rateLimitEvidence || null :
       { state: result.rateLimitEvidence?.state === "exhausted" ? "exhausted" : "cooldown", resetAtMs: strikeBreakerResetAt, source: "antigravity_strike_breaker" };
+
+      if (requestScopedAntigravity) return result.response;
 
       const fallbackState = await markAccountUnavailable(
         credentials.connectionId,

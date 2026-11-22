@@ -1,0 +1,7 @@
+# #1072: deferred PRs resolved (2026-11-22)
+
+| PR | Title | Head SHA (12) | Disposition | Evidence |
+| --- | --- | --- | --- | --- |
+| [#1509](https://github.com/decolua/9router/pull/1509) | Bổ xung có thể tự điền URL proxy để test | `e4d040049da6` | split | Caller-selected proxy test destinations need a dedicated SSRF and DNS-rebinding-safe design in `src/lib/network/proxyTest.js`, proxy test routes and settings: preserve public-address checks across DNS resolution, redirects and proxy connection, reject private targets and rebinding, and test each boundary. Its unrelated Codex quota guard, account recovery/import and xAI credential rotation also require separate state, authentication and concurrency review; do not bundle them into the proxy change. Dependency, version and docs-site changes are not applicable. |
+| [#1505](https://github.com/decolua/9router/pull/1505) | fix: dedupe Anthropic version headers | `ab27f6f7f7de` | ported | `normalizeAnthropicHeaders` in `open-sse/executors/base.js` normalizes both executor paths, retains configured versions, merges beta flags and preserves other headers. `tests/unit/port9r-anthropic-headers-1505.test.js` covers both paths. |
+| [#1504](https://github.com/decolua/9router/pull/1504) | fix: keep dashboard sidebar visible on desktop | `6952d0650c19` | ported | `DashboardLayout` uses an explicit responsive desktop rail rule in `src/app/globals.css`; `tests/unit/port9r-desktop-sidebar-1504.test.js` checks both breakpoint declarations. |

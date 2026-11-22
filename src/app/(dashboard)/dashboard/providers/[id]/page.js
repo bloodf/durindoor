@@ -1501,6 +1501,12 @@ function ProviderDetail({ providerId }) {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+                onUpdateQuotaLockout={async (quotaLockout) => {
+                  const response = await fetch(`/api/providers/${conn.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quotaLockout }) });
+                  if (!response.ok) throw new Error("Quota schedule update failed");
+                  const data = await response.json();
+                  setConnections((previous) => replaceUpdatedConnections(previous, [data.connection]));
+                }}
                 onClearCooldown={handleClearCooldown}
                 clearingCooldown={clearingCooldownId === conn.id}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {

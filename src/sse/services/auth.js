@@ -13,7 +13,7 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields, isRelayGatewayFailure, countEligibleAccounts } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields, isRelayGatewayFailure, countEligibleAccounts, detectQuotaExhaustion, isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
@@ -493,7 +493,7 @@ function requestedModelLockActive(connection, rawModel, boundedModel, now) {
 /** Shared read-only eligibility predicate used by combo preview and auth. */
 export function isProviderConnectionModelLocked(connection, provider, model, now = Date.now()) {
   const boundedModel = resolveFallbackModelScope(resolveProviderId(provider), model);
-  return requestedModelLockActive(connection, model, boundedModel, now);
+  return isQuotaLockoutActive(connection, now) || requestedModelLockActive(connection, model, boundedModel, now);
 }
 
 function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
@@ -507,6 +507,9 @@ function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
 function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
   const deadlines = [];
   let unknown = false;
+  if (isQuotaLockoutActive(connection, now)) {
+    if (connection.quotaLockout.reactivateAt) deadlines.push(connection.quotaLockout.reactivateAt); else unknown = true;
+  }
   if (requestedModelLockActive(connection, rawModel, boundedModel, now)) {
     const deadline = requestedModelLockUntil(connection, rawModel, boundedModel, now);
     if (deadline) deadlines.push(deadline);else
@@ -522,7 +525,7 @@ function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
 
 function summarizeBlockedConnections(connections, decisions, rawModel, boundedModel, now) {
   const blocked = connections.filter((connection) =>
-  requestedModelLockActive(connection, rawModel, boundedModel, now) || decisions.get(connection.id)?.skip
+  requestedModelLockActive(connection, rawModel, boundedModel, now) || isQuotaLockoutActive(connection, now) || decisions.get(connection.id)?.skip
   );
   // Search locks have their own status; the row-wide errorCode describes chat.
   // An account-wide lock still uses the shared status. Older search locks with
@@ -567,8 +570,8 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
     boundedModel,
     now
   ));
-  const earliest = retries.length > 0 && retries.every(Boolean) ?
-  retries.sort((left, right) => Date.parse(left) - Date.parse(right))[0] : null;
+  const knownRetries = retries.filter(Boolean).sort((left, right) => Date.parse(left) - Date.parse(right));
+  const earliest = retries.every(Boolean) || blocked.some((connection) => isQuotaLockoutActive(connection, now)) ? knownRetries[0] || null : null;
   return {
     status: 429,
     message: "Rate limited",
@@ -583,7 +586,7 @@ function includeExcludedModelRetry(summary, blocked, connections, exclusions, de
   if (!rawModel || summary.status !== 429 || !summary.retryAfter ||
       !blocked.every((connection) => decisions.get(connection.id)?.skip)) return summary;
   const deadlines = connections.filter((connection) =>
-    exclusions.has(connection.id) && ![401, 403].includes(Number(connection.errorCode)) &&
+    exclusions.has(connection.id) && !isQuotaLockoutActive(connection, now) && ![401, 403].includes(Number(connection.errorCode)) &&
     !decisions.get(connection.id)?.skip &&
     !getActiveModelLockUntil(connection, null, now) &&
     !(new Date(connection.rateLimitedUntil || "").getTime() > now) &&
@@ -833,6 +836,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         const storedEligibleBeforeRpm = connections.filter(
           (c) => !excludeSet.has(c.id) &&
           !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
+          !isQuotaLockoutActive(c, selectionNow) &&
           !quotaDecisions.get(c.id)?.skip &&
           !isConnectionGated(c, selectionNow)
         );
@@ -858,7 +862,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         if (rpmSummary) return rpmSummary;
         // If all stored connections are model-locked, surface the earliest retry time so callers can back off.
         const blockedConnections = connections.filter(
-          (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
+          (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || isQuotaLockoutActive(c, selectionNow) || quotaDecisions.get(c.id)?.skip)
         );
         if (blockedConnections.length > 0) {
           const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConnections, quotaDecisions, model, boundedModel, selectionNow), blockedConnections, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
@@ -898,6 +902,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // decolua/9router#3203: evaluate RPM without spending budget; record only final selection.
     const eligibleBeforeRpm = connections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
+      if (isQuotaLockoutActive(c, selectionNow)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
       if (options?.connectionRecovery && !canSelectConnection(c, model, boundedModel, selectionNow)) return false;
@@ -922,7 +927,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     const recoveryBlocked = options?.connectionRecovery ? connections.filter((c) =>
       !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
-      !quotaDecisions.get(c.id)?.skip && !isConnectionGated(c, selectionNow) &&
+      !isQuotaLockoutActive(c, selectionNow) && !quotaDecisions.get(c.id)?.skip && !isConnectionGated(c, selectionNow) &&
       !isOverLimit(c.id, rpmLimit, selectionNow) &&
       !canSelectConnection(c, model, boundedModel, selectionNow)) : [];
     if (recoveryBlocked.some((c) => c.id === preferredConnectionId) ||
@@ -955,7 +960,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
       // Find earliest lock expiry across all connections for retry timing
       const blockedConns = connections.filter(
-        (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
+        (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || isQuotaLockoutActive(c, selectionNow) || quotaDecisions.get(c.id)?.skip)
       );
       if (blockedConns.length > 0) {
         const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow), blockedConns, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
@@ -1547,6 +1552,17 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
 
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
+  // The transactional predicate protects a manual schedule or newer credential
+  // from a late response. Model locks and quota evidence are left intact.
+  const quota = detectQuotaExhaustion(context?.errorBody ?? errorText);
+  if (quota.exhausted && (Number(status) === 200 || Number(status) >= 400 && Number(status) <= 599)) {
+    const reset = quota.resetAtMs || (Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null);
+    const fingerprint = context?.credentialFingerprint || null;
+    await updateProviderConnection(connectionId, {
+      quotaLockout: { status: "quota_exhausted", source: "auto", message: "Provider quota exhausted", detectedAt: new Date(observedAt).toISOString(), reactivateAt: reset ? new Date(reset).toISOString() : null }
+    }, { signal, shouldCommitConnection: (current) => (current.quotaLockout?.source !== "manual" || !isQuotaLockoutActive(current)) && (!current.updatedAt || Date.parse(current.updatedAt) <= observedAt) && connectionHasCredential(current, fingerprint) });
+    return { shouldFallback: true, cooldownMs: reset ? Math.max(0, reset - Date.now()) : 0 };
+  }
   let shouldFallback, cooldownMs, newBackoffLevel;
   const now = Date.now();
   // OmniRoute #6731: classify first so an explicit quota-exhausted body on an

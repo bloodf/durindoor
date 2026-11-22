@@ -6,6 +6,7 @@ import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, estimateNonStreamingUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { detectQuotaExhaustion } from "../../services/accountFallback.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
@@ -618,6 +619,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         if (code === 401 || code === 403) evictResponseDispatcher(providerResponse);
         errorPayload = { ...errorPayload, error: { ...errorPayload.error, status: code } };
       }
+      const quotaError = detectQuotaExhaustion({ error: errorPayload?.error });
+      if (quotaError.exhausted) {
+        appendLog({ status: "FAILED 429" });
+        return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quotaError.resetAtMs, undefined, null, credentials);
+      }
       const sseError = createSSEErrorResult(errorPayload, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
@@ -661,6 +667,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+      }
+      // Inspect only the error envelope, never echoed request content.
+      if (responseBody.error) {
+        const quota = detectQuotaExhaustion({ error: responseBody.error });
+        if (quota.exhausted) {
+          appendLog({ status: "FAILED 429" });
+          return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quota.resetAtMs, undefined, null, credentials);
+        }
       }
       // Cloud Code can return a Google RPC error inside an HTTP 200 response.
       // Preserve its numeric code so account-level authentication handling sees it.

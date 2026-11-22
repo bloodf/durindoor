@@ -553,7 +553,12 @@ export async function isNonAdminApiKeyCaller(request) {
 
 async function canUseApiKeyForManagement(request) {
   if (!(await hasValidApiKey(request))) return false;
-  return !isManagementChange(request) || (await isAdminScopedKey(request));
+  if (await isAdminScopedKey(request)) return true;
+  // The self-usage endpoint is deliberately scoped to the presented key and
+  // remains available to inference clients without management privileges.
+  const pathname = decodePathname(request.nextUrl?.pathname || "");
+  if (pathname === "/api/usage/me" && isSafeMethod(request)) return true;
+  return false;
 }
 
 function isPxpipePath(pathname) {

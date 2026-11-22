@@ -90,6 +90,50 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__Secure-next-auth.session-token"],
     cookiePrefixes: ["__Secure-next-auth.session-token."],
   },
+  "promptql": {
+    label: "PromptQL",
+    origin: "https://prompt.ql.app",
+    cookieNames: ["__Host-next-auth.csrf-token", "next-auth.session-token"],
+    cookiePrefixes: [],
+  },
+  "notion-web": {
+    label: "Notion AI Web",
+    origin: "https://app.notion.com",
+    cookieNames: ["token_v2"],
+    cookiePrefixes: [],
+  },
+  "notrack-web": {
+    label: "NoTrack Web",
+    origin: "https://notrack.ai",
+    cookieNames: ["uid", "si_usr_id", "si_ses_id"],
+    cookiePrefixes: [],
+  },
+  "tencent-aistudio-web": {
+    label: "Tencent AI Studio Web",
+    origin: "https://aistudio.tencent.ai",
+    cookieNames: ["sessionid"],
+    cookiePrefixes: [],
+  },
+  "blackbox-web": {
+    label: "Blackbox Web",
+    origin: "https://app.blackbox.ai",
+    cookieNames: ["next-auth.session-token"],
+    cookiePrefixes: [],
+  },
+  "conol-web": {
+    label: "Conol Web",
+    origin: "https://conol.ai",
+    cookieNames: ["__Secure-better-auth.session_token"],
+    cookiePrefixes: [],
+  },
+  // TinyCMS has no session cookie: the device UUID is a localStorage item of the site.
+  "tinycms-web": {
+    label: "TinyCMS Web",
+    origin: "https://site.tinycms.xyz",
+    cookieNames: [],
+    cookiePrefixes: [],
+    localStorageKeys: ["app-config-uuid"],
+  },
 });
 
 export const PAIRING_HEADER = "x-durindoor-pairing-token";

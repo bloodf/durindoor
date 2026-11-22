@@ -187,9 +187,9 @@ export function createDisconnectAwareStream(transformStream, streamController, o
       if (bytes) forward(controller, bytes);
     } catch { /* best-effort terminal */ }
   };
-  const emitClientRecovery = (controller) => {
+  const emitClientRecovery = (controller, drop = false) => {
     if (terminalEmitted || !terminalTracker) return false;
-    const bytes = terminalTracker.buildRecoveryBytes();
+    const bytes = terminalTracker.buildRecoveryBytes(drop ? { drop: true } : undefined);
     if (!bytes) return false;
     terminalEmitted = true;
     forward(controller, bytes);
@@ -263,7 +263,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // client formats synthesize their EOF recovery through terminalTracker.
         try {
           if (!wasConnected || isNetworkClose || onAbortTerminal || (code === "invalid_sse_payload" && terminalTracker)) {
-            if (terminalTracker) emitClientRecovery(controller);
+            if (terminalTracker) emitClientRecovery(controller, true);
             else emitTerminal(controller);
             abort();
             controller.close();

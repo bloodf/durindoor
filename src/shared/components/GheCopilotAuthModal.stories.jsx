@@ -12,6 +12,8 @@ function mockPopup() {
   return () => open.mockRestore();
 }
 
+export const Default = { args, parameters: fixture() };
+
 export const InvalidOrigin = {
   args,
   parameters: fixture(),

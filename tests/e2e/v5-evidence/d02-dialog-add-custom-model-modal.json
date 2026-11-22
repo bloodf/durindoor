@@ -1,0 +1,4 @@
+{
+  "route": "dialog/AddCustomModelModal",
+  "stories": ["production-providers-addcustommodelmodal--open", "production-providers-addcustommodelmodal--pending", "production-providers-addcustommodelmodal--save-error"]
+}

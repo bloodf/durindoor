@@ -1,0 +1,7 @@
+{
+  "route": "dialog/IFlowCookieModal",
+  "stories": [
+    "production-shared-oauth-iflowcookiemodal--default",
+    "production-shared-oauth-iflowcookiemodal--server-error"
+  ]
+}

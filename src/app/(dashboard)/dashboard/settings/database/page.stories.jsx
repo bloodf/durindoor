@@ -135,3 +135,15 @@ export const StatusUnavailable = {
     await expect(canvas.getByRole("button", { name: "Retry status" })).toBeVisible();
   },
 };
+
+export const CutoverConfirm = {
+  args: Default.args,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Cut over to Postgres" }));
+    const dialog = within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Cut over to Postgres" });
+    await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect.getTiming().iterations)).map((animation) => animation.finished));
+    await expect(dialog).toBeVisible();
+    await expect(within(dialog).getByRole("button", { name: "Cut over" })).toBeVisible();
+  },
+};

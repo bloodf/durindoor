@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal";
@@ -8,6 +10,7 @@ import Input from "@/shared/ui/components/Input";
 
 /** Failed imports keep the token in private state for retry; feedback never echoes remote errors. */
 export default function ImportTokenModal({ isOpen, provider, providerInfo, onBrowserSignIn, onSuccess, onClose }) {
+  const uiV5 = useUiV5();
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -48,7 +51,7 @@ export default function ImportTokenModal({ isOpen, provider, providerInfo, onBro
   };
 
   return (
-    <Modal open={isOpen} title={`Connect ${providerInfo?.name || provider}`} onClose={handleClose} size="sm">
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title={`Connect ${providerInfo?.name || provider}`} onClose={handleClose} size="sm">
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-3 rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 text-dd-muted">
           <span className="material-symbols-outlined text-[20px]" aria-hidden="true">vpn_key</span>

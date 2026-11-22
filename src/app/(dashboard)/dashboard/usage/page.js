@@ -11,6 +11,10 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { USAGE_PERIOD_OPTIONS, getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 import MonitoringWidgets from "./components/MonitoringWidgets";
+import ComboUsageReport from "@/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx";
+import ApiKeyLimitsCard from "@/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js";
+import UsageWidgetLayout from "@/shared/ui/v5/usage/UsageWidgetLayout.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
@@ -52,6 +56,7 @@ export default function UsagePage() {
 }
 
 function UsageContent() {
+  const v5 = useUiV5();
   const searchParams = useSearchParams();
   const router = useRouter();
   // `period` is a valid preset; `customRange` is the calendar's window. Selecting
@@ -124,7 +129,7 @@ function UsageContent() {
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 text-[13px] sm:px-0">
+    <div className={`${v5 ? "v5-usage-page " : ""}flex min-w-0 flex-col gap-6 px-1 text-[13px] sm:px-0`}>
       <div className="flex min-w-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <SegmentedControl
           options={[
@@ -157,10 +162,34 @@ function UsageContent() {
 
       {activeTab === "overview" ? (
         <Suspense fallback={<CardSkeleton />}>
-          <div className="flex flex-col gap-6">
-            <MonitoringWidgets />
-            <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
-          </div>
+          {v5 ? (
+            // V5 places each report in the customizable widget layout. Layout choices stay in the browser.
+            <div className="flex flex-col gap-6">
+              <UsageStats
+                period={period}
+                setPeriod={setPeriod}
+                customRange={customRange}
+                isCustomRange={selectValue === "custom"}
+                hidePeriodSelector
+                resetNonce={resetNonce}
+                renderSections={(sections) => (
+                  <UsageWidgetLayout
+                    sections={{
+                      ...sections,
+                      combos: <ComboUsageReport period={period} customRange={customRange} resetNonce={resetNonce} />,
+                      keys: <ApiKeyLimitsCard />,
+                      monitoring: <MonitoringWidgets />,
+                    }}
+                  />
+                )}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              <MonitoringWidgets />
+              <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
+            </div>
+          )}
         </Suspense>
       ) : null}
       {activeTab === "logs" ? <RequestLogger resetNonce={resetNonce} /> : null}

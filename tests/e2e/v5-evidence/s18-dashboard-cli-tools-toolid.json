@@ -1,0 +1,11 @@
+{
+  "route": "/dashboard/cli-tools/[toolId]",
+  "stories": [
+    "v5-review-pages-cli-tools-tooldetailclient--claude",
+    "v5-review-pages-cli-tools-tooldetailclient--claude-loaded",
+    "v5-review-pages-cli-tools-tooldetailclient--codex",
+    "v5-review-pages-cli-tools-tooldetailclient--cursor",
+    "v5-review-pages-cli-tools-tooldetailclient--loading",
+    "v5-review-pages-cli-tools-tooldetailclient--discovery-unavailable"
+  ]
+}

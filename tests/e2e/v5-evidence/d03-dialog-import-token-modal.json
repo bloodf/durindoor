@@ -1,0 +1,7 @@
+{
+  "route": "dialog/ImportTokenModal",
+  "stories": [
+    "production-shared-oauth-importtokenmodal--open",
+    "production-shared-oauth-importtokenmodal--import-failure"
+  ]
+}

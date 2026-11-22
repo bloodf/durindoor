@@ -28,10 +28,33 @@ Scope: `copilot-web` and `copilot-m365-web` saved credentials, from creation to 
 - Usage: token counts are gateway estimates; neither provider reports quota or usage.
 - Hashcash: the existing bounded proof-of-work answer for personal Copilot stays; no other attestation is attempted.
 
+## Ported: native M365 sign-in, refresh and continuation
+
+Ported from OmniRoute `cheaper-inference/OmniRoute` (MIT) at [`4265bb2ad5477450a07d3a43ea33a62c6c874878`](https://github.com/cheaper-inference/OmniRoute/tree/4265bb2ad5477450a07d3a43ea33a62c6c874878) (release/v3.8.55; `5ffa68e83544` has no later change to these files). The user-facing description is [docs/providers/copilot-m365-web.mdx](../../docs/providers/copilot-m365-web.mdx).
+
+| OmniRoute | DurinDoor | Notes |
+| --- | --- | --- |
+| `src/lib/oauth/providers/copilot-m365-web.ts`, `m365AuthAttempts.ts` | `src/lib/oauth/copilotM365Provider.js`, registered as `copilot-m365-web` in `src/lib/oauth/providers.js`; constants in `open-sse/config/copilotM365.js` | PKCE authorize URL and code exchange. The attempt store is not ported: the shared server-bound flow record (`flowStore`) already makes an attempt single-use, expiring and reconnect-bound, so the adapter only checks the pasted native-client URL against the issued state. Token requests use `credentialFetch`, so a redirect off `login.microsoftonline.com` is an error. Work/school accounts only. |
+| `open-sse/services/tokenRefresh/providers/m365.ts`, `refreshM365AccessToken` | `open-sse/services/tokenRefresh/copilotM365.js`, wired through `REFRESH_HANDLERS` and `CopilotM365WebExecutor.refreshCredentials` | Per connection and tenant; the rotated refresh token is persisted by the existing CAS refresh path. A dead grant is `unrecoverable_refresh_error` (reauth required); any other failure is transient. OmniRoute's `unauthorized_client` circuit breaker is not ported. |
+| `m365Protocol/conversations.ts` | `open-sse/executors/copilot-m365-conversations.js` | Per-connection, per-model/profile/tool-set continuation keyed by a sha256 history chain. Process memory only. |
+| `m365Protocol/images.ts` | `open-sse/executors/copilot-m365-images.js` | `UploadFile` plus `ImageFile` annotation; the upload is a credentialed `credentialFetch`; HTTPS URLs use the existing public-only guarded media fetch. |
+| `m365Protocol/tools.ts`, `parseFencedToolCalls`, `toolArgumentSchema.ts` | `open-sse/executors/copilot-m365-tools.js` | Fenced-block tool calls, one buffered turn. |
+| `m365ExecutorOutput.ts` | `open-sse/executors/copilot-m365-output.js` | Text and tool-call output only. |
+| `m365Identity.ts` and the identity merge in the connection store | `open-sse/utils/m365Identity.js`, the `copilot-m365-web` branches in `connectionsRepo.js` and `flowCompletion.js` | Rows are the same account only for the same `oid@tid`; two tenants sharing an email stay separate, and a reconnect with another identity is refused. |
+
+"Personal conversation reuse" has no separate OmniRoute implementation at the pin: `copilot-web.ts` opens a conversation per request. The reuse ported here is the per-connection M365 store, which serves individual-tier (personal) M365 connections. `copilot-web` itself is unchanged.
+
+Manual session entry is unchanged and still saves a `cookie` row. A native sign-in saves an `oauth` row beside it.
+
 ## Not ported
 
-OmniRoute's native M365 PKCE sign-in, refresh-token renewal, conversation continuation, image and tool handling, and personal conversation reuse. They are feature ports, not cookie lifecycle fixes, and DurinDoor keeps manual session entry with no automatic refresh.
+- OmniRoute's image generation (`m365ImageGeneration.ts`, the Designer token mint and `M365_IMAGE_ARTIFACT_SCOPE`).
+- The native turn transport and composer (`m365Turn.ts`, `composer.ts`, `citations.ts`): DurinDoor keeps its own socket loop, so there are no citation annotations, reasoning summaries, typed licence/throttle error codes, `disableMemory` temporary chats or documented-model tone profiles.
+- The dashboard connect dialog for native sign-in. The OAuth routes are the interface until a dialog is added.
+- Automatic `tier` selection: a native work account still needs `providerSpecificData.tier`.
 
 ## Tests
 
 `tests/unit/provider-cookie-lifecycle-copilot.test.js` covers both providers end to end against the real DB layer, route handlers and gateway chat handler with closed mocks.
+
+`tests/unit/copilot-m365-signin.test.js` covers the native sign-in, refresh and continuation port: the PKCE URL and exchange, single-use attempts, refresh rotation, per-connection isolation, continuation reuse, an image round and a tool round, and JSON and streamed chat through the OpenAI and Anthropic routes, all with closed mocks.

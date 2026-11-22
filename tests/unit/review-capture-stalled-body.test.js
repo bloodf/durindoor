@@ -13,7 +13,10 @@ const pairing = {
 
 function harness() {
   const chrome = {
-    tabs: { query: async () => [{ id: 1, url: "https://grok.com/" }] },
+    tabs: {
+      query: async () => [{ id: 1, url: "https://grok.com/" }],
+      get: async (id) => ({ id, url: "https://grok.com/" }),
+    },
     permissions: { contains: async () => true, request: async () => true, remove: async () => true },
     cookies: {
       getAllCookieStores: async () => [{ id: "store", tabIds: [1] }],

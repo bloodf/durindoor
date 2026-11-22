@@ -294,9 +294,10 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     signal?.addEventListener("abort", onAbort, { once: true });
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
-    let rejectAbort;
-    const aborted = new Promise((_, reject) => { rejectAbort = reject; });
-    const onRequestAbort = () => rejectAbort(new Error("request aborted"));
+    const abortedResult = {};
+    let resolveAbort;
+    const aborted = new Promise((resolve) => { resolveAbort = resolve; });
+    const onRequestAbort = () => resolveAbort(abortedResult);
     controller.signal.addEventListener("abort", onRequestAbort, { once: true });
     try {
       let response;
@@ -316,7 +317,11 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
       }
       if (response.status !== 200 && response.status !== 201) return fail(statusCode(response.status));
       let connection = null;
-      try { connection = (await Promise.race([response.json(), aborted]))?.connection ?? null; }
+      try {
+        const bodyResult = await Promise.race([response.json(), aborted]);
+        if (bodyResult === abortedResult) return timedOut ? fail("network_error") : fail("cancelled");
+        connection = bodyResult?.connection ?? null;
+      }
       catch {
         if (timedOut) return fail("network_error");
         if (cancelled()) return fail("cancelled");

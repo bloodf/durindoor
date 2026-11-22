@@ -26,6 +26,7 @@ import { chatChunkSse, sseChunk } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
 import {
   runProviderAttemptDispatch,
@@ -141,7 +142,105 @@ function encodeHistoryMessage(message) {
   return agentMessage(1, agentMessage(1, agentMessage(1, text)));
 }
 
-export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null) {
+// Effort, thinking, and fast picker suffixes can be model parameters. Sending `claude-4.5-opus-high-thinking` as the
+// id makes AgentService accept the RPC and stream an empty turn.
+const CURSOR_EFFORT_SUFFIXES = ["xhigh", "medium", "high", "low", "max", "minimal", "ultra"];
+
+function encodeModelParameter(id, value) {
+  return agentMessage(3, concatBuffers(agentString(1, id), agentString(2, value)));
+}
+
+function normalizeBodyEffort(reasoningEffort) {
+  const bodyEffort = String(reasoningEffort || "").toLowerCase();
+  if (!bodyEffort || bodyEffort === "none") return null;
+  if (bodyEffort === "ultra") return "max";
+  if (bodyEffort === "minimal") return "low";
+  return bodyEffort;
+}
+
+function idHasEffortToken(id) {
+  return CURSOR_EFFORT_SUFFIXES.some((effort) => (
+    id.endsWith(`-${effort}`) || id.includes(`-${effort}-`)
+  ));
+}
+
+/**
+ * Split a Cursor picker id into the base AgentService model_id plus parameters.
+ * Claude/Gemini/Grok/Composer use `effort`; GPT uses `reasoning`. `-thinking`
+ * and Composer/Fable `-fast` become toggles. Opus/GPT/Grok `*-fast` catalog
+ * ids stay intact.
+ *
+ * Catalog rules (live GetUsableModels):
+ * 1. Exact id listed → send verbatim (Cursor often lists effort tiers as full ids).
+ * 2. Else strip suffixes only when the resulting base is listed.
+ * 3. Else keep the original id — inventing a base that is not usable yields an
+ *    empty AgentService turn (seen with gpt-5.6-luna-medium / cursor-grok-*).
+ */
+export function resolveRequestedModel(modelId, reasoningEffort = null, catalogIds = null) {
+  const original = String(modelId || "").trim().split("/").pop() || "";
+  const bodyValue = normalizeBodyEffort(reasoningEffort);
+  let id = original === "auto" ? "default" : original;
+
+  const attachBodyEffort = (model, params) => {
+    if (bodyValue && !idHasEffortToken(model) && !params.some((p) => p.id === "effort" || p.id === "reasoning")) {
+      params.push({ id: /gpt-/i.test(model) ? "reasoning" : "effort", value: bodyValue });
+    }
+    return params;
+  };
+
+  // Exact catalog hit: the account's usable list is authoritative.
+  if (catalogIds instanceof Set && catalogIds.has(id)) {
+    return { modelId: id, parameters: attachBodyEffort(id, []) };
+  }
+
+  const parameters = [];
+  let working = id;
+
+  // Strip -thinking before effort so `…-high-thinking` becomes base + both params.
+  if (working.endsWith("-thinking")) {
+    working = working.slice(0, -"-thinking".length);
+    parameters.push({ id: "thinking", value: "true" });
+  }
+
+  // Composer / Fable `-fast` is a parameter; other families keep catalog `*-fast` ids.
+  if (
+    (working.startsWith("composer-") || /claude-fable/i.test(working))
+    && working.endsWith("-fast")
+  ) {
+    working = working.slice(0, -"-fast".length);
+    parameters.push({ id: "fast", value: "true" });
+  }
+
+  let effortFromId = null;
+  for (const effort of CURSOR_EFFORT_SUFFIXES) {
+    const suffix = `-${effort}`;
+    if (working.length > suffix.length && working.endsWith(suffix)) {
+      working = working.slice(0, -suffix.length);
+      effortFromId = effort === "ultra" ? "max" : effort === "minimal" ? "low" : effort;
+      break;
+    }
+  }
+
+  const stripped = working !== id || parameters.length > 0;
+  // Catalog-aware strip:
+  // - exact id already handled above
+  // - strip only when the resulting base is listed as usable
+  // - empty Set = live fetch failed/empty → keep original (invented bases empty-turn)
+  // - null catalogIds = unit-test / offline path → allow legacy strip
+  if (stripped && catalogIds instanceof Set && (catalogIds.size === 0 || !catalogIds.has(working))) {
+    return { modelId: id, parameters: attachBodyEffort(id, []) };
+  }
+
+  if (effortFromId) {
+    parameters.push({ id: /gpt-/i.test(working) ? "reasoning" : "effort", value: effortFromId });
+  } else {
+    attachBodyEffort(working, parameters);
+  }
+
+  return { modelId: working, parameters };
+}
+
+export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null, catalogIds = null) {
   // custom_system_prompt (RunRequest field 8) makes AgentService return an
   // empty turn. Fold system text into the current user message instead.
   const system = messages
@@ -176,26 +275,10 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     ...(conversationHistory ? [agentMessage(7, conversationHistory)] : []),
   );
   const conversationAction = agentMessage(1, userAction);
-  const effort = String(reasoningEffort || "").toLowerCase();
-  const effortValue = effort === "ultra" ? "max" : effort === "minimal" ? "low" : effort;
-  const parameter = effortValue && effortValue !== "none"
-    ? agentMessage(3, concatBuffers(
-      agentString(1, /gpt-/i.test(model) ? "reasoning" : "effort"),
-      agentString(2, effortValue),
-    ))
-    : null;
-  // RequestedModel field 7 is reserved for Bedrock credentials, not max mode.
-  const requestedModel = concatBuffers(
-    agentString(1, model),
-    ...(parameter ? [parameter] : []),
-  );
-  // ModelDetails (field 3): thinking variants (Composer, Grok, *-thinking)
-  // return an empty turn when only RequestedModel (field 9) is set.
-  const modelDetails = concatBuffers(
-    agentString(1, model),
-    agentString(3, model),
-    agentString(4, model),
-  );
+  const { modelId, parameters } = resolveRequestedModel(model, reasoningEffort, catalogIds);
+  // RequestedModel field 7 is reserved for Bedrock credentials.
+  const requestedModel = concatBuffers(agentString(1, modelId), ...parameters.map((param) => encodeModelParameter(param.id, param.value)));
+  const modelDetails = concatBuffers(agentString(1, modelId), agentString(3, modelId), agentString(4, modelId));
   const mcpTools = encodeMcpTools(tools);
   const runRequest = concatBuffers(
     // An empty ConversationStateStructure starts a fresh local agent session.
@@ -862,13 +945,13 @@ export class CursorExecutor extends BaseExecutor {
    * AgentService (agent.api5.cursor.sh) is HTTP/2-only. Node's fetch/undici speaks
    * HTTP/1.1 and fails with HTTPParserError on the h2 preface — use http2 duplex.
    */
-  openAgentHttp2Stream(url, headers, signal) {
+  async openAgentHttp2Stream(url, headers, signal, proxyOptions = null) {
     if (!http2) {
       throw new Error("HTTP/2 is required for Cursor AgentService (endpoint is h2-only)");
     }
 
     const urlObj = new URL(url);
-    const client = http2.connect(`https://${urlObj.host}`);
+    const client = await connectHttp2(url, { proxyUrl: cursorProxyUrl(url, proxyOptions), timeoutMs: this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS, http2Module: http2, signal });
     const chunkQueue = [];
     let waiting = null;
     let ended = false;
@@ -890,7 +973,9 @@ export class CursorExecutor extends BaseExecutor {
       wake(null);
     };
 
+    let onAbort;
     const close = () => {
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
       try { req?.destroy(); } catch {}
       try { client.close(); } catch {}
     };
@@ -910,13 +995,18 @@ export class CursorExecutor extends BaseExecutor {
       if (waiting) wake({ value: chunk, done: false });
       else chunkQueue.push(chunk);
     });
+    req.on("aborted", () => fail(new Error("Cursor AgentService stream reset")));
+    req.on("close", () => {
+      if (!ended) fail(new Error("Cursor AgentService stream closed before end"));
+    });
     req.on("end", () => {
+      if (req.rstCode) { fail(new Error("Cursor AgentService stream reset")); return; }
       ended = true;
       wake({ value: undefined, done: true });
     });
 
     if (signal) {
-      const onAbort = () => {
+      onAbort = () => {
         fail(new Error("Request aborted"));
         close();
       };
@@ -983,12 +1073,7 @@ export class CursorExecutor extends BaseExecutor {
     if (!agentEndpoint) throw new Error("Cursor AgentService endpoint is not configured");
 
     const url = `${agentEndpoint}${AGENT_RUN_PATH}`;
-    // The h2 duplex stream bypasses proxyAwareFetch, so it can never carry a
-    // proxy. Fail closed rather than open a direct socket that would leak the
-    // host IP when any proxy (connection, pool, relay, env) applies.
-    if (shouldUseProxyAwareTransport(url, proxyOptions)) {
-      throw new Error("Cursor AgentService uses HTTP/2 streaming that cannot honor the configured proxy; refusing to connect directly");
-    }
+    cursorProxyUrl(url, proxyOptions);
     const headers = this.buildHeaders(credentials);
     const requestController = new AbortController();
     if (signal?.aborted) {
@@ -1005,20 +1090,21 @@ export class CursorExecutor extends BaseExecutor {
     // "Auto (Server Picks)" / "default" is a picker alias, not an AgentService
     // model id — sending it verbatim yields an empty turn. Resolve it to the
     // account's default agent-capable model from the live catalog before Run.
+    const catalog = await resolveCursorModels(credentials, { signal, log, proxyOptions });
+    const catalogIds = new Set((catalog?.models || []).map((entry) => entry.id));
     let runModel = model;
     if (model === "default" || model === "auto") {
-      const catalog = await resolveCursorModels(credentials, { signal, log, proxyOptions });
       const selection = resolveAutoModelSelection(catalog?.models);
       if (selection) {
         log?.info?.("CURSOR", `auto model resolved: ${model} → ${selection.modelId} (${selection.matchedBy})`);
         runModel = selection.modelId;
       }
     }
-    runModel = resolveCursorAgentModel(runModel);
 
-    const openAgentSession = (frameMessages) => {
-      const session = this.openAgentHttp2Stream(url, headers, requestController.signal);
-      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort));
+
+    const openAgentSession = async (frameMessages) => {
+      const session = await this.openAgentHttp2Stream(url, headers, requestController.signal, proxyOptions);
+      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort, catalogIds));
       return session;
     };
 
@@ -1027,7 +1113,7 @@ export class CursorExecutor extends BaseExecutor {
     let responseHeaders;
     try {
       responseHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-        session = openAgentSession(workingMessages);
+        session = await openAgentSession(workingMessages);
         return withCursorTimeout(
           session.responseHeaders,
           headersTimeoutMs,
@@ -1253,7 +1339,7 @@ export class CursorExecutor extends BaseExecutor {
           let retryHeaders;
           try {
             retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-              session = openAgentSession(workingMessages);
+              session = await openAgentSession(workingMessages);
               return withCursorTimeout(
                 session.responseHeaders,
                 headersTimeoutMs,
@@ -1337,7 +1423,11 @@ export class CursorExecutor extends BaseExecutor {
         // Defer terminal SSE until runWithRetry settles. Emitting stop on the
         // first empty upstream turn wedges Cursor before the tail-only retry
         // can recover the session.
+        let streamedOutput = false;
+        let closed = false;
         runWithRetry((event) => {
+          if (closed) return;
+          if (["text", "thinking", "tool_call"].includes(event.type)) streamedOutput = true;
           if (event.type === "text") {
             controller.enqueue(encoder.encode(chatChunkSse({ id: responseId, created, model, delta: { content: event.value } })));
           } else if (event.type === "thinking") {
@@ -1355,6 +1445,7 @@ export class CursorExecutor extends BaseExecutor {
               },
             })));
           } else if (event.type === "error") {
+            closed = true;
             // An SSE error frame, not a content delta: a protocol failure must not
             // be rendered to the user as the assistant's reply, and downstream
             // usage tracking must not record the turn as a success.
@@ -1362,6 +1453,7 @@ export class CursorExecutor extends BaseExecutor {
             controller.enqueue(encoder.encode(SSE_DONE));
             controller.close();
           } else if (event.type === "done") {
+            closed = true;
             controller.enqueue(encoder.encode(chatChunkSse({
               id: responseId, created, model, delta: {},
               finishReason: event.finishReason || "stop",
@@ -1370,7 +1462,14 @@ export class CursorExecutor extends BaseExecutor {
             controller.close();
           }
         }).catch((error) => {
-          try { controller.error(error); } catch {}
+          if (closed) return;
+          try {
+            if (streamedOutput && !requestController.signal.aborted) {
+              controller.enqueue(encoder.encode(sseChunk({ error: { message: error.message, type: "api_error" } })));
+              controller.enqueue(encoder.encode(SSE_DONE));
+              controller.close();
+            } else controller.error(error);
+          } catch {}
         });
       },
       cancel() {
@@ -1390,10 +1489,8 @@ export class CursorExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    // The h2 AgentService stream cannot carry a proxy. When any proxy applies,
-    // stay on the legacy ChatService path, which honors it, and never connect directly.
-    const agentUrl = `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`;
-    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body) && !shouldUseProxyAwareTransport(agentUrl, proxyOptions)) {
+    // AgentService uses the selected CONNECT or SOCKS route for HTTP/2.
+    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body)) {
       const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
       attemptStartedAt :
       isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();

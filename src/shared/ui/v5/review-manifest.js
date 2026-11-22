@@ -720,7 +720,8 @@ export const REVIEW_SURFACES = [
       "KeyLimits",
       "RevocationRejectedAndRetry",
       "RevocationPending",
-      "Rotation"
+      "Rotation",
+      "V5LoadFailureAndRetry"
     ],
     "storyIds": [
       "v5-review-pages-api-keys--default",
@@ -728,7 +729,8 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-api-keys--key-limits",
       "v5-review-pages-api-keys--revocation-rejected-and-retry",
       "v5-review-pages-api-keys--revocation-pending",
-      "v5-review-pages-api-keys--rotation"
+      "v5-review-pages-api-keys--rotation",
+      "v5-review-pages-api-keys--v-5-load-failure-and-retry"
     ],
     "pathname": "/dashboard/keys",
     "routePattern": "/dashboard/keys",
@@ -826,7 +828,8 @@ export const REVIEW_SURFACES = [
       "FailedTestRequiresLogin",
       "EmptyInstances",
       "ErrorBoundary",
-      "RetainedErrorBoundary"
+      "RetainedErrorBoundary",
+      "V5LoadFailureAndRetry"
     ],
     "storyIds": [
       "v5-review-pages-mcp-gateway--default",
@@ -840,7 +843,8 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-mcp-gateway--failed-test-requires-login",
       "v5-review-pages-mcp-gateway--empty-instances",
       "v5-review-pages-mcp-gateway--error-boundary",
-      "v5-review-pages-mcp-gateway--retained-error-boundary"
+      "v5-review-pages-mcp-gateway--retained-error-boundary",
+      "v5-review-pages-mcp-gateway--v-5-load-failure-and-retry"
     ],
     "pathname": "/dashboard/mcp-gateway",
     "routePattern": "/dashboard/mcp-gateway",

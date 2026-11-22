@@ -19,6 +19,7 @@ import {
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
 import { normalizeResponsesImageReplay } from "../concerns/responsesImageReplay.js";
+import { parseDataUri } from "../concerns/image.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
@@ -800,14 +801,17 @@ function chatPartToResponses(c, contentType) {
     const { file_data, file_id, file_url, filename } = c.file;
     return { type: RESPONSES_ITEM.INPUT_FILE, ...Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
   }
-  if (contentType === RESPONSES_ITEM.OUTPUT_TEXT && (c.type === OPENAI_BLOCK.IMAGE_URL || c.type === RESPONSES_ITEM.INPUT_IMAGE)) {
-    const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
+  if (contentType === RESPONSES_ITEM.OUTPUT_TEXT && (c.type === OPENAI_BLOCK.IMAGE_URL || c.type === RESPONSES_ITEM.INPUT_IMAGE || c.type === OPENAI_BLOCK.IMAGE)) {
+    const url = c.type === OPENAI_BLOCK.IMAGE ? (isString(c.image) ? c.image : null) : (isString(c.image_url) ? c.image_url : c.image_url?.url);
     return { type: contentType, text: isString(url) && url ? `[Image: ${url}]` : "[Image]" };
   }
   if (c.type === OPENAI_BLOCK.IMAGE_URL) {
     const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
     // No usable URL: fall through to the text serialization below.
     if (isString(url) && url) return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+  }
+  if (c.type === OPENAI_BLOCK.IMAGE && parseDataUri(c.image)) {
+    return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: c.image, detail: c.detail || "auto" };
   }
   if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
   const text = c.text || c.content || JSON.stringify(c);
@@ -975,7 +979,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       // Responses has no tool-error flag; retain failure meaning in its output text.
       const errorPrefix = msg.is_error === true ? "[Tool error]\n" : "";
       // Image parts stay media: Responses accepts an input_text/input_image array (#1332).
-      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE);
+      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE || (c?.type === OPENAI_BLOCK.IMAGE && Boolean(parseDataUri(c.image))));
       const output = hasImage ?
       [
       ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),

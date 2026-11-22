@@ -259,6 +259,16 @@ function isCertExpired(certPath) {
   }
 }
 
+// 128-bit CSPRNG serial. The top bit is cleared so the DER INTEGER stays positive
+// (RFC 5280 §4.1.2.2), and the first byte is forced non-zero so forge does not
+// emit a leading zero octet. A fixed or guessable serial also makes a regenerated
+// Root CA collide with the old one (same issuer + serial), which browsers reject.
+function randomSerialNumber() {
+  const bytes = crypto.randomBytes(16);
+  bytes[0] = (bytes[0] & 0x7f) || 0x01;
+  return bytes.toString("hex");
+}
+
 function createRootCAMaterial() {
   // Generate RSA key pair
   const keys = forge.pki.rsa.generateKeyPair(2048);
@@ -266,7 +276,7 @@ function createRootCAMaterial() {
   // Create Root CA certificate
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.publicKey;
-  cert.serialNumber = "01";
+  cert.serialNumber = randomSerialNumber();
   cert.validity.notBefore = new Date();
   cert.validity.notAfter = new Date();
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10);
@@ -378,7 +388,7 @@ function generateLeafCert(domain, rootCA) {
   // Create leaf certificate
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.publicKey;
-  cert.serialNumber = Math.floor(Math.random() * 1000000).toString();
+  cert.serialNumber = randomSerialNumber();
   cert.validity.notBefore = new Date();
   cert.validity.notAfter = new Date();
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);

@@ -16,7 +16,7 @@ export default {
     },
   },
   category: "oauth",
-  authModes: ["oauth", "apikey"],
+  authModes: ["oauth", "apikey", "auth_token"],
   hasOAuth: true,
   naiveResetTimezone: "+08:00",
   transport: {

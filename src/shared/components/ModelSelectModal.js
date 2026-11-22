@@ -37,6 +37,16 @@ export const NO_AUTH_PROVIDER_IDS = [...new Set([
 ...Object.keys(FREE_TIER_PROVIDERS).filter((id) => FREE_TIER_PROVIDERS[id].noAuth && !isHiddenProvider(id))]
 )];
 
+/**
+ * Drop no-auth providers the operator disabled (settings.disabledFreeProviders).
+ * Ported from upstream PR #2650 (picker half); server gates already live in
+ * freeProviderGate.js.
+ */
+export function filterEnabledNoAuthIds(ids, disabledFreeProviders) {
+  const disabled = new Set(Array.isArray(disabledFreeProviders) ? disabledFreeProviders : []);
+  return ids.filter((id) => !disabled.has(id));
+}
+
 // kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
 // the `web` slug server-side. null/absent → root LLM list.
 const KIND_TO_SLUG = {
@@ -131,6 +141,7 @@ export default function ModelSelectModal({
   // models while still keeping custom/unknown entries visible.
   const [visibleModelIds, setVisibleModelIds] = useState(null);
   const [visibleCatalogReady, setVisibleCatalogReady] = useState(false);
+  const [disabledFreeProviders, setDisabledFreeProviders] = useState([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -148,6 +159,7 @@ export default function ModelSelectModal({
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
         if (ignore) return;
+        setDisabledFreeProviders(Array.isArray(settingsData?.disabledFreeProviders) ? settingsData.disabledFreeProviders : []);
         if (settingsData?.hidePaidModels !== true) {
           setVisibleCatalogReady(true);
           return;
@@ -379,9 +391,10 @@ export default function ModelSelectModal({
     const activeConnectionIds = filteredActiveProviders.map((p) => p.provider);
 
     // No-auth providers: filter by kindFilter as well
+    const enabledNoAuthIds = filterEnabledNoAuthIds(NO_AUTH_PROVIDER_IDS, disabledFreeProviders);
     const noAuthIds = kindFilter ?
-    NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter)) :
-    NO_AUTH_PROVIDER_IDS;
+    enabledNoAuthIds.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter)) :
+    enabledNoAuthIds;
 
     // Show connected providers and no-auth providers. Custom compatible-provider
     // nodes are covered by activeConnectionIds (connection.provider === node id),
@@ -692,7 +705,7 @@ export default function ModelSelectModal({
     }
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds, orcaCatalog, syncedModelLists]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, disabledFreeProviders, fetchedModels, visibleModelIds, orcaCatalog, syncedModelLists]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

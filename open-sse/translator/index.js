@@ -16,6 +16,7 @@ import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
+import { RESPONSES_ITEM } from "./schema/blocks.js";
 import { ownMessages } from "./concerns/callerMessages.js";
 import { requestRegistry, responseRegistry, register } from "./registry.js";
 
@@ -42,6 +43,33 @@ function stripContentTypes(body, stripList = []) {
     msg.content = msg.content.filter((part) => !shouldStrip(part.type));
     if (msg.content.length === 0) msg.content = "";
   }
+}
+
+// OpenAI's `developer` role is a system turn. The OpenAI target normalizes it in
+// filterToOpenAIFormat and the Responses/Codex targets speak it natively; every
+// other target only knows system/user/assistant, so left alone the per-target
+// translator drops the turn (Gemini, Kiro, Cursor). Normalize once on the
+// request-local copy before any translator runs (decolua/9router#5636).
+const DEVELOPER_ROLE_TARGETS = new Set([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE, FORMATS.CODEX]);
+
+function developerToSystem(item) {
+  return item?.role === ROLE.DEVELOPER ? { ...item, role: ROLE.SYSTEM } : item;
+}
+
+function normalizeDeveloperRole(body) {
+  if (!isRecord(body)) return body;
+  const hasMessages = Array.isArray(body.messages);
+  const hasInput = Array.isArray(body.input);
+  if (!hasMessages && !hasInput) return body;
+  const next = { ...body };
+  if (hasMessages) next.messages = body.messages.map(developerToSystem);
+  // Message-shaped Responses items only: Responses Lite `additional_tools`
+  // prefixes also carry role "developer" and must keep their shape.
+  if (hasInput) {
+    next.input = body.input.map((item) =>
+      item?.type === RESPONSES_ITEM.MESSAGE || (!item?.type && item?.role) ? developerToSystem(item) : item);
+  }
+  return next;
 }
 
 // Capture the source-format tail before translation drops empty turns. Gemini
@@ -125,6 +153,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   ensureInitialized();
   // Own the message list so the rewrites below never mutate the caller's messages.
   let result = ownMessages(body);
+  if (!DEVELOPER_ROLE_TARGETS.has(targetFormat)) result = normalizeDeveloperRole(result);
   // Role the client actually ended on, before any translator drops an emptied turn.
   const clientLastRole = detectClientLastRole(body);
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
@@ -342,6 +371,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     if (isObject(result)) repairDisplacedToolResults(result);
     result = filterToOpenAIFormat(result, {
       preserveCacheControl,
+      preserveDeveloperRole: provider === "openai" && sourceFormat === FORMATS.OPENAI,
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||
         getCapabilitiesForModel(provider, translationModel).videoInput === true
     });

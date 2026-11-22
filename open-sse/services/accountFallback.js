@@ -1,4 +1,4 @@
-import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
+import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES, ACCOUNT_SCOPED_4XX_STATUSES } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
@@ -460,8 +460,9 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel, provider = 
   // their ERROR_RULES status match, so they never reach this fallthrough.
   // `requestScoped` tells combo rotation this member rejected THIS request, so the
   // next member may still serve it (upstream 9router 5cdcddf5, #5057).
-  // Upstream HTTP 408 and 425 use the transient cooldown below.
-  if (status >= 400 && status < 500 && Number(status) !== 408 && Number(status) !== 425) {
+  // Upstream HTTP 408 and 425, and the account-scoped 412/423/428 (#4378), use the
+  // transient cooldown below so the next connection of the provider is tried.
+  if (status >= 400 && status < 500 && Number(status) !== 408 && Number(status) !== 425 && !ACCOUNT_SCOPED_4XX_STATUSES.has(Number(status))) {
     return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 

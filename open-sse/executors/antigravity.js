@@ -289,7 +289,13 @@ export class AntigravityExecutor extends BaseExecutor {
       const contents = [];
       const srcContents = body.request?.contents || body.contents || [];
       for (const c of srcContents) {
-        const validParts = (c.parts || []).filter((p) => p.text !== undefined || p.inlineData !== undefined);
+        // Keep text and inline image parts; normalize snake_case inline_data (#4724).
+        const validParts = (c.parts || []).
+        filter((p) => p.text !== undefined || p.inlineData !== undefined || p.inline_data !== undefined).
+        map((p) => {
+          const inline = p.inlineData || p.inline_data;
+          return inline ? { inlineData: inline } : p;
+        });
         if (validParts.length > 0) {
           contents.push({ role: c.role || "user", parts: validParts });
         }
@@ -387,6 +393,13 @@ export class AntigravityExecutor extends BaseExecutor {
       }
       return c;
     }));
+
+    // Native requests bypass the translator's response schema normalization.
+    if (body.request?.generationConfig?.responseSchema) {
+      body.request.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
+        structuredClone(body.request.generationConfig.responseSchema), { preserveNullable: true }
+      );
+    }
 
     // Sanitize tool schemas and function names before sending to Antigravity.
     let tools = body.request?.tools;

@@ -55372,7 +55372,7 @@
             "tooltip-final"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
@@ -58049,7 +58049,7 @@
       "id": "src/shared/components/layouts/DashboardLayout.js#DashboardLayout",
       "sourcePath": "src/shared/components/layouts/DashboardLayout.js",
       "symbol": "DashboardLayout",
-      "sourceSha256": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+      "sourceSha256": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -58076,7 +58076,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "SuccessToast seeds success message and final play state asserts visible success message and Dismiss notification control.",
@@ -58091,7 +58091,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "ErrorToast seeds error message and final play state asserts visible error message and Dismiss notification control.",
@@ -58106,7 +58106,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "WarningToast seeds warning message and final play state asserts visible warning message and Dismiss notification control.",
@@ -58121,7 +58121,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "InfoToast seeds info message and final play state asserts visible info message and Dismiss notification control.",
@@ -58137,7 +58137,7 @@
             "interaction"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "MobileDrawer play opens navigation and leaves dialog named Navigation with visible Usage link as final state.",
@@ -58153,7 +58153,7 @@
             "interaction"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "PersistedDesktopCollapse collapses sidebar, remounts layout, and final play assertion finds Expand sidebar.",
@@ -58168,7 +58168,7 @@
             "visual"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "PlaygroundFullBleed passes children Playground while its fixture pathname selects DashboardLayout full-bleed branch.",
@@ -58184,7 +58184,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "Separate story dismisses the real notification and leaves the actual page body visible.",
@@ -58201,7 +58201,7 @@
             "focus-restoration"
           ],
           "sourceHashes": {
-            "src/shared/components/layouts/DashboardLayout.js": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22",
+            "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
             "src/shared/components/layouts/DashboardLayout.stories.jsx": "ab05068b74170b2f53a24c728942f166de8ddbaa66326f2cce9185c179a0528e"
           },
           "proposedSourceEvidence": "Separate story preserves actual Usage navigation dismissal, reopen, Close action and focus restoration; final drawer is closed.",
@@ -102535,7 +102535,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "b430a5c01511d3c7b5c19217ca869033d19ea4de587bc795727dce1c88b332d5",
-    "sourceCensusSha256": "3bcfc95817b22cce6fdfc1629f93088acd752fd208348840082ec672464e6ecd",
+    "sourceCensusSha256": "839699d5454def93d9bbaccf07ac822cb849e657a5fa17dc28e063e35ccbeb27",
     "pendingRows": 428,
     "retainedApprovedRows": 210,
     "pendingReferences": 1486,

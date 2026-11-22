@@ -70,7 +70,7 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-dd-bg">
-      <div className="hidden shrink-0 lg:flex">
+      <div className="dashboard-sidebar-desktop shrink-0">
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebarCollapse} />
       </div>
 

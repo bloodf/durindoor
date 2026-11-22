@@ -4,7 +4,7 @@
  * Responses API uses: { input: [...], instructions: "..." }
  * Chat API uses: { messages: [...] }
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {

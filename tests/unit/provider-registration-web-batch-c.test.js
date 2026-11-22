@@ -200,9 +200,11 @@ describe("TinyCMS capture paths (closed mocks)", () => {
       scripting: {
         executeScript: async (details) => {
           calls.push(["scripting.executeScript", { target: details.target, args: details.args }]);
-          // Run the injected reader against a synthetic page storage, as the browser would.
+          // Run the injected reader against a synthetic page storage, as the browser would. The page is
+          // the confirmed TinyCMS tab, so its origin is the provider origin.
           const page = { getItem: (key) => items[key] ?? null, setItem: () => { throw new Error("the reader must not write"); } };
           vi.stubGlobal("localStorage", page);
+          vi.stubGlobal("location", { origin: "https://site.tinycms.xyz" });
           try { return [{ frameId, result: details.func(...details.args) }]; } finally { vi.unstubAllGlobals(); }
         },
       },
@@ -229,7 +231,7 @@ describe("TinyCMS capture paths (closed mocks)", () => {
       permissions: ["scripting"], origins: ["https://site.tinycms.xyz/*", "https://dashboard.example/*"],
     });
     expect(calls.some(([name]) => name.startsWith("cookies."))).toBe(false);
-    expect(calls.find(([name]) => name === "scripting.executeScript")[1]).toEqual({ target: { tabId: 9 }, args: [["app-config-uuid"]] });
+    expect(calls.find(([name]) => name === "scripting.executeScript")[1]).toEqual({ target: { tabId: 9 }, args: [["app-config-uuid"], "https://site.tinycms.xyz"] });
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("https://dashboard.example/api/providers/cookie-import");
@@ -252,8 +254,11 @@ describe("TinyCMS capture paths (closed mocks)", () => {
   it("the injected reader only reads the names it is given", () => {
     const getItem = vi.fn((key) => ({ "app-config-uuid": UUID, other: "synthetic-other" })[key] ?? null);
     vi.stubGlobal("localStorage", { getItem });
-    expect(readLocalStorageItems(["app-config-uuid"])).toEqual({ "app-config-uuid": UUID });
-    expect(getItem.mock.calls).toEqual([["app-config-uuid"]]);
+    vi.stubGlobal("location", { origin: "https://site.tinycms.xyz" });
+    try {
+      expect(readLocalStorageItems(["app-config-uuid"], "https://site.tinycms.xyz")).toEqual({ "app-config-uuid": UUID });
+      expect(getItem.mock.calls).toEqual([["app-config-uuid"]]);
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it("the dashboard import takes a pasted UUID field and sends it through the authenticated import API", async () => {

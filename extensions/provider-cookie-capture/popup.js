@@ -82,7 +82,7 @@ export function mountPopup(doc, { chrome, fetch, now = Date.now }) {
     // A request that reached the dashboard spends the pairing; any other failure leaves it usable.
     const spent = ["network_error", "pairing_rejected", "rejected", "forbidden", "target_missing", "conflict", "server_error", "unexpected_status", "already_used", "pairing_expired"].includes(result.code);
     if (spent) reset(); else send.disabled = !confirm.checked;
-    say(result.message, true);
+    say(result.expectedOrigin ? `${result.message} (${result.expectedOrigin})` : result.message, true);
   });
 
   $("cancel").addEventListener("click", () => {

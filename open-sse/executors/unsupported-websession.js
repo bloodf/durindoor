@@ -40,14 +40,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires HuggingChat cookie normalization, JSONL streaming, and SvelteKit conversation bootstrap",
   },
-  hyperagent: {
-    aliases: ["ha"],
-    source: [
-      "open-sse/executors/hyperagent.ts",
-      "open-sse/services/hyperagentModels.ts",
-    ],
-    reason: "requires HyperAgent's thread API, SSE protocol and sticky thread/session state",
-  },
   "muse-spark-web": {
     aliases: ["ms-web"],
     source: [

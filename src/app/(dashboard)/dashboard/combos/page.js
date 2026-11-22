@@ -181,7 +181,10 @@ export default function CombosPage() {
       if (!combosRes.ok) throw new Error(combosData?.error || "Failed to load combos");
       // Show every non-media combo here (llm, embedding, tts, ...); media/web
       // combos belong to media-providers/web (#2686).
-      const visibleCombos = (combosData.combos || []).filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind));
+      // Older or malformed records may omit models; cards and editors expect an array.
+      const visibleCombos = (Array.isArray(combosData.combos) ? combosData.combos : [])
+        .filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind))
+        .map(c => ({ ...c, models: Array.isArray(c.models) ? c.models : [] }));
       setLoadError("");
       setCombos(visibleCombos);
       const alive = new Set(visibleCombos.map((combo) => combo.id));

@@ -75,6 +75,8 @@ Kimi Web uses access and refresh tokens from localStorage, rather than a browser
 
 DurinDoor refreshes supported OAuth credentials before expiry, both on requests and in the background. Refresh is provider-specific and can fail. Imported Cursor, Windsurf, Trae, and Devin tokens have no public refresh flow. Qoder refresh can return 403 and require a new login.
 
+Connections can set `providerSpecificData.refreshLeadMs` to a positive finite number of milliseconds to override the provider's request-time refresh lead. Background refresh uses the larger of this lead and its 30-minute minimum.
+
 An unrecoverable grant error, such as `invalid_grant` or a reused refresh token, requires reconnecting. Revoked Codex and OrcaRouter credentials can be quarantined as `reauth_required`; sign in again or replace the credential. Quota failures are separate from credential revocation.
 
 Gemini CLI and Antigravity need operator-supplied OAuth client IDs and secrets. Set `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET`, or `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET`, then restart before connecting. Existing accounts may stop refreshing if you change their OAuth client.

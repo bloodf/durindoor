@@ -267,7 +267,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
   if (force || _shouldRefreshCredentials(provider, creds)) {
     const expiresAt = creds.expiresAt ? new Date(creds.expiresAt).getTime() : null;
     const remaining = expiresAt ? expiresAt - Date.now() : null;
-    const refreshLead = _getRefreshLeadMs(provider);
+    const refreshLead = _getRefreshLeadMs(provider, creds.providerSpecificData);
 
     log.info("TOKEN_REFRESH", "Refreshing provider credentials proactively", {
       provider,

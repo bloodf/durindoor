@@ -2502,6 +2502,7 @@ function ProviderDetail({ providerId }) {
             Paste the contents of <code className="rounded bg-dd-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-dd-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
           </p>
           <textarea
+            aria-label="Import provider token"
             value={importTokenValue}
             onChange={(event) => setImportTokenValue(event.target.value)}
             rows={10}

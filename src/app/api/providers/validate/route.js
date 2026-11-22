@@ -432,7 +432,7 @@ export async function POST(request) {
             },
             body: JSON.stringify({
               model,
-              max_tokens: 1,
+              max_tokens: 10,
               messages: [{ role: "user", content: "test" }]
             })
           }, guardedProbeFetch);
@@ -462,7 +462,7 @@ export async function POST(request) {
           body: JSON.stringify({
             model: getDefaultModel("cloudflare-ai"),
             messages: [{ role: "user", content: "test" }],
-            max_tokens: 1
+            max_tokens: 10
           })
         });
         isValid = cfRes.status !== 401 && cfRes.status !== 403 && cfRes.status !== 404;
@@ -503,7 +503,7 @@ export async function POST(request) {
           body: JSON.stringify({
             model: getDefaultModel("snowflake") || "llama3.1-70b",
             messages: [{ role: "user", content: "test" }],
-            max_tokens: 1
+            max_tokens: 10
           }),
         });
         isValid = snowflakeRes.status !== 401 && snowflakeRes.status !== 403;
@@ -535,7 +535,7 @@ export async function POST(request) {
             headers,
             body: JSON.stringify({
               messages: [{ role: "user", content: "test" }],
-              max_tokens: 1
+              max_tokens: 10
             })
           }, guardedProbeFetch);
         } catch (err) {
@@ -607,7 +607,7 @@ export async function POST(request) {
             },
             body: JSON.stringify({
               model: ANTHROPIC_VALIDATION_MODEL,
-              max_tokens: 1,
+              max_tokens: 10,
               messages: [{ role: "user", content: "test" }]
             })
           });
@@ -652,7 +652,7 @@ export async function POST(request) {
               const res = await fetchValidationProbe(cfg.baseUrl, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-                body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+                body: JSON.stringify({ model: testModel, max_tokens: 10, messages: [{ role: "user", content: "test" }] })
               });
               isValid = res.status !== 401 && res.status !== 403;
             } else {
@@ -666,7 +666,7 @@ export async function POST(request) {
                   "content-type": "application/json",
                   ...(cfg.headers || {})
                 },
-                body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+                body: JSON.stringify({ model: testModel, max_tokens: 10, messages: [{ role: "user", content: "test" }] })
               });
               // 400 = model resolution error but auth passed (e.g. agentrouter "no available channel")
               isValid = res.status !== 401 && res.status !== 403;
@@ -683,7 +683,7 @@ export async function POST(request) {
               },
               body: JSON.stringify({
                 model: getDefaultModel(provider),
-                max_tokens: 1,
+                max_tokens: 10,
                 messages: [{ role: "user", content: "test" }]
               })
             });
@@ -786,7 +786,7 @@ export async function POST(request) {
             const model = cfg.validationModelId || getDefaultModel(modelKey);
             const payload = openaiToCommandCodeRequest(model, {
               messages: [{ role: "user", content: "ping" }],
-              max_tokens: 1,
+              max_tokens: 10,
               stream: false
             }, false);
             const probeHeaders = {

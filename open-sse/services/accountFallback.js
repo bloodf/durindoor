@@ -2,6 +2,7 @@ import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RA
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
+import { resolveFallbackModelScope } from "./fallbackScope.js";
 
 /**
  * Identify Envoy retry-buffer overflow responses that are safe to replay on
@@ -10,11 +11,89 @@ import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/provi
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
  */
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Collect request values that providers echo into error text (#2315).
+ * Includes the requested model string, its provider-stripped form, and ids
+ * recovered from common "<id> is not a valid model ID" templates.
+ * @param {string|null|undefined} model
+ * @param {string|null|undefined} provider
+ * @param {string} messageText
+ * @returns {string[]}
+ */
+function collectEchoedRequestValues(model, provider, messageText) {
+  const values = [];
+  const pushModelForms = (raw) => {
+    if (!isString(raw)) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    values.push(trimmed);
+    const slash = trimmed.indexOf("/");
+    if (slash > 0 && slash < trimmed.length - 1) {
+      values.push(trimmed.slice(slash + 1));
+    }
+    if (isString(provider) && provider && trimmed.toLowerCase().startsWith(`${provider.toLowerCase()}/`)) {
+      values.push(trimmed.slice(provider.length + 1));
+    }
+  };
+  pushModelForms(model);
+  if (isString(messageText) && messageText) {
+    const echoed = messageText.match(
+      /^\s*[`'"]?([^\s`'"]+)[`'"]?\s+is not a valid model(?:\s+id)?\b/i
+    );
+    if (echoed?.[1]) pushModelForms(echoed[1]);
+  }
+  return values;
+}
+
+/**
+ * Remove echoed request values before ERROR_RULES text matching so a
+ * client-chosen model id containing billing/capacity phrases cannot lock
+ * shared accounts (#2315).
+ * @param {string} text
+ * @param {string[]} echoedValues
+ * @returns {string}
+ */
+function stripEchoedRequestValues(text, echoedValues) {
+  if (!isString(text) || !text || !Array.isArray(echoedValues) || echoedValues.length === 0) {
+    return isString(text) ? text : "";
+  }
+  let result = text;
+  const unique = [...new Set(echoedValues.map((value) => value.toLowerCase()).filter(Boolean))]
+    .sort((a, b) => b.length - a.length);
+  for (const value of unique) {
+    result = result.replace(new RegExp(escapeRegExp(value), "gi"), " ");
+  }
+  return result;
+}
+
+/**
+ * Provider-authored error signal for text rules: message + code only.
+ * Full request dumps can echo user-controlled fields (#2315 / #1391).
+ * @param {unknown} structuredError
+ * @param {string|object|null|undefined} errorText
+ * @returns {{ message: string, code: string, text: string }}
+ */
+function extractProviderRuleText(structuredError, errorText) {
+  const message = extractErrorMessage(structuredError, errorText);
+  let body = structuredError;
+  if (!body && isString(errorText)) {
+    try { body = JSON.parse(errorText); } catch { body = null; }
+  }
+  const rawCode = body?.error?.code ?? body?.code;
+  const code = isString(rawCode) ? rawCode : isNumber(rawCode) ? String(rawCode) : "";
+  const text = [code, message].filter(Boolean).join(" ");
+  return { message, code, text: text || (isString(errorText) ? errorText : "") };
 }
 
 const DASHSCOPE_PROVIDERS = new Set([
@@ -68,6 +147,7 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
+ * @param {string|null} model - Optional requested model id (stripped from text rules; #2315)
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object, terminal?: boolean, requestScoped?: boolean }}
  *   `shouldFallback` answers "is the credential at fault?" (account rotation);
  *   `requestScoped` answers "did this member reject the request itself?"
@@ -78,11 +158,20 @@ export function getQuotaCooldown(backoffLevel = 0) {
  *   (billing/credit exhausted) — the account still cools down, but callers
  *   must not advertise a client-facing Retry-After for it.
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null) {
   const normalizedText = errorText ?
   isString(errorText) ? errorText : JSON.stringify(errorText) :
   "";
   const lowerError = normalizedText.toLowerCase();
+  // Text rules match the provider's own message/code with echoed request
+  // values (the model id) removed, so a client-chosen id containing
+  // billing/capacity phrases cannot bench shared accounts (#2315).
+  const providerSignal = extractProviderRuleText(structuredError, errorText);
+  const echoedValues = collectEchoedRequestValues(model, provider, providerSignal.message);
+  const ruleMatchText = stripEchoedRequestValues(
+    providerSignal.text || normalizedText,
+    echoedValues
+  ).toLowerCase();
 
   if (isRequestReplayBufferError(status, errorText)) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
@@ -137,7 +226,11 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
     // Match only the provider's error message so a quoted billing phrase elsewhere
     // in the body (e.g. echoed user prompt text) cannot lock a healthy account.
-    const billing = checkFallbackErrorByRules(status, extractErrorMessage(structuredError, errorText).toLowerCase(), backoffLevel);
+    const billingText = stripEchoedRequestValues(
+      extractErrorMessage(structuredError, errorText),
+      echoedValues
+    ).toLowerCase();
+    const billing = checkFallbackErrorByRules(status, billingText, backoffLevel);
     if (billing.terminal) return { ...billing, scope: null };
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
@@ -168,7 +261,10 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // The endpoint marker is model capacity, unless the error message also
   // supplies terminal billing or explicit exhausted-quota evidence.
   if (providerRule?.endpointUnavailable) {
-    const message = extractErrorMessage(structuredError, errorText);
+    const message = stripEchoedRequestValues(
+      extractErrorMessage(structuredError, errorText),
+      echoedValues
+    );
     const billing = checkFallbackErrorByRules(status, message.toLowerCase(), backoffLevel, provider);
     if (billing.terminal) return { ...billing, scope: null };
     if (status === 429) {
@@ -181,7 +277,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     }
   }
   if (providerRule?.reason === "quota_exhausted") {
-    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, lowerError, backoffLevel);
+    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, ruleMatchText, backoffLevel);
     return { ...ruleResult, scope: providerRule.scope ?? null };
   }
   if (providerRule?.cooldownMs) {
@@ -225,12 +321,27 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
           scope: null
         };
       }
-      const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+      const fallback = checkFallbackErrorByRules(status, ruleMatchText, backoffLevel);
       return { ...fallback, rateLimitEvidence: evidence, scope: null };
     }
   }
 
-  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel, provider);
+  const generic = checkFallbackErrorByRules(status, ruleMatchText, backoffLevel, provider);
+  // #2315: after echo-stripping, a 400 with no provider rule that would only
+  // lock account-wide because the requested id is unknown/passthrough stays
+  // request-scoped. Terminal billing matches (real credit exhaustion) keep
+  // their account-wide lock even on passthrough catalogs.
+  if (
+    generic.shouldFallback &&
+    !generic.terminal &&
+    Number(status) === 400 &&
+    !providerRule &&
+    isString(model) &&
+    model &&
+    resolveFallbackModelScope(provider, model) === null
+  ) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
+  }
   return { ...generic, scope: null };
 }
 

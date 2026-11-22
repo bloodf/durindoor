@@ -5,8 +5,8 @@ import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { pathToFileURL } from "node:url";
 import { verifyStaticAssets } from "./verify-static-assets.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const inside = (root, file) => file === root || file.startsWith(root + path.sep);
@@ -272,7 +272,7 @@ export async function smokeInstalledArtifact(entry) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (isMainModule(import.meta.url)) {
   if (process.argv.length !== 3) {
     console.error("Usage: node scripts/smoke-installed-artifact.mjs /absolute/artifact/custom-server.js");
     process.exitCode = 1;

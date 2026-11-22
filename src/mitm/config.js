@@ -27,6 +27,8 @@ const TARGET_HOSTS = [
   "api2.cursor.sh",
 ];
 
+const KIRO_RESPONSES_PATH = "/v1/responses";
+
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
@@ -34,12 +36,17 @@ const URL_PATTERNS = {
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
 };
 
-/** Whether request is a chat turn to intercept rather than passthrough. */
+/**
+ * Whether request is a chat turn to intercept rather than passthrough.
+ * Kiro 1.x+ also sends the agentic chat turn as `POST /v1/responses` (OpenAI
+ * Responses API shape, no x-amz-target); that is a chat turn too.
+ */
 function isChatRequest(tool, req) {
   const patterns = URL_PATTERNS[tool] || [];
   if (patterns.some((pattern) => (req.url || "").includes(pattern))) return true;
   if (tool === "kiro") {
-    return String(req.headers?.["x-amz-target"] || "").includes("GenerateAssistantResponse");
+    if (String(req.headers?.["x-amz-target"] || "").includes("GenerateAssistantResponse")) return true;
+    return (req.url || "") === KIRO_RESPONSES_PATH;
   }
   return false;
 }
@@ -107,4 +114,4 @@ function getToolForHost(host) {
   return null;
 }
 
-module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost, isChatRequest };
+module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, KIRO_RESPONSES_PATH, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost, isChatRequest };

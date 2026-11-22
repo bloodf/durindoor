@@ -19,6 +19,7 @@ import {
   fetchVercelQuota } from
 "./balances.js";
 import { fetchOpenAiCompatibleQuota } from "./openaiCompatible.js";
+import { fetchZedHostedQuota } from "./zedHosted.js";
 
 export const PROVIDER_QUOTA_ADAPTERS = Object.freeze({
   google: fetchGoogleQuota,
@@ -27,6 +28,7 @@ export const PROVIDER_QUOTA_ADAPTERS = Object.freeze({
   github: fetchGitHubQuota,
   cursor: fetchCursorQuota,
   kiro: fetchKiroQuota,
+  "zed-hosted": fetchZedHostedQuota,
   kimi: fetchKimiQuota,
   glm: fetchGlmQuota,
   minimax: fetchMiniMaxQuota,

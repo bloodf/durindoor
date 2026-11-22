@@ -105,3 +105,7 @@ export const MobileViewport = {
     viewport: { defaultViewport: "mobile1" },
   },
 };
+
+export const EventsFailure = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/pxpipe", routes: { ...routes, "GET /api/pxpipe/logs?limit=50": { status: 503, body: {} } } } },
+};

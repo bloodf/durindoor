@@ -1,0 +1,8 @@
+{
+  "route": "dialog/KiroSocialOAuthModal",
+  "stories": [
+    "production-shared-kiro-kirosocialoauthmodal--initializing",
+    "production-shared-kiro-kirosocialoauthmodal--google-input",
+    "production-shared-kiro-kirosocialoauthmodal--manual-callback-failure"
+  ]
+}

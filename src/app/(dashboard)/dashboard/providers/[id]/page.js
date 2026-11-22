@@ -15,6 +15,7 @@ import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS,
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
+import { testAndDisableFailedModels, bulkDisableMessage } from "@/shared/utils/providerModelBulkActions.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { toCodexPlanEntry, buildCodexPlanMap } from "@/shared/utils/codexPlanLabel";
 import { translate } from "@/i18n/runtime";
@@ -57,6 +58,7 @@ import PersistedTestResult from "./components/PersistedTestResult";
 import { buildBulkReview, reviewedTargets } from "./components/bulkReview";
 import { saveProviderTestResult, loadProviderTestResults } from "./components/providerTestStore";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { resolveProviderNodeIcon } from "@/shared/utils/providerNodeIcon.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -133,6 +135,7 @@ function ProviderDetail({ providerId }) {
   const [importTokenError, setImportTokenError] = useState("");
   const [importingToken, setImportingToken] = useState(false);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
+  const [apiKeyModalAuthType, setApiKeyModalAuthType] = useState(null);
   const [addConnectionError, setAddConnectionError] = useState("");
   const [showBulkImportCodex, setShowBulkImportCodex] = useState(false);
   const [showBulkImportGrokCli, setShowBulkImportGrokCli] = useState(false);
@@ -144,6 +147,8 @@ function ProviderDetail({ providerId }) {
   const [customModels, setCustomModels] = useState([]);
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
+  const [modelsTestMessage, setModelsTestMessage] = useState("");
+  const [bulkTestingModels, setBulkTestingModels] = useState(false);
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [editingCustomModel, setEditingCustomModel] = useState(null);
@@ -263,8 +268,9 @@ function ProviderDetail({ providerId }) {
     setShowAddApiKeyModal(true);
   };
 
-  const triggerApiKeyConnection = () => {
+  const triggerApiKeyConnection = (mode = null) => {
     setAddConnectionError("");
+    setApiKeyModalAuthType(mode);
     setShowAddApiKeyModal(true);
   };
 
@@ -296,8 +302,7 @@ function ProviderDetail({ providerId }) {
   {
     id: providerNode.id,
     name: providerNode.name || (providerNode.type === "anthropic-compatible" ? "Anthropic Compatible" : "OpenAI Compatible"),
-    color: providerNode.type === "anthropic-compatible" ? "#D97757" : "#10A37F",
-    textIcon: providerNode.type === "anthropic-compatible" ? "AC" : "OC",
+    ...resolveProviderNodeIcon(providerNode),
     apiType: providerNode.apiType,
     baseUrl: providerNode.baseUrl,
     type: providerNode.type,
@@ -308,6 +313,7 @@ function ProviderDetail({ providerId }) {
   const isImportToken = providerInfo?.flowType === "import_token";
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth") || FREE_PROVIDERS[providerId]?.oauth;
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
+  const supportsAuthTokenAuth = authModes.includes("auth_token");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const isDevinAgentic = providerId === "devin-cli-agentic";
   const isStoredNoAuth = isFreeNoAuth && (providerId === "mimocode" || isDevinAgentic);
@@ -321,7 +327,10 @@ function ProviderDetail({ providerId }) {
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const isCompatible = isOpenAICompatible || isAnthropicCompatible;
-  const hasDualAuthModes = !isCompatible && isOAuth && supportsApiKeyAuth;
+  const hasDualAuthModes = !isCompatible && (
+    (isOAuth && (supportsApiKeyAuth || supportsAuthTokenAuth)) ||
+    (supportsApiKeyAuth && supportsAuthTokenAuth)
+  );
   const oauthConnectionLabel =
   providerId === "xai" ?
   "Grok Build OAuth" :
@@ -1591,9 +1600,10 @@ function ProviderDetail({ providerId }) {
     </Modal>;
 
 
-  const handleTestModel = async (modelId) => {
+  // Probe one model. Returns the outcome ("ok" | "error" | "skipped"), or null when
+  // the page switched provider mid-request and the result no longer applies.
+  const runModelTest = async (modelId) => {
     const requestGeneration = providerGenerationRef.current;
-    if (testingModelIds.has(modelId)) return;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
       const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
@@ -1606,18 +1616,63 @@ function ProviderDetail({ providerId }) {
         })
       });
       const data = await res.json();
-      if (providerGenerationRef.current !== requestGeneration) return;
+      if (providerGenerationRef.current !== requestGeneration) return null;
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
       setModelsTestError(outcome === "error" ? data.error || "Model not reachable" : "");
+      return outcome;
     } catch {
-      if (providerGenerationRef.current !== requestGeneration) return;
+      if (providerGenerationRef.current !== requestGeneration) return null;
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setModelsTestError("Network error");
+      return "error";
     } finally {
       if (providerGenerationRef.current === requestGeneration) {
         setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
       }
+    }
+  };
+
+  const handleTestModel = async (modelId) => {
+    if (testingModelIds.has(modelId) || bulkTestingModels) return;
+    setModelsTestMessage("");
+    await runModelTest(modelId);
+  };
+
+  // Probe every active model, then disable the ones that fail.
+  const handleDisableFailedModels = async (modelIds) => {
+    if (bulkTestingModels || testingModelIds.size > 0 || modelIds.length === 0) return;
+    const requestGeneration = providerGenerationRef.current;
+    setBulkTestingModels(true);
+    setModelsTestError("");
+    setModelsTestMessage("");
+    try {
+      const { failedIds } = await testAndDisableFailedModels({
+        modelIds,
+        testModel: async (modelId) => {
+          if (providerGenerationRef.current !== requestGeneration) throw new Error("Provider changed");
+          return runModelTest(modelId);
+        },
+        disableModels: async (ids) => {
+          const res = await fetch("/api/models/disabled", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ providerAlias: providerStorageAlias, ids })
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || "Failed to disable error models");
+          }
+          await fetchDisabledModels();
+        },
+      });
+      setModelsTestMessage(bulkDisableMessage(failedIds.length));
+    } catch (error) {
+      if (providerGenerationRef.current === requestGeneration) {
+        setModelsTestError(error.message || "Failed to disable error models");
+      }
+    } finally {
+      setBulkTestingModels(false);
     }
   };
 
@@ -2199,20 +2254,29 @@ function ProviderDetail({ providerId }) {
                   <p className="text-sm text-dd-muted">No connections yet</p>
                   {hasDualAuthModes &&
               <p className="text-xs text-dd-muted">
-                      Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
+                      Choose {oauthConnectionLabel}, {apiKeyConnectionLabel}{supportsAuthTokenAuth ? ", or Auth Token" : ""}.
                     </p>
               }
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {hasDualAuthModes ?
             <>
+                    {isOAuth &&
                     <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>
                       {oauthConnectionLabel}
                     </Button>
-                    <Button size="sm" icon="key" onClick={triggerApiKeyConnection}>
+                    }
+                    {supportsApiKeyAuth &&
+                    <Button size="sm" icon="key" onClick={() => triggerApiKeyConnection("apikey")}>
                       {apiKeyConnectionLabel}
                     </Button>
+                    }
+                    {supportsAuthTokenAuth &&
+                    <Button size="sm" icon="token" variant="secondary" onClick={() => triggerApiKeyConnection("auth_token")}>
+                      Auth Token
+                    </Button>
+                    }
                   </> :
 
             <>
@@ -2347,6 +2411,7 @@ function ProviderDetail({ providerId }) {
             }
                   {hasDualAuthModes ?
             <>
+                      {isOAuth &&
                       <Button
                 size="sm"
                 icon="lock"
@@ -2356,14 +2421,28 @@ function ProviderDetail({ providerId }) {
                 
                         {oauthConnectionLabel}
                       </Button>
+                      }
+                      {supportsApiKeyAuth &&
                       <Button
                 size="sm"
                 icon="key"
-                onClick={triggerApiKeyConnection}
+                onClick={() => triggerApiKeyConnection("apikey")}
                 className="w-full sm:w-auto">
                 
                         {apiKeyConnectionLabel}
                       </Button>
+                      }
+                      {supportsAuthTokenAuth &&
+                      <Button
+                size="sm"
+                icon="token"
+                variant="secondary"
+                onClick={() => triggerApiKeyConnection("auth_token")}
+                className="w-full sm:w-auto">
+                
+                        Auth Token
+                      </Button>
+                      }
                     </> :
 
             <Button
@@ -2416,7 +2495,17 @@ function ProviderDetail({ providerId }) {
                   </Button>
                 }
                 {activeIds.length > 0 &&
-                <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={bulkTestingModels ? "progress_activity" : "science"}
+                  onClick={() => handleDisableFailedModels(activeIds)}
+                  disabled={!(connections.length > 0 || (isFreeNoAuth && !isDevinAgentic)) || bulkTestingModels || testingModelIds.size > 0}>
+                    {bulkTestingModels ? "Testing Models..." : "Test & Disable Failed Models"}
+                  </Button>
+                }
+                {activeIds.length > 0 &&
+                <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)} disabled={bulkTestingModels}>
                     Disable All
                   </Button>
                 }
@@ -2426,6 +2515,9 @@ function ProviderDetail({ providerId }) {
         </div>
         {!!modelsTestError &&
         <p className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
+        }
+        {!!modelsTestMessage &&
+        <p className="text-xs text-dd-success mb-3 break-words">{modelsTestMessage}</p>
         }
         {/* buildModelsList publishes compatible-provider catalogs from their
             custom/alias ids only and never applies this allowlist to them, so
@@ -2599,12 +2691,13 @@ function ProviderDetail({ providerId }) {
         </div>
       </Modal>
       <AddApiKeyModal
+        key={showAddApiKeyModal ? "add-api-key-open" : "add-api-key-closed"}
         isOpen={showAddApiKeyModal}
         provider={providerId}
         providerName={providerInfo.name}
         isCompatible={isCompatible}
         isAnthropic={isAnthropicCompatible}
-        authType={providerInfo?.authType}
+        authType={apiKeyModalAuthType || providerInfo?.authType}
         authHint={providerInfo?.authHint}
         authSnippet={providerInfo?.authSnippet}
         website={providerInfo?.website}
@@ -2616,6 +2709,7 @@ function ProviderDetail({ providerId }) {
         onBulkDone={fetchConnections}
         onClose={() => {
           setAddConnectionError("");
+          setApiKeyModalAuthType(null);
           setShowAddApiKeyModal(false);
         }} />
 

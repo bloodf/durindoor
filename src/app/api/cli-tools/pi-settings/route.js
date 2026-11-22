@@ -39,6 +39,10 @@ const PROVIDER_ID = "durindoor";
 const LEGACY_PROVIDER_ID = "9router";
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const DEFAULT_MAX_TOKENS = 16384;
+// Placeholder the dashboard card sends when no key is selected; it is never a
+// real credential, so it must not replace a key already stored in models.json.
+const PLACEHOLDER_API_KEYS = new Set(["sk_durindoor", "sk_9router"]);
+const isPlaceholderKey = (key) => !isString(key) || !key.trim() || PLACEHOLDER_API_KEYS.has(key.trim());
 
 const getAgentModelsPath = () => path.join(os.homedir(), ".pi", "agent", "models.json");
 const getRootModelsPath = () => path.join(os.homedir(), ".pi", "models.json");
@@ -175,7 +179,9 @@ export async function POST(request) {
     providers[PROVIDER_ID] = {
       ...previousProvider,
       baseUrl: baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`,
-      apiKey: apiKey || "sk_durindoor",
+      apiKey: isPlaceholderKey(apiKey)
+        ? (isPlaceholderKey(previousProvider.apiKey) ? "sk_durindoor" : previousProvider.apiKey)
+        : apiKey,
       api: "openai-completions",
       models: modelList,
     };

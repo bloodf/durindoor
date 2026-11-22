@@ -16,8 +16,8 @@ export { useUiV5 } from "./useUiV5.js";
 export const UI_V5_ENV = "DURINDOOR_UI_V5";
 export const UI_V5_ATTRIBUTE = "data-ui";
 export const UI_V5_ATTRIBUTE_VALUE = "v5";
-/** S20 flips this to true for the release candidate. */
-export const UI_V5_DEFAULT = false;
+/** S20: V5 is the default. `DURINDOOR_UI_V5=0|false|off` restores the previous UI. */
+export const UI_V5_DEFAULT = true;
 
 const ON_VALUES = new Set(["1", "true", "on"]);
 const OFF_VALUES = new Set(["0", "false", "off"]);

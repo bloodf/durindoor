@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import {
   PING_SCHEDULE_DEFAULTS,
   getLocalTimezone,
@@ -33,6 +34,7 @@ function formatMinutes(total) {
 
 /** Keep dismissal blocked during save so a failed request retains the edited schedule. */
 export default function AutoPingScheduleModal({ isOpen, connection = null, schedule = null, onSave, onClose }) {
+  const v5 = useUiV5();
   // Mounted only while a connection is selected, so initial state is fresh.
   const [form, setForm] = useState(() => toFormState(schedule));
   const [saving, setSaving] = useState(false);
@@ -74,6 +76,7 @@ export default function AutoPingScheduleModal({ isOpen, connection = null, sched
 
   return (
     <Modal
+      surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""}
       open={isOpen}
       title="Auto-ping schedule"
       subtitle={`Ping at fixed local times${connection?.name ? ` for ${connection.name}` : ""}. Each ping consumes a small amount of quota.`}

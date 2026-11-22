@@ -1,0 +1,8 @@
+{
+  "route": "dialog/CursorAuthModal",
+  "stories": [
+    "production-shared-kiro-cursorauthmodal--auto-detected",
+    "production-shared-kiro-cursorauthmodal--auto-detecting",
+    "production-shared-kiro-cursorauthmodal--manual-import-failure"
+  ]
+}

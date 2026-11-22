@@ -97,8 +97,10 @@ export async function setupStoryLifecycle(context) {
     });
     // The review frame renders V5, so migrated production sources see both the
     // legacy review marker and the production switch attribute.
+    // `globals.ui === "v5"` turns the production switch on for evidence runs
+    // (`&globals=ui:v5`); the default leaves the attribute off.
     const previousUi = document.documentElement.getAttribute("data-ui");
-    if (context.parameters.v5Review) document.documentElement.dataset.ui = "v5";
+    if (context.parameters.v5Review || context.globals.ui === "v5") document.documentElement.dataset.ui = "v5";
     else document.documentElement.removeAttribute("data-ui");
     cleanups.push(() => {
       if (previousUi === null) document.documentElement.removeAttribute("data-ui");
@@ -165,6 +167,19 @@ const preview = {
         dynamicTitle: true,
       },
     },
+    ui: {
+      name: "UI version",
+      description: "Production V5 switch (data-ui=\"v5\" on the root element)",
+      defaultValue: "default",
+      toolbar: {
+        icon: "paintbrush",
+        items: [
+          { value: "default", title: "Default" },
+          { value: "v5", title: "V5 switch on" },
+        ],
+        dynamicTitle: true,
+      },
+    },
     locale: {
       name: "Locale",
       description: "Durin DS runtime locale (SB3 applies html lang/dir)",
@@ -178,6 +193,7 @@ const preview = {
   },
   initialGlobals: {
     theme: "dark",
+    ui: "default",
     locale: DEFAULT_LOCALE,
   },
 };

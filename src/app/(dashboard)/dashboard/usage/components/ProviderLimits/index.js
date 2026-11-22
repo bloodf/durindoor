@@ -65,6 +65,7 @@ import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { getClaudeWeeklyWindowNames, withClaudeWeeklyPlaceholders } from "./claudeQuotaRows";
 
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
@@ -427,6 +428,7 @@ function formatTimeRemaining(value) {
 }
 
 export default function ProviderLimits() {
+  const uiV5 = useUiV5();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -875,7 +877,7 @@ export default function ProviderLimits() {
       }));
       setQuotaCache(connectionId, quotaEntry);
     } catch (error) {
-      console.error(
+      if (!uiV5) console.error(
         `[ProviderLimits] Error fetching quota for ${provider} (${connectionId}):`,
         error
       );
@@ -886,7 +888,7 @@ export default function ProviderLimits() {
     } finally {
       setLoading((prev) => ({ ...prev, [connectionId]: false }));
     }
-  }, []);
+  }, [uiV5]);
 
   // Manual refresh bypasses the provider's valid in-process quota cache.
   const refreshProvider = useCallback(
@@ -1533,7 +1535,7 @@ export default function ProviderLimits() {
                 </span>
               </div>
               {conn.provider === "kiro" ? <div className="flex flex-wrap items-center gap-1"><Badge tone="accent" size="sm">{kiroMethodLabel(conn)}</Badge>{kiroRegion(conn) ? <Badge tone="info" size="sm">{kiroRegion(conn)}</Badge> : null}<Badge tone={testStatusTone} size="sm">{testStatus}</Badge>{conn.providerSpecificData?.profileArn ? <Button variant="ghost" size="sm" icon={copied === conn.id ? "check" : "content_copy"} onClick={() => copy(conn.providerSpecificData.profileArn, conn.id)} title={conn.providerSpecificData.profileArn} className="max-w-full justify-start px-2 font-mono text-[11px]"><span className="truncate">{conn.providerSpecificData.profileArn}</span></Button> : null}</div> : null}
-              {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <>
+              {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}{uiV5 ? <Button variant="secondary" size="sm" icon="refresh" className="ms-2" onClick={() => refreshProvider(conn.id, conn.provider)} disabled={rowBusy}>Retry quota</Button> : null}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <>
                 {/* Stale rows still beat no rows, but the reason must be visible
                     so nobody mistakes cached numbers for live ones. */}
                 {quota?.staleReason ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">{quota.staleReason}</div> : null}

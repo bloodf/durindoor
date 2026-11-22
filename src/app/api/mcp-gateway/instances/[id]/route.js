@@ -1,12 +1,43 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { NextResponse } from "next/server";
 import { getInstanceById, updateInstance, deleteInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
-import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import {
+  assertOutboundUrlAllowed,
+  assertResolvedAddressAllowed,
+  getProviderValidationGuard,
+  OutboundUrlGuardError
+} from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
 import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Persist-time SSRF check (#2237) — see matching helper on the create route.
+ */
+async function assertInstanceUrlAllowed(rawUrl) {
+  const guard = getProviderValidationGuard();
+  const url = assertOutboundUrlAllowed(rawUrl, guard);
+  if (guard === "none") return url;
+  const host = url.hostname;
+  if (isIP(host)) {
+    assertResolvedAddressAllowed(host, guard);
+    return url;
+  }
+  let addresses;
+  try {
+    addresses = await dnsLookup(host, { all: true, verbatim: true });
+  } catch {
+    return url;
+  }
+  for (const { address } of addresses) {
+    assertResolvedAddressAllowed(address, guard);
+  }
+  return url;
+}
 
 function stripSecrets(inst) {
   if (!inst) return inst;
@@ -50,7 +81,7 @@ export async function PUT(request, context) {
     // SSRF guard on URL update — see the matching block on POST.
     if (body.url !== undefined && body.url !== null && body.url !== "") {
       try {
-        assertOutboundUrlAllowed(body.url);
+        await assertInstanceUrlAllowed(body.url);
       } catch (err) {
         if (err instanceof OutboundUrlGuardError) {
           console.log("MCP instance URL blocked by SSRF guard (update):", err?.message, "url=", err?.url);

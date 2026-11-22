@@ -15,7 +15,11 @@ function getAuthGroup(providerId, connection = null) {
   // Group by dashboard section before falling back to the connection credential type.
   if (FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId]) return "free";
   if (OAUTH_PROVIDERS[providerId]) return "oauth";
-  if (connection?.authType) return connection.authType;
+  if (connection?.authType) {
+    return connection.authType === "auth_token" || connection.authType === "api_key"
+      ? "apikey"
+      : connection.authType;
+  }
   if (APIKEY_PROVIDERS[providerId]) return "apikey";
   if (
   isString(providerId) && (

@@ -2,7 +2,7 @@ import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
 import {
-  getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
+  getProviderConnections, getProviderConnectionById, getApiKeyByKey, getApiKeyById, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
   getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
 "@/lib/localDb";
@@ -43,9 +43,20 @@ import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
 import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
+import { getBatchRequestKeyId, rememberAdmittedRequestKey } from "./batchKeyIdentity.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
+// OmniRoute's Antigravity defaults when the upstream supplies no reset.
+function antigravity429Fallback(errorText, errorBody) {
+  const text = `${isString(errorText) ? errorText : ""} ${JSON.stringify(errorBody || {})}`.toLowerCase();
+  const credits = /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
+  const exhausted = /quota[_ ]exhausted|quota reached|individual quota|enable overages|free tier|daily limit|google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
+  if (exhausted && !/reset\s+(?:after|in)\s+0s/.test(text)) return { delay: 24 * 60 * 60 * 1000, exhausted: true, credits };
+  if (/per minute|\brpm\b|rate[_ ]limit|too many requests/.test(text)) return { delay: 60_000, exhausted: false };
+  if (/try again|temporarily/.test(text)) return { delay: 2_000, exhausted: false };
+  return { delay: 5_000, exhausted: false };
+}
 const CODEX_PERMANENT_OAUTH_ERRORS = [
 "invalidated oauth token",
 "authentication token has been invalidated",
@@ -1547,7 +1558,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return { shouldFallback: false, cooldownMs: 0 };
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
-  const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
+  const ag429 = (provider === "antigravity" || provider === "agy") && Number(status) === 429 ?
+  antigravity429Fallback(errorText, context?.errorBody) : null;
+  const evidenceState = effectiveEvidence?.state === "exhausted" || ag429?.exhausted ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its
   // null reset is a deliberate rejection of any legacy reset; (2) a reset parsed
   // from the body by checkFallbackError wins; (3) otherwise the caller's legacy
@@ -1566,7 +1579,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const cooldownCapMs = RESET_COOLDOWN_CAP_MS[provider] ?? MAX_RATE_LIMIT_COOLDOWN_MS;
   const normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
   Math.min(providerReset, now + cooldownCapMs) :
-  null);
+  ag429 ? now + ag429.delay : null);
   if (normalizedReset !== null) {
     shouldFallback = true;
     cooldownMs = Math.ceil(normalizedReset - now);
@@ -1626,7 +1639,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     status
   );
   const providerRuleConnectionWide = fallbackResult.scope === "connection";
-  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide);
+  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
   const isolatedSearch = context?.webSearch === true && !accountWide;
   const fallbackModel = resolveFallbackModelScope(provider, model, {
     accountWide,
@@ -1713,7 +1726,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     // same proxy pool for operator-opted-in egress-bucketed providers. Skips
     // a request-shaped/terminal failure (fallbackResult.terminal) since those
     // say nothing about the shared IP's quota.
-    if (provider && !fallbackResult.terminal) {
+    if (provider && !ag429 && !fallbackResult.terminal) {
       try {
         const currentSettings = await getSettings();
         const egressBucketed = Array.isArray(currentSettings?.egressBucketedProviders) &&
@@ -1877,13 +1890,22 @@ export function extractApiKeyCandidates(request) {
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
   const billingEpoch = await captureRequestBillingEpoch(request);
+  const batchKeyId = getBatchRequestKeyId(request);
+  if (batchKeyId) {
+    const record = await getApiKeyById(batchKeyId);
+    const valid = record?.isActive === true && !isApiKeyExpired(record.expiresAt, now);
+    return { apiKey: valid ? record.key : null, auth: { ok: valid, reason: valid ? null : "invalid", stored: true, apiKeyId: valid ? batchKeyId : undefined, billingEpoch } };
+  }
   const candidates = extractApiKeyCandidates(request);
   if (await hasValidCliToken(request)) {
     return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true, billingEpoch } };
   }
   for (const apiKey of candidates) {
     const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
-    if (auth.ok) return { apiKey, auth: { ...auth, billingEpoch } };
+    if (auth.ok) {
+      if (auth.apiKeyId) rememberAdmittedRequestKey(request, auth.apiKeyId);
+      return { apiKey, auth: { ...auth, billingEpoch } };
+    }
   }
   const apiKey = candidates[0] || null;
   return { apiKey, auth: { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch } };

@@ -20,7 +20,7 @@
  * in checkouts with no reachable v* tag (first release, tag recovery).
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -208,7 +208,15 @@ export function main(argv, { stdout = console.log, stderr = console.error } = {}
   return 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Self-contained (the script runs standalone in fresh checkouts): compare realpaths so a
+// symlinked argv[1] still runs the CLI (OmniRoute #20678).
+function isMainModule(moduleUrl, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+  const canonical = (p) => { try { return realpathSync(p); } catch { return p; } };
+  return canonical(fileURLToPath(moduleUrl)) === canonical(argv1);
+}
+
+if (isMainModule(import.meta.url)) {
   try {
     process.exit(main(process.argv.slice(2)));
   } catch (error) {

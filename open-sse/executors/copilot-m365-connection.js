@@ -7,6 +7,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { isBoolean, isString } from "../../src/shared/utils/typeChecks.js";
 import { isExpiredSessionToken } from "../utils/webSessionExpiry.js";
+import { m365IdentityFromAccessToken } from "../utils/m365Identity.js";
+import { m365ImagePartRef } from "./copilot-m365-images.js";
+import { M365ExecutorError } from "./copilot-m365-output.js";
 
 export const M365_EXPIRED_MESSAGE =
 "Microsoft 365 Copilot access_token has expired. Copy a fresh Chathub WebSocket URL from a signed-in m365.cloud.microsoft/chat session.";
@@ -208,7 +211,10 @@ export function resolveConnectionParams(credentials) {
   const parsedApiKey = isString(credentials?.apiKey) ?
   parsePastedCredential(credentials.apiKey) :
   {};
+  // A native sign-in row keeps its token in the canonical column (refreshed in place); a pasted
+  // session keeps it in the credential text.
   const accessToken =
+  isString(credentials?.accessToken) && credentials.accessToken ||
   parsedApiKey.accessToken ||
   isString(credentials?.apiKey) &&
   credentials.apiKey &&
@@ -231,6 +237,7 @@ export function resolveConnectionParams(credentials) {
   parsedApiKey.chathubPath ||
   isString(psd.chathubPath) && psd.chathubPath ||
   isString(psd.userTenant) && psd.userTenant ||
+  isString(credentials?.accessToken) && m365IdentityFromAccessToken(credentials.accessToken)?.chathubPath ||
   "";
   if (!chathubPath || !M365_CHATHUB_PATH_RE.test(chathubPath)) {
     return {
@@ -249,7 +256,12 @@ export function resolveConnectionParams(credentials) {
   return { host, chathubPath, accessToken, variants, ...resolveTierOverrides(psd) };
 }
 
-export function buildWsUrl(params) {
+/**
+ * Build the Chathub WebSocket URL. Pass `conversation` (`{ conversationId, sessionId }`) to continue an
+ * existing conversation; otherwise new ids are minted. The access_token rides in the query string, so
+ * the URL must only be logged through redactWsUrl().
+ */
+export function buildWsUrl(params, conversation) {
   const host = String(params?.host || "").trim().toLowerCase();
   if (!M365_ALLOWED_HOSTS.has(host)) throw new Error("Unsupported M365 Copilot WebSocket host");
   const chathubPath = String(params?.chathubPath || "");
@@ -261,8 +273,8 @@ export function buildWsUrl(params) {
     chatsessionid: sessionKey,
     XRoutingParameterSessionKey: sessionKey,
     clientrequestid: sessionKey,
-    "X-SessionId": randomUUID(),
-    ConversationId: randomUUID(),
+    "X-SessionId": conversation?.sessionId ?? randomUUID(),
+    ConversationId: conversation?.conversationId ?? randomUUID(),
     access_token: params.accessToken,
     variants: params.variants ?? M365_DEFAULT_VARIANTS.join(","),
     source: M365_INDIVIDUAL_DEFAULTS.source,
@@ -280,36 +292,50 @@ export function redactWsUrl(wsUrl) {
   return String(wsUrl).replace(/access_token=[^&]*/i, "access_token=REDACTED");
 }
 
-export function buildPrompt(body) {
-  const messages = body?.messages || [];
+/**
+ * Format messages as turn text and collect the images they carry. An image part becomes a numbered
+ * marker (`[image 1]`, ...) in the order its image is returned in `imageRefs`; the executor uploads
+ * the images and attaches them to the message. Text parts pass through; any other part (audio, files)
+ * is refused rather than silently dropped.
+ */
+export function promptFromMessages(messages) {
+  const imageRefs = [];
+  const partText = (part) => {
+    if (isString(part)) return part;
+    const imageRef = m365ImagePartRef(part);
+    if (imageRef !== null) {
+      imageRefs.push(imageRef);
+      return `[image ${imageRefs.length}]`;
+    }
+    if (part?.type === "text" && isString(part.text)) return part.text;
+    throw new M365ExecutorError(400, "unsupported_content", "Microsoft 365 Copilot accepts text and image parts only.");
+  };
   const textOf = (content) => {
     if (isString(content)) return content;
-    if (Array.isArray(content)) {
-      return content.
-      map((part) => {
-        if (isString(part)) return part;
-        if (part?.type === "text" && isString(part.text)) return part.text;
-        return JSON.stringify(part ?? "");
-      }).
-      filter(Boolean).
-      join("\n");
-    }
+    if (Array.isArray(content)) return content.map(partText).filter(Boolean).join("\n");
     return content == null ? "" : JSON.stringify(content);
   };
-  const sysText = messages.
+  const list = Array.isArray(messages) ? messages : [];
+  const sysText = list.
   filter((m) => m.role === "system" || m.role === "developer").
   map((m) => textOf(m.content)).
   filter(Boolean).
   join("\n");
-  const turns = messages.
+  const turns = list.
   filter((m) => m.role !== "system" && m.role !== "developer").
   map((m) => {
     const text = textOf(m.content).trim();
-    if (!text) return "";
+    const toolCalls = Array.isArray(m.tool_calls) && m.tool_calls.length ? JSON.stringify(m.tool_calls) : "";
+    if (!text && !toolCalls) return "";
     const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
-    return `[${role}]\n${text}`;
+    const header = role === "Tool" && m.tool_call_id ? `[Tool result id=${m.tool_call_id}]` : `[${role}]`;
+    return [text && `${header}\n${text}`, toolCalls && `[Assistant tool_calls]\n${toolCalls}`].filter(Boolean).join("\n");
   }).
   filter(Boolean).
   join("\n\n");
-  return `${sysText ? `[System Instructions]\n${sysText}\n\n` : ""}${turns}`;
+  return { text: `${sysText ? `[System Instructions]\n${sysText}\n\n` : ""}${turns}`, imageRefs };
+}
+
+export function buildPrompt(body) {
+  return promptFromMessages(body?.messages).text;
 }

@@ -180,8 +180,9 @@ function normalizeContent(content) {
 
 /**
  * Extract base64 images from OpenAI multimodal content blocks.
- * OpenAI image block format:
+ * Supported image block formats:
  *   { type: "image_url", image_url: { url: "data:image/png;base64,..." } }
+ *   { type: "image", image: "data:image/png;base64,..." }
  * Ollama expects raw base64 strings in message.images[].
  */
 function extractImagesFromContent(content) {
@@ -190,9 +191,11 @@ function extractImagesFromContent(content) {
   const images = [];
 
   for (const block of content) {
-    if (!block || block.type !== OPENAI_BLOCK.IMAGE_URL) continue;
+    if (!block) continue;
 
-    const url = isString(block.image_url) ? block.image_url : block.image_url?.url;
+    const url = block.type === OPENAI_BLOCK.IMAGE_URL ?
+    (isString(block.image_url) ? block.image_url : block.image_url?.url) :
+    (block.type === OPENAI_BLOCK.IMAGE ? block.image : null);
     if (!isString(url) || !url) continue;
 
     const parsed = parseDataUri(url);

@@ -134,13 +134,13 @@ describe("portable quota backup", () => {
 
   it("accepts an older payload without quota and treats an explicit empty v1 payload as a clear", async () => {
     const { database, db } = await seedPortableState();
-    const oldPayload = await database.exportDb();
+    const oldPayload = await database.exportDb({ includeSecrets: true });
     delete oldPayload.quota;
     await expect(database.importDb(oldPayload)).resolves.toBeDefined();
     expect(db.get(`SELECT COUNT(*) AS count FROM providerQuotaSnapshots`).count).toBe(0);
     expect(db.get(`SELECT COUNT(*) AS count FROM quotaFetchStates`).count).toBe(0);
 
-    const current = await database.exportDb();
+    const current = await database.exportDb({ includeSecrets: true });
     current.quota = { version: 1, snapshots: [], fetchStates: [] };
     await expect(database.importDb(current)).resolves.toBeDefined();
     expect(db.get(`SELECT COUNT(*) AS count FROM providerQuotaSnapshots`).count).toBe(0);
@@ -164,7 +164,7 @@ describe("portable quota backup", () => {
     }],
   ])("rejects %s before destructive replacement", async (_label, mutate) => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     mutate(payload);
     await expect(database.importDb(payload)).rejects.toThrow();
     expect(db.get(`SELECT key FROM apiKeys WHERE id='key-1'`).key).toBe("sk-deadbeef");
@@ -173,7 +173,7 @@ describe("portable quota backup", () => {
 
   it("rolls back the complete import when quota insertion fails", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     payload.settings = { imported: true };
     db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, [JSON.stringify({ original: true })]);
     db.exec(`
@@ -189,7 +189,7 @@ describe("portable quota backup", () => {
 
   it("applies one aggregate portable row limit before normalization or deletion", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     payload.quota.snapshots = new Array(QUOTA_MAX_IMPORT_ROWS);
     payload.quota.fetchStates = new Array(1);
     await expect(database.importDb(payload)).rejects.toThrow("row safety limit");
@@ -199,7 +199,7 @@ describe("portable quota backup", () => {
 
   it("allows the exact aggregate row boundary to reach normal validation", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     payload.quota.snapshots = Array.from({ length: QUOTA_MAX_IMPORT_ROWS });
     payload.quota.fetchStates = [];
     const error = await database.importDb(payload).catch((caught) => caught);
@@ -211,7 +211,7 @@ describe("portable quota backup", () => {
 
   it("applies the per-source portable row limit before destructive replacement", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     payload.quota.snapshots = Array.from(
       { length: QUOTA_MAX_SOURCE_SNAPSHOTS + 1 },
       () => payload.quota.snapshots[0],
@@ -223,7 +223,7 @@ describe("portable quota backup", () => {
 
   it("rejects future-poisoned quota imports before destructive replacement", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     payload.quota.snapshots[0].timing.observedAt = "2026-01-01T00:05:00.001Z";
     payload.quota.snapshots[0].timing.staleAt = "2026-01-01T01:05:00.001Z";
     payload.quota.fetchStates[0].lastObservedAt = "2026-01-01T00:05:00.001Z";
@@ -236,7 +236,7 @@ describe("portable quota backup", () => {
 
   it("does not echo secret-bearing quota identities from rejected imports", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     const canary = "account:sk-secretcanary1234";
     payload.quota.snapshots[0].identity.accountKey = canary;
     const error = await database.importDb(payload).catch((caught) => caught);
@@ -247,7 +247,7 @@ describe("portable quota backup", () => {
 
   it("does not echo secret-bearing unknown quota field names", async () => {
     const { database, db } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     const canary = "sk-secretkeycanary123456";
     payload.quota[canary] = true;
     const error = await database.importDb(payload).catch((caught) => caught);
@@ -259,7 +259,7 @@ describe("portable quota backup", () => {
 
   it("uses one injected clock for a successful import and its response export", async () => {
     const { database } = await seedPortableState();
-    const payload = await database.exportDb();
+    const payload = await database.exportDb({ includeSecrets: true });
     const observedAt = "2030-01-01T00:00:00.000Z";
     payload.quota.snapshots[0].timing.observedAt = observedAt;
     payload.quota.snapshots[0].timing.staleAt = "2030-01-01T01:00:00.000Z";

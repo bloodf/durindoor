@@ -46,6 +46,8 @@ import { isString } from "../../../../../shared/utils/typeChecks.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
+  // Native Microsoft 365 sign-in rows: the token expiry is the probe, and an expired one renews with its refresh token.
+  "copilot-m365-web": { checkExpiry: true, refreshable: true },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/responses",
     method: "POST",
@@ -289,7 +291,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "codex" || provider === "grok-cli") {
+    if (provider === "codex" || provider === "grok-cli" || provider === "copilot-m365-web") {
       return await refreshProviderCredentials(provider, connection, console, effectiveProxy);
     }
 

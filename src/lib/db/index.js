@@ -260,7 +260,7 @@ export {
 // Provider connections
 export {
   getProviderConnections, getProviderConnectionById,
-  createProviderConnection, updateProviderConnection, claimProviderConnectionPing,
+  createProviderConnection, updateProviderConnection, claimProviderConnectionPing, compareAndSwapProviderSpecificData,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, reorderProviderConnectionsByIds, cleanupProviderConnections } from

@@ -4,6 +4,7 @@ import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
+import { closeInstance } from "@/lib/mcp/gateway/stdioClient";
 import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,8 @@ export async function PUT(request, context) {
     if (oauthTokens) body.oauthTokens = oauthTokens;
     const inst = await updateInstance(id, body);
     if (!inst) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // Drop any cached stdio child so the next request picks up the edit.
+    try { closeInstance(id); } catch { /* best effort */ }
     return NextResponse.json({ instance: stripSecrets(inst) });
   } catch (e) {
     const err = e && isObject(e) ? e : {};
@@ -87,6 +90,7 @@ export async function DELETE(_request, context) {
     const { id } = await context.params;
     const ok = await deleteInstance(id);
     if (!ok) return NextResponse.json({ error: "not found" }, { status: 404 });
+    try { closeInstance(id); } catch { /* best effort */ }
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

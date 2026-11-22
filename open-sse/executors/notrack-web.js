@@ -9,7 +9,8 @@ export function hasNotrackSession(raw) {
 }
 
 export class NotrackWebExecutor extends BaseExecutor {
-  constructor(fetcher = fetch) { super("notrack-web", { id: "notrack-web", baseUrl: URL }); this.fetcher = fetcher; }
+  // The global fetch is looked up per call, so a proxy-aware or test fetch installed later is honoured.
+  constructor(fetcher = null) { super("notrack-web", { id: "notrack-web", baseUrl: URL }); this.fetcher = fetcher ?? ((...args) => fetch(...args)); }
   async execute(input) {
     const body = input.body || {};
     if (!Array.isArray(body.messages) || !body.messages.length) return err(400, "Missing or empty messages array");
@@ -29,9 +30,9 @@ export class NotrackWebExecutor extends BaseExecutor {
       upstream = await this.fetcher(URL, { method: "POST", signal: input.signal, headers: { "content-type": "application/json", accept: "*/*", origin: "https://notrack.ai", referer: "https://notrack.ai/zh-CN/chat", "user-agent": "Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36", cookie }, body: JSON.stringify(payload) });
     } catch (e) { return err(502, `Notrack connection failed: ${e.message}`); }
     if (!upstream.ok) return err(upstream.status >= 500 ? 502 : upstream.status, upstream.status === 429 ? "Notrack rate limited. Wait and retry." : upstream.status === 401 || upstream.status === 403 ? "Notrack session expired or invalid" : `Notrack returned HTTP ${upstream.status}`);
-    if (input.stream) return { response: new Response(this.stream(upstream.body, input.model || "notrack-c"), { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } }), url: URL, headers: { cookie }, transformedBody: payload };
+    if (input.stream) return { response: new Response(this.stream(upstream.body, input.model || "notrack-c"), { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } }), url: URL, headers: { cookie: "[REDACTED]" }, transformedBody: payload };
     const text = await this.collect(upstream.body);
-    return { response: Response.json({ id: `chatcmpl-notrack-${crypto.randomUUID().slice(0, 12)}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: input.model || "notrack-c", choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }] }), url: URL, headers: { cookie }, transformedBody: payload };
+    return { response: Response.json({ id: `chatcmpl-notrack-${crypto.randomUUID().slice(0, 12)}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: input.model || "notrack-c", choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }] }), url: URL, headers: { cookie: "[REDACTED]" }, transformedBody: payload };
   }
   async collect(stream) {
     let buffer = "", text = "";

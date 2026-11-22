@@ -36,6 +36,13 @@ import { DeepSeekWebExecutor } from "./deepseek-web.js";
 import { DoubaoWebExecutor } from "./doubao-web.js";
 import { GeminiWebExecutor } from "./gemini-web.js";
 import { ZaiWebExecutor } from "./zai-web.js";
+import { PromptQlExecutor } from "./promptql.js";
+import { NotionWebExecutor } from "./notion-web.js";
+import { NotrackWebExecutor } from "./notrack-web.js";
+import { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.js";
+import { TinyCmsExecutor } from "./tinycms-web.js";
+import { BlackboxWebExecutor } from "./blackbox-web.js";
+import { ConolWebExecutor } from "./conol-web.js";
 import { ChatPlaygroundExecutor } from "./chatplayground.js";
 import { CloudflarePlaygroundExecutor } from "./cloudflare-playground.js";
 import { LmarenaExecutor } from "./lmarena.js";
@@ -89,6 +96,13 @@ const chatPlaygroundExecutor = new ChatPlaygroundExecutor();
 const cloudflarePlaygroundExecutor = new CloudflarePlaygroundExecutor();
 const lmarenaExecutor = new LmarenaExecutor();
 const maxaiExecutor = new MaxaiExecutor();
+const promptQlExecutor = new PromptQlExecutor();
+const notionWebExecutor = new NotionWebExecutor();
+const notrackWebExecutor = new NotrackWebExecutor();
+const tencentAIStudioWebExecutor = new TencentAIStudioWebExecutor();
+const tinyCmsExecutor = new TinyCmsExecutor();
+const blackboxWebExecutor = new BlackboxWebExecutor();
+const conolWebExecutor = new ConolWebExecutor();
 
 const executors = {
   "adapta-web": new AdaptaWebExecutor(),
@@ -147,6 +161,20 @@ const executors = {
   gweb: geminiWebExecutor,
   "zai-web": zaiWebExecutor,
   zw: zaiWebExecutor,
+  promptql: promptQlExecutor,
+  pql: promptQlExecutor,
+  "notion-web": notionWebExecutor,
+  nw: notionWebExecutor,
+  "notrack-web": notrackWebExecutor,
+  ntw: notrackWebExecutor,
+  "tencent-aistudio-web": tencentAIStudioWebExecutor,
+  tasw: tencentAIStudioWebExecutor,
+  "tinycms-web": tinyCmsExecutor,
+  tcw: tinyCmsExecutor,
+  "blackbox-web": blackboxWebExecutor,
+  "bb-web": blackboxWebExecutor,
+  "conol-web": conolWebExecutor,
+  cnl: conolWebExecutor,
   chatplayground: chatPlaygroundExecutor,
   cpl: chatPlaygroundExecutor,
   "cloudflare-playground": cloudflarePlaygroundExecutor,
@@ -280,6 +308,13 @@ export { DeepSeekWebExecutor } from "./deepseek-web.js";
 export { DoubaoWebExecutor } from "./doubao-web.js";
 export { GeminiWebExecutor } from "./gemini-web.js";
 export { ZaiWebExecutor } from "./zai-web.js";
+export { PromptQlExecutor } from "./promptql.js";
+export { NotionWebExecutor } from "./notion-web.js";
+export { NotrackWebExecutor } from "./notrack-web.js";
+export { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.js";
+export { TinyCmsExecutor } from "./tinycms-web.js";
+export { BlackboxWebExecutor } from "./blackbox-web.js";
+export { ConolWebExecutor } from "./conol-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { PollinationsExecutor } from "./pollinations.js";

@@ -66,6 +66,12 @@ export default {
     { id: "gpt-6-astra", name: "GPT 6 Astra" },
     { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },
     { id: "gpt-6.1-terra", name: "GPT 6.1 Terra" },
+    { id: "gpt-6.1-terra-ultra", name: "GPT 6.1 Terra (Ultra)" },
+    { id: "gpt-6.1-terra-max", name: "GPT 6.1 Terra (Max)" },
+    { id: "gpt-6.1-terra-xhigh", name: "GPT 6.1 Terra (xHigh)", timeoutMs: 1_200_000 },
+    { id: "gpt-6.1-terra-high", name: "GPT 6.1 Terra (High)", timeoutMs: 1_200_000 },
+    { id: "gpt-6.1-terra-medium", name: "GPT 6.1 Terra (Medium)" },
+    { id: "gpt-6.1-terra-low", name: "GPT 6.1 Terra (Low)" },
     { id: "gpt-6-sol", name: "GPT 6 Sol" },
     { id: "gpt-6-luna", name: "GPT 6 Luna" },
     // gpt-5.5 / gpt-5.5-review / gpt-5.5-image removed: retired for Codex with ChatGPT sign-in on

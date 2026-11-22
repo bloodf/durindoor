@@ -167,7 +167,7 @@ export const CompatibleBranch = {
     const body = within(document.body);
     await userEvent.click(await canvas.findByRole("button", { name: "Apply Proxy" }));
     const dialog = await waitFor(() => {
-      const node = body.getByRole("dialog", { name: /apply proxy \(1 connections\)/i });
+      const node = body.getByRole("dialog", { name: /apply proxy \((?:all )?1 connections\)/i });
       expect(node).toBeVisible();
       return node;
     });
@@ -187,7 +187,7 @@ export const CompatibleProxyOpen = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Apply Proxy" }));
-    const dialog = await within(document.body).findByRole("dialog", { name: /apply proxy \(1 connections\)/i });
+    const dialog = await within(document.body).findByRole("dialog", { name: /apply proxy \((?:all )?1 connections\)/i });
     const form = within(dialog);
     await waitFor(() => expect(dialog).toBeVisible());
     await waitFor(() => expect(form.getByText("One-to-one (rotate)")).toBeVisible());

@@ -896,14 +896,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
     const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
     const transport = PROVIDERS[providerId];
-    if (!registryFetcher || !OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type)) {
+    const isOpenCodeFree = providerId === "opencode" && registryFetcher?.type === "opencode-free";
+    if (!registryFetcher || (!OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type) && !isOpenCodeFree)) {
       addStaticProviderModels(providerId, alias);
       return;
     }
 
     const authorization = transport?.headers?.Authorization;
     const token = isString(authorization) && authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-    if (!token) {
+    if (!token && !isOpenCodeFree) {
       addStaticProviderModels(providerId, alias);
       return;
     }
@@ -926,6 +927,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         guard,
         endpoint: registryFetcher.url,
         headers: transport.headers,
+        allowNoAuth: isOpenCodeFree,
+        cacheVariant: isOpenCodeFree ? "opencode-free" : undefined,
+        selectModels: isOpenCodeFree ? (body) => {
+          const entries = Array.isArray(body) ? body : body?.data ?? body?.models;
+          return Array.isArray(entries) ? entries.filter((entry) =>
+            isString(entry?.id) && (entry.id.endsWith("-free") || entry.id === "big-pickle")
+          ) : [];
+        } : undefined,
       });
       if (!live?.models?.length) {
         addStaticProviderModels(providerId, alias);

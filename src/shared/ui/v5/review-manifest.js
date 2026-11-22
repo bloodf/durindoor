@@ -1089,10 +1089,14 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-operations-mitmpageclient--default",
     "states": [
       "Default",
+      "Loaded",
+      "TrustPrompts",
       "AntigravityExpanded"
     ],
     "storyIds": [
       "v5-review-pages-operations-mitmpageclient--default",
+      "v5-review-pages-operations-mitmpageclient--loaded",
+      "v5-review-pages-operations-mitmpageclient--trust-prompts",
       "v5-review-pages-operations-mitmpageclient--antigravity-expanded"
     ],
     "pathname": "/dashboard/mitm",

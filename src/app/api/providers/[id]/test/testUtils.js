@@ -171,7 +171,21 @@ export const OAUTH_TEST_CONFIG = {
     authHeader: "Authorization",
     authPrefix: "Bearer "
   },
-  "codebuddy-cn": { tokenExists: true },
+  // Real probe: billing endpoint answers code:0 for a valid token, 401/403 otherwise.
+  // tokenExists was a no-op that never caught revoked/expired tokens.
+  "codebuddy-cn": {
+    url: PROVIDERS["codebuddy-cn"]?.usage?.url || "https://copilot.tencent.com/v2/billing/meter/get-user-resource",
+    method: "POST",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(PROVIDERS["codebuddy-cn"]?.headers || {}),
+    },
+    body: "{}",
+    refreshable: true,
+  },
   kimchi: {
     url: KIMCHI_CONFIG.validationUrl || "https://api.cast.ai/v1/llm/openai/supported-providers",
     method: "GET",
@@ -1126,6 +1140,35 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           );
           return { valid: res.ok, error: res.ok ? null : "Invalid Personal Access Token" };
         }
+      case "codebuddy-cn":{
+          // API key and auth_token connections both carry the bearer token in apiKey.
+          // Probe the billing endpoint — code:0 means valid, 401/403 means revoked/invalid.
+          const billingUrl = PROVIDERS["codebuddy-cn"]?.usage?.url || "https://copilot.tencent.com/v2/billing/meter/get-user-resource";
+          const res = await fetchWithConnectionProxy(billingUrl, {
+            method: "POST",
+            headers: {
+              ...(PROVIDERS["codebuddy-cn"]?.headers || {}),
+              Authorization: `Bearer ${connection.apiKey}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: "{}",
+          }, effectiveProxy);
+          if (res.status === 401 || res.status === 403) {
+            return { valid: false, error: "Token invalid or revoked" };
+          }
+          if (res.status === 429 || res.status >= 500) {
+            return { valid: false, unavailable: true, error: "Provider unavailable - try again later" };
+          }
+          if (!res.ok) {
+            return { valid: false, error: `API returned ${res.status}` };
+          }
+          const data = await res.json().catch(() => null);
+          if (data && Number.isFinite(data.code) && data.code !== 0) {
+            return { valid: false, error: data.msg || "Token rejected by CodeBuddy" };
+          }
+          return { valid: true, error: null };
+        }
       default:{
           const result = await probeRegistryProvider(
             connection.provider,
@@ -1194,7 +1237,7 @@ export async function testSingleConnection(id) {
   const start = Date.now();
   let result;
 
-  if (connection.authType === "apikey" || connection.authType === "cookie") {
+  if (connection.authType === "apikey" || connection.authType === "cookie" || connection.authType === "auth_token") {
     result = await testApiKeyConnection(connection, effectiveProxy);
   } else {
     result = await testOAuthConnection(connection, effectiveProxy);

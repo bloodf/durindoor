@@ -79,6 +79,26 @@ async function loadActiveConnections() {
   return getProviderConnections({ isActive: true });
 }
 
+async function loadConnectionById(id) {
+  const { getProviderConnectionById } = await import("../../lib/db/repos/connectionsRepo.js");
+  return getProviderConnectionById(id);
+}
+
+/**
+ * True when a live row's refresh credentials differ from the tick snapshot.
+ * A concurrent request-path refresh rotates these fields; reusing the snapshot
+ * refresh token would trip Auth0/Claude family revocation (durindoor#2280).
+ *
+ * @param {object} snapshot
+ * @param {object|null|undefined} fresh
+ * @returns {boolean}
+ */
+export function refreshCredentialsChangedSinceSnapshot(snapshot, fresh) {
+  if (!fresh || !snapshot) return false;
+  if (fresh.refreshToken !== snapshot.refreshToken) return true;
+  return (fresh.lastRefreshAt ?? null) !== (snapshot.lastRefreshAt ?? null);
+}
+
 async function refreshOne(connection) {
   const { checkAndRefreshToken } = await import("./tokenRefresh.js");
   // This fork's third parameter is proxyOptions; force is the fourth.
@@ -87,7 +107,12 @@ async function refreshOne(connection) {
 
 /**
  * One scheduler tick. Fail-open at top level and per connection.
- * @param {{ loadConnections?: Function, refreshConnection?: Function }} [deps]
+ * @param {{
+ *   loadConnections?: Function,
+ *   refreshConnection?: Function,
+ *   getConnectionById?: Function,
+ *   sleep?: Function,
+ * }} [deps]
  */
 export async function runBackgroundTokenRefreshTick(deps = {}) {
   if (tickRunning) return;
@@ -96,6 +121,11 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
     const load = deps.loadConnections || loadActiveConnections;
     const refresh = deps.refreshConnection || refreshOne;
     const sleep = deps.sleep || ((ms) => new Promise((res) => setTimeout(res, ms)));
+    // Re-read before each forced refresh unless a test injected refreshConnection
+    // without a getConnectionById (those suites assert orchestration only).
+    const getById =
+      deps.getConnectionById ||
+      (!deps.refreshConnection ? loadConnectionById : null);
 
     const connections = await load();
     const due = selectConnectionsNeedingRefresh(connections, Date.now());
@@ -106,14 +136,36 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
     const baseNormalDelay = Number(process.env.BG_REFRESH_DELAY_MS) || 1_500;
 
     for (let i = 0; i < due.length; i++) {
-      const conn = due[i];
+      const snapshot = due[i];
+      let conn = snapshot;
       try {
-        await refresh(conn);
-        log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
-          id: conn.id,
-          email: conn.email || conn.name || conn.id,
-          provider: conn.provider
-        });
+        if (getById) {
+          const fresh = await getById(snapshot.id);
+          // Missing row: keep the snapshot (integration fixtures have no DB row).
+          // Changed refreshToken/lastRefreshAt: skip — another path already rotated.
+          if (refreshCredentialsChangedSinceSnapshot(snapshot, fresh)) {
+            log.info("BG_TOKEN_REFRESH", "Skipping stale snapshot; credentials already rotated", {
+              id: snapshot.id,
+              email: snapshot.email || snapshot.name || snapshot.id,
+              provider: snapshot.provider
+            });
+          } else {
+            if (fresh) conn = fresh;
+            await refresh(conn);
+            log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
+              id: conn.id,
+              email: conn.email || conn.name || conn.id,
+              provider: conn.provider
+            });
+          }
+        } else {
+          await refresh(conn);
+          log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
+            id: conn.id,
+            email: conn.email || conn.name || conn.id,
+            provider: conn.provider
+          });
+        }
       } catch (err) {
         log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
           id: conn?.id,
@@ -125,7 +177,7 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
 
       // Sequential delay between accounts to prevent bursting upstream providers (especially Google Cloud)
       if (i < due.length - 1) {
-        const isSensitive = SENSITIVE_PROVIDERS.has(conn.provider);
+        const isSensitive = SENSITIVE_PROVIDERS.has(snapshot.provider);
         const baseDelay = isSensitive ? baseSensitiveDelay : baseNormalDelay;
         const jitter = isSensitive ? Math.floor(Math.random() * 4000) : 200;
         await sleep(baseDelay + jitter);

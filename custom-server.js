@@ -53,6 +53,21 @@ const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 const REALTIME_DISPATCHER = Symbol.for("durindoor.realtimeDispatcher");
 const SINGLE_PROCESS_RUNTIME_ENV = "DURINDOOR_SINGLE_PROCESS_RUNTIME";
 
+/** Baseline security headers (#2251). Mirrored in next.config.mjs headers(). */
+const BASELINE_SECURITY_HEADERS = Object.freeze([
+  ["X-Frame-Options", "DENY"],
+  ["X-Content-Type-Options", "nosniff"],
+  ["Referrer-Policy", "same-origin"],
+  ["Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"],
+]);
+
+function applyBaselineSecurityHeaders(res) {
+  if (!res || !isFunction(res.setHeader)) return;
+  for (const [key, value] of BASELINE_SECURITY_HEADERS) {
+    res.setHeader(key, value);
+  }
+}
+
 // One WS server shared across every http server we wrap (noServer so we own the
 // upgrade handshake). `handleProtocols` selects a safe subprotocol and never
 // echoes the key-bearing `openai-insecure-api-key.<key>` token back to the
@@ -108,6 +123,9 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
     const rest = args.filter((a) => !isFunction(a));
     if (!handler) return origCreate(...args);
     const wrapped = (req, res) => {
+      // Stamp before any early return (login-host deny, handler errors) so
+      // responses that never reach Next still carry the #2251 baseline.
+      applyBaselineSecurityHeaders(res);
       if (denyIsolatedHttpRequest(req, res)) return;
       const socketIp = req.socket?.remoteAddress || "";
       const xff = req.headers["x-forwarded-for"];
@@ -528,7 +546,9 @@ function run() {
 if (require.main === module) run();
 
 module.exports = {
+  BASELINE_SECURITY_HEADERS,
   REALTIME_DISPATCHER,
+  applyBaselineSecurityHeaders,
   canonicalizeRuntimePaths,
   createOwnerAwareHandler,
   handleRealtimeUpgrade,

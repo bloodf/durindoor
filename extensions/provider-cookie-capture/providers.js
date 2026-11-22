@@ -107,6 +107,8 @@ export const PROVIDERS = deepFreeze({
     origin: "https://notrack.ai",
     cookieNames: ["uid", "si_usr_id", "si_ses_id"],
     cookiePrefixes: [],
+    // Included when the browser has it; a capture without it still succeeds.
+    optionalCookies: ["nt_session"],
   },
   "tencent-aistudio-web": {
     label: "Tencent AI Studio Web",

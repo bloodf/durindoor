@@ -43,6 +43,7 @@ import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/provi
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
   codex: {
@@ -664,7 +665,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       if (modelsBase.endsWith("/messages")) modelsBase = modelsBase.slice(0, -9);
       if (modelsBase.endsWith("/v1")) modelsBase = modelsBase.slice(0, -3);
       const messagesUrl = `${modelsBase}/v1/messages`;
-      const model = connection.defaultModel || "claude-3-haiku-20240307";
+      const model = connection.defaultModel || ANTHROPIC_VALIDATION_MODEL;
       const res = await fetchWithConnectionProxy(messagesUrl, {
         method: "POST",
         headers: {
@@ -794,7 +795,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: ANTHROPIC_VALIDATION_MODEL, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401;
           return { valid, error: valid ? null : "Invalid API key" };

@@ -16,6 +16,7 @@ import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
 import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
 import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -265,7 +266,7 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: getDefaultModel(provider) || "claude-3-haiku-20240307",
+          model: getDefaultModel(provider) || ANTHROPIC_VALIDATION_MODEL,
           max_tokens: 1,
           messages: [{ role: "user", content: "test" }],
         }),

@@ -255,6 +255,10 @@ export const MODEL_PRICING = {
   "o3-pro": { input: 20.00, output: 80.00, cached: 20.00, reasoning: 80.00, cache_creation: 20.00 },
   "o4-mini": { input: 1.10, output: 4.40, cached: 0.275, reasoning: 4.40, cache_creation: 1.10 },
 
+  // === Agnes AI ===
+  // Vendor doc page: cache read is 10% of regular input. 3.0 Flash has no published price.
+  "agnes-3.0-pro": { input: 0.45, output: 0.90, cached: 0.045 },
+
   // === Gemini ===
   "gemini-3.8-flash": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
   "gemini-3.8-flash-high": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },

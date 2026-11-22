@@ -136,6 +136,9 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
     next.expiresAt = toExpiresAt(refreshedCredentials.expiresIn, nowMs);
   } else if (refreshedCredentials.expiresAt) {
     next.expiresAt = refreshedCredentials.expiresAt;
+  } else {
+    // Providers that omit expiry get a conservative one-hour refresh horizon.
+    next.expiresAt = toExpiresAt(3600, nowMs);
   }
 
   if (refreshedCredentials.projectId) next.projectId = refreshedCredentials.projectId;

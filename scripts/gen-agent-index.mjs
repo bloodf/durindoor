@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const root = path.resolve(__dirname, "..");
@@ -75,6 +76,6 @@ async function main() {
   console.log(`wrote ${outPath}`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   await main();
 }

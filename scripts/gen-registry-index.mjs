@@ -39,6 +39,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Repo root (parent of scripts/). */
@@ -162,6 +163,6 @@ async function cli() {
   process.exitCode = result.exitCode;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   await cli();
 }

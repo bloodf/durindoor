@@ -1,5 +1,7 @@
 import { Readable } from "node:stream";
-import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
+import net from "node:net";
+import { Agent, Pool, ProxyAgent, setGlobalDispatcher } from "undici";
+import { recordProxyDispatcherFailure, recordProxyDispatcherSuccess } from "./proxyDispatcherFailures.js";
 import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import {
@@ -545,6 +547,64 @@ export function resolveWebSocketProxyRoute(wsUrl, proxyOptions = null) {
   return { enabled: Boolean(url), url: url || "", strict: proxyOptions?.strictProxy === true };
 }
 
+function stripIpv6Brackets(hostname) {
+  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+}
+
+// undici's ProxyAgent sends the proxy hostname as TLS SNI on its CONNECT hop,
+// even for an IP literal. Node 26 rejects an IP servername, so an https:// proxy
+// addressed by IP cannot connect. Drop the servername for IP literals only;
+// the connector still verifies the proxy certificate against the IP address.
+// Port of OmniRoute #20880.
+export function createIpProxyClient(origin, options) {
+  const { connect } = options;
+  if (!isFunction(connect)) return new Pool(origin, options);
+  return new Pool(origin, {
+    ...options,
+    connect(parameters, callback) {
+      const { servername } = parameters;
+      const isIpServername = isString(servername) && net.isIP(stripIpv6Brackets(servername)) !== 0;
+      connect({ ...parameters, servername: isIpServername ? undefined : servername }, callback);
+    }
+  });
+}
+
+function usesIpHttpsProxy(normalizedProxyUrl) {
+  try {
+    const parsed = new URL(normalizedProxyUrl);
+    return parsed.protocol === "https:" && net.isIP(stripIpv6Brackets(parsed.hostname)) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+// Drop one proxy's cached dispatcher after repeated failures so the next request
+// builds a fresh pool. close() waits for active streams, so it is not awaited.
+export function evictProxyDispatcher(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (!normalized) return false;
+  const cacheKey = proxyDispatcherKey(normalized);
+  const dispatcher = proxyDispatchers.get(cacheKey);
+  if (!dispatcher) return false;
+  proxyDispatchers.delete(cacheKey);
+  try {
+    Promise.resolve(dispatcher.close?.()).catch(() => {});
+  } catch {
+    // Already detached from the cache; cleanup must not block replacement.
+  }
+  return true;
+}
+
+function noteProxyDispatcherFailure(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized && recordProxyDispatcherFailure(normalized)) evictProxyDispatcher(normalized);
+}
+
+function noteProxyDispatcherSuccess(proxyUrl) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized) recordProxyDispatcherSuccess(normalized);
+}
+
 /**
  * Create and cache one bounded undici proxy pool per selected proxy URL.
  * Reusing the dispatcher preserves proxy affinity while limiting connections
@@ -579,7 +639,7 @@ async function getDispatcher(proxyUrl) {
     // idle-body deadline so a streaming response can run indefinitely.
     const connectTimeout = parseInt(process.env.PROXY_CONNECT_TIMEOUT_MS, 10) || 90000;
     const headersTimeout = parseInt(process.env.PROXY_HEADERS_TIMEOUT_MS, 10) || 300000;
-    proxyDispatchers.set(cacheKey, new ProxyAgent({
+    const proxyAgentOptions = {
       uri: normalized,
       proxyTunnel: true,
       connectTimeout,
@@ -591,7 +651,9 @@ async function getDispatcher(proxyUrl) {
       keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
       maxCachedSessions: PROXY_FETCH_POOL_CONFIG.proxyMaxCachedSessions,
       pipelining: PROXY_FETCH_POOL_CONFIG.pipelining
-    }));
+    };
+    if (usesIpHttpsProxy(normalized)) proxyAgentOptions.clientFactory = createIpProxyClient;
+    proxyDispatchers.set(cacheKey, new ProxyAgent(proxyAgentOptions));
   }
 
   return proxyDispatchers.get(cacheKey);
@@ -924,10 +986,15 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const nonReplayable = hasNonReplayableBody(url, options.body);
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+      const response = await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
+      // 504 is the proxy's own gateway timeout, not an upstream answer.
+      if (response?.status === 504) noteProxyDispatcherFailure(proxyUrl);else
+      noteProxyDispatcherSuccess(proxyUrl);
+      return response;
     } catch (proxyError) {
       if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
       rethrowTransportAbort(proxyError, options.signal);
+      noteProxyDispatcherFailure(proxyUrl);
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");

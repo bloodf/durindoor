@@ -900,6 +900,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*gpt-6*image*", caps: { imageOutput: true } },
 { pattern: "*gpt-6.1-terra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-terra"] },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
+{ pattern: "*gpt-6.2-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.2-sol"] },
+{ pattern: "*gpt-6.2-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.2-astra"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
 { pattern: "*gpt-6-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-sol"] },
 { pattern: "*gpt-6-luna*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-luna"] },

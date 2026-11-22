@@ -167,6 +167,42 @@ export function normalizeOpenAIToolCallIds(body) {
   return body;
 }
 
+// OpenAI's automatic prompt cache covers `input` (+ tools) but not the top-level
+// Responses `instructions` field, so a stateless Responses request re-bills its
+// system prompt every turn. Move non-empty string `instructions` to the front of
+// `input` as a developer message. Stateful continuations (previous_response_id /
+// conversation) and Chat Completions bodies (`messages`) are left untouched.
+// Source: OmniRoute #20854 (issue #20846).
+function hasResponsesContinuation(body) {
+  const prev = body.previous_response_id;
+  if (isString(prev) ? prev.trim().length > 0 : prev !== undefined && prev !== null) return true;
+  const conversation = body.conversation;
+  return isString(conversation) ? conversation.trim().length > 0 : isRecord(conversation);
+}
+
+function responsesInputItems(input) {
+  if (Array.isArray(input)) return input;
+  if (isString(input)) {
+    return input.length > 0 ? [{ type: "message", role: "user", content: [{ type: "input_text", text: input }] }] : [];
+  }
+  return isRecord(input) ? [input] : [];
+}
+
+export function hoistOpenAIResponsesInstructionsToInput(body) {
+  if (!isRecord(body) || Array.isArray(body.messages)) return body;
+  if (hasResponsesContinuation(body)) return body;
+  if (!isString(body.instructions) || body.instructions.trim().length === 0) return body;
+
+  const { instructions, ...rest } = body;
+  return {
+    ...rest,
+    input: [
+      { type: "message", role: "developer", content: [{ type: "input_text", text: instructions }] },
+      ...responsesInputItems(body.input)
+    ]
+  };
+}
+
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
 const XAPIKEY = { combined: true, header: "x-api-key", scheme: "raw" };
@@ -422,6 +458,7 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "openai") {
         normalizeOpenAIToolCallIds(transformed);
+        transformed = hoistOpenAIResponsesInstructionsToInput(transformed);
       }
       // NVIDIA rejects the long opaque tool-call IDs other providers mint.
       if (this.provider === "nvidia") {

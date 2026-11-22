@@ -9,7 +9,17 @@ import {
   maskAccountId,
   isNetworkErrorRotatable } from
 "./accountRotation.js";
+import patchedGlobalFetch, { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+
+/** Credentialed send: proxyAwareFetch, or the live global when tests replace it. */
+function routeExecutorFetch(url, init, proxyOptions = null) {
+  const options = { ...init, redirect: "error" };
+  if (globalThis.fetch !== patchedGlobalFetch) {
+    return globalThis.fetch(url, { ...options, proxyOptions });
+  }
+  return proxyAwareFetch(url, options, proxyOptions);
+}
 
 const BASE_URL = "https://api.xiaomimimo.com";
 const BOOTSTRAP_PATH = "/api/free-ai/bootstrap";
@@ -104,7 +114,7 @@ function proxyConfigToUrl(entry) {
   return { fingerprint: entry.fingerprint, url: `${type}://${auth}${proxy.host}:${port}` };
 }
 
-async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher) {
+async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher, proxyOptions = null) {
   const existing = bootstrapInflight.get(fingerprint);
   if (existing) return existing;
 
@@ -123,8 +133,8 @@ async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher) {
         signal: controller.signal
       };
       const response = dispatcher ?
-      await undiciFetch(url, { ...init, dispatcher }) :
-      await fetch(url, init);
+      await undiciFetch(url, { ...init, redirect: "error", dispatcher }) :
+      await routeExecutorFetch(url, init, proxyOptions);
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         throw new Error(`Bootstrap failed: ${response.status} ${text.slice(0, 200)}`);
@@ -160,10 +170,10 @@ export class MimocodeExecutor extends BaseExecutor {
     return createDispatcher(this.proxyUrlMap.get(fingerprint));
   }
 
-  fetchWithProxy(url, init, fingerprint) {
+  fetchWithProxy(url, init, fingerprint, proxyOptions = null) {
     const dispatcher = this.getProxyDispatcher(fingerprint);
-    if (dispatcher) return undiciFetch(url, { ...init, dispatcher });
-    return fetch(url, init);
+    if (dispatcher) return undiciFetch(url, { ...init, redirect: init?.redirect ?? "error", dispatcher });
+    return routeExecutorFetch(url, init, proxyOptions);
   }
 
   syncAccountsFromCredentials(credentials = {}) {
@@ -193,9 +203,15 @@ export class MimocodeExecutor extends BaseExecutor {
     }
   }
 
-  async getJwtForAccount(account, signal) {
+  async getJwtForAccount(account, signal, proxyOptions = null) {
     if (isAccountReady(account)) return account.jwt;
-    const result = await bootstrapJwt(this.baseUrl, account.fingerprint, signal, this.getProxyDispatcher(account.fingerprint));
+    const result = await bootstrapJwt(
+      this.baseUrl,
+      account.fingerprint,
+      signal,
+      this.getProxyDispatcher(account.fingerprint),
+      proxyOptions
+    );
     account.jwt = result.jwt;
     account.expiresAt = result.expiresAt;
     return account.jwt;
@@ -234,11 +250,11 @@ export class MimocodeExecutor extends BaseExecutor {
     return injectMimocodeSystemMarker({ ...body, model: rewriteModelName(model) });
   }
 
-  async testConnection(credentials = {}, signal = null, log = null) {
+  async testConnection(credentials = {}, signal = null, log = null, proxyOptions = null) {
     try {
       this.syncAccountsFromCredentials(credentials);
       const account = this.accounts[0];
-      const jwt = await this.getJwtForAccount(account, signal);
+      const jwt = await this.getJwtForAccount(account, signal, proxyOptions);
       const response = await this.fetchWithProxy(
         this.buildUrl(),
         {
@@ -251,7 +267,8 @@ export class MimocodeExecutor extends BaseExecutor {
           })),
           signal: signal ?? undefined
         },
-        account.fingerprint
+        account.fingerprint,
+        proxyOptions
       );
       return response.status === 200;
     } catch {
@@ -261,7 +278,7 @@ export class MimocodeExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log, credentials = {}, requestContext = null } = input;
+    const { model, stream, body, signal, log, credentials = {}, requestContext = null, proxyOptions = null } = input;
     const url = this.buildUrl(model, stream);
     const transformedBody = this.clampCustomMaxOutput(
       this.transformRequest(model, body, stream, credentials),
@@ -284,12 +301,13 @@ export class MimocodeExecutor extends BaseExecutor {
     for (let attempt = 0; attempt < this.accounts.length; attempt++) {
       const account = this.pickAccount();
       try {
-        const jwt = await this.getJwtForAccount(account, signal);
+        const jwt = await this.getJwtForAccount(account, signal, proxyOptions);
         const headers = { ...this.buildHeaders(credentials, stream), Authorization: `Bearer ${jwt}` };
         let response = await this.fetchWithProxy(
           url,
           { method: "POST", headers, body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)), signal: signal ?? undefined },
-          account.fingerprint
+          account.fingerprint,
+          proxyOptions
         );
 
         if (response.status === 401 || response.status === 403) {
@@ -297,11 +315,12 @@ export class MimocodeExecutor extends BaseExecutor {
           account.jwt = "";
           account.expiresAt = 0;
           account.consecutiveFails = 0;
-          headers.Authorization = `Bearer ${await this.getJwtForAccount(account, signal)}`;
+          headers.Authorization = `Bearer ${await this.getJwtForAccount(account, signal, proxyOptions)}`;
           response = await this.fetchWithProxy(
             url,
             { method: "POST", headers, body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)), signal: signal ?? undefined },
-            account.fingerprint
+            account.fingerprint,
+            proxyOptions
           );
         }
 

@@ -2,7 +2,17 @@ import { createHash, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import innerAiRegistry from "../providers/registry/inner-ai.js";
+import patchedGlobalFetch, { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+
+/** Credentialed send: proxyAwareFetch, or the live global when tests replace it. */
+function routeExecutorFetch(url, init, proxyOptions = null) {
+  const options = { ...init, redirect: "error" };
+  if (globalThis.fetch !== patchedGlobalFetch) {
+    return globalThis.fetch(url, { ...options, proxyOptions });
+  }
+  return proxyAwareFetch(url, options, proxyOptions);
+}
 
 const DEFAULT_MODEL = innerAiRegistry.models?.[0]?.id || "gpt-4o";
 
@@ -104,7 +114,7 @@ function buildHeaders(token, email, deviceId) {
   return headers;
 }
 
-async function resolveCredentials(token, credEmail, signal) {
+async function resolveCredentials(token, credEmail, signal, proxyOptions = null) {
   const key = tokenCacheKey(token);
   const cached = lruTouch(credentialCache, key);
   if (cached) return cached;
@@ -114,7 +124,7 @@ async function resolveCredentials(token, credEmail, signal) {
   ).trim();
   let email = "";
   try {
-    const profileResp = await fetch(INNER_AI_PROFILE_URL, {
+    const profileResp = await routeExecutorFetch(INNER_AI_PROFILE_URL, {
       headers: {
         Cookie: `token=${token}`,
         "USER-TOKEN": token,
@@ -124,7 +134,7 @@ async function resolveCredentials(token, credEmail, signal) {
         Referer: "https://app.innerai.com/"
       },
       signal: signal ?? undefined
-    });
+    }, proxyOptions);
     if (profileResp.ok) {
       const body = await profileResp.json().catch(() => null);
       email = String(
@@ -151,14 +161,14 @@ class InnerAiModelsError extends Error {
   }
 }
 
-async function resolveModels(token, deviceId, email, signal) {
+async function resolveModels(token, deviceId, email, signal, proxyOptions = null) {
   const key = tokenCacheKey(token);
   const cached = lruTouch(modelsCache, key);
   if (cached && Date.now() < cached.expiresAt) return cached.models;
-  const resp = await fetch(INNER_AI_MODELS_URL, {
+  const resp = await routeExecutorFetch(INNER_AI_MODELS_URL, {
     headers: buildHeaders(token, email, deviceId),
     signal: signal ?? undefined
-  });
+  }, proxyOptions);
   if (!resp.ok) {
     const preview = await resp.text().catch(() => "");
     if (resp.status === 401 || resp.status === 403) credentialCache.delete(key);
@@ -332,7 +342,7 @@ export class InnerAiExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { body, credentials, signal, stream: wantStream } = input;
+    const { body, credentials, signal, stream: wantStream, proxyOptions = null } = input;
     const bodyObj = body || {};
     const rawToken = String(credentials?.apiKey ?? "").trim();
     if (!rawToken) {
@@ -341,7 +351,7 @@ export class InnerAiExecutor extends BaseExecutor {
     const { token, credEmail } = parseCredential(rawToken);
     let creds;
     try {
-      creds = await resolveCredentials(token, credEmail, signal);
+      creds = await resolveCredentials(token, credEmail, signal, proxyOptions);
     } catch (err) {
       credentialCache.delete(tokenCacheKey(token));
       return makeErrorResult(401, err instanceof Error ? err.message : "Failed to authenticate with Inner.ai", body);
@@ -350,7 +360,7 @@ export class InnerAiExecutor extends BaseExecutor {
     const requestedModel = String(bodyObj.model ?? "").trim() || DEFAULT_MODEL;
     let models = [];
     try {
-      models = await resolveModels(token, creds.deviceId, creds.email, signal);
+      models = await resolveModels(token, creds.deviceId, creds.email, signal, proxyOptions);
     } catch (err) {
       if (err instanceof InnerAiModelsError && (err.status === 401 || err.status === 403)) {
         return makeErrorResult(err.status, "Inner.ai /ai-models authentication failed; re-paste your token cookie", body);
@@ -377,12 +387,12 @@ export class InnerAiExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await fetch(INNER_AI_CHAT_URL, {
+      upstream = await routeExecutorFetch(INNER_AI_CHAT_URL, {
         method: "POST",
         headers: reqHeaders,
         body: JSON.stringify(innerAiBody),
         signal: signal ?? undefined
-      });
+      }, proxyOptions);
     } catch (err) {
       return makeErrorResult(502, `Inner.ai request failed: ${sanitizeErrorMessage(err.message)}`, body);
     }

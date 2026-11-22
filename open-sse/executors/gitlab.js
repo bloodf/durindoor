@@ -1,6 +1,16 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import patchedGlobalFetch, { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+
+/** Credentialed send: proxyAwareFetch, or the live global when tests replace it. */
+function routeExecutorFetch(url, init, proxyOptions = null) {
+  const options = { ...init, redirect: "error" };
+  if (globalThis.fetch !== patchedGlobalFetch) {
+    return globalThis.fetch(url, { ...options, proxyOptions });
+  }
+  return proxyAwareFetch(url, options, proxyOptions);
+}
 
 function asObject(value) {
   return value && isObject(value) && !Array.isArray(value) ? value : {};
@@ -178,16 +188,16 @@ export class GitlabExecutor extends BaseExecutor {
     return buildRequestBody(model, body || {}, credentials || {});
   }
 
-  async execute({ model, body, stream, credentials, signal }) {
+  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
-    const response = await fetch(url, {
+    const response = await routeExecutorFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal || undefined
-    });
+    }, proxyOptions);
     const text = await response.text();
     let payload = null;
     try {

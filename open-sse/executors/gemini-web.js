@@ -457,17 +457,23 @@ export async function resetGeminiBrowserLeaseForTests() {
   if (previous) await previous.close().catch(() => {});
 }
 
-// Resolve the lazy Playwright import once so concurrent requests share a
-// launcher identity. A failed import can be retried by the next request.
-let launcherPromise;
-function loadLauncher() {
-  launcherPromise ??= import("playwright").then(({ chromium }) => (
-    (options) => chromium.launch(options)
-  )).catch((error) => {
-    launcherPromise = undefined;
+// Playwright is imported once per process and shared: concurrent first requests never race two
+// module loads (a test runner's module mock could otherwise answer only one of them).
+let playwrightModule = null;
+function loadPlaywright() {
+  playwrightModule ??= import("playwright").catch((error) => {
+    playwrightModule = null;
     throw error;
   });
-  return launcherPromise;
+  return playwrightModule;
+}
+
+// One launcher per Playwright launch function, so repeated requests share lease identity.
+const launchers = new WeakMap();
+function stableLauncher(chromium) {
+  const key = chromium.launch;
+  if (!launchers.has(key)) launchers.set(key, (options) => chromium.launch(options));
+  return launchers.get(key);
 }
 
 // ─── Error classification ───────────────────────────────────────────────────
@@ -577,7 +583,8 @@ export class GeminiWebExecutor extends BaseExecutor {
     let abortBrowser = null;
     try {
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
-      browser = await acquireBrowser(await loadLauncher());
+      const { chromium } = await loadPlaywright();
+      browser = await acquireBrowser(stableLauncher(chromium));
       abortBrowser = () => void context?.close().catch(() => {});
       signal?.addEventListener("abort", abortBrowser, { once: true });
 

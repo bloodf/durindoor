@@ -142,6 +142,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `bigmodel` |  | apikey | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
 | `black-forest-labs` |  | apikey | `` |
 | `blackbox` |  | apikey | `https://api.blackbox.ai/v1/chat/completions` |
+| `blackbox-web` | openai | webCookie | `https://app.blackbox.ai/api/chat` |
 | `bluesminds` |  | apikey | `https://api.bluesminds.com/v1/chat/completions` |
 | `brave-search` |  | apikey | `` |
 | `byteplus` |  | freeTier | `https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions` |
@@ -180,6 +181,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `comfyui` |  | apikey | `` |
 | `command-code` | commandcode | apikey | `https://api.commandcode.ai/alpha/generate` |
 | `commandcode` | commandcode | apikey | `https://api.commandcode.ai/alpha/generate` |
+| `conol-web` | openai | webCookie | `https://conol.ai/api/sessions` |
 | `context7` |  | apikey | `` |
 | `copilot-m365-web` | openai | webCookie | `wss://substrate.office.com/m365Copilot/Chathub` |
 | `copilot-web` | openai | webCookie | `wss://copilot.microsoft.com/c/api/chat?api-version=2` |
@@ -348,7 +350,9 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nimble` |  | apikey | `` |
 | `nlpcloud` | openai | apikey | `https://api.nlpcloud.io/v1/gpu` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
+| `notion-web` | openai | webCookie | `https://app.notion.com/api/v3/runInferenceTranscript` |
 | `notrack` | openai | apikey | `https://api.notrack.ai/v1/chat/completions` |
+| `notrack-web` | openai | webCookie | `https://notrack.ai/api/dispatch` |
 | `nous-research` | openai | apikey | `https://inference-api.nousresearch.com/v1/chat/completions` |
 | `novita` |  | apikey | `https://api.novita.ai/openai/v1/chat/completions` |
 | `nscale` | openai | apikey | `https://inference.api.nscale.com/v1/chat/completions` |
@@ -387,6 +391,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `poixe-ai` |  | apikey | `https://api.poixe.com/v1/chat/completions` |
 | `pollinations` | openai | free | `https://gen.pollinations.ai/v1/chat/completions` |
 | `poolside` |  | freeTier | `https://inference.poolside.ai/v1/chat/completions` |
+| `promptql` | openai | webCookie | `https://data.prompt.ql.app/promptql/playground-v2-hge/v1/graphql` |
 | `publicai` |  | apikey | `https://api.publicai.co/v1/chat/completions` |
 | `puter` | openai | apikey | `https://api.puter.com/puterai/openai/v1/chat/completions` |
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
@@ -429,8 +434,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `tabitoken` | claude | apikey | `https://tabitoken.com/v1/messages` |
 | `tavily` |  | apikey | `` |
 | `tencent` |  | freeTier | `https://api.hunyuan.cloud.tencent.com/v1/chat/completions` |
+| `tencent-aistudio-web` | openai | webCookie | `https://aistudio.tencent.ai/api/chat` |
 | `thebai` |  | apikey | `https://api.theb.ai/v1/chat/completions` |
 | `theoldllm` | openai | free | `https://theoldllm.vercel.app/api/chatgpt` |
+| `tinycms-web` | openai | apikey | `https://gov.freegpt.win/api/openai/oneapi/v1/chat/completions` |
 | `tinyfish` |  | apikey | `` |
 | `together` |  | apikey | `https://api.together.xyz/v1/chat/completions` |
 | `token-kiosk` |  | apikey | `https://agent-router.gaib.ai/v1/chat/completions` |

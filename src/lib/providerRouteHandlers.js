@@ -41,7 +41,9 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 // Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
 "sessionToken",
 // Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
-"mimoPassToken"]
+"mimoPassToken",
+// TinyCMS device UUID imported from site.tinycms.xyz localStorage; it is the whole credential.
+"app-config-uuid"]
 );
 
 /**
@@ -84,6 +86,8 @@ export function canDiscoverModels(connection) {
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (LOCAL_CATALOG_WEB_PROVIDERS.has(provider)) return true; // Curated local catalog.
   if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
+  // PromptQL lists models through its GraphQL API with the playground JWT, not the session cookie.
+  if (provider === "promptql") return Boolean(connection.providerSpecificData?.token || connection.providerSpecificData?.jwt);
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
     // Compatible servers may expose their catalog without credentials.

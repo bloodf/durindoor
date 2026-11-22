@@ -6,4 +6,6 @@ import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Pages/operations/MitmPageClient", parameters: reviewParameters(originalMeta.parameters, {"source":"src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx","standalone":false}) };
+export const Loaded = { ...reviewStory(original.Loaded, {"source":"src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx","standalone":false}) };
+export const TrustPrompts = { ...reviewStory(original.TrustPrompts, {"source":"src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx","standalone":false}) };
 export const AntigravityExpanded = { ...reviewStory(original.AntigravityExpanded, {"source":"src/app/(dashboard)/dashboard/mitm/MitmPageClient.stories.jsx","standalone":false}) };

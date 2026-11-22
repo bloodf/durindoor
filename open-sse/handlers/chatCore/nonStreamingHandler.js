@@ -183,9 +183,10 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
 // prompt_tokens: reverse projection reports full input plus cache fields.
 function normalizeClaudeCacheUsage(claudeMsg, originalBody) {
   if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
-  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens || 0;
+  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens;
   claudeMsg.usage = claudeMsg.usage || {};
-  if (cached > 0) claudeMsg.usage.cache_read_input_tokens = cached;
+  // An explicit reported zero is kept; an omitted counter is not invented.
+  if (Number.isFinite(cached) && cached >= 0) claudeMsg.usage.cache_read_input_tokens = cached;
   return claudeMsg;
 }
 

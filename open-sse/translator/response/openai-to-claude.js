@@ -135,7 +135,13 @@ function toClaudeUsage(usage) {
   const outputTokens = firstNumber(usage.completion_tokens, usage.output_tokens);
 
   // Extract cache tokens from prompt_tokens_details
-  const cacheReadTokens = firstNumber(usage.prompt_tokens_details?.cached_tokens, usage.input_tokens_details?.cached_tokens);
+  // A reported zero is evidence of "nothing cached", so keep it distinct from an omitted counter.
+  const reportedCacheReadTokens = [
+    usage.prompt_tokens_details?.cached_tokens,
+    usage.input_tokens_details?.cached_tokens,
+    usage.cache_read_input_tokens
+  ].find((value) => isNumber(value) && Number.isFinite(value) && value >= 0);
+  const cacheReadTokens = reportedCacheReadTokens ?? 0;
   // Cache-write accepts the same aliases as the shared normalizer: the
   // canonical top-level field, the top-level `cache_write_tokens` alias and
   // both nested spellings. Canonical fields win over aliases and an explicitly
@@ -153,7 +159,7 @@ function toClaudeUsage(usage) {
     input_tokens: promptTokens - cacheReadTokens - cacheCreateTokens,
     output_tokens: outputTokens
   };
-  if (cacheReadTokens > 0) claudeUsage.cache_read_input_tokens = cacheReadTokens;
+  if (reportedCacheReadTokens !== undefined) claudeUsage.cache_read_input_tokens = reportedCacheReadTokens;
   if (cacheCreateTokens > 0) claudeUsage.cache_creation_input_tokens = cacheCreateTokens;
 
   // Note: completion_tokens_details.reasoning_tokens is already included in output_tokens

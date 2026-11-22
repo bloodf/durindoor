@@ -126,4 +126,3 @@ export function initState(sourceFormat, requestBody) {
 
   return base;
 }
-

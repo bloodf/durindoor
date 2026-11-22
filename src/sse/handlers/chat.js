@@ -1,3 +1,4 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { summarizeToolSources } from "../utils/toolSources.js";
 import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
 import { CAPTURE_CONSENT_HEADER, CAPTURE_SESSION_HEADER, prepareMessageCapture } from "../utils/messageCapture.js";
@@ -1367,6 +1368,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
       warmRequestModelLimits(provider, refreshedCredentials);
+      // Bind later outcome writes to the stored credential this attempt sends.
+      const { credentialFingerprint: dispatchedCredential } = credentialDispatchSnapshot(refreshedCredentials);
 
       // Use shared chatCore
       const chatSettings = await getSettings();
@@ -1521,6 +1524,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           await clearAccountError(credentials.connectionId, refreshedCredentials, model, {
             provider,
             attemptStartedAt,
+            credentialFingerprint: dispatchedCredential,
             signal: requestSignal
           });
         },
@@ -1535,7 +1539,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             provider,
             model,
             Date.now() + EMPTY_CONTENT_COOLDOWN_MS,
-            { attemptStartedAt: latestAttemptStartedAt, signal: requestSignal }
+            { attemptStartedAt: latestAttemptStartedAt, credentialFingerprint: dispatchedCredential, signal: requestSignal }
           );
         },
         // Empty-stream retries exhausted mid-stream (headers already sent, so no
@@ -1546,6 +1550,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           if (!Number.isSafeInteger(latestAttemptStartedAt) || latestAttemptStartedAt <= 0) return;
           await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs, {
             attemptStartedAt: latestAttemptStartedAt,
+            credentialFingerprint: dispatchedCredential,
             signal: requestSignal
           });
         }
@@ -1722,6 +1727,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           // The credential this attempt actually presented, so a durable-key
           // provider can mark exactly the generation that was rejected.
           usedCredential: credentials.accessToken || credentials.apiKey || null,
+          credentialFingerprint: dispatchedCredential,
           // Proven relay/hop provenance from the fork's own transport layer.
           // Null for an ordinary upstream HTTP response, which is a provider
           // answer rather than a hop failure.

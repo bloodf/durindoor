@@ -99,8 +99,14 @@ describe("isMfaEnabledNow / disableMfa", () => {
     await expect(isMfaEnabledNow()).resolves.toBe(true);
   });
 
-  it("wipes every mfa field", async () => {
+  it("wipes every mfa field and rotates the dashboard session epoch", async () => {
     await disableMfa();
-    expect(mocks.updateSettings).toHaveBeenCalledWith({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [], mfaLastTotpCounter: null });
+    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      mfaEnabled: false,
+      mfaSecret: "",
+      mfaBackupCodes: [],
+      mfaLastTotpCounter: null,
+      passwordSessionEpoch: expect.any(String),
+    }));
   });
 });

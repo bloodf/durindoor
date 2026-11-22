@@ -6228,8 +6228,8 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36"
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
           "expectedConsoleErrors": [],
@@ -6499,7 +6499,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
+      "sourceSha256": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6519,8 +6519,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Private card rendered by Default",
@@ -6630,7 +6630,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboFormModal",
-      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
+      "sourceSha256": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6657,8 +6657,8 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
@@ -6672,8 +6672,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "SaveFailure",
@@ -6692,8 +6692,8 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "expectedVisibleText": "Create Combo"
@@ -6708,8 +6708,8 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "expectedVisibleText": "Create Combo"
@@ -6911,7 +6911,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
+      "sourceSha256": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6940,8 +6940,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "combos/page.stories.jsx Default",
@@ -6958,8 +6958,8 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "CombosPage empty branch renders EmptyState title No combos yet.",
@@ -6976,8 +6976,8 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
@@ -6999,8 +6999,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Play opens deletion path."
@@ -7018,8 +7018,8 @@
             "asserted modal unmount"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Actual CreateFlow opens the production ComboFormModal, edits the native Combo Name, then activates Cancel and explicitly asserts the dialog absent. The retained final page has the real production-fallback card; page opener text is not retained modal ownership. Separate existing spacing/error/edit/save scenes retain the actual form.",
@@ -7037,8 +7037,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Play opens edit path."
@@ -7053,8 +7053,8 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Save failure fixture."
@@ -7069,8 +7069,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           }
         },
@@ -7084,8 +7084,8 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacing play opens live Create Combo dialog and proves footer controls plus model row geometry.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "expectedVisibleText": "Create Combo"
@@ -7100,8 +7100,8 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacingMobile executes same live dialog and geometry assertions at mobile viewport.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "expectedVisibleText": "Create Combo"
@@ -7541,7 +7541,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ModelItem",
-      "sourceSha256": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
+      "sourceSha256": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7561,8 +7561,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "9681089de6672480f0ea63c70b14983ea86a2c3c67163b853947cd2d8206ec36",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "529f203b28bea6058c07fe103b10fb7b9d70f9ff67f96519f2dda5aec449fc9e",
+            "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
           },
           "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content.",
@@ -72457,97 +72457,227 @@
     {
       "storyId": "v5-review-pages-combos-combospage--default",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--default",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--empty",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--empty",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--load-failure",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--load-failure",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--delete-flow",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--delete-flow",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--create-flow",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--create-flow",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--edit-flow",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--edit-flow",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--save-failure",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--save-failure",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--load-failure-error",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--load-failure-error",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--create-combo-spacing",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--create-combo-spacing",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-combos-combospage--create-combo-spacing-mobile",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--create-combo-spacing-mobile",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-combos-combospage--connection-usage",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-combos-combospage--connection-usage",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+        "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-combos-combospage--retained-error",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -72555,9 +72685,19 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-pages-combos-combospage--connection-usage",
+      "storyId": "v5-review-pages-combos-combospage--rejected-clear-and-retry",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
-      "sourceSha256": "d49ed9ac8ca14bec4c15f3175ffb0c266325c9dbbd9640583528456800d2663d",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-combos-combospage--retry",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-combos-page.stories.jsx",
+      "sourceSha256": "8fc5f5eae07e8667ba64b46e809cf8512c0cc00ef6d23a568308ee966a1e2976",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -74677,7 +74817,7 @@
     {
       "storyId": "v5-review-pages-providers-providerdetailpage--open-ai-detail",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-      "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -74686,18 +74826,28 @@
       "historicalReferenceReview": {
         "storyId": "v5-review-pages-providers-providerdetailpage--open-ai-detail",
         "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-        "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+        "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
         "runtimeStatus": "pending",
-        "reviewEvidence": null
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "v5-review-pages-providers-providerdetailpage--open-ai-detail",
+          "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+          "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
       }
     },
     {
       "storyId": "v5-review-pages-providers-providerdetailpage--settings-controls",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-      "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -74706,18 +74856,28 @@
       "historicalReferenceReview": {
         "storyId": "v5-review-pages-providers-providerdetailpage--settings-controls",
         "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-        "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+        "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
         "runtimeStatus": "pending",
-        "reviewEvidence": null
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "v5-review-pages-providers-providerdetailpage--settings-controls",
+          "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+          "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
       }
     },
     {
       "storyId": "v5-review-pages-providers-providerdetailpage--compatible-branch",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-      "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -74726,18 +74886,28 @@
       "historicalReferenceReview": {
         "storyId": "v5-review-pages-providers-providerdetailpage--compatible-branch",
         "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-        "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+        "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
         "runtimeStatus": "pending",
-        "reviewEvidence": null
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "v5-review-pages-providers-providerdetailpage--compatible-branch",
+          "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+          "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
       }
     },
     {
       "storyId": "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-      "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -74746,7 +74916,37 @@
       "historicalReferenceReview": {
         "storyId": "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
         "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-        "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+        "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
+          "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+          "sourceSha256": "c2fa0b82cd156312f3ca7a00fed8e2ead7ad9149fbd1136509d4aea85dae2643",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
+      }
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--mnn-ai-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-providers-providerdetailpage--mnn-ai-connection",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+        "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -74755,9 +74955,189 @@
       }
     },
     {
-      "storyId": "v5-review-pages-providers-providerdetailpage--mnn-ai-connection",
+      "storyId": "v5-review-pages-providers-providerdetailpage--claude-web-connection",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
-      "sourceSha256": "a0d051bb9af1c92c37d5f3a7b86f4060220bbbcc0199c5f4b538baef08e2f375",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--gemini-web-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--deepseek-web-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--doubao-web-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--zai-web-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--chatgpt-web-codex-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--helyxai-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--tabitoken-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--twinmind-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--hyperagent-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--maxai-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--lmarena-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--chatplayground-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--cloudflare-playground-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--poe-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--g-4-f-gemini-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--g-4-f-nvidia-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--g-4-f-ollama-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-providerdetailpage--g-4-f-pollinations-connection",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-page.stories.jsx",
+      "sourceSha256": "f0af0425c8b36f44c31ec4353e140281f7fe0aa2cf5def8a2a3285617006379f",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -83285,6 +83665,66 @@
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
       "reviewEvidence": null
+    },
+    {
+      "storyId": "production-combos-combospage--retained-error",
+      "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+      "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-combos-combospage--retained-error",
+        "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+        "sourceSha256": "52ff97ed4fd4cac80a317de7035af76e8736238eab9530b0ede7207afe62d858",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "production-combos-combospage--rejected-clear-and-retry",
+      "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+      "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-combos-combospage--rejected-clear-and-retry",
+        "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+        "sourceSha256": "52ff97ed4fd4cac80a317de7035af76e8736238eab9530b0ede7207afe62d858",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "production-combos-combospage--retry",
+      "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+      "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-combos-combospage--retry",
+        "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+        "sourceSha256": "52ff97ed4fd4cac80a317de7035af76e8736238eab9530b0ede7207afe62d858",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "durin-ds-production-pages-health--independent-headroom-failure",
@@ -94667,11 +95107,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "523e9e8e11c6e9964a1c7c0affc0d957921a5a3d9f0fe77f5810a0778767f10c",
-    "sourceCensusSha256": "7ca7ac26acba362d654c8ff647a93be8eb62cd1778d6f461c4c8406e5a107cae",
+    "builtIndexSha256": "5e644d64bc52d979885e55527bcdd6eaa5b4c4d360f25340cff738f944a57a45",
+    "sourceCensusSha256": "51ef04efae2d2b24bebd9da9edc33a90eee4c7de47738a103ddcffd9e8403288",
     "pendingRows": 361,
     "retainedApprovedRows": 262,
-    "pendingReferences": 1318,
+    "pendingReferences": 1343,
     "runtimeStatus": "pending"
   }
 }

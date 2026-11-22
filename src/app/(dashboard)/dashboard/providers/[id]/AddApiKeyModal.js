@@ -72,13 +72,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const hostFieldPlaceholder = isCerebrium ? "https://api.cortex.cerebrium.ai/v4/project/app/run" : isOpenCodeServer ? "http://127.0.0.1:4096" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
   const isDevinAgentic = provider === "devin-cli-agentic";
   const isCookie = authType === "cookie";
+  const isAuthToken = authType === "auth_token";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
   // Compatible nodes are often keyless LAN endpoints, so their key is optional.
   const keyOptional = credentialOptional || isCompatible;
-  const credentialLabel = isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : keyOptional ? "API key (optional)" : "API Key";
+  const credentialLabel = isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : isAuthToken ? "Auth Token" : keyOptional ? "API key (optional)" : "API Key";
   const credentialPlaceholder = isCookie ?
   provider === "grok-web" ? "sso=xxxxx... or just the raw value" : "eyJhbGciOi..." :
+  isAuthToken ? "eyJhbGciOi..." :
   isXaiApiKey ? "xai-..." : "";
 
   const isAzure = provider === "azure";
@@ -258,6 +260,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       await onSave({
         name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : isLaya ? "Laya" : ""),
         apiKey: formData.apiKey,
+        ...(isAuthToken ? { authType: "auth_token" } : null),
         sessionToken,
         defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
         priority: formData.priority,
@@ -289,8 +292,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       // Malformed payload (non-array connections) must abort, not plan from an
       // empty list — planning blind could overwrite an existing key.
       if (!data || !Array.isArray(data.connections)) throw new Error("preflight malformed");
+      const targetAuthType = isAuthToken ? "auth_token" : "apikey";
       const existingNames = data.connections.
-      filter((c) => c && c.provider === provider && c.authType === "apikey").
+      filter((c) => c && c.provider === provider && c.authType === targetAuthType).
       map((c) => c.name);
       usedNames = bulkUsedNameSet(existingNames);
     } catch {
@@ -332,6 +336,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           body: JSON.stringify({
             provider,
             apiKey: entry.apiKey,
+            ...(isAuthToken ? { authType: "auth_token" } : null),
             name: entry.name,
             priority: 1,
             testStatus: "unknown",

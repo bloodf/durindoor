@@ -828,11 +828,16 @@ function getAuthUrlFromStatus() {
   } catch {return null;}
 }
 
-/**
- * Run `tailscale up` and capture the auth URL for browser login.
- * Resolves with { authUrl } or { alreadyLoggedIn: true }.
- * On Windows, AuthURL comes from `status --json` (not stdout) — must poll status.
- */
+/** Build login arguments, including an optional unattended authentication key. */
+export function buildTailscaleUpArgs(hostname, env = process.env) {
+  const args = tsArgs("up", "--accept-routes");
+  if (hostname) args.push(`--hostname=${hostname}`);
+  const authKey = env.TAILSCALE_AUTHKEY?.trim();
+  if (authKey) args.push(`--auth-key=${authKey}`);
+  return args;
+}
+
+/** Run `tailscale up` and capture the auth URL or unattended login status. */
 export function startLogin(hostname) {
   const bin = getTailscaleBin();
   if (!bin) return Promise.reject(new Error("Tailscale not installed"));
@@ -847,8 +852,7 @@ export function startLogin(hostname) {
       return;
     }
 
-    const args = tsArgs("up", "--accept-routes");
-    if (hostname) args.push(`--hostname=${hostname}`);
+    const args = buildTailscaleUpArgs(hostname);
     const child = spawn(bin, args, {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
@@ -876,6 +880,14 @@ export function startLogin(hostname) {
     // Poll status --json every 500ms — Windows exposes AuthURL only there
     const statusPoll = setInterval(() => {
       if (resolved) return;
+      if (isTailscaleLoggedIn()) {
+        resolved = true;
+        clearTimeout(timeout);
+        clearInterval(statusPoll);
+        child.unref();
+        resolve({ alreadyLoggedIn: true });
+        return;
+      }
       const url = getAuthUrlFromStatus();
       if (url) finishWithUrl(url, "status");
     }, 500);
@@ -887,6 +899,7 @@ export function startLogin(hostname) {
       child.unref();
       const url = parseAuthUrl(output) || getAuthUrlFromStatus();
       if (url) resolve({ authUrl: url });else
+      if (isTailscaleLoggedIn()) resolve({ alreadyLoggedIn: true });else
       reject(new Error("tailscale up timed out without auth URL"));
     }, 15000);
 

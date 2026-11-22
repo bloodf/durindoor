@@ -81,7 +81,9 @@ export async function GET(request, { params }) {
     // generic apikey providers persist "apikey" — accept both spellings here.
     const isOAuth = connection.authType === "oauth";
     const isApikeyAuth =
-      connection.authType === "apikey" || connection.authType === "api_key";
+      connection.authType === "apikey" ||
+      connection.authType === "api_key" ||
+      connection.authType === "auth_token";
     const isApikeyEligible =
       isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
 

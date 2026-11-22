@@ -7,6 +7,7 @@ import {
   shouldRefreshCredentials } from
 "../services/oauthCredentialManager.js";
 import { normalizeResponsesInput, normalizeStatelessResponseInput } from "../translator/formats/responsesApi.js";
+import { RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
@@ -451,8 +452,10 @@ function normalizeCodexTools(body, { dropFreePlanImageGeneration = false } = {})
   // Drop tool_choice if it references an unknown function name
   if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
     if (body.tool_choice.type === "function") {
-      const n = isString(body.tool_choice.name) ? body.tool_choice.name.trim() : "";
+      const rawName = body.tool_choice.name ?? body.tool_choice.function?.name;
+      const n = isString(rawName) ? rawName.trim() : "";
       if (!n || !validNames.has(n)) delete body.tool_choice;
+      else body.tool_choice = { type: "function", name: n };
     }
   }
 }
@@ -744,8 +747,12 @@ export class CodexExecutor extends BaseExecutor {
     const requestBody = cloneRequestBody(args.body) || {};
     const legacyCompact = requestBody?._compact === true;
     delete requestBody._compact;
+    const hasSearchHistory = Array.isArray(requestBody.input) && requestBody.input.some((item) => item?.type === "web_search_call");
+    const clientHeaders = hasSearchHistory && usesResponsesLite(args.requestContext) ?
+      { ...args.requestContext.clientHeaders, [CODEX_RESPONSES_LITE_HEADER]: "false" } : args.requestContext?.clientHeaders;
     const requestContext = Object.freeze({
       ...(args.requestContext || {}),
+      clientHeaders,
       compact: args.requestContext?.compact === true || legacyCompact,
       sessionId: args.requestContext?.sessionId ||
       resolveCacheSessionId(requestBody, args.credentials, args.requestContext)
@@ -989,6 +996,14 @@ export class CodexExecutor extends BaseExecutor {
     const normalized = normalizeResponsesInput(body.input);
     if (normalized) body.input = normalizeResponsesImageReplay(normalized);
 
+    // Hosted search history requires a declaration and the standard transport.
+    if (Array.isArray(body.input) && body.input.some((item) => item?.type === "web_search_call")) {
+      const prefixTools = body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []);
+      body.input = body.input.filter((item) => item?.type !== "additional_tools");
+      body.tools = [...(Array.isArray(body.tools) ? body.tools : []), ...prefixTools];
+      if (!body.tools.some((tool) => tool?.type === "web_search")) body.tools.push({ type: "web_search" });
+    }
+
     // A translated Chat system prompt belongs in the cacheable input prefix.
     // Native Responses instructions keep their original semantics.
     if (requestContext?.translatedToCodex) {
@@ -1016,6 +1031,19 @@ export class CodexExecutor extends BaseExecutor {
     dropForeignReasoningItems(body);
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
     body.input = normalizeStatelessResponseInput(body.input);
+
+    // Codex is stateless: a tool output without a replayed call cannot be resolved.
+    if (Array.isArray(body.input)) {
+      const calls = new Set();
+      for (const item of body.input) {
+        if (item?.type === RESPONSES_ITEM.FUNCTION_CALL && isString(item.call_id)) calls.add(item.call_id);
+        for (const call of Array.isArray(item?.tool_calls) ? item.tool_calls : []) {
+          if (isString(call?.id)) calls.add(call.id);
+        }
+      }
+      body.input = body.input.filter((item) => item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || !isString(item.call_id) || calls.has(item.call_id));
+      if (body.input.length === 0) body.input = [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
+    }
     // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).
     const bodyIdentity = credentials?.providerSpecificData?.codexClientIdentity;
     if (bodyIdentity) applyCodexClientMetadata(body, bodyIdentity);

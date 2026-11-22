@@ -75,6 +75,9 @@ function applyBaselineSecurityHeaders(res) {
 // upgrade via probeApiKey so a 401 maps cleanly to ws close code 4001.
 const realtimeWss = new WebSocketServer({ noServer: true, maxPayload: MAX_REALTIME_FRAME_BYTES, handleProtocols: selectProtocol });
 
+const INBOUND_KEEP_ALIVE_TIMEOUT_MS = 72_000;
+const INBOUND_HEADERS_TIMEOUT_MS = 76_000;
+
 function canonicalizeRuntimePaths() {
   // Resolve before Next's generated server can change cwd. Every bundled
   // subsystem then observes the same absolute data directory, and the MITM
@@ -206,7 +209,13 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
     const server = origCreate(...rest, wrapped);
     // createOwnerAwareHandler's shim only returns the wrapped handler function;
     // gate on real Server API so we never schedule .listeners() on a function.
-    if (isHttpServer(server)) installRealtimeUpgradeDispatcher(server, { dashboardPort });
+    if (isHttpServer(server)) {
+      // Node's 5s keep-alive default closes idle pooled client sockets; a client
+      // racing onto one gets ECONNRESET. headersTimeout must exceed keepAliveTimeout.
+      server.keepAliveTimeout = INBOUND_KEEP_ALIVE_TIMEOUT_MS;
+      server.headersTimeout = INBOUND_HEADERS_TIMEOUT_MS;
+      installRealtimeUpgradeDispatcher(server, { dashboardPort });
+    }
     return server;
   };
 }

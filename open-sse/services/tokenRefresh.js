@@ -22,6 +22,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
 import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
+import { refreshM365Token } from "./tokenRefresh/copilotM365.js";
 import { refreshMinimaxCodeToken } from "./minimaxCodeAuth.js";
 import { refreshWorkbuddyToken } from "./workbuddyAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -272,6 +273,9 @@ const REFRESH_HANDLERS = {
   // were never rotated. Ported from decolua/9router f6e7cabe.
   cline: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
   clinepass: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
+  // Microsoft 365 Copilot native sign-in: per-connection refresh against the connection's own tenant.
+  // A pasted session has no refresh token and never reaches this handler.
+  "copilot-m365-web": (c, log, p) => refreshM365Token(c, log, p),
   // OrcaRouter's PKCE login returns a durable API key, not a refreshable token —
   // OrcaRouter publishes no refresh grant. Refusing explicitly (rather than
   // omitting the provider) also keeps `refreshTokenByProvider` from falling

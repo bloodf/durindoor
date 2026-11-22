@@ -51,8 +51,11 @@ export async function writeConfigAtomic(filePath, content) {
       if (error?.code !== "ENOENT") throw error;
     }
     await fs.rename(tempPath, filePath);
-  } finally {
-    await fs.unlink(tempPath).catch(() => {});
-    await fs.unlink(backupTemp).catch(() => {});
+  } catch (error) {
+    // The temp names only need cleanup when a write/backup/rename failed. A
+    // successful rename has already consumed them and should not require unlink.
+    try { await fs.unlink?.(tempPath); } catch { /* best-effort failure cleanup */ }
+    try { await fs.unlink?.(backupTemp); } catch { /* best-effort failure cleanup */ }
+    throw error;
   }
 }

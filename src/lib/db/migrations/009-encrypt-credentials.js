@@ -20,7 +20,7 @@ import {
   encryptField,
   isEncryptedBlob } from
 "../../crypto/columnCrypto.js";
-import { SENSITIVE_CONNECTION_FIELDS } from "../repos/connectionsRepo.js";
+import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const migration = {

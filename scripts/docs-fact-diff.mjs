@@ -9,9 +9,10 @@
  *   node scripts/docs-fact-diff.mjs <pre> <final> [--added]
  *   node scripts/docs-fact-diff.mjs --all [--added]
  */
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { fileURLToPath } from "node:url";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const root = path.resolve(__dirname, "..");
@@ -162,6 +163,6 @@ export async function main(argv = process.argv.slice(2), cwd = root) {
   return lostCount ? 1 : 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   process.exitCode = await main();
 }

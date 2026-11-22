@@ -1,11 +1,12 @@
 import WebSocket from "ws";
 import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import {
-  buildPrompt,
   buildWsUrl,
+  promptFromMessages,
   redactWsUrl,
   resolveConnectionParams } from
 "./copilot-m365-connection.js";
@@ -22,8 +23,18 @@ import {
   parseFrame,
   splitFrames } from
 "./copilot-m365-frames.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { webSocketAuthStatus } from "../utils/webSessionExpiry.js";
+import { m365Conversations, m365ReplyFingerprint } from "./copilot-m365-conversations.js";
+import { M365ImageResolver, uploadM365Image } from "./copilot-m365-images.js";
+import { M365ExecutorError, m365ErrorResponse, m365Output } from "./copilot-m365-output.js";
+import {
+  M365_MAX_TEXT_LENGTH,
+  buildM365ToolInstructions,
+  clientPlugins,
+  extractToolSpec,
+  parseM365ToolOutput } from
+"./copilot-m365-tools.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
   try {
@@ -77,6 +88,14 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     super("copilot-m365-web", { id: "copilot-m365-web", baseUrl: "wss://substrate.office.com" });
   }
 
+  /**
+   * Native sign-in rows renew their own access token with their own refresh token (and tenant).
+   * A pasted session has no refresh token and is never routed here.
+   */
+  async refreshCredentials(credentials, log, proxyOptions = null) {
+    return refreshProviderCredentials("copilot-m365-web", credentials, log, proxyOptions);
+  }
+
   async wsChat(input) {
     return new ReadableStream({
       async start(controller) {
@@ -101,6 +120,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           settled = true;
           cleanup();
           const finalText = previousText || finalResultMessage;
+          // A completed turn: the executor commits its conversation for continuation only now.
+          input.onDone?.(finalText);
           if ((!input.stream || !previousText) && finalText) {
             controller.enqueue(encoder.encode(makeSseChunk(input.model, { content: finalText })));
           }
@@ -151,10 +172,10 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           const sendChat = () => {
             ws?.send(keepaliveFrame());
             ws?.send(encodeFrame(buildChatInvocation({
-              text: input.prompt,
               traceId,
               sessionId,
-              isStartOfSession: true
+              isStartOfSession: true,
+              ...input.invocation
             })));
           };
 
@@ -232,46 +253,127 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     const body = input.body || {};
     const model = input.model || body.model || "copilot-m365";
     const stream = input.stream !== false;
-    const prompt = buildPrompt(body).trim();
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const diagnosticUrl = "wss://substrate.office.com/m365Copilot/Chathub";
+    const wrap = (response, url = diagnosticUrl, transformedBody = null) => ({
+      response,
+      url,
+      headers: {},
+      transformedBody
+    });
 
-    if (!prompt) {
-      return {
-        response: jsonError("No user message provided", 400),
-        url: "wss://substrate.office.com/m365Copilot/Chathub",
-        headers: {},
-        transformedBody: null
-      };
+    let history;
+    try {
+      history = promptFromMessages(messages);
+    } catch (error) {
+      return wrap(m365ErrorResponse(error, model));
     }
+    const text = history.text.trim();
+    if (!text) return wrap(jsonError("No user message provided", 400));
 
     const connectionParams = resolveConnectionParams(input.credentials);
     if ("error" in connectionParams) {
-      return {
-        response: jsonError(connectionParams.error, connectionParams.expired ? 401 : 400),
-        url: "wss://substrate.office.com/m365Copilot/Chathub",
-        headers: {},
-        transformedBody: { model, prompt: prompt.slice(0, 100) }
-      };
+      return wrap(
+        jsonError(connectionParams.error, connectionParams.expired ? 401 : 400),
+        diagnosticUrl,
+        { model, prompt: text.slice(0, 100) }
+      );
+    }
+    const logged = { model, prompt: text.slice(0, 100) };
+
+    const { tools, toolChoice } = extractToolSpec(body);
+    const toolOptions = { toolChoice, parallelToolCalls: body.parallel_tool_calls !== false };
+    const instructions = buildM365ToolInstructions(tools, toolOptions);
+    // Tool calls are parsed from the whole answer, so a tool-enabled request is one buffered turn.
+    const buffered = !stream || instructions.length > 0;
+
+    // Continue this connection's conversation when the request extends our previous reply: only
+    // the messages after it are sent. Anything else opens a fresh conversation with the whole history.
+    const conversations = m365Conversations();
+    const scope = conversationScope(input.credentials, model, connectionParams, tools);
+    const claimed = scope ? conversations.claim(scope, messages) : null;
+    const delta = claimed ? promptFromMessages(claimed.delta) : null;
+    const resume = claimed && delta?.text.trim() ? claimed : null;
+    const turnText = resume ? delta.text.trim() : [instructions, text].filter(Boolean).join("\n\n");
+    if (turnText.length > M365_MAX_TEXT_LENGTH) {
+      return wrap(m365ErrorResponse(
+        new M365ExecutorError(400, "m365_input_too_large", "Microsoft 365 Copilot input exceeded the size limit."),
+        model
+      ));
+    }
+    const imageRefs = resume ? delta.imageRefs : history.imageRefs;
+
+    const wsUrl = buildWsUrl(connectionParams, resume?.ids);
+    const urlParts = new URL(wsUrl);
+    const ids = {
+      conversationId: urlParts.searchParams.get("ConversationId"),
+      sessionId: urlParts.searchParams.get("X-SessionId")
+    };
+
+    // Uploads are keyed to the conversation, so each turn uploads its own images: all of them for a
+    // fresh conversation, only the new messages' for a continued one. A failed upload fails the request.
+    const messageAnnotations = [];
+    try {
+      for (const image of await new M365ImageResolver(input.signal).resolve(imageRefs)) {
+        messageAnnotations.push(await uploadM365Image({
+          host: connectionParams.host,
+          accessToken: connectionParams.accessToken,
+          conversationId: ids.conversationId,
+          image,
+          signal: input.signal,
+          proxyOptions: input.proxyOptions
+        }));
+      }
+    } catch (error) {
+      if (!(error instanceof M365ExecutorError)) throw error;
+      return wrap(m365ErrorResponse(error, model), redactWsUrl(wsUrl), logged);
     }
 
-    const wsUrl = buildWsUrl(connectionParams);
+    const turns = (resume?.turns ?? 0) + 1;
+    let completed = "";
     const wsStream = await this.wsChat({
       wsUrl,
-      prompt,
       model,
       signal: input.signal,
-      stream,
+      stream: stream && !buffered,
+      invocation: {
+        text: turnText,
+        conversationId: ids.conversationId,
+        requestId: urlParts.searchParams.get("chatsessionid"),
+        isStartOfSession: !resume,
+        messageAnnotations,
+        ...(instructions ? { plugins: clientPlugins(tools), toolChoice, customInstructions: instructions } : null)
+      },
+      // A failed turn is never committed, so a broken conversation is not resumed.
+      onDone: (answer) => {
+        completed = answer;
+      },
       proxyOptions: input.proxyOptions
     });
+    const commit = (reply) => {
+      if (scope) conversations.commit(scope, messages, ids, m365ReplyFingerprint(reply), turns);
+    };
 
-    if (stream) {
-      return {
-        response: new Response(wsStream, {
-          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
-        }),
-        url: redactWsUrl(wsUrl),
-        headers: {},
-        transformedBody: { model, prompt: prompt.slice(0, 100) }
-      };
+    if (stream && !buffered) {
+      // Commit once the relayed stream reaches its end without error.
+      const reader = wsStream.getReader();
+      const relay = new ReadableStream({
+        async pull(controller) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (completed) commit({ text: completed, calls: [] });
+            controller.close();
+            return;
+          }
+          controller.enqueue(value);
+        },
+        cancel(reason) {
+          return reader.cancel(reason);
+        }
+      });
+      return wrap(new Response(relay, {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
+      }), redactWsUrl(wsUrl), logged);
     }
 
     const reader = wsStream.getReader();
@@ -287,12 +389,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         try {
           const parsed = JSON.parse(data);
           if (parsed.error) {
-            return {
-              response: sseErrorResponse(parsed.error),
-              url: redactWsUrl(wsUrl),
-              headers: {},
-              transformedBody: { model, prompt: prompt.slice(0, 100) }
-            };
+            return wrap(sseErrorResponse(parsed.error), redactWsUrl(wsUrl), logged);
           }
           const content = parsed.choices?.[0]?.delta?.content;
           if (isString(content)) fullText += content;
@@ -302,18 +399,38 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         }}
     }
 
-    return {
-      response: new Response(JSON.stringify({
-        id: `chatcmpl-copilot-m365-${Date.now()}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [{ index: 0, message: { role: "assistant", content: fullText || "(empty response)" }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-      }), { headers: { "Content-Type": "application/json" } }),
-      url: redactWsUrl(wsUrl),
-      headers: {},
-      transformedBody: { model, prompt: prompt.slice(0, 100) }
-    };
+    const output = m365Output(model);
+    const parsed = parseM365ToolOutput(fullText, tools, toolOptions);
+    if (parsed.constraintViolation) {
+      return wrap(m365ErrorResponse(
+        new M365ExecutorError(502, "m365_tool_constraint", "Microsoft 365 Copilot did not satisfy the requested tool contract."),
+        model
+      ), redactWsUrl(wsUrl), logged);
+    }
+    if (completed) commit(parsed);
+    const response = stream ?
+    new Response(output.bufferedSse(parsed), {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }
+    }) :
+    output.json(parsed);
+    return wrap(response, redactWsUrl(wsUrl), logged);
   }
+}
+
+/**
+ * Which conversations a request may continue: same connection (Copilot keeps conversations per
+ * account), same model, request profile and tool set. Null without a connection identity, so the
+ * request stays stateless, and two connections can never share a conversation.
+ */
+function conversationScope(credentials, model, params, tools) {
+  const connectionId = isRecord(credentials) ? credentials.connectionId : undefined;
+  if (!isString(connectionId) || !connectionId) return null;
+  return [
+  connectionId,
+  model,
+  params.scenario ?? "",
+  params.licenseType ?? "",
+  params.agent ?? "",
+  tools.map((tool) => tool.name).sort().join(",")].
+  join("|");
 }

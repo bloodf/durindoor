@@ -1,5 +1,7 @@
 "use server";
 
+import { migrateCodexFeatureFlags } from "@/shared/utils/codexConfig";
+
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -9,6 +11,7 @@ import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject, isRecord } from "../../../../shared/utils/typeChecks.js";
 import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { buildCodexModelCatalog, loadBundledCodexCatalog } from "@/lib/cliTools/codexModelCatalog";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
@@ -17,6 +20,8 @@ const getCodexDir = () => path.join(os.homedir(), ".codex");
 const getCodexConfigPath = () => path.join(getCodexDir(), "config.toml");
 const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
 const getCodexBackupPath = () => path.join(getCodexDir(), ".durindoor-backup.json");
+const getCodexCatalogPath = () => path.join(getCodexDir(), "durindoor-models.json");
+const getLegacyCodexCatalogPath = () => path.join(getCodexDir(), "9router-models.json");
 
 const captureField = (obj, key) =>
   isRecord(obj) && Object.hasOwn(obj, key)
@@ -79,6 +84,53 @@ const deleteNestedSection = (obj, dottedKey) => {
     if (cur == null) return;
   }
   delete cur[keys[keys.length - 1]];
+};
+
+// Write the DurinDoor model catalog so Codex's /model picker lists routable
+// (prefixed) ids instead of bare bundled slugs. Fail-open: returns a warning
+// instead of throwing so Apply still succeeds without the catalog.
+const writeModelCatalog = async (selectedModels) => {
+  let bundled;
+  try {
+    bundled = await loadBundledCodexCatalog();
+  } catch (error) {
+    console.log("Codex bundled catalog unavailable:", error.message);
+    return { warning: "Could not read Codex's bundled model catalog; /model picker was not updated" };
+  }
+
+  let models = [];
+  try {
+    const { buildModelsList } = await import("@/app/api/v1/models/buildModelsList.js");
+    models = await buildModelsList(["llm"]);
+  } catch (error) {
+    console.log("Could not build DurinDoor model list:", error.message);
+  }
+  // Selected models may be custom ids absent from /v1/models; list them too
+  const knownIds = new Set(models.map((m) => m.id));
+  for (const id of selectedModels) {
+    if (id && !knownIds.has(id)) {
+      models.push({ id });
+      knownIds.add(id);
+    }
+  }
+  if (models.length === 0) {
+    return { warning: "No DurinDoor models available; /model picker was not updated" };
+  }
+
+  const catalog = buildCodexModelCatalog(bundled, models);
+  const count = catalog.models.filter((m) => m.visibility === "list").length;
+  if (count === 0) {
+    return { warning: "Codex bundled catalog has no usable template; /model picker was not updated" };
+  }
+
+  const catalogPath = getCodexCatalogPath();
+  try {
+    await fs.writeFile(catalogPath, JSON.stringify(catalog));
+  } catch (error) {
+    console.log("Could not write Codex model catalog:", error.message);
+    return { warning: "Could not write Codex model catalog; /model picker was not updated" };
+  }
+  return { catalogPath, count };
 };
 
 // Check if codex CLI is installed (via which/where or config file exists)
@@ -176,7 +228,7 @@ export async function POST(request) {
       readExistingConfig(authPath, (raw) => parseConfigObject(raw, JSON.parse)),
       readExistingConfig(backupPath, (raw) => parseConfigObject(raw, JSON.parse)),
     ]);
-    const parsed = existingConfig ?? {};
+    const parsed = migrateCodexFeatureFlags(existingConfig ?? {});
     const authData = existingAuth ?? {};
 
     const effectiveSubagentModel = subagentModel || model;
@@ -189,6 +241,7 @@ export async function POST(request) {
               model: { had: false },
               model_provider: { had: false },
               subagentModel: { had: false },
+              model_catalog_json: { had: false },
             },
             auth: {
               OPENAI_API_KEY: { had: false },
@@ -200,6 +253,7 @@ export async function POST(request) {
               model: captureField(existingConfig, "model"),
               model_provider: captureField(existingConfig, "model_provider"),
               subagentModel: captureField(existingConfig?.agents?.subagent, "model"),
+              model_catalog_json: captureField(existingConfig, "model_catalog_json"),
             },
             auth: {
               OPENAI_API_KEY: captureField(existingAuth, "OPENAI_API_KEY"),
@@ -208,21 +262,29 @@ export async function POST(request) {
           }
     );
 
+    // Point Codex at the DurinDoor catalog; leave any previous value alone on failure
+    const catalog = await writeModelCatalog([model, subagentModel]);
+    const writtenCatalogPath = catalog.catalogPath ?? existingBackup?.written?.model_catalog_json;
+
+    const written = {
+      model,
+      model_provider: "9router",
+      subagentModel: effectiveSubagentModel,
+      OPENAI_API_KEY: apiKey,
+      auth_mode: "apikey",
+    };
+    if (writtenCatalogPath) written.model_catalog_json = writtenCatalogPath;
+
     const nextBackup = {
       config: backupBase.config,
       auth: backupBase.auth,
-      written: {
-        model,
-        model_provider: "9router",
-        subagentModel: effectiveSubagentModel,
-        OPENAI_API_KEY: apiKey,
-        auth_mode: "apikey",
-      },
+      written,
     };
 
     // Update only DurinDoor related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
     parsed.model_provider = "9router";
+    if (catalog.catalogPath) parsed.model_catalog_json = catalog.catalogPath;
 
     // Update or create 9router provider section (display name DurinDoor) (no api_key - Codex reads from auth.json)
     // Normalize trailing slashes so we always end with a single /v1
@@ -254,7 +316,10 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "Codex settings applied successfully!",
-      configPath
+      configPath,
+      ...(catalog.catalogPath
+        ? { catalogPath: catalog.catalogPath, catalogModelCount: catalog.count }
+        : { catalogWarning: catalog.warning }),
     });
   } catch (error) {
     console.log("Error updating codex settings:", error);
@@ -272,6 +337,8 @@ export async function DELETE() {
     const configPath = getCodexConfigPath();
     const authPath = getCodexAuthPath();
     const backupPath = getCodexBackupPath();
+    const catalogPath = getCodexCatalogPath();
+    const legacyCatalogPath = getLegacyCodexCatalogPath();
 
     // Read and parse existing config, auth, and backup safely
     const [existingConfig, existingAuth, existingBackup] = await Promise.all([
@@ -284,13 +351,16 @@ export async function DELETE() {
     ]);
 
     if (!existingConfig) {
+      await fs.unlink(catalogPath).catch((err) => {
+        if (err?.code !== "ENOENT") throw err;
+      });
       return NextResponse.json({
         success: true,
         message: "No config file to reset"
       });
     }
 
-    const parsed = existingConfig;
+    const parsed = migrateCodexFeatureFlags(existingConfig);
 
     // Remove 9router provider section and clean up empty [model_providers]
     deleteNestedSection(parsed, "model_providers.9router");
@@ -306,6 +376,14 @@ export async function DELETE() {
       }
       if (parsed.model_provider === (written.model_provider || "9router")) {
         restoreField(parsed, "model_provider", existingBackup.config?.model_provider);
+      }
+      if (
+        parsed.model_catalog_json &&
+        (parsed.model_catalog_json === written.model_catalog_json ||
+          parsed.model_catalog_json === catalogPath ||
+          parsed.model_catalog_json === legacyCatalogPath)
+      ) {
+        restoreField(parsed, "model_catalog_json", existingBackup.config?.model_catalog_json);
       }
 
       if (isRecord(parsed.agents?.subagent) && parsed.agents.subagent.model === written.subagentModel) {
@@ -357,11 +435,17 @@ export async function DELETE() {
           }
         }
       }
+      if (parsed.model_catalog_json === catalogPath || parsed.model_catalog_json === legacyCatalogPath) {
+        delete parsed.model_catalog_json;
+      }
     }
 
-    // Write updated config
+    // Write updated config and remove generated catalog file if present
     const configContent = stringifyTOML(parsed);
     await writeConfigAtomic(configPath, configContent);
+    await fs.unlink(catalogPath).catch((err) => {
+      if (err?.code !== "ENOENT") throw err;
+    });
 
     return NextResponse.json({
       success: true,

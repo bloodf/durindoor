@@ -56,6 +56,7 @@ import { OAuthCancelledError, throwIfOAuthCancelled } from "./cancellation.js";
 export { OAuthCancelledError, throwIfOAuthCancelled };
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
+import copilotM365 from "./copilotM365Provider.js";
 import museCode from "./museCodeProvider.js";
 import openference from "./openferenceProvider.js";
 import freebuff from "./freebuffProvider.js";
@@ -2065,6 +2066,9 @@ const PROVIDERS = {
   },
   orcarouter,
   "ghe-copilot": gheCopilot,
+  // Microsoft 365 Copilot native sign-in (work or school accounts). A pasted session still saves
+  // as a cookie row; this adds a refreshable oauth row beside it.
+  "copilot-m365-web": copilotM365,
   "muse-code": museCode,
   openference,
   // Opt-in session providers (dispatch stays off per connection until

@@ -279,6 +279,48 @@ function encodeKvClientMessage(kvId, resultField, resultPayload, metadata) {
   return wrapConnectRPCFrame(agentMessage(3, concatBuffers(...parts)));
 }
 
+function blobStoreKey(blobId) {
+  return Buffer.from(blobId || []).toString("hex");
+}
+
+/**
+ * Answer an AgentService kv_server_message (field 4 of AgentServerMessage).
+ * Claude/GPT-backed runs write blobs with set_blob_args and read them back with
+ * get_blob_args; a get for a blob this run stored must return that data, not an
+ * empty result. Unknown blobs keep the empty-result ack.
+ *
+ * @param {Map<number, Array<{value: *}>>} kv Decoded kv_server_message.
+ * @param {Map<string, Buffer>} blobStore Per-run blob store, mutated by set.
+ * @returns {Uint8Array|null} Framed kv_client_message, or null when kv carries neither get nor set.
+ */
+export function buildKvServerReply(kv, blobStore) {
+  const kvId = kv.get(1)?.[0]?.value || 0;
+  const metadata = kv.get(4)?.[0]?.value || null;
+  if (kv.has(2)) {
+    const blobId = decodeMessage(kv.get(2)[0].value).get(1)?.[0]?.value;
+    const data = blobId ? blobStore.get(blobStoreKey(blobId)) : null;
+    const result = data?.length ? agentMessage(1, data) : agentMessage(1, new Uint8Array());
+    return encodeKvClientMessage(kvId, 2, result, metadata);
+  }
+  if (kv.has(3)) {
+    const args = decodeMessage(kv.get(3)[0].value);
+    const blobId = args.get(1)?.[0]?.value;
+    const blobData = args.get(2)?.[0]?.value;
+    if (blobId && blobData) blobStore.set(blobStoreKey(blobId), Buffer.from(blobData));
+    return encodeKvClientMessage(kvId, 3, new Uint8Array(), metadata);
+  }
+  return null;
+}
+
+// Cursor's live GetUsableModels catalog has no `claude-fable-*-fast` slugs.
+// `-fast` is a real speed-tier id for Opus / GPT / Grok; sending it as Fable's
+// RequestedModel.model_id yields HTTP 200 and an empty Agent stream.
+export function resolveCursorAgentModel(model) {
+  if (!isString(model)) return model;
+  if (model.includes("claude-fable-") && model.endsWith("-fast")) return model.slice(0, -"-fast".length);
+  return model;
+}
+
 const CURSOR_STREAM_DEBUG = process.env.CURSOR_STREAM_DEBUG === "1";
 const debugLog = (...args) => {
   if (CURSOR_STREAM_DEBUG) console.log(...args);
@@ -972,6 +1014,7 @@ export class CursorExecutor extends BaseExecutor {
         runModel = selection.modelId;
       }
     }
+    runModel = resolveCursorAgentModel(runModel);
 
     const openAgentSession = (frameMessages) => {
       const session = this.openAgentHttp2Stream(url, headers, requestController.signal);
@@ -1026,6 +1069,7 @@ export class CursorExecutor extends BaseExecutor {
     let pending = Buffer.alloc(0);
     let finished = false;
     let thinkingAcc = "";
+    const blobStore = new Map();
     let composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
     let emittedNativeText = false;
     let emittedText = false;
@@ -1107,14 +1151,8 @@ export class CursorExecutor extends BaseExecutor {
 
             // KvServerMessage (field 4): get/set blob. Ack so the stream proceeds.
             if (serverMessage.has(4)) {
-              const kv = decodeMessage(serverMessage.get(4)[0].value);
-              const kvId = kv.get(1)?.[0]?.value || 0;
-              const metadata = kv.get(4)?.[0]?.value || null;
-              if (kv.has(2)) {
-                session.write(encodeKvClientMessage(kvId, 2, agentMessage(1, new Uint8Array()), metadata));
-              } else if (kv.has(3)) {
-                session.write(encodeKvClientMessage(kvId, 3, new Uint8Array(), metadata));
-              }
+              const reply = buildKvServerReply(decodeMessage(serverMessage.get(4)[0].value), blobStore);
+              if (reply) session.write(reply);
             }
 
             // AgentService requests IDE context before producing a response.
@@ -1180,6 +1218,7 @@ export class CursorExecutor extends BaseExecutor {
       emittedText = false;
       emittedNativeText = false;
       thinkingAcc = "";
+      blobStore.clear();
       composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
       pending = Buffer.alloc(0);
       await consume(onEvent);

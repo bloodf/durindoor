@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
 import { smokeInstalledArtifact } from "./smoke-installed-artifact.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 // Copy cache data only. Keep npm writes and credentials out of the seed.
 function copyCacheData(source, destination) {
@@ -69,7 +69,7 @@ export async function smokeNpmPack(tarball) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (isMainModule(import.meta.url)) {
   if (process.argv.length !== 3) {
     console.error("Usage: node scripts/smoke-npm-pack.mjs /absolute/durindoor-x.y.z.tgz");
     process.exitCode = 1;

@@ -30,6 +30,7 @@ const KNOWN_SVGS = new Set([
 "cursor",
 "deepgram",
 "deepseek",
+"devin-desktop",
 "dgrid",
 "digitalocean",
 "dit",
@@ -40,6 +41,7 @@ const KNOWN_SVGS = new Set([
 "factory",
 "fireworks",
 "freeaiapikey",
+"freebuff",
 "freemodel-dev",
 "galadriel",
 "gemini",
@@ -89,9 +91,11 @@ const KNOWN_SVGS = new Set([
 "uncloseai",
 "veoaifree-web",
 "wafer",
+"workbuddy",
 "x5lab",
 "xai",
 "yuanbao-web",
+"zed-hosted",
 "zenmux",
 "zenmux-free"]
 );
@@ -114,7 +118,6 @@ export default function ProviderIcon({
 
   const candidates = [src];
   if (src === "/providers/cursor-api.png") candidates.unshift("/providers/cursor.svg");
-  if (src === "/providers/zed-hosted.png") candidates.unshift("/providers/zed-hosted.svg");
   const pngMatch = isString(src) && src.match(/^\/providers\/([^/]+)\.png$/i);
   if (pngMatch && KNOWN_SVGS.has(pngMatch[1])) {
     candidates.unshift(`/providers/${pngMatch[1]}.svg`);

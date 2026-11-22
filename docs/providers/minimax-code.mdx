@@ -1,24 +1,24 @@
 ---
 title: MiniMax Code
-description: Staged, guarded provider that signs in to a MiniMax account with the device flow and spends its MiniMax Code subscription through an internal MiniMax gateway. Off by default and tested only against closed mocks.
+description: Guarded provider that signs in to a MiniMax account with the device flow and spends its MiniMax Code subscription through an internal MiniMax gateway. Off by default and tested only against closed mocks.
 ---
 
 MiniMax Code (`minimax-code`, alias `mmcode`) signs in to a MiniMax account with the OAuth device flow and sends chat through the managed subscription gateway that the MiniMax Code app and its `mcode` CLI use. It is a separate identity from the `minimax` and `minimax-cn` providers, which keep using an API key or a Token Plan key. No credential is shared between them.
 
-This provider is **staged and unverified**. Every test runs against closed mocks of the account service and the gateway. No MiniMax account, token, subscription or live endpoint has been used, so treat each statement here as the contract taken from source, not as tested behavior.
+This provider is **unverified**. Every test runs against closed mocks of the account service and the gateway. No MiniMax account, token, subscription or live endpoint has been used, so treat each statement here as the contract taken from source, not as tested behavior.
 
 ## Read this first
 
 - **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request fail with HTTP 403 `minimax_code_dispatch_disabled` before any call to MiniMax. Signing in does not turn it on. Each connection opts in on its own, so enabling one account never opens a sibling.
 - **The gateway is an internal MiniMax endpoint, not a published API.** `https://agent.minimax.io/mavis/api/v1/llm/v1/messages` comes from OmniRoute's reading of the MiniMax Code app. MiniMax does not document it for third-party clients, and it can change or be closed without notice. When that happens requests fail with the gateway's status.
 - **It spends a subscription through this gateway.** Every client of this DurinDoor instance spends the plan of the account that opted in. Do not enable it for people who should not use that plan, and check MiniMax's terms for your plan first. The MiniMax Token Plan page documents using a subscription key with third-party tools; that is the `minimax` provider, not this one.
-- **The client binding is MiniMax's own.** Sign-in uses the public client `mcode-public`, scope `agent.default` and audience `agent-backend`, which the MiniMax Code source publishes for its own CLI. Public source does not by itself authorize another client to use that binding. This is why the provider is guarded and unregistered until the owner approves it.
+- **The client binding is MiniMax's own.** Sign-in uses the public client `mcode-public`, scope `agent.default` and audience `agent-backend`, which the MiniMax Code source publishes for its own CLI. Public source does not by itself authorize another client to use that binding. This is why the provider is guarded: it stays off for each connection until you opt in.
 
 ## Set up
 
-1. Start sign-in from the provider page. DurinDoor asks the account service for a device code with an S256 PKCE challenge, shows the verification URL and code, and polls until you approve it in the browser. The region (`en`, `cn`) picks the account host: `account.minimax.io` or `account.minimax.cn`.
+1. Start sign-in from the provider page. DurinDoor asks the account service for a device code with an S256 PKCE challenge, shows the verification URL and code, and polls until you approve it in the browser. The region (`en`, `cn`) picks the account host, `account.minimax.io` or `account.minimax.cn`. The dashboard defaults to Global and lets you select China in the sign-in dialog.
 2. The connection stores the access token, the refresh token and the region, encrypted like any other OAuth connection. DurinDoor never reads or writes a local `~/.minimax` CLI profile, so signing in here does not log out the CLI.
-3. Opt the connection in by setting `providerSpecificData.enableSessionDispatch` to `true` on that row.
+3. Opt the connection in with **Allow session dispatch** in its edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`).
 4. Send a chat completion with `mmcode/MiniMax-M3.1-Flash` or `mmcode/MiniMax-M3`.
 
 Optional per-connection settings in `providerSpecificData`:
@@ -28,9 +28,9 @@ Optional per-connection settings in `providerSpecificData`:
 | `region` | `en` (default) or `cn`. Chooses the account host used to sign in and refresh. |
 | `gatewayUrl` | An `https` URL on a `minimax.io` or `minimax.cn` host, used instead of the default gateway. Any other URL is refused with HTTP 400, so a stored value can never send the token to another host. |
 
-The `cn` region has no known gateway. A `cn` connection must set `gatewayUrl`, otherwise requests fail with HTTP 400 before any call.
+The `cn` region has no known gateway. Set the MiniMax Code gateway URL in Edit Connection for a China account, otherwise requests fail with HTTP 400 before any call.
 
-Cookie capture: **not applicable.** The credential is an OAuth token pair from the device flow, so the cookie capture extension, a pasted `Cookie:` header, cURL and HAR import do not apply. The staged module exports an intentionally empty `minimaxCodeCookieProfile` so the registration batch can see that.
+Cookie capture: **not applicable.** The credential is an OAuth token pair from the device flow, so the cookie capture extension, a pasted `Cookie:` header, cURL and HAR import do not apply.
 
 ## How a request runs
 
@@ -73,17 +73,3 @@ A 4xx that belongs to the request keeps a request-scoped status so it does not l
 - [OmniRoute gateway transport and refresh](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/minimaxCodeGateway.ts)
 - [OmniRoute provider page](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/docs/providers/MINIMAX_CODE.md)
 - Source review of the open authorization question: `internal/docs/minimax-code-2034.md` in the repository
-
-<!-- Registration steps (for the registration batch; this unit edits none of these files):
-1. Registry promotion: move open-sse/providers/private/minimax-code.js to open-sse/providers/registry/minimax-code.js (default export unchanged; keep the MINIMAX_CODE_MODELS and MINIMAX_CODE_GATEWAY_URL named exports, which open-sse/executors/minimax-code.js imports, or repoint that import). Then run pnpm run gen:registry-index and pnpm run gen:agent-index. Do not hand-edit registry/index.js or open-sse/AGENT-INDEX.md.
-2. open-sse/executors/index.js: import MinimaxCodeExecutor from ./minimax-code.js and map both "minimax-code" and "mmcode" to one shared instance; add hasSpecializedExecutor coverage.
-3. OAuth wiring: in src/lib/oauth/providers.js register PROVIDERS["minimax-code"] = minimaxCodeOAuthProvider from src/lib/oauth/services/minimax-code.js (device_code flow; requestDeviceCode reads options.region, which the device-code route must pass through from the dashboard region choice). Do NOT add it to NO_PKCE_POLL_PROVIDERS or EXTRA_DATA_POLL_PROVIDERS in src/app/api/oauth/[provider]/[action]/route.js: the poll needs the PKCE verifier and the region is packed into the device code. Add "minimax-code" to the device-code OAuth modal/provider list and src/lib/oauth/constants if the dashboard needs a flowType entry. The refresh runs in the executor (refreshCredentials), so tokenRefresh.js needs no entry; add one that delegates to refreshMinimaxCodeToken only if a background refresher requires it. Region "cn" needs a providerSpecificData.gatewayUrl (no CN gateway is known).
-4. Opt-in: make sure a connection row can store providerSpecificData.enableSessionDispatch (a boolean toggle that defaults to false) and that it reaches executor credentials, as for zcode. Signing in must not set it.
-5. Extension providers.js and manifest host permissions: none. minimaxCodeCookieProfile is notApplicable (device sign-in, no cookies); do not add MiniMax Code to the cookie capture extension, its manifest, or the dashboard cookie/cURL/HAR import.
-6. ProviderIcon / ProviderLogo: add "minimax-code" (display.icon "memory", textIcon "MC", color #7C3AED); keep it visually distinct from the minimax icon.
-7. Catalog: add the row to docs/providers/catalog.mdx, and the page to docs/providers/index.mdx and docs/providers/meta.json.
-8. modelsConfig: src/app/api/providers/[id]/models/modelsConfig.js needs no fetcher; the catalog is static and the gateway has no model-list endpoint.
-9. Stories: add the provider to the provider detail page stories and tests/e2e/storybook-surfaces.json if the surface list requires it.
-10. Shared core already changed by this unit: open-sse/handlers/countTokensCore.js now skips the native count_tokens call when the executor sets supportsNativeTokenCount === false. Keep it, or the pre-flight call bypasses the opt-in guard.
-11. Tests: after registration, tests/unit/minimax-code-provider.test.js drops its registry/executor vi.mock composition and the "real registry stays untouched" assertion, and imports the real modules.
--->

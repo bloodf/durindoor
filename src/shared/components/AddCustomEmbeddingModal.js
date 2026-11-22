@@ -179,7 +179,7 @@ AddCustomEmbeddingModal.propTypes = {
   onClose: PropTypes.func.isRequired,
   onCreated: PropTypes.func,
   onSaved: PropTypes.func,
-  node: PropTypes.shape({
+  node: PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
     prefix: PropTypes.string,

@@ -295,6 +295,11 @@ export function filterCandidateCookies(candidate, contract) {
     if (gap !== -1) return fail(`The chunked ${base} cookie is incomplete: chunk ${gap} is missing.`);
     for (const entry of chunks) final.push(entry.cookie);
   }
+  // Optional cookies ride along when present; their absence is never an error.
+  for (const name of contract.optionalCookies ?? []) {
+    const optional = byName.get(name);
+    if (optional && !final.includes(optional)) final.push(optional);
+  }
   if (!final.length) return fail("The input has no cookie this provider approves.");
   if (final.length > MAX_IMPORT_COOKIES) return fail("The input has more cookies than a connection may hold.");
   return { ok: true, cookies: final, dropped };

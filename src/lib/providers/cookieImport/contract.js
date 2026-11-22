@@ -51,7 +51,10 @@ export function getCookieImportContract(providerId) {
   });
 }
 
-/** What a client needs to know to collect cookies, with no internal config. */
+/**
+ * What a client needs to know to collect cookies, with no internal config. This is the required
+ * allowlist; `optionalCookies` are added next to it by the pairing response.
+ */
 export function describeCookieImportContract(contract) {
   const description = {
     origin: contract.origin,

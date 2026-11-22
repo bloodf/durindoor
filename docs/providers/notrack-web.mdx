@@ -13,7 +13,7 @@ The provider forwards a chat envelope to `POST https://notrack.ai/api/dispatch`:
 
 ## Cookie capture
 
-**Import cookies** and the cookie capture extension take `uid`, `si_usr_id` and `si_ses_id` from `https://notrack.ai`; all three are required. To keep `nt_session` as well, paste the full Cookie header in the add dialog instead. A pasted cURL command or HAR also works as an import source; avoid sharing the original request elsewhere.
+**Import cookies** and the cookie capture extension take `uid`, `si_usr_id` and `si_ses_id` from `https://notrack.ai`; all three are required. `nt_session` is optional: it is stored with the session when the browser or the pasted header has it, and the import works without it. A pasted cURL command or HAR also works as an import source; avoid sharing the original request elsewhere.
 
 NoTrack has no read-only session endpoint: its only request is the chat dispatch. **Validate** and **Test connection** therefore skip the network check rather than start a conversation, so a saved cookie is proven only by the first chat request.
 

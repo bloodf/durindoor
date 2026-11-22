@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/media-routes",
+  "stories": [
+    "production-media-mediaroutes--automatic-and-custom",
+    "production-media-mediaroutes--load-error",
+    "production-media-mediaroutes--empty-route",
+    "production-media-mediaroutes--custom-unavailable"
+  ]
+}

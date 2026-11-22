@@ -1,0 +1,11 @@
+{
+  "route": "/dashboard/media-providers/[kind]/[id]",
+  "stories": [
+    "production-media-providerdetail--loaded",
+    "production-media-providerdetail--stt-example",
+    "production-media-providerdetail--generic-example",
+    "production-media-providerdetail--tts-example",
+    "production-media-sttexamplecard--default",
+    "production-media-genericexamplecard--web-search"
+  ]
+}

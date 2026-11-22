@@ -17,6 +17,9 @@ import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
 import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
 import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
 import { isPromptQlSessionError, promptQlSessionRequest, readPromptQlCredentials, readPromptQlExchange } from "open-sse/executors/promptql.js";
+import { CursorApiExecutor, isCursorApiKey } from "open-sse/executors/cursor-api.js";
+import { validateDevinDesktopSession } from "open-sse/executors/devin-desktop.js";
+import { validateFreebuffToken } from "open-sse/executors/freebuff.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
@@ -52,7 +55,34 @@ const SPECIALTY_VALIDATORS = {
   "notion-web": ({ apiKey, fetcher, providerSpecificData }) => validateNotionWebSession({ apiKey, providerSpecificData, fetcher }),
   "tencent-aistudio-web": ({ apiKey, fetcher }) => validateTencentAIStudioSession({ apiKey, fetcher }),
   "tinycms-web": ({ apiKey, fetcher, providerSpecificData }) => validateTinyCmsSession({ apiKey, providerSpecificData, fetcher }),
+  // Opt-in session providers (#2034). Each check is the provider's own cheap probe, never a chat
+  // request, and runs on the connection's proxy-aware transport.
+  // Cursor API: a Cursor key is only a bearer for the exchange, so the exchange is the check. A
+  // throwaway executor keeps this probe out of the shared per-key session cache.
+  "cursor-api": validateCursorApiKey,
+  // Devin Desktop: minting a user JWT from the session token (GetUserJwt).
+  "devin-desktop": ({ apiKey, fetcher }) => validateDevinDesktopSession({ apiKey, fetcher: (url, init) => fetcher(url, init) }),
+  // Freebuff: the session probe; the generic registry probe would POST a chat body.
+  freebuff: async ({ apiKey, fetcher }) => {
+    const result = await validateFreebuffToken({ apiKey }, { fetch: (url, init) => fetcher(url, init) });
+    if (result.valid) return { valid: true, status: 200 };
+    return { valid: false, status: null, error: result.error, ...(result.unavailable ? { unavailable: true } : null) };
+  },
 };
+
+async function validateCursorApiKey({ apiKey, fetcher }) {
+  if (!isCursorApiKey(apiKey)) {
+    return { valid: false, status: null, error: "Cursor API keys start with crsr_ or grok_" };
+  }
+  try {
+    await new CursorApiExecutor({ fetchImpl: (url, init) => fetcher(url, init) }).resolveSession(apiKey);
+    return { valid: true, status: 200 };
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 502;
+    if (status === 401 || status === 403) return { valid: false, status, error: "Invalid API key" };
+    return { valid: false, status, unavailable: status === 429 || status >= 500, error: "Cursor API key exchange failed" };
+  }
+}
 
 const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
 const CHATGPT_WEB_USER_AGENT =

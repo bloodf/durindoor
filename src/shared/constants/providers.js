@@ -262,4 +262,5 @@ map((r) => r.id);
 // truth: a provider listed here must be reachable from the picker, and a
 // provider whose live catalog the route serves must be listed here.
 // ChatPlayground ships no static list: its bots come only from the signed-in catalog.
-export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode", "mnn-ai", "chatplayground"];
+// WorkBuddy and Zed Hosted ship no static list either: their catalogs come from the signed-in account.
+export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode", "mnn-ai", "chatplayground", "workbuddy", "zed-hosted"];

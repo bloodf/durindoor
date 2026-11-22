@@ -27,7 +27,10 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "grok-cli",
 "ghe-copilot",
 "amazon-q",
-"muse-code"]
+"muse-code",
+"workbuddy",
+"freebuff",
+"minimax-code"]
 );
 const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);
 const STATELESS_CALLBACK_PROVIDERS = new Set(["cline", "clinepass"]);
@@ -57,6 +60,7 @@ export default function OAuthModal({
   isOpen,
   provider,
   providerInfo,
+  onPasteToken,
   onSuccess,
   onClose,
   oauthMeta,
@@ -78,6 +82,7 @@ export default function OAuthModal({
   // headless device flow. The device flow needs no reachable callback port, so
   // it is the option for a remote dashboard.
   const [codexSignInMethod, setCodexSignInMethod] = useState("browser");
+  const [minimaxCodeRegion, setMinimaxCodeRegion] = useState("en");
   const { copied, copy } = useCopyToClipboard();
 
   const lifecycleRef = useRef(null);
@@ -98,9 +103,10 @@ export default function OAuthModal({
       proxyPoolsReady,
       connectionId,
       codexFingerprintMode,
-      codexSignInMethod
+      codexSignInMethod,
+      minimaxCodeRegion
     };
-  }, [codexFingerprintMode, codexSignInMethod, idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
+  }, [codexFingerprintMode, codexSignInMethod, idcConfig, isOpen, minimaxCodeRegion, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
 
   const resetView = useCallback(() => {
     setAuthData(null);
@@ -272,6 +278,7 @@ export default function OAuthModal({
         const request = {
           ...selection,
           ownerId: flow.ownerId,
+          ...(flow.provider === "minimax-code" ? { region: options.minimaxCodeRegion } : null),
           ...((flow.provider === "kiro" || flow.provider === "amazon-q") && options.idcConfig?.startUrl ?
           {
             startUrl: options.idcConfig.startUrl,
@@ -365,7 +372,8 @@ export default function OAuthModal({
         xaiServerSide: flow.provider === "xai" && serverSide
       });
       const isLocalhost = browserIsLoopback;
-      const canUsePopup = flow.provider !== "claude" && (fixedProxyActive ||
+      const manualCallback = ["claude", "devin-desktop", "zed-hosted"].includes(flow.provider);
+      const canUsePopup = !manualCallback && (fixedProxyActive ||
       !FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost);
       if (canUsePopup) {
         const popup = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
@@ -502,6 +510,12 @@ export default function OAuthModal({
     void restartFlow(selectedProxyPoolIdRef.current);
   };
 
+  const handleMinimaxRegionChange = (region) => {
+    setMinimaxCodeRegion(region);
+    if (latestRef.current) latestRef.current.minimaxCodeRegion = region;
+    void restartFlow(selectedProxyPoolIdRef.current);
+  };
+
   const handleManualSubmit = async () => {
     const lifecycle = lifecycleRef.current;
     const flow = lifecycle.current();
@@ -532,6 +546,19 @@ export default function OAuthModal({
             flow.expectedState,
             flow.fixedProxySession ? "manual-code" : "exchange"
           );
+        }
+        return;
+      }
+      if (provider === "zed-hosted") {
+        // Zed redirects to its native-app loopback with `user_id` and an
+        // encrypted `access_token`, not an OAuth `code`. The server parses the
+        // pasted URL or query string, so send it whole.
+        if (!input.includes("access_token=")) {
+          throw new Error("Paste the full Zed callback URL, including access_token");
+        }
+        const callback = { code: input, state: flow.expectedState };
+        if (lifecycle.claimCallback(flow, callback)) {
+          await exchangeClaimedCallback(flow, input, flow.expectedState);
         }
         return;
       }
@@ -586,18 +613,22 @@ export default function OAuthModal({
   if (!provider || !providerInfo) return null;
   const isXaiProvider = provider === "xai";
   const isKimchiProvider = provider === "kimchi";
+  const isZedHostedProvider = provider === "zed-hosted";
   const deviceLoginUrl = deviceData?.verification_uri_complete || deviceData?.verification_uri || "";
   const modalTitle = isXaiProvider ? "Connect Grok Build OAuth" : `Connect ${providerInfo.name}`;
   const manualPlaceholder = isXaiProvider ?
   "http://127.0.0.1:56121/callback?code=... or copied code" :
   isKimchiProvider ?
   "/callback?token=... or copied token" :
+  isZedHostedProvider ?
+  "http://127.0.0.1:<port>/?user_id=...&access_token=..." :
   "/callback?code=...";
   const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
     <Modal open={isOpen} title={modalTitle} onClose={() => {void handleClose();}} size="lg">
       <div className="flex flex-col gap-5">
+        {onPasteToken && <Button variant="secondary" onClick={onPasteToken}>Paste an existing token</Button>}
         {!proxyPoolsReady && (
           <div className="flex items-center gap-2 rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-3 py-2.5 text-[13px] text-dd-muted">
             <span className="material-symbols-outlined animate-spin text-[18px] leading-none" aria-hidden="true">progress_activity</span>
@@ -620,6 +651,18 @@ export default function OAuthModal({
               ]}
             />
           </div>
+        )}
+
+        {provider === "minimax-code" && proxyPoolsReady && (step === "waiting" || step === "input") && (
+          <Select
+            value={minimaxCodeRegion}
+            onChange={handleMinimaxRegionChange}
+            aria-label="MiniMax Code account region"
+            options={[
+              { value: "en", label: "Global account" },
+              { value: "cn", label: "China account" }
+            ]}
+          />
         )}
 
         {provider === "codex" && proxyPoolsReady && (step === "waiting" || step === "input") && (
@@ -707,6 +750,8 @@ export default function OAuthModal({
                   ? "If xAI shows a code instead of redirecting, paste that code here."
                   : isKimchiProvider
                   ? "After authorization, copy the full callback URL or token from your browser."
+                  : isZedHostedProvider
+                  ? "Zed redirects to a 127.0.0.1 address that may not load on this machine. Copy the full URL from the address bar anyway."
                   : "After authorization, copy the full URL from your browser."}
               </p>
               <Input
@@ -815,6 +860,7 @@ OAuthModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   provider: PropTypes.string,
   providerInfo: PropTypes['shape']({ name: PropTypes.string }),
+  onPasteToken: PropTypes.func,
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
   /** Extra metadata bound to the server-side flow during authorization. */

@@ -8,4 +8,7 @@ export const LOCAL_CATALOG_WEB_PROVIDERS = new Set([
   "maxai", "lmarena", "cloudflare-playground",
   // Registration batch C (#2034): fixed vendor catalogs with no list-models endpoint for the session.
   "notion-web", "notrack-web", "tencent-aistudio-web", "tinycms-web", "blackbox-web", "conol-web",
+  // Opt-in session providers with no model-list endpoint: Freebuff and MiniMax Code
+  // serve their fixed gateway catalogs, and discovery never sends their token upstream.
+  "freebuff", "minimax-code",
 ]);

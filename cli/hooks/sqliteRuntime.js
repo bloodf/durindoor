@@ -94,7 +94,8 @@ function runNpmInstall({ cwd, pkgs, extraArgs = [], timeout = 180000 }) {
 
 function npmInstall(pkgs, opts = {}) {
   const cwd = ensureRuntimeDir();
-  const extra = opts.optional ? ["--no-save"] : [];
+  // Persist each runtime dependency so later npm installs do not prune it.
+  const extra = ["--save-exact"];
   if (!opts.silent) console.log("⏳ Installing SQLite engine (first run)...");
   const res = runNpmInstall({ cwd, pkgs, extraArgs: extra, timeout: opts.timeout || 180000 });
   if (!res.ok && !opts.silent) {

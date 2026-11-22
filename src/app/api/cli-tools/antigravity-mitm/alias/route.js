@@ -5,6 +5,7 @@ import { getMitmAlias, setMitmAliasAll } from "@/models";
 import { getMitmStatus } from "@/mitm/manager";
 import { writeAliasForTool } from "@/lib/mitmAliasCache";
 import aliasConfig from "@/mitm/aliasConfig";
+import { TOOL_HOSTS } from "../../../../../shared/constants/mitmToolHosts.js";
 import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 const { normalizeAliasMappings, hasInvalidReasoningEffort } = aliasConfig;
@@ -29,6 +30,9 @@ export async function PUT(request) {
 
     if (!tool || !mappings || !isObject(mappings) || Array.isArray(mappings)) {
       return NextResponse.json({ error: "tool and mappings required" }, { status: 400 });
+    }
+    if (!Object.hasOwn(TOOL_HOSTS, tool)) {
+      return NextResponse.json({ error: `Unknown tool: ${tool}` }, { status: 400 });
     }
     if (hasInvalidReasoningEffort(mappings)) {
       return NextResponse.json({ error: "Invalid reasoning effort" }, { status: 400 });

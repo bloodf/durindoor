@@ -9,6 +9,7 @@ import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject } from "../../../../shared/utils/typeChecks.js";
 import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { writeConfigAtomic } from "@/lib/cliTools/writeConfigAtomic.js";
 
 const execAsync = promisify(exec);
 
@@ -174,7 +175,7 @@ export async function POST(request) {
     // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
     authData.OPENAI_API_KEY = apiKey;
     authData.auth_mode = "apikey";
-    await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
+    await writeConfigAtomic(authPath, JSON.stringify(authData, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -239,7 +240,7 @@ export async function DELETE() {
       if (Object.keys(authData).length === 0) {
         await fs.unlink(authPath);
       } else {
-        await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
+        await writeConfigAtomic(authPath, JSON.stringify(authData, null, 2));
       }
     } catch {/* No auth file */}
 

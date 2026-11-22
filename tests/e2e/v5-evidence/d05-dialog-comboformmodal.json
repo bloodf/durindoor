@@ -1,0 +1,7 @@
+{
+  "route": "dialog/ComboFormModal",
+  "stories": [
+    "production-shared-domain-comboformmodal--create",
+    "production-shared-domain-comboformmodal--edit-with-priority-and-capabilities"
+  ]
+}

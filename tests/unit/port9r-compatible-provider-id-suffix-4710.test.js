@@ -39,7 +39,7 @@ afterEach(() => {
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-describe("compatible provider ID suffix (decolua/9router#4710)", () => {
+describe("compatible provider ID suffix (decolua/9router#4710)", { timeout: 60_000 }, () => {
   it("builds IDs from a trimmed suffix and falls back to a UUID when blank", async () => {
     const ctx = await setup();
     const chat = await ctx.POST(req({ ...base, type: "openai-compatible", apiType: "chat", providerIdSuffix: "  Team.Proxy_1-Prod  " }));

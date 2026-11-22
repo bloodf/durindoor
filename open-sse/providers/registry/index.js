@@ -385,12 +385,13 @@ import p382 from "./youcom.js";
 import p383 from "./yuanbao-web.js";
 import p384 from "./zai-web.js";
 import p385 from "./zai.js";
-import p386 from "./zed-hosted.js";
-import p387 from "./zed.js";
-import p388 from "./zenmux-free.js";
-import p389 from "./zenmux.js";
-import p390 from "./zerolimitai.js";
-import p391 from "./zylo-api.js";
+import p386 from "./zcode.js";
+import p387 from "./zed-hosted.js";
+import p388 from "./zed.js";
+import p389 from "./zenmux-free.js";
+import p390 from "./zenmux.js";
+import p391 from "./zerolimitai.js";
+import p392 from "./zylo-api.js";
 
 export default [
   p0,
@@ -785,4 +786,5 @@ export default [
   p389,
   p390,
   p391,
+  p392,
 ];

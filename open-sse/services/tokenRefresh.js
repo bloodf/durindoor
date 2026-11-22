@@ -22,6 +22,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
 import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
+import { refreshMinimaxCodeToken } from "./minimaxCodeAuth.js";
+import { refreshWorkbuddyToken } from "./workbuddyAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
@@ -279,6 +281,13 @@ const REFRESH_HANDLERS = {
   orcarouter: () => null,
   // Muse Code has no refresh grant: the stored dca token remints the key.
   "muse-code": (c, log, p) => refreshMuseCodeToken(c.refreshToken, c.providerSpecificData, log, p),
+  // MiniMax Code and WorkBuddy refresh against their own account hosts; neither
+  // has a registry tokenUrl the generic grant could use. A connection that has
+  // not opted in to dispatch never spends (and rotates) its refresh token.
+  "minimax-code": (c, log, p) => c.providerSpecificData?.enableSessionDispatch === true ? refreshMinimaxCodeToken(c, log, p) : null,
+  workbuddy: (c, log, p) => c.providerSpecificData?.enableSessionDispatch === true ? refreshWorkbuddyToken(c, log, p) : null,
+  // Devin session tokens carry no refresh grant; a rejected one means sign in again.
+  "devin-desktop": () => null,
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };

@@ -118,9 +118,9 @@ export async function validateFreebuffToken({ apiKey }, { fetch: fetcher = proxy
       return { valid: false, error: "Invalid or expired Freebuff Auth Token", unsupported: false };
     }
     const text = await res.text().catch(() => "");
-    return { valid: false, error: `Freebuff validation returned ${res.status}: ${snippet(text).slice(0, 100)}`, unsupported: false };
+    return { valid: false, error: `Freebuff validation returned ${res.status}: ${snippet(text).slice(0, 100)}`, unsupported: false, ...(res.status >= 500 ? { unavailable: true } : null) };
   } catch (error) {
-    return { valid: false, error: `Freebuff validation network error: ${error?.message || error}`, unsupported: false };
+    return { valid: false, error: `Freebuff validation network error: ${error?.message || error}`, unsupported: false, unavailable: true };
   }
 }
 

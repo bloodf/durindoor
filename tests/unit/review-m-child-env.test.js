@@ -6,8 +6,8 @@ const mocks = vi.hoisted(() => ({ spawn: vi.fn(), execFileSync: vi.fn(), fs: {
   existsSync: vi.fn(() => false), mkdirSync: vi.fn(), openSync: vi.fn(() => 17),
   closeSync: vi.fn(), writeFileSync: vi.fn(), readFileSync: vi.fn(() => "No matching distribution"),
 } }));
-vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
-vi.mock("child_process", () => ({ spawn: mocks.spawn, execFileSync: mocks.execFileSync }));
+// Vitest resolves child_process and node:child_process to the same mock.
+vi.mock("node:child_process", () => ({ spawn: mocks.spawn, execFileSync: mocks.execFileSync }));
 vi.mock("fs", () => ({ default: mocks.fs, ...mocks.fs }));
 vi.mock("@/lib/dataDir.js", () => ({ DATA_DIR: "/tmp/child-env-test" }));
 vi.mock("../../src/lib/headroom/pythonEnv.js", () => ({ ensureManagedVenv: async () => ({ python: "/python" }), managedVenvBinary: () => null }));
@@ -74,6 +74,7 @@ it("limits Headroom proxy, installer and version probe environments", async () =
   expect(options.env.PIP_CACHE_DIR).toContain("pip-tmp/cache");
   mocks.execFileSync.mockReturnValue(Buffer.from("3.13"));
   mocks.spawn.mock.results[1].value.emit("exit", 1);
-  await expect(installing).rejects.toThrow();
+  await expect(installing).rejects.toMatchObject({ code: "EXTRA_WHEEL_UNAVAILABLE" });
+  expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
   checkEnv(mocks.execFileSync.mock.calls[0][2].env);
 });

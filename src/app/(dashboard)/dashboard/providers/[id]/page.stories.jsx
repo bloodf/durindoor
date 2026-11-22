@@ -9,7 +9,7 @@ import { createRoutingFixture } from "@/shared/ui/v5/preservation/routing-fixtur
 
 // Kept aligned with PROVIDER_MODELS_CONFIG by the focused redesign test.
 // This public ID list avoids importing server model-fetch handlers in the browser.
-const REVIEW_MODEL_LIST_PROVIDERS = new Set(["chatplayground", "empiriolabs", "opencode-server", "replicate", "commandcode", "claude", "gemini", "gemini-interactions", "qwen", "kimi-web", "codex", "antigravity", "ghe-copilot", "github", "openai", "openference", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "muse-code", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "llmtr", "siliconflow", "hyperbolic", "nan", "paraloncloud", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "dothoosh", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "mlx", "typesafe", "venice", "orcarouter", "xiaomi-mimo", "xiaomi-mimo-token-plan", "xiaomi-tokenplan", "devin-cli-agentic", "gisoo"]);
+const REVIEW_MODEL_LIST_PROVIDERS = new Set(["chatplayground", "cursor-api", "devin-desktop", "workbuddy", "empiriolabs", "opencode-server", "replicate", "commandcode", "claude", "gemini", "gemini-interactions", "qwen", "kimi-web", "codex", "antigravity", "ghe-copilot", "github", "openai", "openference", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "muse-code", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "llmtr", "siliconflow", "hyperbolic", "nan", "paraloncloud", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "dothoosh", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "mlx", "typesafe", "venice", "orcarouter", "xiaomi-mimo", "xiaomi-mimo-token-plan", "xiaomi-tokenplan", "devin-cli-agentic", "gisoo"]);
 const REVIEW_NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor", "demonroute"]);
 
 /** Fresh isolated data when navigating from one provider's story to another. */
@@ -110,6 +110,22 @@ export default openaiMeta;
 
 /** Live detail view. Parent scenario reaches ConnectionRow, ModelRow, and shared detail modals through their real triggers. */
 export const OpenAIDetail = {};
+
+/** ZCode provider detail remains configured without a connection until the user opts in. */
+export const ZCodeProvider = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/providers/zcode",
+      params: { id: "zcode" },
+      routes: {
+        ...baseRoutes,
+        "GET /api/providers": { body: { connections: [] } },
+        "GET /api/models/disabled": { body: { ids: [] } },
+      },
+    },
+  },
+};
 
 /** DS Retry-delay and Thinking-mode listboxes use real settings handlers; the request shape matches the page's settings fetch. */
 export const SettingsControls = {
@@ -234,3 +250,12 @@ export const TencentAistudioWebConnection = webSessionStory("tencent-aistudio-we
 export const TinycmsWebConnection = webSessionStory("tinycms-web");
 export const BlackboxWebConnection = webSessionStory("blackbox-web");
 export const ConolWebConnection = webSessionStory("conol-web");
+
+// Registration batch D (#2034): opt-in sign-in providers. Dispatch stays off per connection
+// until providerSpecificData.enableSessionDispatch is true.
+export const CursorApiConnection = webSessionStory("cursor-api");
+export const DevinDesktopConnection = webSessionStory("devin-desktop");
+export const WorkbuddyConnection = webSessionStory("workbuddy");
+export const MinimaxCodeConnection = webSessionStory("minimax-code");
+export const ZedHostedConnection = webSessionStory("zed-hosted");
+export const FreebuffConnection = webSessionStory("freebuff");

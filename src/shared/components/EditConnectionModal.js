@@ -20,6 +20,7 @@ import {
 "@/shared/utils/googlePseProviderSpecificData";
 import { buildAwsConnectionEdit } from "@/shared/utils/awsConnectionEdit";
 import { providerValidationOutcome } from "@/shared/utils/providerValidationOutcome";
+import { SESSION_DISPATCH_OPT_IN_KEY, isSessionDispatchProvider } from "@/shared/constants/sessionDispatchProviders";
 import PeakHourProtectionEditor, {
   EMPTY_PEAK_HOUR_PROTECTION,
   cloneForEdit as clonePeakHourProtectionForEdit,
@@ -71,6 +72,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         baseUrl: connection.providerSpecificData?.baseUrl || "",
         openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
         strictChatHistory: connection.providerSpecificData?.strictChatHistory === true,
+        gatewayUrl: connection.providerSpecificData?.gatewayUrl || "",
+        enableSessionDispatch: connection.providerSpecificData?.[SESSION_DISPATCH_OPT_IN_KEY] === true,
         rpd: connection.providerSpecificData?.rateLimitOverrides?.rpd?.toString() ?? "",
         timeoutMs: connection.providerSpecificData?.timeoutMs?.toString() ?? ""
       });
@@ -137,6 +140,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isCompatible = connection ?
   isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider) :
   false;
+  const isSessionDispatchConnection = isSessionDispatchProvider(connection?.provider);
   const isStrictHistoryConnection = connection?.provider?.startsWith("openai-compatible-") && !connection.provider.startsWith("openai-compatible-responses-");
   const isResponsesConnection = connection?.provider === "openai" ||
   connection?.provider?.startsWith("openai-compatible-responses-");
@@ -167,11 +171,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const buildGenericOverrides = () => ({
     peakHourProtection: normalizePeakHourProtectionForSave(peakHourProtection),
     rateLimitOverrides: formData.rpd.trim() ? { rpd: Number(formData.rpd) } : null,
-    timeoutMs: formData.timeoutMs.trim() ? Number(formData.timeoutMs) : null
+    timeoutMs: formData.timeoutMs.trim() ? Number(formData.timeoutMs) : null,
+    // Opt-in session providers stay off until this is saved as the boolean true.
+    ...(isSessionDispatchConnection ? { [SESSION_DISPATCH_OPT_IN_KEY]: formData.enableSessionDispatch === true } : null)
   });
 
   const buildProviderSpecificData = () => {
     const generic = buildGenericOverrides();
+    if (connection?.provider === "minimax-code") return { ...generic, gatewayUrl: formData.gatewayUrl.trim() || null };
     if (isOpenCodeServer) return { ...generic, baseUrl: formData.baseUrl.trim() };
     if (isAzure) {
       return {
@@ -360,6 +367,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {isCodexOAuth ? <Field label="OAuth fingerprint mode">{v5 ? <V5NativeSelect aria-label="OAuth fingerprint mode" value={codexFingerprintMode} onChange={(event) => setCodexFingerprintMode(event.target.value)}><option value="off">Off — preserve client identity</option><option value="device">Device — stable installation</option><option value="session">Session — stable account session (recommended)</option><option value="full">Full — stable account thread</option></V5NativeSelect> : <Select value={codexFingerprintMode} onChange={setCodexFingerprintMode} options={[{ value: "off", label: "Off — preserve client identity" }, { value: "device", label: "Device — stable installation" }, { value: "session", label: "Session — stable account session (recommended)" }, { value: "full", label: "Full — stable account thread" }]} aria-label="OAuth fingerprint mode" />}</Field> : null}
         {providerRegions ? <Field label="Region">{v5 ? <V5NativeSelect aria-label="Region" value={region} onChange={(event) => setRegion(event.target.value)}>{providerRegions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</V5NativeSelect> : <Select value={region} onChange={setRegion} options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} aria-label="Region" />}</Field> : null}
         {usesAwsCredentialForm ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">AWS Credentials</h3><div className="flex flex-col gap-3"><Input label="AWS Profile (SSO)" value={awsData.profile} onChange={(e) => editAwsData({ profile: e.target.value })} placeholder="my-sso-profile" hint={formData.apiKey && awsData.profile.trim() ? "Saving with a new API key clears this profile." : "Takes precedence over any key. Clear it to use static keys or a Bedrock API key."} /><Input label="Access Key ID (static AWS keys only)" value={awsData.accessKeyId} onChange={(e) => editAwsData({ accessKeyId: e.target.value })} placeholder="AKIA..." hint="Put the secret access key in the API Key field. Clear this to use a Bedrock API key." /><Input label="Session Token (temporary ASIA... keys only)" type="password" autoComplete="off" value={awsData.sessionToken} onChange={(e) => editAwsData({ sessionToken: e.target.value })} placeholder="Enter new session token" hint="Leave blank to keep the current token. Changing the access key id replaces it." /></div></section> : null}
+        {connection?.provider === "minimax-code" ? <Input label="MiniMax Code gateway URL" value={formData.gatewayUrl} onChange={(e) => setFormData({ ...formData, gatewayUrl: e.target.value })} hint="Required for China accounts." /> : null}
+        {isSessionDispatchConnection ? <Toggle checked={formData.enableSessionDispatch === true} onChange={(enableSessionDispatch) => setFormData({ ...formData, enableSessionDispatch })} label="Allow session dispatch" description="Off by default. When on, requests through this gateway spend this account's plan and rate limits. Check the provider's terms first." /> : null}
         {isStrictHistoryConnection ? <Toggle checked={formData.strictChatHistory === true} onChange={(strictChatHistory) => setFormData({ ...formData, strictChatHistory })} label="Strict chat history" description="Merge consecutive simple text turns for strict OpenAI-compatible chat providers." /> : null}
         {isResponsesConnection ? <Toggle checked={formData.openaiStoreEnabled === true} onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })} label="OpenAI Responses store" description="Allow this connection to retain Responses API state for continuation." /> : null}
         {requiresAccountId ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">{accountIdProviderLabel}</h3><Input label="Account ID" value={cloudflareData.accountId} onChange={(e) => setCloudflareData({ accountId: e.target.value })} placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."} hint={connection?.provider === "snowflake" ? "Snowflake account identifier, for example org-account" : "Find Account ID in right sidebar of dash.cloudflare.com"} /></section> : null}

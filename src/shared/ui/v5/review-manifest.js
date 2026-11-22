@@ -1567,6 +1567,7 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-providers-providerdetailpage--open-ai-detail",
     "states": [
       "OpenAIDetail",
+      "ZCodeProvider",
       "SettingsControls",
       "CompatibleBranch",
       "CompatibleProxyOpen",
@@ -1596,10 +1597,17 @@ export const REVIEW_SURFACES = [
       "TencentAistudioWebConnection",
       "TinycmsWebConnection",
       "BlackboxWebConnection",
-      "ConolWebConnection"
+      "ConolWebConnection",
+      "CursorApiConnection",
+      "DevinDesktopConnection",
+      "WorkbuddyConnection",
+      "MinimaxCodeConnection",
+      "ZedHostedConnection",
+      "FreebuffConnection"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerdetailpage--open-ai-detail",
+      "v5-review-pages-providers-providerdetailpage--z-code-provider",
       "v5-review-pages-providers-providerdetailpage--settings-controls",
       "v5-review-pages-providers-providerdetailpage--compatible-branch",
       "v5-review-pages-providers-providerdetailpage--compatible-proxy-open",
@@ -1629,7 +1637,13 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-providers-providerdetailpage--tencent-aistudio-web-connection",
       "v5-review-pages-providers-providerdetailpage--tinycms-web-connection",
       "v5-review-pages-providers-providerdetailpage--blackbox-web-connection",
-      "v5-review-pages-providers-providerdetailpage--conol-web-connection"
+      "v5-review-pages-providers-providerdetailpage--conol-web-connection",
+      "v5-review-pages-providers-providerdetailpage--cursor-api-connection",
+      "v5-review-pages-providers-providerdetailpage--devin-desktop-connection",
+      "v5-review-pages-providers-providerdetailpage--workbuddy-connection",
+      "v5-review-pages-providers-providerdetailpage--minimax-code-connection",
+      "v5-review-pages-providers-providerdetailpage--zed-hosted-connection",
+      "v5-review-pages-providers-providerdetailpage--freebuff-connection"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",

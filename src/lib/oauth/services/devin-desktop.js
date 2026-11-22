@@ -1,4 +1,4 @@
-// Devin Desktop sign-in (staged; not registered in src/lib/oauth/providers.js yet).
+// Devin Desktop sign-in, registered as "devin-desktop" in src/lib/oauth/providers.js.
 //
 // Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // src/lib/oauth/providers/devin-desktop.ts and DEVIN_DESKTOP_CONFIG in
@@ -61,6 +61,13 @@ export function validateImportToken(token) {
 }
 
 export function mapTokens(tokens) {
+  // The dashboard import path hands over the pasted credential itself, a session token
+  // or an API key; the browser sign-in hands over the exchange result object.
+  if (isString(tokens)) {
+    const verdict = validateImportToken(tokens);
+    if (!verdict.valid) throw new Error(verdict.reason);
+    return { accessToken: tokens.trim(), refreshToken: null, expiresIn: null };
+  }
   const mapped = { accessToken: tokens.accessToken, refreshToken: null, expiresIn: null };
   // Only the browser sign-in tags the connection; an imported key stays verbatim and untagged.
   if (tokens.authMethod) mapped.providerSpecificData = { authMethod: tokens.authMethod };

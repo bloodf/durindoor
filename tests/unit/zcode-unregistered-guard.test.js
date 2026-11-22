@@ -1,35 +1,24 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { resolveProviderAlias } from "../../open-sse/services/model.js";
 import { isRoutableProvider } from "../../src/shared/constants/providers.js";
 
-// See internal/docs/zcode-v4-compatibility-1252.md for the pinned V4 runtime boundary.
-describe.each(["zcode", "zc"])("unqualified ZCode provider (%s)", (provider) => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it("does not advertise models or resolve to an existing provider", () => {
-    expect(resolveProviderAlias(provider)).toBe(provider);
-    expect(isRoutableProvider(provider)).toBe(false);
-    expect(getProviderModels(provider)).toEqual([]);
-    expect(hasSpecializedExecutor(provider)).toBe(false);
+// Dispatch remains denied by production unless each connection explicitly opts in.
+describe.each(["zcode", "zc"])("ZCode dispatch guard (%s)", (provider) => {
+  it("is registered and routable", () => {
+    expect(resolveProviderAlias(provider)).toBe("zcode");
+    expect(isRoutableProvider(provider)).toBe(true);
+    expect(getProviderModels(provider).map(({ id }) => id)).toEqual(["glm-5.3", "glm-5.2"]);
+    expect(hasSpecializedExecutor(provider)).toBe(true);
   });
 
-  it.each([false, true])("rejects dispatch before transport setup (stream=%s)", async (stream) => {
+  it("rejects dispatch before transport setup without exact boolean opt-in", async () => {
     const executor = getExecutor(provider);
     const buildHeaders = vi.spyOn(executor, "buildHeaders");
-    const model = "glm-5.3";
-
-    await expect(executor.execute({
-      model,
-      body: { model, messages: [{ role: "user", content: "Hello" }] },
-      stream,
-      credentials: { apiKey: "synthetic-key" },
-    })).rejects.toMatchObject({
-      status: 400,
-      message: `Unknown provider "${provider}": no supported transport endpoint`,
-    });
-
+    const result = await executor.execute({ model: "glm-5.3", body: {}, stream: false, credentials: { providerSpecificData: { enableSessionDispatch: "true" } } });
+    expect(result.response.status).toBe(403);
+    expect(await result.response.json()).toMatchObject({ error: { code: "zcode_dispatch_disabled" } });
     expect(buildHeaders).not.toHaveBeenCalled();
   });
 });

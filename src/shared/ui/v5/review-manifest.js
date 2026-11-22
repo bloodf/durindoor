@@ -401,7 +401,10 @@ export const REVIEW_SURFACES = [
       "LoadFailureError",
       "CreateComboSpacing",
       "CreateComboSpacingMobile",
-      "ConnectionUsage"
+      "ConnectionUsage",
+      "RetainedError",
+      "RejectedClearAndRetry",
+      "Retry"
     ],
     "storyIds": [
       "v5-review-pages-combos-combospage--default",
@@ -414,7 +417,10 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-combos-combospage--load-failure-error",
       "v5-review-pages-combos-combospage--create-combo-spacing",
       "v5-review-pages-combos-combospage--create-combo-spacing-mobile",
-      "v5-review-pages-combos-combospage--connection-usage"
+      "v5-review-pages-combos-combospage--connection-usage",
+      "v5-review-pages-combos-combospage--retained-error",
+      "v5-review-pages-combos-combospage--rejected-clear-and-retry",
+      "v5-review-pages-combos-combospage--retry"
     ],
     "pathname": "/dashboard/combos",
     "routePattern": "/dashboard/combos",
@@ -668,11 +674,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-savers-headroomclient--running-with-events",
     "states": [
       "RunningWithEvents",
-      "SetupDiagnostic"
+      "SetupDiagnostic",
+      "LoadFailure"
     ],
     "storyIds": [
       "v5-review-pages-savers-headroomclient--running-with-events",
-      "v5-review-pages-savers-headroomclient--setup-diagnostic"
+      "v5-review-pages-savers-headroomclient--setup-diagnostic",
+      "v5-review-pages-savers-headroomclient--load-failure"
     ],
     "pathname": "/dashboard/headroom",
     "routePattern": "/dashboard/headroom",
@@ -1616,7 +1624,8 @@ export const REVIEW_SURFACES = [
       "Loading",
       "KeyboardPagingAndRange",
       "RTL",
-      "MobileViewport"
+      "MobileViewport",
+      "EventsFailure"
     ],
     "storyIds": [
       "v5-review-pages-pxpipe-pxpipeclient--populated",
@@ -1625,7 +1634,8 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-pxpipe-pxpipeclient--loading",
       "v5-review-pages-pxpipe-pxpipeclient--keyboard-paging-and-range",
       "v5-review-pages-pxpipe-pxpipeclient--rtl",
-      "v5-review-pages-pxpipe-pxpipeclient--mobile-viewport"
+      "v5-review-pages-pxpipe-pxpipeclient--mobile-viewport",
+      "v5-review-pages-pxpipe-pxpipeclient--events-failure"
     ],
     "pathname": "/dashboard/pxpipe",
     "routePattern": "/dashboard/pxpipe",

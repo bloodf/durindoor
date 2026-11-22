@@ -405,12 +405,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
           extractCookieValue(c.providerSpecificData?.cookie, "BXAuth") === session);
       }
     }
+    const isKeyLikeAuth = data.authType === "apikey" || data.authType === "auth_token";
     if (!existing && data.provider === "cursor" && data.providerSpecificData?.userId) {
       existing = all.find(
         (c) => c.providerSpecificData?.userId === data.providerSpecificData.userId
       );
-    } else if (data.authType === "apikey" && data.name) {
-      existing = all.find((c) => c.authType === "apikey" && c.name === data.name);
+    } else if (isKeyLikeAuth && data.name) {
+      existing = all.find((c) => c.authType === data.authType && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
 
@@ -419,17 +420,18 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     // instead of the default upsert — the UI planner assigns collision-free
     // names, and this guard catches any stale/concurrent state that slips past
     // it. Thrown inside the transaction so nothing is persisted.
-    if (existing && requireNewName && data.authType === "apikey") {
-      const err = new Error(`An API key named "${data.name}" already exists for this provider`);
+    if (existing && requireNewName && isKeyLikeAuth) {
+      const label = data.authType === "auth_token" ? "An auth token" : "An API key";
+      const err = new Error(`${label} named "${data.name}" already exists for this provider`);
       err.code = "PROVIDER_CONNECTION_NAME_CONFLICT";
       throw err;
     }
 
     if (existing) {
       // #6499 — create-only (dashboard "add API key"): a duplicate (provider,
-      // apikey, name) must error, never silently upsert/overwrite. The explicit
+      // apikey|auth_token, name) must error, never silently upsert/overwrite. The explicit
       // update path is updateProviderConnection (PUT /api/providers/[id]).
-      if (createOnly && data.authType === "apikey") {
+      if (createOnly && isKeyLikeAuth) {
         const error = new Error(`A connection named "${data.name}" already exists for this provider`);
         error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
         throw error;

@@ -40,9 +40,22 @@ function parseEnv(env) {
   return {};
 }
 
+/** Stable fingerprint of spawn identity (command/args/env) for cache invalidation. */
+function instanceFingerprint(instance) {
+  const env = parseEnv(instance?.env);
+  const stableEnv = {};
+  for (const key of Object.keys(env).sort()) stableEnv[key] = env[key];
+  return JSON.stringify({
+    command: instance?.command || "",
+    args: parseArgs(instance?.args),
+    env: stableEnv,
+  });
+}
+
 class StdioEntry {
   constructor(instance) {
     this.instance = instance;
+    this.fingerprint = instanceFingerprint(instance);
     this.proc = null;
     this.buffer = "";
     this.nextId = 1;
@@ -58,6 +71,30 @@ class StdioEntry {
 
   isAlive() {
     return this.proc && !this.proc.killed && this.proc.exitCode === null;
+  }
+
+  /**
+   * Kill the child and reject in-flight requests. Safe to call repeatedly.
+   * Does not remove this entry from the global store — callers own eviction.
+   */
+  close() {
+    const proc = this.proc;
+    this.proc = null;
+    this.initialized = false;
+    this.initPromise = null;
+    this.initInfo = null;
+    this.initializing = null;
+    this.spawning = null;
+    this.buffer = "";
+    const err = new Error(`upstream ${this.instance.slug} closed`);
+    for (const { reject, timer } of this.pending.values()) {
+      clearTimeout(timer);
+      reject(err);
+    }
+    this.pending.clear();
+    if (proc) {
+      try { proc.kill("SIGTERM"); } catch { /* already gone */ }
+    }
   }
 
   async ensure() {
@@ -251,6 +288,8 @@ class StdioEntry {
         this.initialized = false;
         this.initPromise = null;
         this.initInfo = null;
+        // Drop a child that never completed initialize so it cannot leak.
+        this.close();
         getStore().delete(this.instance.id);
         throw e;
       }
@@ -263,11 +302,41 @@ class StdioEntry {
 function getEntry(instance) {
   const store = getStore();
   let entry = store.get(instance.id);
+  if (entry) {
+    const nextFp = instanceFingerprint(instance);
+    if (entry.fingerprint !== nextFp) {
+      // Command/args/env changed — replace the cached child so edits take effect.
+      entry.close();
+      store.delete(instance.id);
+      entry = null;
+    } else {
+      entry.instance = instance;
+    }
+  }
   if (!entry) {
     entry = new StdioEntry(instance);
     store.set(instance.id, entry);
   }
   return entry;
+}
+
+/** Close and evict a single stdio entry by instance id (PATCH/DELETE). */
+export function closeInstance(id) {
+  const store = getStore();
+  const entry = store.get(id);
+  if (!entry) return false;
+  entry.close();
+  store.delete(id);
+  return true;
+}
+
+/** Kill every gateway stdio child. Called from process shutdown. */
+export function killAllStdioEntries() {
+  const store = getStore();
+  for (const [id, entry] of [...store.entries()]) {
+    try { entry.close(); } catch { /* best effort */ }
+    store.delete(id);
+  }
 }
 
 export async function listTools(instance) {
@@ -309,4 +378,4 @@ export async function callTool(instance, name, args) {
   }
 }
 
-export const __test__ = { StdioEntry, getStore, getEntry };
+export const __test__ = { StdioEntry, getStore, getEntry, instanceFingerprint };

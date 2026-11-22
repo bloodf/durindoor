@@ -108,3 +108,5 @@ The provider auto-update panel identifies the provider and the runtime list sour
 Discovery freshness describes the stored snapshot at render time. `STALE` means the last attempt failed after a successful sync, or the snapshot has reached the configured sync interval. Missing, invalid or future timestamps and missing intervals show `UNKNOWN`. A recent timestamp does not verify live model availability. Reopen the provider page to read the current status.
 
 Vendor verification remains `UNKNOWN`: the existing list-models status does not attest to a model vendor. This summary describes list provenance only, not per-field capability or price provenance. It does not change model limits, user overrides, routing or provider selection, and adds no discovery requests.
+
+Deleting a compatible provider also removes model aliases that target its provider node ID.

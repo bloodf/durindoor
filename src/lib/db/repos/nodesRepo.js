@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function rowToNode(row) {
   if (!row) return null;
@@ -104,6 +105,13 @@ export async function deleteProviderNode(id) {
     if (!row) return;
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
+    // Aliases targeting this node cannot resolve after the node is deleted.
+    for (const alias of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) {
+      const model = parseJson(alias.value, null);
+      if (isString(model) && model.startsWith(`${id}/`)) {
+        db.run(`DELETE FROM kv WHERE scope = 'modelAliases' AND key = ?`, [alias.key]);
+      }
+    }
     // customModels keys are `${providerAlias}|${id}|${type}`; the alias is the node id or its prefix.
     // A prefix is not unique for openai-compatible nodes and may equal a built-in alias, so only
     // prune by prefix when no other node holds it and no built-in provider does.

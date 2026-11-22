@@ -6951,7 +6951,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/error.js#CombosError",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/error.js",
       "symbol": "CombosError",
-      "sourceSha256": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
+      "sourceSha256": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6977,7 +6977,7 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4"
           },
@@ -7000,7 +7000,7 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/error.stories.jsx": "fffcffb381cd2f060a1a4c9a22cf3e2a335aac2858f493673314a44a7d3144dc"
           },
           "proposedSourceEvidence": "Actual Retry renders the production CombosError initially, asserts its title and fixture log, activates Try again, and conditionally unmounts it. Play ends Retry requested and explicitly asserts absence of the production title, retry action and dashboard link. This is separate from real retained error-widget coverage.",
@@ -7024,7 +7024,7 @@
             "dashboard navigation"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/error.stories.jsx": "fffcffb381cd2f060a1a4c9a22cf3e2a335aac2858f493673314a44a7d3144dc",
             "src/shared/ui/components/Button.jsx": "81d478ddec6bea1bacf92f8c60d695fc27a0ae59a0a63d2795d2b8e5a6a239e4",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -7271,7 +7271,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Private card rendered by Default",
           "expectedVisibleText": "production-fallback",
@@ -7409,7 +7409,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
         },
@@ -7424,7 +7424,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "SaveFailure",
           "expectedVisibleText": "Failed to save combo",
@@ -7444,7 +7444,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "expectedVisibleText": "Create Combo"
         },
@@ -7460,7 +7460,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "expectedVisibleText": "Create Combo"
         }
@@ -7692,7 +7692,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "combos/page.stories.jsx Default",
           "expectedVisibleText": "production-fallback",
@@ -7710,7 +7710,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "CombosPage empty branch renders EmptyState title No combos yet.",
           "expectedVisibleText": "No combos yet"
@@ -7728,7 +7728,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
           "expectedVisibleText": "Combos restored",
@@ -7751,7 +7751,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Play opens deletion path."
         },
@@ -7770,7 +7770,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Actual CreateFlow opens the production ComboFormModal, edits the native Combo Name, then activates Cancel and explicitly asserts the dialog absent. The retained final page has the real production-fallback card; page opener text is not retained modal ownership. Separate existing spacing/error/edit/save scenes retain the actual form.",
           "proposedVisibleTexts": [
@@ -7789,7 +7789,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Play opens edit path."
         },
@@ -7805,7 +7805,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Save failure fixture."
         },
@@ -7821,7 +7821,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           }
         },
         {
@@ -7836,7 +7836,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "expectedVisibleText": "Create Combo"
         },
@@ -7852,7 +7852,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "expectedVisibleText": "Create Combo"
         }
@@ -8313,7 +8313,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/page.js": "1c41cc8a574642792ce7fda8b5b716dff8cac4f16dd407e2332c748c5c6819d4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
-            "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content.",
           "expectedVisibleText": "openai/gpt-4o",
@@ -16819,7 +16819,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx",
       "symbol": "McpGatewayErrorView",
-      "sourceSha256": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
+      "sourceSha256": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -16839,7 +16839,7 @@
             "error recovery"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496",
             "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "13ea544349bb4ccee321c919c59b5c0d21ae0a4029f3c8fe7a7f07da5509d952",
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c"
           },
@@ -16857,7 +16857,7 @@
             "keys error recovery"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496",
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "728cafa132d74d569282aa53755d27f55309f8aeaa5caa0497acd91ea81186f7",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -16881,7 +16881,7 @@
             "retained production error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496",
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "728cafa132d74d569282aa53755d27f55309f8aeaa5caa0497acd91ea81186f7",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -16908,7 +16908,7 @@
             "retained shared production error widget"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496",
             "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "13ea544349bb4ccee321c919c59b5c0d21ae0a4029f3c8fe7a7f07da5509d952",
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c"
           },
@@ -18471,7 +18471,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c",
             "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "13ea544349bb4ccee321c919c59b5c0d21ae0a4029f3c8fe7a7f07da5509d952",
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282"
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496"
           },
           "proposedSourceEvidence": "Accepted instances ErrorBoundary renders the actual McpGatewayError and shared view, asserts their initial failed-load heading and actual fixture console call, activates Try again, then asserts Reset requested and absence of both the production failed-load heading and Try again action. The harness conditionally replaces the production error, rather than appending reset text. Console interception matches the complete exact two-argument fixture call; all other argument lists are forwarded unchanged and the spy is restored. No intercepted browser-console event or runtime approval is claimed.",
           "expectedVisibleText": "Reset requested",
@@ -18493,7 +18493,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c",
             "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "13ea544349bb4ccee321c919c59b5c0d21ae0a4029f3c8fe7a7f07da5509d952",
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282"
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496"
           },
           "proposedSourceEvidence": "Accepted instances RetainedErrorBoundary renders the actual imported McpGatewayError from mcp-gateway/error.js and its McpGatewayErrorView, not the keys wrapper. Without reset activation, play retains and asserts the actual production heading, help/detail text, visible enabled Try again, absence of Reset requested and the actual fixture console call. Only the exact complete two-argument fixture call is intercepted; all other arguments are forwarded unchanged and interception is restored. Native/runtime/full-process evidence remains pending.",
           "expectedVisibleText": "MCP Gateway failed to load",
@@ -19275,7 +19275,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282"
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496"
           },
           "expectedVisibleText": "Reset requested",
           "id": "durin-ds-production-pages-mcp-gateway-keys--error-boundary",
@@ -19299,7 +19299,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282"
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "b1ef221a0da273818f94986c02d422e660861ec785db6332b56de70204970496"
           },
           "expectedVisibleText": "MCP Gateway failed to load",
           "id": "durin-ds-production-pages-mcp-gateway-keys--retained-error-boundary",
@@ -22465,7 +22465,7 @@
       "id": "src/app/(dashboard)/dashboard/mitm/error.js#MitmError",
       "sourcePath": "src/app/(dashboard)/dashboard/mitm/error.js",
       "symbol": "MitmError",
-      "sourceSha256": "0a0fdd4580397102d9fbe53f87cec93bed365ec5301a599486cb25e09eedfe5a",
+      "sourceSha256": "81812b8897d43020026a8565b156b883fd1a41cbf4e3663882c7864c74cecd89",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -22486,7 +22486,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/mitm/error.js": "0a0fdd4580397102d9fbe53f87cec93bed365ec5301a599486cb25e09eedfe5a",
+            "src/app/(dashboard)/dashboard/mitm/error.js": "81812b8897d43020026a8565b156b883fd1a41cbf4e3663882c7864c74cecd89",
             "src/app/(dashboard)/dashboard/mitm/error.stories.jsx": "e50768357ed3dbd9eb80c288eaa0778385ec3f779455ef6dea492c5c28124fc2"
           },
           "proposedSourceEvidence": "error.stories.jsx#Default",
@@ -31662,18 +31662,16 @@
       "id": "src/app/(dashboard)/dashboard/pxpipe/error.js#PxpipeError",
       "sourcePath": "src/app/(dashboard)/dashboard/pxpipe/error.js",
       "symbol": "PxpipeError",
-      "sourceSha256": "c7b58e9054e3b6ad98bb0a212a3f6995e5fcef9b5b024538111e877997a16618",
+      "sourceSha256": "979e86df595b451ed5f9ed2caebeb7a14b69fe3d6ada69924741f01a3aee0275",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Error boundary direct story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-pxpipe-pxpipeerror--retry"
       ],
-      "approvedScenarioIds": [
-        "production-pxpipe-pxpipeerror--retry"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-pxpipe-pxpipeerror--retry",
@@ -31685,7 +31683,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/pxpipe/error.js": "c7b58e9054e3b6ad98bb0a212a3f6995e5fcef9b5b024538111e877997a16618",
+            "src/app/(dashboard)/dashboard/pxpipe/error.js": "979e86df595b451ed5f9ed2caebeb7a14b69fe3d6ada69924741f01a3aee0275",
             "src/app/(dashboard)/dashboard/pxpipe/error.stories.jsx": "fc98cc641150450458dd6983277e3bf9af2ad8425d8fc56e872f607d75e1bbda"
           },
           "proposedSourceEvidence": "pxpipe/error.stories.jsx Retry",
@@ -31696,16 +31694,52 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Error boundary direct story.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Error boundary direct story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "c7b58e9054e3b6ad98bb0a212a3f6995e5fcef9b5b024538111e877997a16618",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-pxpipe-pxpipeerror--retry"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-pxpipe-pxpipeerror--retry",
+              "storyId": "production-pxpipe-pxpipeerror--retry",
+              "runtimeArtifactId": "production-pxpipe-pxpipeerror--retry",
+              "axes": [
+                "error",
+                "retry",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/pxpipe/error.js": "c7b58e9054e3b6ad98bb0a212a3f6995e5fcef9b5b024538111e877997a16618",
+                "src/app/(dashboard)/dashboard/pxpipe/error.stories.jsx": "fc98cc641150450458dd6983277e3bf9af2ad8425d8fc56e872f607d75e1bbda"
+              },
+              "proposedSourceEvidence": "pxpipe/error.stories.jsx Retry",
+              "expectedVisibleText": "Retry requested",
+              "proposedVisibleTexts": [
+                "Retry requested"
+              ]
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Error boundary direct story.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/pxpipe/formatPxpipeEvent.js#[module]",
@@ -37318,7 +37352,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/error.js#TranslatorError",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/error.js",
       "symbol": "TranslatorError",
-      "sourceSha256": "fedc1f64b40d025892e7e024ed1bccfd57cd3d90a3cfae3b58e7cfaba75de2ff",
+      "sourceSha256": "888172334d03047026d40a936b2f75ce1d44fb00825891f0fffcd6e978b34fa5",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -37339,7 +37373,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/translator/error.js": "fedc1f64b40d025892e7e024ed1bccfd57cd3d90a3cfae3b58e7cfaba75de2ff",
+            "src/app/(dashboard)/dashboard/translator/error.js": "888172334d03047026d40a936b2f75ce1d44fb00825891f0fffcd6e978b34fa5",
             "src/app/(dashboard)/dashboard/translator/error.stories.jsx": "4747c3e54776e7378f4214ea3e73bc01396a386bce682353ac8c402b57298265"
           },
           "proposedSourceEvidence": "error.stories.jsx#ErrorBoundary",
@@ -45489,7 +45523,7 @@
       "id": "src/shared/components/AddCustomEmbeddingModal.js#AddCustomEmbeddingModal",
       "sourcePath": "src/shared/components/AddCustomEmbeddingModal.js",
       "symbol": "AddCustomEmbeddingModal",
-      "sourceSha256": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+      "sourceSha256": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45512,7 +45546,7 @@
             "validation-success"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "Open enters API key and model ID, validates successfully and shows Valid.",
@@ -45527,7 +45561,7 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "InvalidEndpoint shows the error returned by its own validation fixture.",
@@ -45542,7 +45576,7 @@
             "prefilled-name"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "EditingExisting opens the actual Edit Custom Embedding form with existing Name field value.",
@@ -45562,7 +45596,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false and asserts the Add Custom Embedding dialog is absent.",
@@ -45681,7 +45715,7 @@
       "id": "src/shared/components/AddCustomEmbeddingModal.js#renderValidationResult",
       "sourcePath": "src/shared/components/AddCustomEmbeddingModal.js",
       "symbol": "renderValidationResult",
-      "sourceSha256": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+      "sourceSha256": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45701,7 +45735,7 @@
             "validation-success"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "Open performs validation; actual private success result is visible.",
@@ -45715,7 +45749,7 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/AddCustomEmbeddingModal.js": "878df9fc6348b996d8e22eb64c31fd76a2fdcba502ef4c783bbb4ad5db70b8ea",
+            "src/shared/components/AddCustomEmbeddingModal.js": "93bb973de76f7d8ea65441cce611e21850859e5b44d974c4b480ca00d0962f34",
             "src/shared/components/AddCustomEmbeddingModal.stories.jsx": "db6a3fc0da453ee8e996c610b4ae69cd4cd7607aade5de9c64f69e4eeb31a6ec"
           },
           "proposedSourceEvidence": "InvalidEndpoint performs validation; actual private error result is visible.",
@@ -47179,22 +47213,18 @@
       "id": "src/shared/components/ChangelogModal.js#ChangelogModal",
       "sourcePath": "src/shared/components/ChangelogModal.js",
       "symbol": "ChangelogModal",
-      "sourceSha256": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+      "sourceSha256": "1b9d09ba195a6cd380469ea0c339076f4fba2af313e1154b181d57540a729194",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: ChangelogModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-support-changelogmodal--loaded",
         "production-shared-support-changelogmodal--error-state",
         "production-shared-support-changelogmodal--empty-body"
       ],
-      "approvedScenarioIds": [
-        "production-shared-support-changelogmodal--loaded",
-        "production-shared-support-changelogmodal--error-state",
-        "production-shared-support-changelogmodal--empty-body"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-support-changelogmodal--loaded",
@@ -47206,7 +47236,7 @@
             "close"
           ],
           "sourceHashes": {
-            "src/shared/components/ChangelogModal.js": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+            "src/shared/components/ChangelogModal.js": "1b9d09ba195a6cd380469ea0c339076f4fba2af313e1154b181d57540a729194",
             "src/shared/components/ChangelogModal.stories.jsx": "cf1ee5a2614d8c61ce10e376ffe490c2bd4ff1e9739aea30c0f547e75278d086"
           },
           "proposedSourceEvidence": "Loaded opens modal, waits for v3.19.0 and asserts update bullet before closing.",
@@ -47220,7 +47250,7 @@
             "load error"
           ],
           "sourceHashes": {
-            "src/shared/components/ChangelogModal.js": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+            "src/shared/components/ChangelogModal.js": "1b9d09ba195a6cd380469ea0c339076f4fba2af313e1154b181d57540a729194",
             "src/shared/components/ChangelogModal.stories.jsx": "cf1ee5a2614d8c61ce10e376ffe490c2bd4ff1e9739aea30c0f547e75278d086"
           },
           "proposedSourceEvidence": "ErrorState fixture returns HTTP 503 and play asserts Failed to load changelog: HTTP 503.",
@@ -47234,7 +47264,7 @@
             "empty markdown"
           ],
           "sourceHashes": {
-            "src/shared/components/ChangelogModal.js": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+            "src/shared/components/ChangelogModal.js": "1b9d09ba195a6cd380469ea0c339076f4fba2af313e1154b181d57540a729194",
             "src/shared/components/ChangelogModal.stories.jsx": "cf1ee5a2614d8c61ce10e376ffe490c2bd4ff1e9739aea30c0f547e75278d086"
           },
           "proposedSourceEvidence": "EmptyBody returns empty markdown and asserts modal EmptyState title.",
@@ -47242,16 +47272,79 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: ChangelogModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: ChangelogModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-support-changelogmodal--loaded",
+            "production-shared-support-changelogmodal--error-state",
+            "production-shared-support-changelogmodal--empty-body"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-support-changelogmodal--loaded",
+              "storyId": "production-shared-support-changelogmodal--loaded",
+              "runtimeArtifactId": "production-shared-support-changelogmodal--loaded",
+              "axes": [
+                "open",
+                "loaded markdown",
+                "close"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ChangelogModal.js": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+                "src/shared/components/ChangelogModal.stories.jsx": "cf1ee5a2614d8c61ce10e376ffe490c2bd4ff1e9739aea30c0f547e75278d086"
+              },
+              "proposedSourceEvidence": "Loaded opens modal, waits for v3.19.0 and asserts update bullet before closing.",
+              "expectedVisibleText": "One-click update is now bounded and falls back to manual install."
+            },
+            {
+              "id": "production-shared-support-changelogmodal--error-state",
+              "storyId": "production-shared-support-changelogmodal--error-state",
+              "runtimeArtifactId": "production-shared-support-changelogmodal--error-state",
+              "axes": [
+                "load error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ChangelogModal.js": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+                "src/shared/components/ChangelogModal.stories.jsx": "cf1ee5a2614d8c61ce10e376ffe490c2bd4ff1e9739aea30c0f547e75278d086"
+              },
+              "proposedSourceEvidence": "ErrorState fixture returns HTTP 503 and play asserts Failed to load changelog: HTTP 503.",
+              "expectedVisibleText": "Failed to load changelog: HTTP 503"
+            },
+            {
+              "id": "production-shared-support-changelogmodal--empty-body",
+              "storyId": "production-shared-support-changelogmodal--empty-body",
+              "runtimeArtifactId": "production-shared-support-changelogmodal--empty-body",
+              "axes": [
+                "empty markdown"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ChangelogModal.js": "7ae2c41c0503278755895a2d0a227c016ad156fbb3163078758cdea07e2cfbfb",
+                "src/shared/components/ChangelogModal.stories.jsx": "cf1ee5a2614d8c61ce10e376ffe490c2bd4ff1e9739aea30c0f547e75278d086"
+              },
+              "proposedSourceEvidence": "EmptyBody returns empty markdown and asserts modal EmptyState title.",
+              "expectedVisibleText": "No changelog entries"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: ChangelogModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/ComboFormModal.js#ComboFormModal",
@@ -51597,24 +51690,19 @@
       "id": "src/shared/components/ManualConfigModal.js#ManualConfigModal",
       "sourcePath": "src/shared/components/ManualConfigModal.js",
       "symbol": "ManualConfigModal",
-      "sourceSha256": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
+      "sourceSha256": "d36a17b713f1807c67772f6fc358d1de423cb64db0853e308dee78815f686894",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: ManualConfigModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-config-manualconfigmodal--open",
         "production-shared-config-manualconfigmodal--long-content",
         "production-shared-config-manualconfigmodal--empty",
         "production-shared-config-manualconfigmodal--closed"
       ],
-      "approvedScenarioIds": [
-        "production-shared-config-manualconfigmodal--open",
-        "production-shared-config-manualconfigmodal--long-content",
-        "production-shared-config-manualconfigmodal--empty",
-        "production-shared-config-manualconfigmodal--closed"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-config-manualconfigmodal--open",
@@ -51625,8 +51713,8 @@
             "copy"
           ],
           "sourceHashes": {
-            "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
-            "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+            "src/shared/components/ManualConfigModal.js": "d36a17b713f1807c67772f6fc358d1de423cb64db0853e308dee78815f686894",
+            "src/shared/components/ManualConfigModal.stories.jsx": "557acefbfdd29afda672a64f600bfa1c87e406d9c4c2acb4b55aec75344239c3"
           },
           "proposedSourceEvidence": "Open keeps actual Manual Configuration dialog and its claude.json section visible after copy.",
           "expectedVisibleText": "claude.json"
@@ -51640,8 +51728,8 @@
             "long-config"
           ],
           "sourceHashes": {
-            "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
-            "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+            "src/shared/components/ManualConfigModal.js": "d36a17b713f1807c67772f6fc358d1de423cb64db0853e308dee78815f686894",
+            "src/shared/components/ManualConfigModal.stories.jsx": "557acefbfdd29afda672a64f600bfa1c87e406d9c4c2acb4b55aec75344239c3"
           },
           "proposedSourceEvidence": "LongContent shows actual CLI Manual dialog with shell.sh section.",
           "expectedVisibleText": "shell.sh"
@@ -51655,8 +51743,8 @@
             "empty-config"
           ],
           "sourceHashes": {
-            "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
-            "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+            "src/shared/components/ManualConfigModal.js": "d36a17b713f1807c67772f6fc358d1de423cb64db0853e308dee78815f686894",
+            "src/shared/components/ManualConfigModal.stories.jsx": "557acefbfdd29afda672a64f600bfa1c87e406d9c4c2acb4b55aec75344239c3"
           },
           "proposedSourceEvidence": "Empty has an open Manual Configuration dialog with no filename sections.",
           "expectedVisibleText": "Manual Configuration"
@@ -51670,8 +51758,8 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
-            "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+            "src/shared/components/ManualConfigModal.js": "d36a17b713f1807c67772f6fc358d1de423cb64db0853e308dee78815f686894",
+            "src/shared/components/ManualConfigModal.stories.jsx": "557acefbfdd29afda672a64f600bfa1c87e406d9c4c2acb4b55aec75344239c3"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false and asserts actual Manual Configuration dialog absent.",
           "expectedAbsentRole": {
@@ -51682,27 +51770,111 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: ManualConfigModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: ManualConfigModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-config-manualconfigmodal--open",
+            "production-shared-config-manualconfigmodal--long-content",
+            "production-shared-config-manualconfigmodal--empty",
+            "production-shared-config-manualconfigmodal--closed"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-config-manualconfigmodal--open",
+              "storyId": "production-shared-config-manualconfigmodal--open",
+              "runtimeArtifactId": "production-shared-config-manualconfigmodal--open",
+              "axes": [
+                "open",
+                "copy"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
+                "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+              },
+              "proposedSourceEvidence": "Open keeps actual Manual Configuration dialog and its claude.json section visible after copy.",
+              "expectedVisibleText": "claude.json"
+            },
+            {
+              "id": "production-shared-config-manualconfigmodal--long-content",
+              "storyId": "production-shared-config-manualconfigmodal--long-content",
+              "runtimeArtifactId": "production-shared-config-manualconfigmodal--long-content",
+              "axes": [
+                "open",
+                "long-config"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
+                "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+              },
+              "proposedSourceEvidence": "LongContent shows actual CLI Manual dialog with shell.sh section.",
+              "expectedVisibleText": "shell.sh"
+            },
+            {
+              "id": "production-shared-config-manualconfigmodal--empty",
+              "storyId": "production-shared-config-manualconfigmodal--empty",
+              "runtimeArtifactId": "production-shared-config-manualconfigmodal--empty",
+              "axes": [
+                "open",
+                "empty-config"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
+                "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+              },
+              "proposedSourceEvidence": "Empty has an open Manual Configuration dialog with no filename sections.",
+              "expectedVisibleText": "Manual Configuration"
+            },
+            {
+              "id": "production-shared-config-manualconfigmodal--closed",
+              "storyId": "production-shared-config-manualconfigmodal--closed",
+              "runtimeArtifactId": "production-shared-config-manualconfigmodal--closed",
+              "axes": [
+                "closed-final",
+                "absence"
+              ],
+              "sourceHashes": {
+                "src/shared/components/ManualConfigModal.js": "7843da73cfe4be654492d2b8f760b58d94557d21884466afcad1c5e5e1a30e8e",
+                "src/shared/components/ManualConfigModal.stories.jsx": "745200aa3d98d3cbc2658f7942d335ddfa0aec75878802ad222a620dd32c6db3"
+              },
+              "proposedSourceEvidence": "Closed sets isOpen=false and asserts actual Manual Configuration dialog absent.",
+              "expectedAbsentRole": {
+                "role": "dialog",
+                "name": "Manual Configuration"
+              },
+              "visibleContentCoverage": false
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: ManualConfigModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/McpMarketplaceModal.js#McpMarketplaceModal",
       "sourcePath": "src/shared/components/McpMarketplaceModal.js",
       "symbol": "McpMarketplaceModal",
-      "sourceSha256": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+      "sourceSha256": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: McpMarketplaceModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-domain-mcpmarketplacemodal--browse",
         "production-shared-domain-mcpmarketplacemodal--filter-authless",
@@ -51711,14 +51883,7 @@
         "production-shared-domain-mcpmarketplacemodal--confirm-add-per-server-row",
         "production-shared-domain-mcpmarketplacemodal--registry-error"
       ],
-      "approvedScenarioIds": [
-        "production-shared-domain-mcpmarketplacemodal--browse",
-        "production-shared-domain-mcpmarketplacemodal--filter-authless",
-        "production-shared-domain-mcpmarketplacemodal--requires-auth-branch",
-        "production-shared-domain-mcpmarketplacemodal--probe-error-branch",
-        "production-shared-domain-mcpmarketplacemodal--confirm-add-per-server-row",
-        "production-shared-domain-mcpmarketplacemodal--registry-error"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-domain-mcpmarketplacemodal--browse",
@@ -51728,7 +51893,7 @@
             "registry loaded"
           ],
           "sourceHashes": {
-            "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+            "src/shared/components/McpMarketplaceModal.js": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
             "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
           },
           "proposedSourceEvidence": "Browse waits for GitHub and Local FS registry rows.",
@@ -51742,7 +51907,7 @@
             "auth filter"
           ],
           "sourceHashes": {
-            "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+            "src/shared/components/McpMarketplaceModal.js": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
             "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
           },
           "proposedSourceEvidence": "FilterAuthless selects Authless, shows Local FS, and removes GitHub.",
@@ -51757,7 +51922,7 @@
             "expanded row"
           ],
           "sourceHashes": {
-            "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+            "src/shared/components/McpMarketplaceModal.js": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
             "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
           },
           "proposedSourceEvidence": "RequiresAuthBranch adds GitHub and asserts OAuth required status plus Confirm add.",
@@ -51771,7 +51936,7 @@
             "per-row probe failure"
           ],
           "sourceHashes": {
-            "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+            "src/shared/components/McpMarketplaceModal.js": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
             "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
           },
           "proposedSourceEvidence": "ProbeErrorBranch adds Broken Probe and asserts scoped alert.",
@@ -51786,7 +51951,7 @@
             "add"
           ],
           "sourceHashes": {
-            "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+            "src/shared/components/McpMarketplaceModal.js": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
             "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
           },
           "proposedSourceEvidence": "ConfirmAddPerServerRow selects write then confirms Local FS and asserts Added with emitted read-only payload.",
@@ -51800,7 +51965,7 @@
             "registry error"
           ],
           "sourceHashes": {
-            "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+            "src/shared/components/McpMarketplaceModal.js": "fd864cafc1cac5391b179d89f5916573a85351815e4a7ce05b0a81c652f7961f",
             "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
           },
           "proposedSourceEvidence": "RegistryError fixture returns registry offline and play asserts alert.",
@@ -51808,16 +51973,124 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: McpMarketplaceModal maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: McpMarketplaceModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-domain-mcpmarketplacemodal--browse",
+            "production-shared-domain-mcpmarketplacemodal--filter-authless",
+            "production-shared-domain-mcpmarketplacemodal--requires-auth-branch",
+            "production-shared-domain-mcpmarketplacemodal--probe-error-branch",
+            "production-shared-domain-mcpmarketplacemodal--confirm-add-per-server-row",
+            "production-shared-domain-mcpmarketplacemodal--registry-error"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-domain-mcpmarketplacemodal--browse",
+              "storyId": "production-shared-domain-mcpmarketplacemodal--browse",
+              "runtimeArtifactId": "production-shared-domain-mcpmarketplacemodal--browse",
+              "axes": [
+                "registry loaded"
+              ],
+              "sourceHashes": {
+                "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+                "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
+              },
+              "proposedSourceEvidence": "Browse waits for GitHub and Local FS registry rows.",
+              "expectedVisibleText": "GitHub"
+            },
+            {
+              "id": "production-shared-domain-mcpmarketplacemodal--filter-authless",
+              "storyId": "production-shared-domain-mcpmarketplacemodal--filter-authless",
+              "runtimeArtifactId": "production-shared-domain-mcpmarketplacemodal--filter-authless",
+              "axes": [
+                "auth filter"
+              ],
+              "sourceHashes": {
+                "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+                "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
+              },
+              "proposedSourceEvidence": "FilterAuthless selects Authless, shows Local FS, and removes GitHub.",
+              "expectedVisibleText": "Local FS"
+            },
+            {
+              "id": "production-shared-domain-mcpmarketplacemodal--requires-auth-branch",
+              "storyId": "production-shared-domain-mcpmarketplacemodal--requires-auth-branch",
+              "runtimeArtifactId": "production-shared-domain-mcpmarketplacemodal--requires-auth-branch",
+              "axes": [
+                "OAuth requirement",
+                "expanded row"
+              ],
+              "sourceHashes": {
+                "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+                "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
+              },
+              "proposedSourceEvidence": "RequiresAuthBranch adds GitHub and asserts OAuth required status plus Confirm add.",
+              "expectedVisibleText": "OAuth required"
+            },
+            {
+              "id": "production-shared-domain-mcpmarketplacemodal--probe-error-branch",
+              "storyId": "production-shared-domain-mcpmarketplacemodal--probe-error-branch",
+              "runtimeArtifactId": "production-shared-domain-mcpmarketplacemodal--probe-error-branch",
+              "axes": [
+                "per-row probe failure"
+              ],
+              "sourceHashes": {
+                "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+                "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
+              },
+              "proposedSourceEvidence": "ProbeErrorBranch adds Broken Probe and asserts scoped alert.",
+              "expectedVisibleText": "Probe failed: endpoint refused"
+            },
+            {
+              "id": "production-shared-domain-mcpmarketplacemodal--confirm-add-per-server-row",
+              "storyId": "production-shared-domain-mcpmarketplacemodal--confirm-add-per-server-row",
+              "runtimeArtifactId": "production-shared-domain-mcpmarketplacemodal--confirm-add-per-server-row",
+              "axes": [
+                "tool selection",
+                "add"
+              ],
+              "sourceHashes": {
+                "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+                "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
+              },
+              "proposedSourceEvidence": "ConfirmAddPerServerRow selects write then confirms Local FS and asserts Added with emitted read-only payload.",
+              "expectedVisibleText": "Added"
+            },
+            {
+              "id": "production-shared-domain-mcpmarketplacemodal--registry-error",
+              "storyId": "production-shared-domain-mcpmarketplacemodal--registry-error",
+              "runtimeArtifactId": "production-shared-domain-mcpmarketplacemodal--registry-error",
+              "axes": [
+                "registry error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/McpMarketplaceModal.js": "f884510f864583859dada354a4f88d9a1ef16699dfdb776cfbc4da9bb23fffdc",
+                "src/shared/components/McpMarketplaceModal.stories.jsx": "ff6986aaab139c9dc0348b22866d853a875cb319fc1e7ee7715adbad356ce826"
+              },
+              "proposedSourceEvidence": "RegistryError fixture returns registry offline and play asserts alert.",
+              "expectedVisibleText": "registry offline"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: McpMarketplaceModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/Modal.js#ConfirmModal",
@@ -53157,24 +53430,19 @@
       "id": "src/shared/components/PricingModal.js#PricingCell",
       "sourcePath": "src/shared/components/PricingModal.js",
       "symbol": "PricingCell",
-      "sourceSha256": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+      "sourceSha256": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: PricingCell maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-domain-pricingmodal--loaded",
         "production-shared-domain-pricingmodal--save-persists-and-reopens",
         "production-shared-domain-pricingmodal--save-error-visible",
         "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
       ],
-      "approvedScenarioIds": [
-        "production-shared-domain-pricingmodal--loaded",
-        "production-shared-domain-pricingmodal--save-persists-and-reopens",
-        "production-shared-domain-pricingmodal--save-error-visible",
-        "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-domain-pricingmodal--loaded",
@@ -53184,7 +53452,7 @@
             "numeric rate input"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "Loaded renders PricingCell Input for gpt-5 input rate, asserted at 2.5. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53201,7 +53469,7 @@
             "editable rate"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "SavePersistsAndReopens changes this PricingCell to 5.5 and verifies reopened value. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53218,7 +53486,7 @@
             "error preserves input"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "SaveErrorVisible retains PricingCell after rate-locked response. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53237,7 +53505,7 @@
             "reset value"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "Reset completion updates gpt-5 PricingCell value from 2.5 to 1. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53248,18 +53516,9 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
-        "changedScenarioIds": [
-          "production-shared-domain-pricingmodal--save-error-visible"
-        ],
-        "publishedDependencyPathsPendingCombinedIntegration": [],
-        "runtimeStatus": "pending",
-        "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: PricingCell maps through colocated production stories.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -53280,19 +53539,116 @@
             "sourceReason": "Current source/CSF audit: PricingCell maps through colocated production stories.",
             "runtimeStatus": "pending"
           }
+        },
+        {
+          "sourceSha256": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-domain-pricingmodal--loaded",
+            "production-shared-domain-pricingmodal--save-persists-and-reopens",
+            "production-shared-domain-pricingmodal--save-error-visible",
+            "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-domain-pricingmodal--loaded",
+              "storyId": "production-shared-domain-pricingmodal--loaded",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--loaded",
+              "axes": [
+                "numeric rate input"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "Loaded renders PricingCell Input for gpt-5 input rate, asserted at 2.5. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--save-persists-and-reopens",
+              "storyId": "production-shared-domain-pricingmodal--save-persists-and-reopens",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--save-persists-and-reopens",
+              "axes": [
+                "editable rate"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "SavePersistsAndReopens changes this PricingCell to 5.5 and verifies reopened value. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--save-error-visible",
+              "storyId": "production-shared-domain-pricingmodal--save-error-visible",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--save-error-visible",
+              "axes": [
+                "error preserves input"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "SaveErrorVisible retains PricingCell after rate-locked response. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedConsoleErrors": [],
+              "proposedConsoleErrorEvidence": "PATCH HTTP423 rate-locked is handled by the non-OK response branch, which sets the visible alert without throwing or logging. Only a thrown fetch/parse exception reaches the logging catch; frozen ff930 captured zero console errors.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
+              "storyId": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
+              "axes": [
+                "reset value"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "Reset completion updates gpt-5 PricingCell value from 2.5 to 1. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+            "changedScenarioIds": [
+              "production-shared-domain-pricingmodal--save-error-visible"
+            ],
+            "publishedDependencyPathsPendingCombinedIntegration": [],
+            "runtimeStatus": "pending",
+            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
         }
-      ]
+      ],
+      "unresolvedHistoricalScenarioIds": []
     },
     {
       "id": "src/shared/components/PricingModal.js#PricingModal",
       "sourcePath": "src/shared/components/PricingModal.js",
       "symbol": "PricingModal",
-      "sourceSha256": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+      "sourceSha256": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: PricingModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-domain-pricingmodal--loaded",
         "production-shared-domain-pricingmodal--save-persists-and-reopens",
@@ -53300,13 +53656,7 @@
         "production-shared-domain-pricingmodal--load-error-visible",
         "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
       ],
-      "approvedScenarioIds": [
-        "production-shared-domain-pricingmodal--loaded",
-        "production-shared-domain-pricingmodal--save-persists-and-reopens",
-        "production-shared-domain-pricingmodal--save-error-visible",
-        "production-shared-domain-pricingmodal--load-error-visible",
-        "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-domain-pricingmodal--loaded",
@@ -53316,7 +53666,7 @@
             "loaded rates"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "Loaded waits for gpt-5 input rate 2.5 and Sonnet reasoning 15. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53334,7 +53684,7 @@
             "reopen"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "SavePersistsAndReopens changes gpt-5 input rate to 5.5 and asserts reopened value. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53351,7 +53701,7 @@
             "save error"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "SaveErrorVisible fixture returns rate-locked and play asserts alert while input remains.",
@@ -53368,7 +53718,7 @@
             "default fallback"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "LoadErrorVisible asserts db offline and default fallback input.",
@@ -53385,7 +53735,7 @@
             "reset completion"
           ],
           "sourceHashes": {
-            "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+            "src/shared/components/PricingModal.js": "31140f4a9c5076df667e26c261032e7ed75dbe6fe739661bd6652712e441b2c7",
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "ResetPending disables confirmation controls until deferred DELETE resolves, then gpt-5 rate is 1. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53396,19 +53746,9 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
-        "changedScenarioIds": [
-          "production-shared-domain-pricingmodal--save-error-visible",
-          "production-shared-domain-pricingmodal--load-error-visible"
-        ],
-        "publishedDependencyPathsPendingCombinedIntegration": [],
-        "runtimeStatus": "pending",
-        "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: PricingModal maps through colocated production stories.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -53430,8 +53770,123 @@
             "sourceReason": "Current source/CSF audit: PricingModal maps through colocated production stories.",
             "runtimeStatus": "pending"
           }
+        },
+        {
+          "sourceSha256": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-domain-pricingmodal--loaded",
+            "production-shared-domain-pricingmodal--save-persists-and-reopens",
+            "production-shared-domain-pricingmodal--save-error-visible",
+            "production-shared-domain-pricingmodal--load-error-visible",
+            "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-domain-pricingmodal--loaded",
+              "storyId": "production-shared-domain-pricingmodal--loaded",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--loaded",
+              "axes": [
+                "loaded rates"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "Loaded waits for gpt-5 input rate 2.5 and Sonnet reasoning 15. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--save-persists-and-reopens",
+              "storyId": "production-shared-domain-pricingmodal--save-persists-and-reopens",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--save-persists-and-reopens",
+              "axes": [
+                "save",
+                "reopen"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "SavePersistsAndReopens changes gpt-5 input rate to 5.5 and asserts reopened value. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--save-error-visible",
+              "storyId": "production-shared-domain-pricingmodal--save-error-visible",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--save-error-visible",
+              "axes": [
+                "save error"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "SaveErrorVisible fixture returns rate-locked and play asserts alert while input remains.",
+              "expectedVisibleText": "rate-locked",
+              "expectedConsoleErrors": [],
+              "proposedConsoleErrorEvidence": "PATCH HTTP423 rate-locked is handled by the non-OK response branch, which sets the visible alert without throwing or logging. Only a thrown fetch/parse exception reaches the logging catch; frozen ff930 captured zero console errors."
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--load-error-visible",
+              "storyId": "production-shared-domain-pricingmodal--load-error-visible",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--load-error-visible",
+              "axes": [
+                "load error",
+                "default fallback"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "LoadErrorVisible asserts db offline and default fallback input.",
+              "expectedVisibleText": "db offline",
+              "expectedConsoleErrors": [],
+              "proposedConsoleErrorEvidence": "GET HTTP503 db offline is handled by the non-OK response branch, which installs default pricing and sets the visible alert without throwing or logging. Only a thrown fetch exception reaches the logging catch; frozen ff930 captured zero console errors."
+            },
+            {
+              "id": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
+              "storyId": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
+              "runtimeArtifactId": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
+              "axes": [
+                "reset pending",
+                "reset completion"
+              ],
+              "sourceHashes": {
+                "src/shared/components/PricingModal.js": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
+                "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
+              },
+              "proposedSourceEvidence": "ResetPending disables confirmation controls until deferred DELETE resolves, then gpt-5 rate is 1. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "gpt-5 input rate"
+              }
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+            "changedScenarioIds": [
+              "production-shared-domain-pricingmodal--save-error-visible",
+              "production-shared-domain-pricingmodal--load-error-visible"
+            ],
+            "publishedDependencyPathsPendingCombinedIntegration": [],
+            "runtimeStatus": "pending",
+            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
         }
-      ]
+      ],
+      "unresolvedHistoricalScenarioIds": []
     },
     {
       "id": "src/shared/components/ProviderIcon.js#ProviderIcon",
@@ -100360,9 +100815,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "d9399a6d57f6ae5f345d89ded9ee41896c0e82faaaa4a9299ea1c0dbce317c76",
-    "sourceCensusSha256": "84481f333ebaad602b76baebb62cb659171a8453007db0a83fb0637fdbe80c04",
-    "pendingRows": 416,
-    "retainedApprovedRows": 220,
+    "sourceCensusSha256": "c1607e8454848ae4170762532e3fe8279d41b96aab76e799c1743306ed8155bf",
+    "pendingRows": 422,
+    "retainedApprovedRows": 214,
     "pendingReferences": 1413,
     "runtimeStatus": "pending"
   }

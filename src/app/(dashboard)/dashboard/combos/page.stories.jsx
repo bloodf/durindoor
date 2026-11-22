@@ -264,6 +264,7 @@ export const LoadFailureError = {
       scenario: "default",
       pathname: "/dashboard/combos",
       routes: {
+        "GET /api/usage/combos": { body: { rows: [], boundary: "Last seven days" } },
         "GET /api/combos": { status: 500, body: { error: "Upstream broken" } },
         "GET /api/providers": { body: { connections: [] } },
         "GET /api/settings": { body: {} },
@@ -379,3 +380,28 @@ export const ConnectionUsage = {
     await expect(await canvas.findByText("OpenAI prod")).toBeVisible();
   },
 };
+
+const restrictedCombo = { ...baseCombos[0], allowedConnectionIds: ["conn-openai-1"] };
+const allowListRoutes = {
+  ...fixtureRoutes("default"),
+  "GET /api/combos": { body: { combos: [restrictedCombo] } },
+  "PUT /api/combos/combo-prod-1": { status: 503, body: { error: "Restriction rejected" } },
+};
+export const RetainedError = {
+  parameters: { storyFixture: { pathname: "/dashboard/combos", routes: allowListRoutes } },
+  play: async () => {
+    const canvas = within(document.body);
+    await userEvent.click(await canvas.findByRole("button", { name: "Clear (unrestrict)" }));
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Restriction rejected");
+    await expect(canvas.getByText(/Your change is retained/)).toBeVisible();
+  },
+};
+export const RejectedClearAndRetry = {
+  ...RetainedError,
+  play: async () => {
+    await RetainedError.play();
+    await userEvent.click(within(document.body).getByRole("button", { name: "Retry" }));
+    await expect(await within(document.body).findByRole("alert")).toHaveTextContent("Restriction rejected");
+  },
+};
+export const Retry = LoadFailureError;

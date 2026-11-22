@@ -1,0 +1,8 @@
+{
+  "route": "dialog/OrcaRouterAuthModal",
+  "stories": [
+    "production-shared-auth-orcarouterauthmodal--default",
+    "production-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+    "production-shared-auth-orcarouterauthmodal--api-key-failure"
+  ]
+}

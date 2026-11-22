@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -42,6 +44,7 @@ async function postCredentials(payload) {
 }
 
 export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
+  const uiV5 = useUiV5();
   const [phase, setPhase] = useState("detecting"); // detecting | found | not-found | importing
   const [detected, setDetected] = useState(null);
   const [error, setError] = useState(null);
@@ -195,6 +198,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
 
   return (
     <Modal
+      {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})}
       open={isOpen}
       title="Connect Xiaomi MiMo"
       subtitle="Link a Xiaomi account to use its weekly MiMo quota."

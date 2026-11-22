@@ -1104,6 +1104,27 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/monitoring/page.stories.jsx",
+    "title": "V5 review/Pages/monitoring/MonitoringPage",
+    "storyId": "v5-review-pages-monitoring-monitoringpage--loaded",
+    "states": [
+      "Loaded",
+      "RequestFailure",
+      "Loading",
+      "PausePolling"
+    ],
+    "storyIds": [
+      "v5-review-pages-monitoring-monitoringpage--loaded",
+      "v5-review-pages-monitoring-monitoringpage--request-failure",
+      "v5-review-pages-monitoring-monitoringpage--loading",
+      "v5-review-pages-monitoring-monitoringpage--pause-polling"
+    ],
+    "pathname": "/dashboard/monitoring",
+    "routePattern": "/dashboard/monitoring",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.stories.jsx",
     "title": "V5 review/Pages/playground/PlaygroundCompare",
     "storyId": "v5-review-pages-playground-playgroundcompare--two-columns",

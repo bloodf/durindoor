@@ -125,7 +125,7 @@ flowClaim = null)
     shouldCommit: () => isOAuthFlowClaimActive(flowClaim)
   }) :
   await createProviderConnection(connectionData);
-  if (provider === "copilot-m365-web" && typeof connection?.id === "string") resetM365RefreshCircuit(connection.id);
+  if (provider === "copilot-m365-web") resetM365RefreshCircuit(connection?.id);
   return connection;
 }
 

@@ -21,7 +21,7 @@ export const M365_CLIENT_CONFIG_REFRESH_MAX_ATTEMPTS = 3;
 export const M365_CLIENT_CONFIG_REFRESH_COOLDOWN_MS = 30 * 60 * 1000;
 const clientConfigRefreshFailures = new Map();
 export function resetM365RefreshCircuit(connectionId) {
-  if (typeof connectionId === "string" && connectionId) clientConfigRefreshFailures.delete(connectionId);
+  if (isString(connectionId) && connectionId) clientConfigRefreshFailures.delete(connectionId);
 }
 // Microsoft rejects a refresh grant with these codes when the grant itself is dead.
 const PERMANENT_CODES = new Set(["invalid_grant", "invalid_token", "expired_token", "access_denied"]);
@@ -46,7 +46,7 @@ export async function refreshM365Token(credentials, log, proxyOptions = null) {
   const tenant = m365RefreshTenant(credentials);
   if (tenant === null) return { error: "unrecoverable_refresh_error", code: "invalid_tenant" };
   const connectionId = credentials?.connectionId;
-  const breaker = typeof connectionId === "string" && connectionId ? clientConfigRefreshFailures.get(connectionId) : null;
+  const breaker = isString(connectionId) && connectionId ? clientConfigRefreshFailures.get(connectionId) : null;
   if (breaker && breaker.until > Date.now()) return { error: "unrecoverable_refresh_error", code: "unauthorized_client" };
   if (breaker?.until > 0 && breaker.until <= Date.now()) clientConfigRefreshFailures.delete(connectionId);
   return dedupRefresh("copilot-m365-web", refreshToken, async () => {

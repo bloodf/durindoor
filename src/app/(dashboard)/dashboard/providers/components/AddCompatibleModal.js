@@ -43,6 +43,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   const initialFormData = () => ({
     name: "",
     prefix: "",
+    providerIdSuffix: "",
     ...(config.hasApiType ? { apiType: "chat" } : null),
     baseUrl: config.defaultBaseUrl,
     iconUrl: "",
@@ -82,6 +83,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         body: JSON.stringify({
           name: formData.name,
           prefix: formData.prefix,
+          providerIdSuffix: formData.providerIdSuffix,
           ...(config.hasApiType ? { apiType: formData.apiType } : null),
           baseUrl: formData.baseUrl,
           type: config.type,
@@ -163,6 +165,17 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
           placeholder={config.prefixPlaceholder}
           hint="Required. Used as the provider prefix for model IDs."
+        />
+
+        <Input
+          label="Provider ID suffix"
+          aria-label="Provider ID suffix"
+          value={formData.providerIdSuffix}
+          onChange={(e) => {
+            setFormData({ ...formData, providerIdSuffix: e.target.value });
+            setSaveError("");
+          }}
+          hint="Optional. Letters, numbers, -, _ and . only. Leave blank for a random ID."
         />
 
         {config.hasApiType ? (

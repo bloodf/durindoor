@@ -1,6 +1,7 @@
 import { isPromptQlSessionError, readPromptQlCredentials } from "open-sse/executors/promptql.js";
 import {
   antigravityCatalogRouteFingerprint,
+  antigravityCatalogUserAgent,
   antigravityForbiddenBackoff,
   buildAntigravityCapabilityHintsPsdPatch,
   recordAntigravityForbidden,
@@ -155,6 +156,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   }
 
   if (connection.provider === "antigravity" && connection.id) {
+    if (connection.isActive === false) return { error: "Provider connection is disabled", status: 409 };
     const backedOff = antigravityForbiddenBackoff(connection);
     if (backedOff) return backedOff;
   }
@@ -168,7 +170,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   // of hitting Cloud Code again. Hints live in connection PSD under
   // `antigravity_capability_hints` (nested, transfer-filtered, credential-free).
   if (connection.provider === "antigravity" && connection.id) {
-    const reused = reuseAntigravityCapabilityHints(connection, { proxyOptions });
+    const reused = reuseAntigravityCapabilityHints(connection, { proxyOptions, userAgent: antigravityCatalogUserAgent(connection) });
     if (reused) {
       return {
         provider: connection.provider,
@@ -246,6 +248,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   if (config.authQuery) url += `?${config.authQuery}=${token}`;
 
   const headers = config.buildHeaders ? config.buildHeaders(token, connection) || {} : { ...config.headers };
+  if (connection.provider === "antigravity") headers["User-Agent"] = antigravityCatalogUserAgent(connection);
   if (!config.buildHeaders && config.authHeader && !config.authQuery) {
     headers[config.authHeader] = (config.authPrefix || "") + token;
   }
@@ -335,14 +338,26 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     pageToken = isFunction(config.nextPageToken) ? config.nextPageToken(data) : null;
     if (!pageToken) {
       if (connection.provider === "antigravity" && connection.id) {
-        const psdPatch = buildAntigravityCapabilityHintsPsdPatch(connection, data, { proxyOptions });
+        const psdPatch = buildAntigravityCapabilityHintsPsdPatch(connection, data, { proxyOptions, userAgent: antigravityCatalogUserAgent(connection) });
         if (psdPatch) {
           try {
             // Only touch capability hints in PSD. Deep-merge leaves tokens alone;
             // transfer still filters the nested hints object out of exports.
-            await updateProviderConnection(connection.id, { providerSpecificData: psdPatch });
-          } catch {
-            // Persistence failure must not fail a successful live catalog answer.
+            const registration = (item) => JSON.stringify({
+              provider: item.provider, isActive: item.isActive, accessToken: item.accessToken,
+              refreshToken: item.refreshToken, projectId: item.projectId,
+              providerSpecificData: item.providerSpecificData
+            });
+            const expected = registration(connection);
+            const result = await updateProviderConnection(connection.id, { providerSpecificData: psdPatch }, {
+              expectedUpdatedAt: connection.updatedAt, signal, returnCommitResult: true,
+              shouldCommitConnection: (current) => current.isActive !== false && registration(current) === expected
+            });
+            if (!result || result.applied === false) return { error: "Provider connection changed during model discovery", status: 409 };
+          } catch (error) {
+            if (signal?.aborted || error?.code === "PROVIDER_CONNECTION_REVISION_CONFLICT") return { error: "Provider connection changed during model discovery", status: 409 };
+            // Without a successful fence the probe cannot publish a live catalog.
+            return { error: "Unable to publish model discovery", status: 500 };
           }
         }
         const result = { models };

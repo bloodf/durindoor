@@ -24,7 +24,7 @@ describe("antigravity image_gen preserves inline image parts (decolua/9router#47
     const inline = { mime_type: "image/png", data: "snake" };
     const out = run({ contents: [{ parts: [{ inline_data: inline }, { text: "edit" }] }] });
     expect(out.request.contents[0].role).toBe("user");
-    expect(out.request.contents[0].parts).toEqual([{ inlineData: inline }, { text: "edit" }]);
+    expect(out.request.contents[0].parts).toEqual([{ inlineData: { mimeType: "image/png", data: "snake" } }, { text: "edit" }]);
     expect(JSON.stringify(out.request.contents)).not.toContain("inline_data");
   });
 });

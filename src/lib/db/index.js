@@ -833,7 +833,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
   });
 
-  return await exportDb({ now: quotaNow });
+  // Return a secret-preserving snapshot so in-process callers can re-import the
+  // post-restore state. HTTP handlers never forward this object to clients.
+  return await exportDb({ now: quotaNow, includeSecrets: true });
 }
 const TRANSFER_CONNECTION_FIELDS = new Set([
   "id", "provider", "authType", "name", "email", "priority", "isActive", "createdAt", "updatedAt",

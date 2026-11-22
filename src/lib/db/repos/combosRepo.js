@@ -23,6 +23,31 @@ function normalizeInvariant(data) {
 }
 export class ComboMemberError extends Error {}
 
+// Resolve names as routing does (exact first, then case-insensitive) and reject
+// cycles reachable from the proposed row, including newly resolved references.
+function validateComboCycles(db, proposed) {
+  const rows = db.all(`SELECT * FROM combos ORDER BY createdAt ASC, id ASC`)
+    .filter((row) => row.id !== proposed.id).map(rowToCombo);
+  rows.push(proposed);
+  rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  const resolve = (name) => isString(name) && (rows.find((row) => row.name === name) ||
+    rows.find((row) => row.name.toLowerCase() === name.toLowerCase()));
+  const active = new Set();
+  const done = new Set();
+  function visit(combo) {
+    if (active.has(combo.id)) throw new ComboMemberError("Combo cycle detected");
+    if (done.has(combo.id)) return;
+    active.add(combo.id);
+    for (const model of combo.models) {
+      const nested = resolve(model);
+      if (nested) visit(nested);
+    }
+    active.delete(combo.id);
+    done.add(combo.id);
+  }
+  visit(proposed);
+}
+
 // Members preserve established string `models` routing while carrying optional
 // selection weights. Legacy rows read as weight 1; supplied weights are strict.
 export function normalizeComboMembers(models, members) {
@@ -176,6 +201,7 @@ export async function createCombo(data) {
   };
   // Reject a violating combo before the write so nothing is persisted.
   validateComboInvariant({ ...combo, ...(invariant || {}) });
+  validateComboCycles(db, combo);
   db.run(
     `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.members), invariant ? stringifyJson(invariant) : null, combo.capabilities ? stringifyJson(combo.capabilities) : null, stringifyJson(combo.allowedConnectionIds), combo.createdAt, combo.updatedAt]
@@ -208,6 +234,7 @@ export async function updateCombo(id, data) {
     merged.invariant = invariant;
     merged.allowedConnectionIds = normalizeAllowedConnectionIds(merged.allowedConnectionIds);
     validateComboInvariant({ ...merged, ...(invariant || {}) });
+    validateComboCycles(db, merged);
     db.run(
       `UPDATE combos SET name = ?, kind = ?, models = ?, members = ?, invariant = ?, capabilities = ?, allowedConnectionIds = ?, updatedAt = ? WHERE id = ?`,
       [merged.name, merged.kind, stringifyJson(merged.models || []), stringifyJson(merged.members), invariant ? stringifyJson(invariant) : null, merged.capabilities ? stringifyJson(merged.capabilities) : null, stringifyJson(merged.allowedConnectionIds), merged.updatedAt, id]

@@ -21,6 +21,13 @@ import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
 import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
+import {
+  decryptProviderSpecificData,
+  encryptProviderSpecificData,
+  scrubProxyPoolForExport,
+  scrubProviderSpecificDataForExport,
+  scrubSettingsSecretsForExport } from
+"./helpers/providerSpecificDataSecrets.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
 import { normalizeComboMembers } from "./repos/combosRepo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
@@ -406,6 +413,11 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
           // explicitly opted-in. Encrypted blobs pass through but are still
           // scrubbed here — backups must never contain either form by default.
           for (const field of SENSITIVE_CONNECTION_FIELDS) delete conn[field];
+          // Nested PSD secrets (cookie/clientSecret/mimoPassToken/…) use an
+          // allowlist matching sanitizeProviderConnectionForClient.
+          if (conn.providerSpecificData) {
+            conn.providerSpecificData = scrubProviderSpecificDataForExport(conn.providerSpecificData);
+          }
         } else {
           // Opt-in mode: decrypt to plaintext so a backup can be re-imported
           // into a different DATA_DIR (which has a different master key).
@@ -413,11 +425,17 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
             const value = conn[field];
             if (isEncryptedBlob(value)) conn[field] = decryptField(value, r.id);
           }
+          if (conn.providerSpecificData) {
+            conn.providerSpecificData = decryptProviderSpecificData(conn.providerSpecificData, r.id);
+          }
         }
         return conn;
       }),
       providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-      proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => {
+        const pool = { ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt };
+        return includeSecrets ? pool : scrubProxyPoolForExport(pool);
+      }),
       apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {
         let ac = [];
         try {ac = JSON.parse(r.allowedCombos);if (!Array.isArray(ac)) ac = [];} catch {}
@@ -520,6 +538,9 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
     for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
 
     if (!includeSecrets && out.settings) {
+      // #2281: scrub nested outboundProxyUrl / operatorWebhooks secrets.
+      out.settings = scrubSettingsSecretsForExport(out.settings);
+      // #2208: drop top-level settings credential keys from scrubbed exports.
       for (const key of SCRUBBED_SETTING_SECRET_KEYS) delete out.settings[key];
     }
 
@@ -674,6 +695,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
         if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
           rest[field] = encryptField(value, id);
         }
+      }
+      if (rest.providerSpecificData) {
+        rest.providerSpecificData = encryptProviderSpecificData(rest.providerSpecificData, id);
       }
       db.run(
         `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -853,7 +877,8 @@ const TRANSFER_SAFE_PSD_FIELDS = new Set([
 const TRANSFER_BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const TRANSFER_SECRET_LIKE_KEYS = new Set([
   "accessToken", "refreshToken", "apiKey", "idToken", "firecrawlHeaders",
-  "refresh_token", "proxyPassword", "proxyUrl", "password", "secret", "clientSecret", "copilotToken", "cookie", "authorization"
+  "refresh_token", "proxyPassword", "proxyUrl", "password", "secret", "clientSecret",
+  "copilotToken", "cookie", "authorization", "mimoPassToken", "dcaToken", "extraApiKeys", "BXAuth"
 ]);
 
 function isTransferObject(value) {

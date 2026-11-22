@@ -15,6 +15,10 @@ import {
   decryptField,
   isEncryptedBlob } from
 "@/lib/crypto/columnCrypto.js";
+import {
+  decryptProviderSpecificData,
+  encryptProviderSpecificData } from
+"../helpers/providerSpecificDataSecrets.js";
 
 // SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
 // inside providerConnections.data. All other fields stay plaintext.
@@ -128,6 +132,9 @@ function rowToConn(row) {
       extra[field] = decryptField(value, row.id);
     }
   }
+  if (extra.providerSpecificData) {
+    extra.providerSpecificData = decryptProviderSpecificData(extra.providerSpecificData, row.id);
+  }
   return {
     ...extra,
     id: row.id,
@@ -170,6 +177,9 @@ function connToRow(c) {
     if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
       rest[field] = encryptField(value, id);
     }
+  }
+  if (rest.providerSpecificData) {
+    rest.providerSpecificData = encryptProviderSpecificData(rest.providerSpecificData, id);
   }
   return {
     id,

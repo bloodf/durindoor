@@ -7,3 +7,4 @@ const meta = { ...originalMeta, title: "V5 review/Pages/profile/PricingSettingsP
 export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/dashboard/settings/pricing/page.stories.jsx","standalone":false}) };
 export const EmptyPricing = { ...reviewStory(original.EmptyPricing, {"source":"src/app/dashboard/settings/pricing/page.stories.jsx","standalone":false}) };
+export const PricingLoadFailure = { ...reviewStory(original.PricingLoadFailure, {"source":"src/app/dashboard/settings/pricing/page.stories.jsx","standalone":false}) };

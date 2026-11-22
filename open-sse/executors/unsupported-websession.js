@@ -1,11 +1,13 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { MuseSparkWebExecutor } from "./muse-spark-web.js";
 import { HuggingChatExecutor } from "./huggingchat.js";
 
 // Guarded web sessions that stay closed unless the connection opts in. The opt-in is read from the
 // connection's own providerSpecificData, so enabling one account never opens a sibling (#2034).
 const SESSION_DISPATCH_OPT_IN = {
   huggingchat: () => new HuggingChatExecutor(),
+  "muse-spark-web": () => new MuseSparkWebExecutor(),
 };
 const sessionDispatchExecutors = new Map();
 
@@ -41,9 +43,8 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
   "muse-spark-web": {
     aliases: ["ms-web"],
     source: [
-      "open-sse/executors/muse-spark-web.ts",
-      "open-sse/executors/muse-spark-web/response-parser.ts",
-      "tests/unit/muse-spark-web-continuation.test.ts",
+      "open-sse/executors/muse-spark-web.js",
+      "open-sse/executors/muse-spark-web/response-parser.js",
     ],
     reason: "requires Meta/Muse GraphQL request construction, continuation cache, and response parser",
   },

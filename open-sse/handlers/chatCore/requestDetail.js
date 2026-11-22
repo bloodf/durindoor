@@ -113,7 +113,9 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
     inStr += ` (CACHE ${parts.join(" ")})`;
   }
   const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
-  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+  // Same marker as logUsage(): a count we guessed must not read like a measured one.
+  const estimatedStr = u.estimated === true ? " (estimated)" : "";
+  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}${estimatedStr}`;
   if (model) line += ` · ${provider ? `${provider}/${model}` : model}`;
   if (Number.isFinite(u.kiro_credits) && u.kiro_credits >= 0) line += ` · ${Number(u.kiro_credits.toFixed(4))}cr`;
   if (sessionId) line += ` · sid:${String(sessionId).replace(/[^\x20-\x7e]/g, "").replace(/^(?:claude|antigravity):/, "").slice(0, 8)}`;

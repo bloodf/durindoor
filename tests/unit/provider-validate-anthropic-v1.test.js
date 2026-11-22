@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   getProviderNodeById: vi.fn(),
 }));
 
-vi.mock("open-sse/utils/outboundUrlGuard.js", () => ({
+vi.mock("open-sse/utils/outboundUrlGuard.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   guardedProbeFetch: mocks.guardedProbeFetch,
   OutboundUrlGuardError: class OutboundUrlGuardError extends Error {},
 }));

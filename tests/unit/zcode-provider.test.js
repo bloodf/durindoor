@@ -18,27 +18,16 @@ vi.mock("../../open-sse/utils/requestLogger.js", async (original) => ({
   createRequestLogger: vi.fn(async () => ({ logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(), logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn() })),
 }));
 
-// The staging rule: the entry and executor are composed here, never registered.
+// Tests inject the fake process through an isolated executor while the registry is real.
 const spawnHolder = vi.hoisted(() => ({ spawn: null }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: privateEntry } = await import("../../open-sse/providers/private/zcode.js");
-  return { ...original, default: [...original.default, privateEntry] };
-});
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const { ZcodeExecutor } = await import("../../open-sse/executors/zcode.js");
-  const executor = new ZcodeExecutor({
-    cwd: "/synthetic/workspace",
-    requestTimeoutMs: 200,
-    turnTimeoutMs: 2000,
-    spawnProcess: (options) => spawnHolder.spawn(options),
-  });
-  const isZcode = (provider) => provider === "zcode" || provider === "zc";
-  return { ...original, getExecutor: (provider) => (isZcode(provider) ? executor : original.getExecutor(provider)), hasSpecializedExecutor: (provider) => isZcode(provider) || original.hasSpecializedExecutor(provider) };
+  const executor = new ZcodeExecutor({ cwd: "/synthetic/workspace", requestTimeoutMs: 200, turnTimeoutMs: 2000, spawnProcess: (options) => spawnHolder.spawn(options) });
+  return { ...original, getExecutor: (provider) => provider === "zcode" || provider === "zc" ? executor : original.getExecutor(provider) };
 });
 
-import entry, { zcodeCookieProfile } from "../../open-sse/providers/private/zcode.js";
+import entry, { zcodeCookieProfile } from "../../open-sse/providers/registry/zcode.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { ZCODE_TOOL_DENYLIST, ZcodeConversation, ZcodeError } from "../../open-sse/executors/zcode.js";

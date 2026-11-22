@@ -21,7 +21,7 @@ describe("Antigravity Hydrogen effort dispatch", () => {
     applyThinking("antigravity", model, body, "antigravity", { mode: "level", level: "xhigh" }, getCapabilitiesForModel("antigravity", model));
     const output = new AntigravityExecutor().transformRequest(model, body, true, { projectId: "test", connectionId: "test" });
     expect(output.model).toBe("gemini-4-hydrogen-xhigh");
-    expect(output.request.generationConfig.thinkingConfig.thinkingLevel).toBe("xhigh");
+    expect(output.request.generationConfig.thinkingConfig.thinkingLevel).toBe("XHIGH");
     expect(getThinkingLevelsFromCapabilities({ reasoning: true, thinkingEfforts: ["high"] }, "antigravity", model)).toEqual(["high"]);
     expect(getThinkingLevels("opencode-go", "deepseek-v4.1-flash")).toEqual(["low", "high", "max"]);
   });

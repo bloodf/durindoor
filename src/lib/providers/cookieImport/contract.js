@@ -23,35 +23,45 @@ import {
   isValidCookieName,
   isValidCookieValue,
   cookieDomainAllowed,
+  validateImportedLocalStorage,
 } from "@/shared/utils/cookieImportContract";
 
 export const MAX_COOKIES = MAX_IMPORT_COOKIES;
-export { MAX_COOKIE_VALUE_LENGTH };
+export { MAX_COOKIE_VALUE_LENGTH, validateImportedLocalStorage };
 
 /**
  * Importable contract for a provider id, or null when the provider does not
  * support cookie import.
  * @param {string} providerId
- * @returns {{ provider: string, origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[], config: object } | null}
+ * `authType` is the auth type of the connection an import creates or replaces:
+ * "cookie" for a web-cookie provider, the registry auth type for a provider
+ * whose only credential is a localStorage value.
+ * @returns {{ provider: string, authType: string, origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[], localStorageKeys?: readonly string[], credentialPattern?: string, config: object } | null}
  */
 export function getCookieImportContract(providerId) {
-  const config = cookieImportConfig(REGISTRY.find((entry) => entry.id === providerId));
+  const entry = REGISTRY.find((candidate) => candidate.id === providerId);
+  const config = cookieImportConfig(entry);
   const resolved = resolveCookieImportContract(config);
   if (!resolved) return null;
   return Object.freeze({
     provider: String(providerId),
+    authType: entry.category === "webCookie" ? "cookie" : (entry.authType || "apikey"),
     ...resolved,
     config,
   });
 }
 
-/** What a client needs to know to collect cookies, with no internal config. */
+/**
+ * What a client needs to know to collect cookies, with no internal config. This is the required
+ * allowlist; `optionalCookies` are added next to it by the pairing response.
+ */
 export function describeCookieImportContract(contract) {
   const description = {
     origin: contract.origin,
     cookieNames: [...contract.cookieNames],
     cookiePrefixes: [...contract.cookiePrefixes],
   };
+  if (contract.localStorageKeys?.length) description.localStorageKeys = [...contract.localStorageKeys];
   if (!contract.extensionCapture) description.extensionCapture = false;
   return description;
 }
@@ -63,6 +73,12 @@ export function describeCookieImportContract(contract) {
  * @returns {{ ok: true, header: string } | { ok: false, error: string }}
  */
 export function buildImportedCookieHeader(contract, cookies, now = Date.now()) {
+  // A localStorage-only contract (no cookie names) carries no cookie at all.
+  if (contract.cookieNames.length === 0) {
+    return cookies === undefined || (Array.isArray(cookies) && cookies.length === 0)
+      ? { ok: true, header: "" }
+      : { ok: false, error: "Cookie name is not approved for this provider" };
+  }
   if (!Array.isArray(cookies) || cookies.length === 0) return { ok: false, error: "cookies must be a non-empty array" };
   if (cookies.length > MAX_COOKIES) return { ok: false, error: "Too many cookies" };
   const jar = new Map();

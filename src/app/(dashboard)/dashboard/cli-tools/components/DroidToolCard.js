@@ -12,6 +12,7 @@ import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { isUndefined } from "../../../../../shared/utils/typeChecks.js";
 import DocsLink from "@/shared/components/DocsLink";
+import { isDurinDoorDroidModel } from "@/shared/utils/droidConfig";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
@@ -44,10 +45,12 @@ export default function DroidToolCard({
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const hasInitializedModel = useRef(false);
 
+  const isManagedModel = (model) => model?.durinDoorManaged === true || isDurinDoorDroidModel(model);
+
   const getConfigStatus = () => {
     if (!droidStatus?.installed) return null;
     // Check for any 9Router model entry (support multi-model: custom:9Router-0, custom:9Router-1, ...)
-    const currentConfig = droidStatus.settings?.customModels?.find((m) => m.id?.startsWith("custom:9Router"));
+    const currentConfig = droidStatus.settings?.customModels?.find(isManagedModel);
     if (!currentConfig) return "not_configured";
     return matchKnownEndpoint(currentConfig.baseUrl, { tunnelPublicUrl, tailscaleUrl, cloudUrl: cloudEnabled ? CLOUD_URL : null }) ? "configured" : "other";
   };
@@ -81,7 +84,7 @@ export default function DroidToolCard({
     if (droidStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
       const existingModels = (droidStatus.settings?.customModels || []).
-      filter((m) => m.id?.startsWith("custom:9Router")).
+      filter(isManagedModel).
       sort((a, b) => (a.index || 0) - (b.index || 0)).
       map((m) => m.model);
       if (existingModels.length > 0) {
@@ -193,14 +196,14 @@ export default function DroidToolCard({
     const settingsContent = {
       customModels: modelList.map((m, i) => ({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `custom:DurinDoor-${i}`,
         index: i,
         baseUrl: getEffectiveBaseUrl(),
         apiKey: keyToUse,
         displayName: m,
         maxOutputTokens: 131072,
         noImageSupport: false,
-        provider: "openai"
+        provider: "generic-chat-completion-api"
       }))
     };
 
@@ -288,12 +291,12 @@ export default function DroidToolCard({
                 </div>
 
                 {/* Current configured */}
-                {droidStatus?.settings?.customModels?.find((m) => m.id?.startsWith("custom:9Router"))?.baseUrl &&
+                {droidStatus?.settings?.customModels?.find(isManagedModel)?.baseUrl &&
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Current</span>
                     <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded-dd bg-dd-surface-2 px-2 py-2 text-xs text-dd-muted sm:py-1.5">
-                      {droidStatus.settings.customModels.find((m) => m.id?.startsWith("custom:9Router")).baseUrl}
+                      {droidStatus.settings.customModels.find(isManagedModel).baseUrl}
                     </span>
                   </div>
             }

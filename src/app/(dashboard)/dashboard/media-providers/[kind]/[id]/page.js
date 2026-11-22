@@ -3,6 +3,7 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
@@ -19,6 +20,7 @@ import { SttExampleCard } from "./components/SttExampleCard";
 
 // MediaProviderDetailPage
 export default function MediaProviderDetailPage() {
+  const v5 = useUiV5();
   const { kind, id } = useParams();
   const router = useRouter();
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
@@ -83,7 +85,7 @@ export default function MediaProviderDetailPage() {
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className={`mx-auto flex w-full max-w-7xl flex-col gap-6${v5 ? " min-w-0 text-dd-text" : ""}`}>
       <header className="flex flex-col gap-4">
         <Link href={`/dashboard/media-providers/${kind}`} className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-[13px] text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
           <span aria-hidden="true" className="material-symbols-outlined text-[18px]">arrow_back</span>{kindConfig.label}

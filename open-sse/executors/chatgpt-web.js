@@ -20,11 +20,11 @@
  */
 import { executeChatGptWebCleanRoom } from "../utils/chatgptWebExecutorAdapter.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { BrowserUnavailableError } from "../services/browserPool.js";
 import { BaseExecutor } from "./base.js";
 import { ChatGptWebHttpExecutor } from "./chatgpt-web-http.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CHATGPT_WEB_URL = "https://chatgpt.com";
 export const CHATGPT_WEB_TRANSPORTS = ["auto", "browser", "http"];
@@ -66,6 +66,14 @@ function hasTools(body) {
   return Array.isArray(body?.tools) && body.tools.length > 0 && body?.tool_choice !== "none";
 }
 
+function hasMediaParts(body) {
+  return Array.isArray(body?.messages) && body.messages.some((message) =>
+    Array.isArray(message?.content) && message.content.some((part) =>
+      isObject(part) && ["image", "image_url", "input_image", "file", "document", "input_file"].includes(part.type),
+    ),
+  );
+}
+
 export class ChatGptWebExecutor extends BaseExecutor {
   /**
    * @param {object} [deps] test seams: `browser` (adapter deps), `runBrowser`,
@@ -79,13 +87,24 @@ export class ChatGptWebExecutor extends BaseExecutor {
 
   async execute(input) {
     const transport = resolveChatGptWebTransport(input.credentials?.providerSpecificData);
-    if (transport === "http" || (transport === "auto" && hasTools(input.body))) {
+    const hasMedia = hasMediaParts(input.body);
+    const hasRequestTools = hasTools(input.body);
+    if (transport === "auto" && hasMedia && hasRequestTools) {
+      const message = "ChatGPT Web cannot process image or file inputs together with tools.";
+      return {
+        response: errorResponse(400, message, { type: "invalid_request", code: "UNSUPPORTED_MEDIA_WITH_TOOLS" }),
+        url: CHATGPT_WEB_URL,
+        headers: {},
+        transformedBody: input.body,
+      };
+    }
+    if (transport === "http" || (transport === "auto" && hasRequestTools)) {
       return this.httpExecutor.execute(input);
     }
     try {
       return await this.runBrowser(input);
     } catch (error) {
-      if (transport === "auto" && error instanceof BrowserUnavailableError) {
+      if (transport === "auto" && !hasMedia && error instanceof BrowserUnavailableError) {
         input.log?.warn?.("CGPT-WEB", `Browser transport unavailable, using HTTP: ${error.message}`);
         return this.httpExecutor.execute(input);
       }
@@ -108,7 +127,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
   }
 
   runBrowser(input) {
-    const proxyUrl = resolveProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
+    const proxyUrl = resolveConnectProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
     const run = this.deps.runBrowser ?? executeChatGptWebCleanRoom;
     return run({ ...input, proxyUrl }, this.deps.browser ?? {});
   }

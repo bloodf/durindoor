@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
@@ -134,7 +135,7 @@ const read1pConfig = async () => {
 
 const write1pConfig = async (cfg) => {
   await fs.mkdir(get1pRoot(), { recursive: true });
-  await fs.writeFile(get1pConfigPath(), JSON.stringify(cfg, null, 2));
+  await writeConfigAtomic(get1pConfigPath(), JSON.stringify(cfg, null, 2));
 };
 
 const bootstrapDeploymentMode = async () => {
@@ -225,7 +226,7 @@ const ensureMeta = async () => {
       meta = { appliedId: newId, entries: [{ id: newId, name: "Default" }] };
     }
     await fs.mkdir(getWriteConfigDir(), { recursive: true });
-    await fs.writeFile(writeMetaPath, JSON.stringify(meta, null, 2));
+    await writeConfigAtomic(writeMetaPath, JSON.stringify(meta, null, 2));
   }
   return meta;
 };
@@ -242,7 +243,7 @@ async function writeSkipApprovals(managedServers) {
   }
   cfg.operonSkipMcpApprovals = skip;
   await fs.mkdir(getWriteRoot(), { recursive: true });
-  await fs.writeFile(cfgPath, JSON.stringify(cfg, null, 2));
+  await writeConfigAtomic(cfgPath, JSON.stringify(cfg, null, 2));
   return { written: Object.keys(skip).length };
 }
 
@@ -348,7 +349,7 @@ export async function POST(request) {
     };
     if (managedMcpServers.length > 0) newConfig.managedMcpServers = managedMcpServers;
 
-    await fs.writeFile(configPath, JSON.stringify(newConfig, null, 2));
+    await writeConfigAtomic(configPath, JSON.stringify(newConfig, null, 2));
 
     let skipResult = null;
     try {skipResult = await writeSkipApprovals(managedMcpServers);} catch (e) {skipResult = { error: e.message };}
@@ -380,7 +381,7 @@ export async function DELETE() {
       return NextResponse.json({ success: true, message: "No active config to reset" });
     }
     const configPath = path.join(await getConfigDir(), `${meta.appliedId}.json`);
-    try {await fs.writeFile(configPath, JSON.stringify({}, null, 2));}
+    try {await writeConfigAtomic(configPath, JSON.stringify({}, null, 2));}
     catch (error) {if (error.code !== "ENOENT") throw error;}
     try {await writeSkipApprovals([]);} catch {/* ignore */}
     try {await cleanup1pLegacy();} catch {/* ignore */}

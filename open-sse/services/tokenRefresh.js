@@ -22,12 +22,15 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
 import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
+import { refreshM365Token } from "./tokenRefresh/copilotM365.js";
+import { refreshMinimaxCodeToken } from "./minimaxCodeAuth.js";
+import { refreshWorkbuddyToken } from "./workbuddyAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export {
   refreshAccessToken,
   refreshClaudeOAuthToken,
@@ -57,7 +60,10 @@ export function isUnrecoverableRefreshError(result) {
 
 }
 
-export function getRefreshLeadMs(provider) {
+/** Use a positive finite per-connection lead when supplied. */
+export function getRefreshLeadMs(provider, providerSpecificData = null) {
+  const override = providerSpecificData?.refreshLeadMs;
+  if (isNumber(override) && Number.isFinite(override) && override > 0) return override;
   return REFRESH_LEAD_MS[provider] || TOKEN_EXPIRY_BUFFER_MS;
 }
 
@@ -270,6 +276,9 @@ const REFRESH_HANDLERS = {
   // were never rotated. Ported from decolua/9router f6e7cabe.
   cline: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
   clinepass: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
+  // Microsoft 365 Copilot native sign-in: per-connection refresh against the connection's own tenant.
+  // A pasted session has no refresh token and never reaches this handler.
+  "copilot-m365-web": (c, log, p) => refreshM365Token(c, log, p),
   // OrcaRouter's PKCE login returns a durable API key, not a refreshable token —
   // OrcaRouter publishes no refresh grant. Refusing explicitly (rather than
   // omitting the provider) also keeps `refreshTokenByProvider` from falling
@@ -279,6 +288,13 @@ const REFRESH_HANDLERS = {
   orcarouter: () => null,
   // Muse Code has no refresh grant: the stored dca token remints the key.
   "muse-code": (c, log, p) => refreshMuseCodeToken(c.refreshToken, c.providerSpecificData, log, p),
+  // MiniMax Code and WorkBuddy refresh against their own account hosts; neither
+  // has a registry tokenUrl the generic grant could use. A connection that has
+  // not opted in to dispatch never spends (and rotates) its refresh token.
+  "minimax-code": (c, log, p) => c.providerSpecificData?.enableSessionDispatch === true ? refreshMinimaxCodeToken(c, log, p) : null,
+  workbuddy: (c, log, p) => c.providerSpecificData?.enableSessionDispatch === true ? refreshWorkbuddyToken(c, log, p) : null,
+  // Devin session tokens carry no refresh grant; a rejected one means sign in again.
+  "devin-desktop": () => null,
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };

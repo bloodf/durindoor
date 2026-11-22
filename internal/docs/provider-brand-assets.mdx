@@ -32,6 +32,8 @@ Registry `display.icon` is a Material Symbol name or `textIcon` fallback for pla
 
 ## Adding a mark
 
+Cursor API, MiniMax Code, and ZCode reuse the Cursor, MiniMax, and GLM marks, respectively. Devin Desktop, Freebuff, and WorkBuddy use local SVG initial tiles. Zed Hosted uses its own SVG through both `ProviderLogo` and the `ProviderIcon` SVG lookup.
+
 <Steps>
 <Step>
 Place one vendor-supplied file at `public/providers/{id}.svg` (or `.png` / `.jpg` when that is what the vendor published). `{id}` must match the registry id after alias resolution.

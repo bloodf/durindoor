@@ -1,0 +1,12 @@
+---
+title: Replicate
+description: Run Replicate text predictions with an API token, including streaming and local quota refusal.
+---
+
+Add a Replicate API token in Providers, then select `replicate/meta/meta-llama-3-70b-instruct`. The catalog and model sync expose this documented official text model. Other official `owner/name` models can be selected as custom models if they accept the same `prompt`, `system_prompt`, `max_tokens`, `temperature`, and `top_p` inputs and return text. Model-specific schemas differ; unsupported inputs or outputs are rejected by Replicate or the gateway.
+
+Text messages are flattened into a prompt; system messages use `system_prompt`. Tool calls and media inputs are unsupported. Streaming relays Replicate's output events when a stream URL is available and falls back to a completed prediction otherwise. Predictions are billed by Replicate. Token usage is omitted when unavailable rather than estimated.
+
+One chat request creates one prediction. Polling a pending prediction and following its stream read that same prediction and are not billed again. When the gateway has no local capacity for the provider, the request is refused before it reaches Replicate and the gateway answers `503`; the API token is never sent to a destination outside Replicate, and redirects are not followed.
+
+See [Replicate's HTTP API](https://replicate.com/docs/reference/http) and [streaming documentation](https://replicate.com/docs/topics/predictions/streaming/).

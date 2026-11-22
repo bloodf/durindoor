@@ -1,0 +1,8 @@
+{
+  "route": "dialog/WebLoginModal",
+  "stories": [
+    "production-shared-web-login-webloginmodal--waiting",
+    "production-shared-web-login-webloginmodal--ready",
+    "production-shared-web-login-webloginmodal--origin-not-configured"
+  ]
+}

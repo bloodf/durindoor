@@ -8,12 +8,14 @@
 import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { isExpiredSessionToken, webSocketAuthStatus } from "../utils/webSessionExpiry.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
+  const { assertSocksProxyUrl } = await import("../utils/socksCredential.js");
+  assertSocksProxyUrl(proxyUrl);
   try {
     const { HttpsProxyAgent } = await import("https-proxy-agent");
     return new HttpsProxyAgent(proxyUrl);
@@ -364,9 +366,13 @@ export class CopilotWebExecutor extends BaseExecutor {
         try {
           const wsOptions = { headers: {} };
           if (accessToken) wsOptions.headers.Authorization = `Bearer ${accessToken}`;
-          if (proxyOptions?.connectionProxyEnabled && proxyOptions?.connectionProxyUrl) {
-            const agent = await proxyAgentForWebSocket(proxyOptions.connectionProxyUrl);
+          const proxyRoute = resolveWebSocketProxyRoute(wsUrl, proxyOptions);
+          if (proxyRoute.enabled && proxyRoute.url) {
+            const agent = await proxyAgentForWebSocket(proxyRoute.url);
             if (agent) wsOptions.agent = agent;
+            else if (proxyRoute.strict) {
+              throw new Error("WebSocket proxy required but unavailable");
+            }
           }
           ws = new WebSocketCtor(wsUrl, wsOptions);
           timeout = setTimeout(() => abort("Copilot WebSocket timeout"), FETCH_CONNECT_TIMEOUT_MS);

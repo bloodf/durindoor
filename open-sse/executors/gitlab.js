@@ -1,6 +1,33 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import * as proxyFetch from "../utils/proxyFetch.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+
+const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
+
+/**
+ * Credentialed send through proxyAwareFetch with redirect:"error".
+ * Falls back to the live global when proxyFetch is empty-mocked or when the
+ * DurinDoor-patched global (including Vitest spies that preserve the patch
+ * flag) should observe the call.
+ */
+function routeExecutorFetch(url, init, proxyOptions = null) {
+  const options = { ...init, redirect: "error" };
+  let send = null;
+  try {
+    send = proxyFetch.proxyAwareFetch;
+  } catch {
+    send = null;
+  }
+  if (!isFunction(send)) {
+    return globalThis.fetch(url, { ...options, proxyOptions });
+  }
+  const live = globalThis.fetch;
+  if (isFunction(live) && live[DURINDOOR_FETCH_PATCH] === true) {
+    return live(url, { ...options, proxyOptions });
+  }
+  return send(url, options, proxyOptions);
+}
 
 function asObject(value) {
   return value && isObject(value) && !Array.isArray(value) ? value : {};
@@ -178,16 +205,16 @@ export class GitlabExecutor extends BaseExecutor {
     return buildRequestBody(model, body || {}, credentials || {});
   }
 
-  async execute({ model, body, stream, credentials, signal }) {
+  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
-    const response = await fetch(url, {
+    const response = await routeExecutorFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal || undefined
-    });
+    }, proxyOptions);
     const text = await response.text();
     let payload = null;
     try {

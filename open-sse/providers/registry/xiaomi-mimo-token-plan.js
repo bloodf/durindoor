@@ -16,6 +16,7 @@ export default {
   transport: {
     baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
     format: "openai",
+    reasoningInject: { scope: "all" },
   },
   models: [
     { id: "mimo-v2.5-pro", name: "MiMo-V2.5-Pro", contextLength: 1048576, maxOutputTokens: 131072 },

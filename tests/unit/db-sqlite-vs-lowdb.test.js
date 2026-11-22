@@ -768,7 +768,8 @@ describe("DB SQLite layer — public API parity", () => {
     await sqliteDb.setModelAlias("marker", "before");
     const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await sqliteDb.createApiKey("roundtrip-key", "machine-abc", [], null, future);
-    const snap = await sqliteDb.exportDb();
+    // SEC-B-02 / #2208: scrubbed exports omit apiKeys[].key; round-trip needs secrets.
+    const snap = await sqliteDb.exportDb({ includeSecrets: true });
 
     await sqliteDb.setModelAlias("marker", "after");
     expect((await sqliteDb.getModelAliases()).marker).toBe("after");

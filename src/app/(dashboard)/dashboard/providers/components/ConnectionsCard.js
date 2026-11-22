@@ -266,13 +266,13 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
         {error && <p role="alert" className="text-sm text-dd-danger">{error}</p>}
         {credentialOptional && <p className="text-sm text-dd-muted">Guarded System One server URLs use direct egress. Outbound proxy pools are unsupported.</p>}
         <div>
-          <label className="text-xs text-dd-muted mb-1 block">Name</label>
-          <input className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Production Key" />
+          <label htmlFor="connection-name" className="text-xs text-dd-muted mb-1 block">Name</label>
+          <input id="connection-name" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Production Key" />
         </div>
         <div className="flex gap-2">
           <div className="flex-1">
-            <label className="text-xs text-dd-muted mb-1 block">{credentialLabel}</label>
-            <input type="password" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
+            <label htmlFor="connection-credential" className="text-xs text-dd-muted mb-1 block">{credentialLabel}</label>
+            <input id="connection-credential" type="password" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
           </div>
           <div className="pt-6">
             <Button onClick={handleValidate} disabled={(!credentialOptional && !formData.apiKey) || !isGooglePseReadyForSave(provider, formData.cx) || validating || saving} variant="secondary">
@@ -282,8 +282,8 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
         </div>
         {isGooglePseProvider(provider) &&
         <div>
-            <label className="text-xs text-dd-muted mb-1 block">Search Engine ID (cx)</label>
-            <input className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.cx} onChange={(e) => setFormData({ ...formData, cx: e.target.value })} placeholder="e.g. 0123456789:abcdefg" />
+            <label htmlFor="connection-search-engine-id" className="text-xs text-dd-muted mb-1 block">Search Engine ID (cx)</label>
+            <input id="connection-search-engine-id" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.cx} onChange={(e) => setFormData({ ...formData, cx: e.target.value })} placeholder="e.g. 0123456789:abcdefg" />
           </div>
         }
         {validationResult &&
@@ -292,8 +292,8 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
           </Badge>
         }
         <div>
-          <label className="text-xs text-dd-muted mb-1 block">Priority</label>
-          <input type="number" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
+          <label htmlFor="connection-priority" className="text-xs text-dd-muted mb-1 block">Priority</label>
+          <input id="connection-priority" type="number" min="1" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value === "" ? "" : Number.parseInt(e.target.value, 10) })} onBlur={() => setFormData((prev) => ({ ...prev, priority: Number.isInteger(prev.priority) && prev.priority > 0 ? prev.priority : 1 }))} />
         </div>
         <Select label="Proxy Pool" disabled={credentialOptional} value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
         options={[{ value: NONE, label: "None" }, ...(credentialOptional ? [] : proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
@@ -529,6 +529,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       {/* Laya needs a server URL and an optional key; the provider page's modal handles both. */}
       {providerId === "laya" ?
       <HostAwareAddApiKeyModal
+        key={showAddModal ? "add-api-key-open" : "add-api-key-closed"}
         isOpen={showAddModal}
         provider={providerId}
         providerName="Laya (local)"

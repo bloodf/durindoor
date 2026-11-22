@@ -275,6 +275,17 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
 
       if (!response.ok) {
         const errorText = await response.text();
+        // Google answers a revoked or expired refresh token with invalid_grant;
+        // retrying cannot recover it, so surface the durable re-auth signal
+        // (9router #900). invalid_client and transient errors stay retryable.
+        const failure = classifyOAuthRefreshError(errorText, response.status);
+        if (String(failure.code).toLowerCase() === "invalid_grant") {
+          log?.error?.("TOKEN_REFRESH", "Google refresh token revoked or expired. Re-auth required.", {
+            status: response.status,
+            code: "invalid_grant"
+          });
+          return { error: "invalid_grant" };
+        }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", {
           status: response.status,
           error: safeRefreshError(errorText)
@@ -357,12 +368,19 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   const code = parsed?.error?.code || parsed?.error || parsed?.error_code || "";
   const description = parsed?.error_description || parsed?.message || errorText || "";
   const combined = `${code} ${description}`.toLowerCase();
-  const permanent = [
+  const markerPermanent = [
   "refresh_token_expired",
   "refresh_token_reused",
   "refresh_token_invalidated",
-  "invalid_grant"].
+  "invalid_grant",
+  // OpenAI's token endpoint rejects a rotated-away or expired refresh token with
+  // HTTP 401 {error:{code:"token_expired"}} (9router PR #1821).
+  "token_expired",
+  "could not validate your token"].
   some((marker) => combined.includes(marker));
+  // A 401 from the OAuth token endpoint rejects the refresh credential itself:
+  // re-authenticate instead of retrying. 429 and 5xx stay transient.
+  const permanent = status === 401 || markerPermanent;
 
   return { status, code, description, permanent };
 }

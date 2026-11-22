@@ -4,7 +4,7 @@
  * Responses API uses: { input: [...], instructions: "..." }
  * Chat API uses: { messages: [...] }
  */
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
@@ -17,10 +17,12 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_BLOCK, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
 import { normalizeResponsesImageReplay } from "../concerns/responsesImageReplay.js";
+import { parseDataUri } from "../concerns/image.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
+import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
 import { normalizeToolSchema, normalizeToolParameters, sanitizeToolSchemaParameters } from "../concerns/toolSchema.js";
 
@@ -337,7 +339,7 @@ export function boundToolOutputImages(groups, maxCount = MAX_TOOL_OUTPUT_IMAGES,
 }
 
 function responsesContentToOpenAI(c) {
-  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text, ...(c.cache_control?.type === "ephemeral" && { cache_control: c.cache_control }) };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
     const url = responsesImageUrl(c);
     return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
@@ -368,7 +370,7 @@ function qualifyNamespacedChoice(choice) {
   return Array.isArray(qualified.tools) ? { ...qualified, tools: qualified.tools.map(qualify) } : qualified;
 }
 
-export function openaiResponsesToOpenAIRequest(model, body, stream, credentials) {
+export function openaiResponsesToOpenAIRequest(model, body, stream, credentials, translationContext = null) {
   if (!body.input) return body;
 
   const result = { ...body };
@@ -383,6 +385,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  let pendingClaudeThinking = [];
+  let thinkingOrigin = null;
   // True once this pending assistant turn absorbed a Responses `message` item.
   // A tool-only turn (function_call first) followed by a later assistant
   // message is a new turn (#1335); trailing text after a message-opened turn
@@ -432,7 +436,31 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // strip below: pairing an id-less function_call_output with the oldest
   // unanswered function_call keeps a legitimate tool result instead of the
   // strip pass discarding it as an orphan.
-  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input))));
+  let repairedItems = repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input)));
+  if (translationContext?.targetFormat === FORMATS.CLAUDE && Array.isArray(repairedItems)) {
+    const known = collectKnownCallIds(repairedItems);
+    repairedItems = repairedItems.map((item) => {
+      if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || known.has(item.call_id)) return item;
+      const raw = Array.isArray(item.output) ? item.output : [{ type: RESPONSES_ITEM.INPUT_TEXT, text: isString(item.output) ? item.output : JSON.stringify(item.output ?? "") }];
+      const content = [];
+      let droppedCache = null;
+      for (const part of raw) {
+        let converted = responsesContentToOpenAI(part);
+        const cache = part?.cache_control?.type === "ephemeral" ? part.cache_control : null;
+        if (converted?.type === OPENAI_BLOCK.TEXT && !converted.text?.trim()) {
+          if (content.length && cache && !content.at(-1).cache_control) content[content.length - 1] = { ...content.at(-1), cache_control: cache };
+          else if (!content.length && cache) droppedCache = cache;
+          continue;
+        }
+        if (cache && converted) converted = { ...converted, cache_control: cache };
+        if (converted) content.push(converted);
+      }
+      if (!content.length) content.push({ type: OPENAI_BLOCK.TEXT, text: "Tool result was empty.", ...(droppedCache && { cache_control: droppedCache }) });
+      if (!content.at(-1).cache_control && item.cache_control?.type === "ephemeral") content[content.length - 1] = { ...content.at(-1), cache_control: item.cache_control };
+      return { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content };
+    });
+  }
+  const inputItems = stripOrphanedToolOutputs(repairedItems);
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above
@@ -472,6 +500,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (pendingReasoning) {
       currentAssistantMsg.reasoning_content = pendingReasoning;
       pendingReasoning = "";
+    }
+    if (pendingClaudeThinking.length) {
+      currentAssistantMsg._responsesClaudeThinking = pendingClaudeThinking;
+      pendingClaudeThinking = [];
+      thinkingOrigin = null;
     }
     if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
     // A text-only content array (no tool calls survived, or every call was
@@ -567,6 +600,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         pendingToolResults = [];
       }
       pendingReasoning = "";
+      pendingClaudeThinking = [];
+      thinkingOrigin = null;
       result.messages.push({ role: item.role, content });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
@@ -633,13 +668,28 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Add tool result immediately; its images follow in a user message
       const { content, images } = splitToolOutputImages(item.output);
-      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content });
+      // Claude requires a tool result's cache marker on the outer block.
+      const partCache = Array.isArray(item.output) ? item.output.findLast((part) => part?.cache_control?.type === "ephemeral")?.cache_control : null;
+      const cache = partCache || (item.cache_control?.type === "ephemeral" ? item.cache_control : null);
+      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content, ...(cache && { cache_control: cache }) });
       pendingToolImages.push(...images.map((part) => ({ part, callId: item.call_id })));
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
       const txt = extractReasoningText(item);
       if (txt) pendingReasoning = pendingReasoning ? `${pendingReasoning}\n${txt}` : txt;
+      if (translationContext?.targetFormat === FORMATS.CLAUDE && isString(item.encrypted_content) && isValidClaudeSignature(item.encrypted_content)) {
+        const match = isString(item.id) ? /^rs_(.+)_(\d+)$/.exec(item.id) : null;
+        const origin = match && Number.isSafeInteger(Number(match[2])) ? { id: match[1], index: Number(match[2]) } : null;
+        const block = { type: CLAUDE_BLOCK.THINKING, thinking: txt, signature: item.encrypted_content.split("#").at(-1).trim() };
+        if (origin && thinkingOrigin && origin.id === thinkingOrigin.id && origin.index === thinkingOrigin.index) {
+          pendingClaudeThinking[pendingClaudeThinking.length - 1] = block;
+        } else {
+          if (!origin || !thinkingOrigin || origin.id !== thinkingOrigin.id || origin.index < thinkingOrigin.index) pendingClaudeThinking = [];
+          pendingClaudeThinking.push(block);
+        }
+        thinkingOrigin = origin;
+      }
       continue;
     }
   }
@@ -735,6 +785,18 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   if (customToolNames.length > 0) result._customToolNames = customToolNames;
 
   // Cleanup Responses API specific fields
+  // Translate Responses structured output to the Chat Completions shape.
+  if (result.text?.format) {
+    const format = result.text.format;
+    if (format.type === "json_schema") {
+      const { type, ...schema } = format;
+      result.response_format = { type, json_schema: schema };
+    } else if (format.type === "json_object") {
+      result.response_format = { type: "json_object" };
+    }
+    delete result.text;
+  }
+
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
     if (result.max_tokens === undefined) result.max_tokens = result.max_output_tokens;
@@ -800,14 +862,17 @@ function chatPartToResponses(c, contentType) {
     const { file_data, file_id, file_url, filename } = c.file;
     return { type: RESPONSES_ITEM.INPUT_FILE, ...Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
   }
-  if (contentType === RESPONSES_ITEM.OUTPUT_TEXT && (c.type === OPENAI_BLOCK.IMAGE_URL || c.type === RESPONSES_ITEM.INPUT_IMAGE)) {
-    const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
+  if (contentType === RESPONSES_ITEM.OUTPUT_TEXT && (c.type === OPENAI_BLOCK.IMAGE_URL || c.type === RESPONSES_ITEM.INPUT_IMAGE || c.type === OPENAI_BLOCK.IMAGE)) {
+    const url = c.type === OPENAI_BLOCK.IMAGE ? (isString(c.image) ? c.image : null) : (isString(c.image_url) ? c.image_url : c.image_url?.url);
     return { type: contentType, text: isString(url) && url ? `[Image: ${url}]` : "[Image]" };
   }
   if (c.type === OPENAI_BLOCK.IMAGE_URL) {
     const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
     // No usable URL: fall through to the text serialization below.
     if (isString(url) && url) return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+  }
+  if (c.type === OPENAI_BLOCK.IMAGE && parseDataUri(c.image)) {
+    return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: c.image, detail: c.detail || "auto" };
   }
   if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
   const text = c.text || c.content || JSON.stringify(c);
@@ -891,8 +956,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     store: false
   };
 
-  // Extract system message as instructions
-  let hasSystemMessage = false;
+  // Collect all non-empty system/developer message texts in order for instructions (#2184)
+  const instructionParts = [];
   const messages = body.messages || [];
 
   // Declared tool types on this Chat Completions body, hoisted above the
@@ -907,12 +972,10 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   for (const msg of messages) {
     if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-      // Use the first instruction-bearing message as instructions.
+      // Join all non-empty instruction-bearing messages with "\n" in order (#2184).
       // OpenAI recommends role="developer" for GPT-5/Codex as the system-level prompt.
-      if (!hasSystemMessage) {
-        result.instructions = extractInstructionsText(msg.content);
-        hasSystemMessage = true;
-      }
+      const text = extractInstructionsText(msg.content);
+      if (text) instructionParts.push(text);
       continue; // Skip instruction messages in input
     }
 
@@ -977,7 +1040,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       // Responses has no tool-error flag; retain failure meaning in its output text.
       const errorPrefix = msg.is_error === true ? "[Tool error]\n" : "";
       // Image parts stay media: Responses accepts an input_text/input_image array (#1332).
-      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE);
+      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE || (c?.type === OPENAI_BLOCK.IMAGE && Boolean(parseDataUri(c.image))));
       const output = hasImage ?
       [
       ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),
@@ -995,10 +1058,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }
   }
 
-  // If no system message, leave instructions empty (will be filled by executor)
-  if (!hasSystemMessage) {
-    result.instructions = "";
-  }
+  // Join all non-empty system/developer texts with "\n", or leave "" (will be filled by executor)
+  result.instructions = instructionParts.join("\n");
 
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
@@ -1055,6 +1116,15 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     const include = Array.isArray(result.include) ? result.include : [];
     if (!include.includes(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES)) include.push(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES);
     result.include = include;
+  }
+  // Responses text settings take precedence over Chat structured output settings.
+  if (body.text !== undefined) {
+    result.text = body.text;
+  } else if (body.response_format?.type === "json_schema") {
+    const { name, schema, strict, description } = body.response_format.json_schema || body.response_format;
+    result.text = { format: { type: "json_schema", name, schema, strict, description } };
+  } else if (body.response_format?.type === "json_object") {
+    result.text = { format: { type: "json_object" } };
   }
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);

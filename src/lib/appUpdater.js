@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { createHash } from "crypto";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import processExitCodes from "@/shared/constants/processExitCodes";
 import { getCachedPassword, loadEncryptedPassword, stopServer } from "@/mitm/manager";
@@ -52,14 +53,19 @@ function resolveBundledUpdaterPath() {
   return fromCwd;
 }
 
-function ensureRuntimeUpdater(bundledPath) {
+function fileSha256(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+/** Copy the bundled updater into DATA_DIR when missing or content-divergent. */
+export function ensureRuntimeUpdater(bundledPath) {
   try {
     if (!bundledPath || !fs.existsSync(bundledPath)) return bundledPath;
     const runtimeDir = path.join(getDataDir(), "runtime", "updater");
     const runtimePath = path.join(runtimeDir, "updater.js");
     if (fs.existsSync(runtimePath)) {
       try {
-        if (fs.statSync(bundledPath).size === fs.statSync(runtimePath).size) return runtimePath;
+        if (fileSha256(bundledPath) === fileSha256(runtimePath)) return runtimePath;
       } catch { /* recopy */ }
     }
     fs.mkdirSync(runtimeDir, { recursive: true });
@@ -95,10 +101,11 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
   const isTray = process.env.TRAY_MODE === "1";
   const relaunch = resolveRelaunchCommand();
   const appPort = String(process.env.PORT || UPDATER_CONFIG.appPort);
+  const appHost = String(process.env.HOSTNAME || "0.0.0.0");
   // Relaunch matching original env: tray stays tray, foreground stays foreground
   const relaunchArgs = isTray
-    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort]
-    : [...relaunch.args, "--skip-update", "--port", appPort];
+    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort, "--host", appHost]
+    : [...relaunch.args, "--skip-update", "--port", appPort, "--host", appHost];
 
   spawn(process.execPath, [updaterPath], {
     detached: true,

@@ -715,7 +715,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }));
     expect(geminiDecl(out).parameters).toEqual({
       type: "object",
-      properties: { pair: { type: "array", items: { type: "string" } } },
+      properties: { pair: { type: "array", description: "No additional items allowed", items: { type: "string" } } },
     });
   });
 

@@ -3,7 +3,8 @@
  * On a fallback-eligible failure of the primary, the whole request is retried
  * once against the fallback. One hop only — no chaining, no recursion.
  */
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { checkFallbackError } from "./accountFallback.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
@@ -91,6 +92,44 @@ export function getModelFallback(primaryModelStr, modelFallbacks) {
   return getModelFallbacks(primaryModelStr, modelFallbacks)[0] || null;
 }
 
+function providerFromModel(modelStr) {
+  if (!isString(modelStr)) return null;
+  const slash = modelStr.indexOf("/");
+  return slash > 0 ? modelStr.slice(0, slash) : null;
+}
+
+/** Read the error body to completion. A short race treated a slow body as empty. */
+async function readErrorPayload(response) {
+  let errText = "";
+  try {
+    const readable = isFunction(response?.clone) ? response.clone() : response;
+    if (isFunction(readable?.text)) errText = await readable.text();
+  } catch {
+    errText = "";
+  }
+  let structuredError = null;
+  if (errText) {
+    try {
+      structuredError = JSON.parse(errText);
+    } catch {
+      structuredError = null;
+    }
+  }
+  return { errText, structuredError };
+}
+
+/**
+ * Stop when checkFallbackError says the failure is about this request
+ * (`requestScoped`), is a terminal state, or must not fall back (413, wrong
+ * model, client close). Quota, auth, and transient errors still hop.
+ */
+function stopsModelFallbackChain(status, errText, provider, headers, structuredError) {
+  const decision = checkFallbackError(status, errText, 0, provider, headers, structuredError);
+  if (decision.requestScoped === true) return true;
+  if (decision.terminal === true) return true;
+  return decision.shouldFallback === false;
+}
+
 /**
  * Run `runner(modelStr)` for the primary; on a fallback-eligible failure, try
  * each fallback in order until one succeeds (or all fail). First-hop-only was
@@ -111,45 +150,38 @@ export async function runWithModelFallback(primaryModelStr, modelFallbacks, runn
   // Success fast-path: never read/buffer (covers streaming 2xx responses).
   if (primaryResult.status >= 200 && primaryResult.status < 300) return primaryResult;
 
-  // Non-2xx here is a pre-stream buffered JSON error. Read defensively with a cap
-  // so a malformed/hung body can never block the fallback decision.
-  let errText = "";
-  try {
-    errText = await Promise.race([
-    primaryResult.clone().text(),
-    new Promise((resolve) => setTimeout(() => resolve(""), 200))]
-    );
-  } catch {
-    errText = "";
-  }
-
-  // Skip fallback only for deterministic payload errors; every other non-2xx
-  // (quota/rate-limit/auth/transient/unavailable) is eligible.
-  if (isDeterministicPayloadError(primaryResult.status, errText)) return primaryResult;
+  const primaryError = await readErrorPayload(primaryResult);
+  if (stopsModelFallbackChain(
+    primaryResult.status,
+    primaryError.errText,
+    providerFromModel(primaryModelStr),
+    primaryResult.headers,
+    primaryError.structuredError
+  )) return primaryResult;
 
   let lastFallbackResult = null;
   for (const fallback of fallbacks) {
     log?.warn?.("FALLBACK", `Primary "${primaryModelStr}" failed (${primaryResult.status}) → falling back to "${fallback}"`);
+    let result;
     try {
-      const result = await runner(fallback);
-      if (result.status >= 200 && result.status < 300) return result;
-      lastFallbackResult = result;
-      // Stop chain on deterministic payload errors: retrying a different
-      // model will not fix a context-length / payload-too-large failure.
-      let fbErrText = "";
-      try {
-        fbErrText = await Promise.race([
-        result.clone().text(),
-        new Promise((resolve) => setTimeout(() => resolve(""), 200))]
-        );
-      } catch {fbErrText = "";}
-      if (isDeterministicPayloadError(result.status, fbErrText)) return result;
-    } catch (e) {
-
-      // try next fallback — swallow runner exception
-    }}
+      result = await runner(fallback);
+    } catch (error) {
+      const detail = isString(error?.message) && error.message ? error.message : "runner failed";
+      log?.error?.("FALLBACK", `Fallback "${fallback}" threw: ${detail}`);
+      throw error;
+    }
+    if (result.status >= 200 && result.status < 300) return result;
+    lastFallbackResult = result;
+    const fallbackError = await readErrorPayload(result);
+    if (stopsModelFallbackChain(
+      result.status,
+      fallbackError.errText,
+      providerFromModel(fallback),
+      result.headers,
+      fallbackError.structuredError
+    )) return result;
+  }
   // All fallbacks failed — return the last fallback's response so the client
   // sees the most recent upstream error (not the stale primary error).
-  // Falls back to primaryResult only if every fallback threw.
   return lastFallbackResult || primaryResult;
 }

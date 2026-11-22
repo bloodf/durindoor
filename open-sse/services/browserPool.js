@@ -379,10 +379,22 @@ function parseCookieString(raw, domain) {
 
 // Clear a key from the pending-creation map once its promise settles, counting
 // failures. Kept as a leaf helper so acquireBrowserContext stays under the
-// function-length ceiling (OmniRoute #3368 PR7 metrics).
-function settlePendingContext(key, failed) {
+// function-length ceiling (OmniRoute #3368 PR7 metrics). Only deletes when the
+// map still holds *this* entry so a stale settle cannot drop a newer pending.
+function settlePendingContext(key, entry, failed) {
   if (failed) state.metrics.contextCreateFailures++;
-  state.pendingContexts.delete(key);
+  if (state.pendingContexts.get(key) === entry) {
+    state.pendingContexts.delete(key);
+  }
+  if (
+    failed &&
+    state.contexts.size === 0 &&
+    state.pendingContexts.size === 0 &&
+    !state.launching &&
+    !state.headedLaunching
+  ) {
+    void shutdownPool("context-create-failed");
+  }
 }
 
 // Seed a freshly created context with whatever session material the caller
@@ -452,54 +464,65 @@ export async function acquireBrowserContext(key, options) {
   if (pending) return pending.promise;
 
   const createPromise = (async () => {
-    const [browser, proxy] = await Promise.all([
-      launchBrowser(options),
-      Promise.resolve(resolvePlaywrightProxy(options.proxyUrl)),
-    ]);
-    const isStealth = headless && (state.engine === "obscura" || state.cloakLaunch !== null);
-    const contextOptions = {
-      userAgent: options.userAgent || DEFAULT_USER_AGENT,
-      locale: options.locale || "en-US",
-      timezoneId: options.timezone || "America/New_York",
-      viewport: { width: 1280, height: 800 },
-    };
-    if (options.storageState) contextOptions.storageState = options.storageState;
-    if (proxy) contextOptions.proxy = proxy;
-    const context = await browser.newContext(contextOptions);
+    let context = null;
+    try {
+      const [browser, proxy] = await Promise.all([
+        launchBrowser(options),
+        Promise.resolve(resolvePlaywrightProxy(options.proxyUrl)),
+      ]);
+      const isStealth = headless && (state.engine === "obscura" || state.cloakLaunch !== null);
+      const contextOptions = {
+        userAgent: options.userAgent || DEFAULT_USER_AGENT,
+        locale: options.locale || "en-US",
+        timezoneId: options.timezone || "America/New_York",
+        viewport: { width: 1280, height: 800 },
+      };
+      if (options.blockServiceWorkers) contextOptions.serviceWorkers = "block";
+      if (options.storageState) contextOptions.storageState = options.storageState;
+      if (proxy) contextOptions.proxy = proxy;
+      context = await browser.newContext(contextOptions);
 
-    await seedContextSession(context, options);
-    const warmupPage = await createWarmupPage(context, options.warmupUrl);
+      await seedContextSession(context, options);
+      const warmupPage = await createWarmupPage(context, options.warmupUrl);
 
-    // Guard: if shutdownPool() ran while we were creating this context,
-    // the browser we obtained is now closed. Close our temp context and
-    // throw so the caller knows to retry.
-    if (currentBrowser(headless) !== browser) {
-      await context.close().catch(() => {});
-      if (warmupPage) {
-        await warmupPage.close().catch(() => {});
+      // Guard: if shutdownPool() ran while we were creating this context,
+      // the browser we obtained is now closed. Close our temp context and
+      // throw so the caller knows to retry.
+      if (currentBrowser(headless) !== browser) {
+        await context.close().catch(() => {});
+        context = null;
+        if (warmupPage) {
+          await warmupPage.close().catch(() => {});
+        }
+        throw new Error("Pool shut down during context creation");
       }
-      throw new Error("Pool shut down during context creation");
-    }
 
-    const pooled = {
-      id: poolKey,
-      context,
-      warmupPage,
-      lastUsed: Date.now(),
-      isStealth,
-    };
-    state.contexts.set(poolKey, pooled);
-    state.metrics.contextsCreated++;
-    state.lastActivity = Date.now();
-    resetIdleTimer();
-    startEvictTimer();
-    return pooled;
+      const pooled = {
+        id: poolKey,
+        context,
+        warmupPage,
+        lastUsed: Date.now(),
+        isStealth,
+      };
+      state.contexts.set(poolKey, pooled);
+      state.metrics.contextsCreated++;
+      state.lastActivity = Date.now();
+      resetIdleTimer();
+      startEvictTimer();
+      return pooled;
+    } catch (err) {
+      if (context) {
+        await context.close().catch(() => {});
+      }
+      throw err;
+    }
   })();
 
-  state.pendingContexts.set(poolKey, { promise: createPromise, createdAt: Date.now() });
+  const pendingEntry = { promise: createPromise, createdAt: Date.now() };
+  state.pendingContexts.set(poolKey, pendingEntry);
   createPromise
-    .then(() => settlePendingContext(poolKey, false))
-    .catch(() => settlePendingContext(poolKey, true));
+    .then(() => settlePendingContext(poolKey, pendingEntry, false))
+    .catch(() => settlePendingContext(poolKey, pendingEntry, true));
 
   return createPromise;
 }
@@ -522,7 +545,12 @@ export async function releaseBrowserContext(key) {
   } catch {
     /* ignore */
   }
-  if (state.contexts.size === 0) {
+  if (
+    state.contexts.size === 0 &&
+    state.pendingContexts.size === 0 &&
+    !state.launching &&
+    !state.headedLaunching
+  ) {
     await shutdownPool("last-context-closed");
   }
 }

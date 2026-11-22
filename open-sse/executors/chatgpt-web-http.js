@@ -33,6 +33,7 @@ import { resolveChatGptModel, resolveChatGptSystemHints } from "./chatgpt-web/mo
 import { cleanChatGptText } from "./chatgpt-web/citations.js";
 import { resumeChatGptHandoff } from "./chatgpt-web/handoff.js";
 import { runWithTlsProxyOptions } from "../services/tlsClientBase.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import {
   buildNextAuthSessionCookie,
   mergeRefreshedCookie,
@@ -44,6 +45,20 @@ const redirectPolicy = new AsyncLocalStorage();
 const tlsFetchChatGpt = (url, options) => tlsFetchChatGptRaw(
   url, redirectPolicy.getStore() === true ? { ...options, sameOriginRedirects: true } : options
 );
+
+async function proxyAgentForWebSocket(proxyUrl) {
+  try {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyUrl);
+  } catch {
+    try {
+      const { SocksProxyAgent } = await import("socks-proxy-agent");
+      return new SocksProxyAgent(proxyUrl);
+    } catch {
+      return null;
+    }
+  }
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -2109,11 +2124,29 @@ async function registerWebSocket(ctx) {
  * the wait.
  */
 async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) {
+  let wsOptions;
+  if (ctx.proxyOptions) {
+    const route = resolveWebSocketProxyRoute(wssUrl, ctx.proxyOptions);
+    if (route.enabled && route.url) {
+      const agent = await proxyAgentForWebSocket(route.url);
+      if (agent) wsOptions = { agent };
+      else if (route.strict) throw new Error("WebSocket proxy required but unavailable");
+    }
+  }
+  // Keep the global WebSocket when no agent is required so unit tests can stub
+  // globalThis.WebSocket. Load `ws` only for proxied sockets that need an agent.
+  let WebSocketCtor = WebSocket;
+  if (wsOptions?.agent) {
+    const wsModule = await import("ws");
+    WebSocketCtor = wsModule.default;
+  }
+
   return new Promise((resolve) => {
     const found = new Map();
     let resolved = false;
     let errored = false;
     let gotAnyMessage = false;
+    const ws = wsOptions ? new WebSocketCtor(wssUrl, wsOptions) : new WebSocketCtor(wssUrl);
     const finish = () => {
       if (resolved) return;
       resolved = true;
@@ -2129,7 +2162,6 @@ async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) 
         gotAnyMessage,
       });
     };
-    const ws = new WebSocket(wssUrl);
     const timer = setTimeout(() => {
       ctx.log?.warn?.("CGPT-WEB", `WebSocket image wait timed out after ${timeoutMs}ms`);
       finish();
@@ -2430,6 +2462,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     onCredentialsRefreshed,
     clientHeaders: explicitClientHeaders,
     requestContext,
+    proxyOptions = null,
   }) {
     const clientHeaders = explicitClientHeaders ?? requestContext?.clientHeaders ?? null;
     const messages = body?.messages;
@@ -2748,6 +2781,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
       signal,
       log,
       publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),
+      proxyOptions,
     };
     const imageResolver = makeImageResolver(resolverCtx);
     const pollAsyncImage = (conversationId) => pollForAsyncImage(conversationId, resolverCtx);

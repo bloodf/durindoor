@@ -32,7 +32,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // ---------------------------------------------------------------------------
 // Proxy resolution — every provider file imports both of these
 // ---------------------------------------------------------------------------
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { resolveTlsClientProxyUrl } from "./tlsClientProxy.js";
 import { buildNativeTlsClientOptions } from "./tlsClientDownloadDir.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -567,11 +567,12 @@ export function runWithTlsProxyOptions(proxyOptions, fn) {
 
 /**
  * Resolve the proxy URL for a tls-client request. Per-call value wins; then
- * the connection proxy, then the HTTP(S)_PROXY environment.
+ * the same CONNECT resolution as proxyAwareFetch (relay / connection / env),
+ * failing closed under strictProxy when no usable CONNECT route exists.
  */
 export function resolveProxyUrl(domain, perCall) {
   return resolveTlsClientProxyUrl(domain, perCall, (target) =>
-    resolveProxyForRequest(target, tlsProxyOptionsStorage.getStore())
+    resolveConnectProxyForRequest(target, tlsProxyOptionsStorage.getStore())
   );
 }
 

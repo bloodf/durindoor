@@ -4,7 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 // Shared by the build-tree check and the relocated installed-artifact check.
 export async function verifyStaticAssets(baseUrl, pageHtml, headers = {}) {
@@ -149,7 +149,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().then(
+if (isMainModule(import.meta.url)) main().then(
   () => process.exit(0),
   (error) => {
     console.error(error?.message || error);

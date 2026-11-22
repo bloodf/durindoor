@@ -26,7 +26,13 @@ const nextConfig = {
     "/*": ["./src/lib/db/adapters/pgSyncWorker.cjs"],
   },
   images: {
-    unoptimized: true
+    unoptimized: true,
+    // OmniRoute #20818: Next builds an ImageOptimizerCache for every /_next/image request
+    // before it checks `unoptimized`, and that constructor starts a disk LRU that mkdirs
+    // <distDir>/cache/images. On a global npm install served by an account that cannot write
+    // the install tree (systemd ProtectSystem=full) that mkdir fails. With unoptimized images
+    // the disk cache is never read or written, so 0 turns it off.
+    maximumDiskCacheSize: 0
   },
   env: {},
   experimental: {

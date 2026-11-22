@@ -7,6 +7,7 @@ import { dbg } from "./debugLog.js";
 import {
   assertGuardedProbeDispatcherAddressAllowed,
   isGuardedProbeDispatcher,
+  MAX_RESPONSE_HEADER_SIZE,
   OutboundUrlGuardError } from
 "./outboundUrlGuard.js";
 import { digestMemoryKey } from "./memoryKey.js";
@@ -62,7 +63,7 @@ export function __getProxyDispatcherCacheSnapshotForTesting() {
 }
 
 // Happy Eyeballs (RFC 8305) for direct egress — avoids 30s+ stalls on broken-IPv6 hosts.
-setGlobalDispatcher(new Agent({ connect: { autoSelectFamily: true } }));
+setGlobalDispatcher(new Agent({ maxHeaderSize: MAX_RESPONSE_HEADER_SIZE, connect: { autoSelectFamily: true } }));
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -644,6 +645,7 @@ async function getDispatcher(proxyUrl) {
       connectTimeout,
       headersTimeout,
       bodyTimeout: 0,
+      maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
       connections: PROXY_FETCH_POOL_CONFIG.proxyConnectionsPerOrigin,
       keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
       keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
@@ -669,6 +671,7 @@ export function parseEyeballsTimeoutMs(raw) {
  */
 export function getDirectDispatcherOptionsForTest() {
   return {
+    maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
     connections: PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin,
     keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
     keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,

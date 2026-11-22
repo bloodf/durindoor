@@ -11,7 +11,7 @@ const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
 const { waitServerReady } = require("./src/cli/waitServerReady");
 const { canBindLauncherPort } = require("./src/cli/utils/launcherProcess");
-const { collectAppPids, killAppPids, readCommand, portOccupantToKill } = require("./src/lib/processScan");
+const { collectAppPids, killAppPids, portOccupantToKill } = require("./src/lib/processScan");
 
 // Resolve once before any worker changes cwd. Every CLI helper and the Next
 // worker inherit the same absolute path, so database, PID, CA, and auth-token
@@ -139,10 +139,6 @@ function getDisplayHost() {
   return host === DEFAULT_HOST ? "localhost" : host;
 }
 const MAX_PORT_ATTEMPTS = 10;
-// Identifiers for killAllAppProcesses - only kill 9router specifically
-const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
-];
 
 // Parse arguments
 let port = DEFAULT_PORT;
@@ -208,27 +204,12 @@ function killTunnelByPidFile() {
   killByPidFile(path.join(tunnelDir, "tailscale.pid"));
 }
 
-// Kill cloudflared whose --url targets this app's port (covers stale PID file case)
-function killCloudflaredByAppPort(appPort) {
-  if (!appPort) return [];
-  const portMatchers = [`localhost:${appPort}`, `127.0.0.1:${appPort}`];
-  let pids = [];
-  try {
-    // Shares the safe scan (pid column, verified candidates, ancestors excluded)
-    // and only keeps the tunnels pointed at this app's port.
-    pids = collectAppPids({ appDir: path.join(__dirname, "app") }).filter((pid) => {
-      const cmd = readCommand(pid) || "";
-      return cmd.includes("cloudflared") && portMatchers.some((m) => cmd.includes(m));
-    });
-  } catch {}
-  return pids;
-}
-
-// Kill all 9router processes
+// Kill DurinDoor / legacy 9router processes that belong to this installation (#2204, #2205)
 function killAllAppProcesses(appPort, scanProcesses = true) {
   return new Promise((resolve, reject) => {
     try {
-      const mitmPidFile = path.join(getAppDataDir(), "mitm", ".mitm.pid");
+      const dataDir = getAppDataDir();
+      const mitmPidFile = path.join(dataDir, "mitm", ".mitm.pid");
       const managerStopped = stopMitmViaManagerSync(appPort);
       if (!managerStopped && fs.existsSync(mitmPidFile)) {
         reject(new Error("MITM manager cleanup could not be confirmed; refusing to orphan system redirect state"));
@@ -245,15 +226,18 @@ function killAllAppProcesses(appPort, scanProcesses = true) {
         return;
       }
 
-      // Catch stale PID files: kill cloudflared bound to this app's port
-      try { killAppPids(killCloudflaredByAppPort(appPort)); } catch {}
-
       // Pids come from the pid column and every candidate is verified (alive, still
-      // ours) before the kill; our own process and its ancestors are never targets.
-      // See src/lib/processScan.js for why that matters.
+      // ours, and owned by this installation/port) before the kill; our own process
+      // and its ancestors are never targets. See src/lib/processScan.js.
       let pids = [];
       try {
-        pids = collectAppPids({ appDir: path.join(__dirname, "app") });
+        pids = collectAppPids({
+          appDir: path.join(__dirname, "app"),
+          installDir: __dirname,
+          dataDir,
+          appPort,
+          cloudflaredPidFile: path.join(dataDir, "tunnel", "cloudflared.pid"),
+        });
       } catch {
         // No processes found or error - continue
       }
@@ -738,8 +722,10 @@ function startServer(updatePromise) {
     return;
   }
 
-  // Tray-only mode: no TUI, just tray icon
+  // Tray-only mode: no TUI, just tray icon. Attach the same worker restart/exit
+  // lifecycle handlers as headless and TUI modes before returning (#2205).
   if (trayMode) {
+    attachServerEvents();
     // Ignore SIGHUP so macOS terminal close doesn't kill the background tray process
     process.removeAllListeners("SIGHUP");
     process.on("SIGHUP", () => {});
@@ -748,6 +734,7 @@ function startServer(updatePromise) {
     console.log(`Server: http://${displayHost}:${port}`);
 
     waitServerReady(port).then((ready) => {
+      if (recoveryInProgress || isShuttingDown) return;
       if (!ready) console.log("Server readiness could not be confirmed.");
       initTrayIcon({
         onReady: () => console.log("DurinDoor tray is available. Right-click the icon to open the dashboard or quit."),

@@ -1,5 +1,6 @@
 import { resolveClientApiKey } from "@/sse/services/auth.js";
 import { getSettings } from "@/lib/localDb";
+import { isLocalRequest } from "@/dashboardGuard";
 
 /**
  * Auth bridge for the `/v1/realtime` WebSocket endpoint.
@@ -19,7 +20,7 @@ import { getSettings } from "@/lib/localDb";
 export async function GET(request) {
   const settings = await getSettings();
   const { auth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+    required: settings.requireApiKey === true || !isLocalRequest(request),
   });
   if (auth.ok) {
     return Response.json({ ok: true, operator: auth.operator === true }, { headers: { "Access-Control-Allow-Origin": "*" } });

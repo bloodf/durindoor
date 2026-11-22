@@ -46,6 +46,8 @@ const BLOCKED_V4_RANGES = [
   [ipv4ToInt("169.254.0.0"), 16], // includes 169.254.169.254 cloud metadata
   [ipv4ToInt("172.16.0.0"), 12],
   [ipv4ToInt("192.168.0.0"), 16],
+  [ipv4ToInt("198.18.0.0"), 15], // benchmarking 198.18.0.0/15
+  [ipv4ToInt("224.0.0.0"), 3], // multicast, reserved and broadcast (224.0.0.0 and up)
 ];
 
 function isBlockedIpv4Int(ip) {
@@ -126,6 +128,8 @@ function isBlockedIpv6Groups(g) {
   if ((g[0] & 0xffc0) === 0xfe80) return true;
   // unique local fc00::/7
   if ((g[0] & 0xfe00) === 0xfc00) return true;
+  // multicast ff00::/8
+  if ((g[0] & 0xff00) === 0xff00) return true;
   // IPv4-mapped ::ffff:0:0/96 (0:0:0:0:0:ffff:a.b.c.d — the 0xffff marker is
   // group index 5) and NAT64 well-known prefix 64:ff9b::/96 — both embed a
   // real IPv4 address in the low 32 bits; check it against the same IPv4

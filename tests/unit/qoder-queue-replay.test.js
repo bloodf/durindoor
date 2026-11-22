@@ -19,8 +19,12 @@ const queued = (retryAfterSeconds = 30) => new Response(frame(403, JSON.stringif
   code: "10605", subCode: "RESOURCE_LIMIT",
   message: JSON.stringify({ isQueued: true, queueType: "p3", retryAfterSeconds }),
 })));
+const statusReady = () => new Response(JSON.stringify({ isQueued: false, retryAfterSeconds: 1 }));
+const statusError = () => { throw new Error("status unavailable"); };
 const ok = () => new Response(frame(200, JSON.stringify({ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] })) + frame(200, "[DONE]"));
 const billing = () => new Response(frame(403, JSON.stringify({ code: "112", message: "quota exhausted" })));
+const isStatusUrl = (url) => String(url).includes("/algo/api/v2/service/ask/queue/status?");
+const inferenceCalls = () => fetchMock.mock.calls.filter(([url]) => !isStatusUrl(url));
 
 const request = (extra = {}) => ({
   model: "qoder/auto",
@@ -58,24 +62,31 @@ describe("QoderExecutor queue replay", () => {
   };
 
   it("replays a queued request with a fresh signature and a stable machine id, then streams", async () => {
-    fetchMock.mockResolvedValueOnce(queued(2)).mockResolvedValueOnce(ok());
+    fetchMock
+      .mockResolvedValueOnce(queued(2))
+      .mockResolvedValueOnce(statusReady())
+      .mockResolvedValueOnce(ok());
     const result = await run();
     expect(result.response.status).toBe(200);
     expect(await result.response.text()).toContain("hi");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [a, b] = fetchMock.mock.calls.map((c) => c[1]);
+    expect(inferenceCalls()).toHaveLength(2);
+    expect(isStatusUrl(fetchMock.mock.calls[1][0])).toBe(true);
+    const [a, b] = inferenceCalls().map((c) => c[1]);
     expect(a.headers["Cosy-Machineid"]).toBe(deriveMachineId("user-1"));
     expect(b.headers["Cosy-Machineid"]).toBe(a.headers["Cosy-Machineid"]);
     expect(b.headers).not.toEqual(a.headers); // re-signed
   });
 
   it("stops after the attempt cap with a retryable 503 and no raw upstream text", async () => {
-    fetchMock.mockImplementation(async () => queued(15));
+    fetchMock.mockImplementation(async (url) => {
+      if (isStatusUrl(url)) return statusError();
+      return queued(15);
+    });
     const result = await run();
     expect(result.response.status).toBe(503);
     expect(result.response.headers.get("x-qoder-queue-delay-ms")).toBeNull();
     expect((await result.response.json()).error.code).toBe("qoder_model_queued");
-    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(QODER_QUEUE_MAX_ATTEMPTS);
+    expect(inferenceCalls().length).toBeLessThanOrEqual(QODER_QUEUE_MAX_ATTEMPTS);
   });
 
   it("settles each queued send's quota ticket as fallback so only the final send stays held", async () => {
@@ -86,7 +97,10 @@ describe("QoderExecutor queue replay", () => {
       return ticket;
     };
     const responses = [queued(2), queued(2), ok()];
-    fetchMock.mockImplementation(() => runProviderAttemptDispatch(async () => responses.shift()));
+    fetchMock.mockImplementation((url) => {
+      if (isStatusUrl(url)) return statusReady();
+      return runProviderAttemptDispatch(async () => responses.shift());
+    });
     const promise = runWithProviderAttemptContext(() => {}, () => new QoderExecutor().execute(request()), { beginQuotaDispatch });
     await vi.runAllTimersAsync();
     const result = await promise;
@@ -104,7 +118,10 @@ describe("QoderExecutor queue replay", () => {
   });
 
   it("releases the wait when the caller aborts", async () => {
-    fetchMock.mockImplementation(async () => queued(60));
+    fetchMock.mockImplementation(async (url) => {
+      if (isStatusUrl(url)) return statusError();
+      return queued(60);
+    });
     const ctrl = new AbortController();
     const promise = new QoderExecutor().execute(request({ signal: ctrl.signal }));
     const settled = promise.then(() => "done", (e) => e);
@@ -112,6 +129,6 @@ describe("QoderExecutor queue replay", () => {
     ctrl.abort(new Error("client gone"));
     await vi.advanceTimersByTimeAsync(100);
     expect(String(await settled)).toContain("client gone");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(inferenceCalls()).toHaveLength(1);
   });
 });

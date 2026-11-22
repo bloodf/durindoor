@@ -40,15 +40,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires HuggingChat cookie normalization, JSONL streaming, and SvelteKit conversation bootstrap",
   },
-  twinmind: {
-    aliases: [],
-    source: [
-      "open-sse/executors/twinmind.ts",
-      "open-sse/services/twinmindAuth.ts",
-      "open-sse/services/twinmindModels.ts",
-    ],
-    reason: "requires TwinMind's Firebase ID-token refresh lifecycle and provider-specific /api/v3/chat envelope",
-  },
   hyperagent: {
     aliases: ["ha"],
     source: [

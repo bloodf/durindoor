@@ -978,7 +978,7 @@ export async function saveRequestUsage(entry) {
       ];
       const historyValues = [
         entry.timestamp, entry.provider || null, entry.model || null,
-        entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+        entry.connectionId || null, apiKeyId && entry.provider !== "mcp-gateway" ? null : (usageKeyIdentity(null, entry.apiKey, entry.provider) || null), entry.endpoint || null,
         promptTokens, completionTokens, entry.cost, entry.status || "ok",
         stringifyJson(tokens), stringifyJson(entry.meta), usageEventId || null,
         entry.comboId || null, entry.comboName || null, usageSessionId, usageProjectId, ...Object.values(usageTokenColumns(tokens)),

@@ -74,7 +74,7 @@ describe("rerank handler through the durable ledger to the next policy decision"
     expect(first.status).toBe(200);
     expect(await first.text()).toBe('{"results":[]}');
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "rerank-secret", provider: "paid", model: "rank", connectionId: "account-r", endpoint: "/v1/rerank", cost: 0.5 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "rerank-key", provider: "paid", model: "rank", connectionId: "account-r", endpoint: "/v1/rerank", cost: 0.5 });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ modality: "rerank", nativeUnits: { operations: 1 }, costStatus: "known" });
     const denied = await handleRerank(request());
     expect(denied.status).toBe(429);
@@ -154,7 +154,7 @@ describe("rerank raw provider receipt through real core and SQLite policy", () =
     expect(JSON.parse(options.body)).toEqual({ ...body, model: "cohere/rerank-4-pro" });
     await reopen();
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "rerank-secret", provider: "openrouter", model: "cohere/rerank-4-pro", connectionId: "account-r", endpoint: "/v1/rerank", status: "ok", cost: 0.5, promptTokens: 7 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "rerank-key", provider: "openrouter", model: "cohere/rerank-4-pro", connectionId: "account-r", endpoint: "/v1/rerank", status: "ok", cost: 0.5, promptTokens: 7 });
     const totals = await database.getApiKeyUsageTotals("rerank-key");
     expect(totals).toMatchObject({ totalRequests: 1, totalCost: 0.5, unknownCostRequests: 0 });
     const denied = await handleRerank(send(`denied-${field}`));

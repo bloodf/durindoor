@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
@@ -171,7 +173,7 @@ export default function ProvidersPage() {
       const [loadedConnections, nodes, settings] = await Promise.all([
         requestCollection("/api/providers", "connections"),
         requestCollection("/api/provider-nodes", "nodes"),
-        requestJSON("/api/settings"),
+        requestSettings().then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Failed to load settings"); return body; }),
       ]);
       setConnections(loadedConnections);
       setProviderNodes(nodes);
@@ -258,7 +260,7 @@ export default function ProvidersPage() {
 
     setDisabledFreeProviders(next);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disabledFreeProviders: next })

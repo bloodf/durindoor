@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -122,7 +124,7 @@ export default function TokenSaverClient({ view = "overview", v5 = false }) {
     retrySettings.current[key] = () => saveSetting(patch, confirm, reject);
     setSettingWrites((current) => ({ ...current, [key]: { pending: true, error: "" } }));
     try {
-      const response = await fetch("/api/settings", {
+      const response = await requestSettings({
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       });
       if (!response.ok) {
@@ -404,9 +406,10 @@ export default function TokenSaverClient({ view = "overview", v5 = false }) {
   };
 
   useEffect(() => {
+    refreshHeadroomStatus();
     const loadSettings = async () => {
       try {
-        const res = await fetch("/api/settings");
+        const res = await requestSettings();
         if (!res.ok) {
           setSettingsStatus("error");
           return;
@@ -436,7 +439,6 @@ export default function TokenSaverClient({ view = "overview", v5 = false }) {
           // Matching an SSR default does not mean settings have hydrated.
           // Mount editable controls only after this request's values are applied.
           setSettingsStatus("ready");
-          refreshHeadroomStatus();
           refreshPxpipeStatus();
           refreshPxpipeBlockedModels();
         }

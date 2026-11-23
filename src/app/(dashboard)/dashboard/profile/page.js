@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardFooter, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -150,7 +152,7 @@ export default function ProfilePage() {
     const request = ++settingsRequest.current;
     setLoading(true);
     setSettingsError("");
-    return fetch("/api/settings").
+    return requestSettings().
     then(async (res) => {
       const data = await res.json();
       if (!res.ok || !data || !isObject(data) || Array.isArray(data)) throw new Error(data?.error || "Settings could not be loaded.");
@@ -208,7 +210,7 @@ export default function ProfilePage() {
     setFirecrawlUrlLoading(true);
     setFirecrawlUrlStatus({ type: "", message: "" });
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ firecrawlBaseUrl: value || "" })
@@ -235,7 +237,7 @@ export default function ProfilePage() {
     setProxyStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -264,7 +266,7 @@ export default function ProfilePage() {
     setProxyLoading(true);
     setProxyStatus({ type: "", message: "" });
     try {
-      const response = await fetch("/api/settings", {
+      const response = await requestSettings( {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxyTestUrl: proxyForm.proxyTestUrl.trim() })
@@ -323,7 +325,7 @@ export default function ProfilePage() {
     setProxyStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outboundProxyEnabled })
@@ -358,7 +360,7 @@ export default function ProfilePage() {
     setPassStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -406,7 +408,7 @@ export default function ProfilePage() {
     request.pending = true;
     setRoutingSave({ pending: true, failedPatch: null });
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch)
@@ -432,7 +434,7 @@ export default function ProfilePage() {
 
   const updateVisionBridge = async (patch) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch)
@@ -481,7 +483,7 @@ export default function ProfilePage() {
 
   const updateHidePaidModels = async (hidePaidModels) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hidePaidModels })
@@ -497,7 +499,7 @@ export default function ProfilePage() {
 
   const updateExposeComboOnly = async (exposeComboOnly) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ exposeComboOnly })
@@ -530,7 +532,7 @@ export default function ProfilePage() {
     const modelVisibilityDenylist = toList(modelVisibilityDraft.deny);
     setModelVisibilitySaving(true);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelVisibilityAllowlist, modelVisibilityDenylist })
@@ -547,7 +549,7 @@ export default function ProfilePage() {
 
   const updateRequireLogin = async (requireLogin) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requireLogin })
@@ -595,7 +597,7 @@ export default function ProfilePage() {
         payload.oidcClientSecret = secret;
       }
 
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -648,7 +650,7 @@ export default function ProfilePage() {
     setOidcTestStatus({ type: "", message: "" });
 
     try {
-      const saveRes = await fetch("/api/settings", {
+      const saveRes = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -705,7 +707,7 @@ export default function ProfilePage() {
     setToolSourcesSaving(true);
     setToolSourcesError("");
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings( {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ logToolSources: enabled }),
@@ -721,7 +723,7 @@ export default function ProfilePage() {
 
   const updateObservabilityEnabled = async (enabled) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enableObservability: enabled })
@@ -736,7 +738,7 @@ export default function ProfilePage() {
 
   const updateProxyTimelineEnabled = async (enabled) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enableProxyTimeline: enabled }),
@@ -766,7 +768,7 @@ export default function ProfilePage() {
 
   const updateDataRetention = async (patch) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -810,7 +812,7 @@ export default function ProfilePage() {
   const updateProxyTimelineRetention = async (value) => {
     const days = Number(value);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxyTimelineRetentionDays: days }),
@@ -824,7 +826,7 @@ export default function ProfilePage() {
   const updateModelAutoSyncInterval = async (value) => {
     const hours = Number(value);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelAutoSyncIntervalHours: hours }),
@@ -837,7 +839,7 @@ export default function ProfilePage() {
 
   const reloadSettings = async () => {
     try {
-      const res = await fetch("/api/settings");
+      const res = await requestSettings();
       if (!res.ok) return;
       const data = await res.json();
       setSettings(data);
@@ -907,6 +909,7 @@ export default function ProfilePage() {
         throw new Error(data.error || "Failed to import database");
       }
 
+      useSettingsStore.getState().invalidate();
       await reloadSettings();
       setDbStatus({ type: "success", message: "Database imported successfully" });
     } catch (err) {

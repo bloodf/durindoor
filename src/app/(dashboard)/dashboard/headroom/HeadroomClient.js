@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -34,12 +36,12 @@ export default function HeadroomClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const refreshStats = useCallback(async () => { setLoading(true); try { const [statusRes, statsRes] = await Promise.all([fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" } }), fetch("/api/headroom/stats")]); if (globalThis.document?.documentElement.dataset.ui === "v5" && (!statusRes.ok || !statsRes.ok)) throw new Error("Headroom data unavailable"); const statusData = await statusRes.json(); if (statusData && statusData.ok === false && statusData.diagnostic) { setDiagnostic(statusData.diagnostic); setStatus({ installed: false, running: false, loading: false }); } else { setDiagnostic(null); setStatus(statusData); } setStats(await statsRes.json()); setLoadError(false); } catch { setLoadError(true); } finally { setLoading(false); } }, []);
-  useEffect(() => { let cancelled = false; const load = async () => { try { const [settingsRes, statusRes, statsRes] = await Promise.all([fetch("/api/settings", { headers: { "Cache-Control": "no-store" } }), fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" } }), fetch("/api/headroom/stats")]); if (globalThis.document?.documentElement.dataset.ui === "v5" && (!settingsRes.ok || !statusRes.ok || !statsRes.ok)) throw new Error("Headroom data unavailable"); const [settingsData, statusData, statsData] = await Promise.all([settingsRes.json(), statusRes.json(), statsRes.json()]); if (cancelled) return; const next = { headroomEnabled: !!settingsData.headroomEnabled, headroomCompressUserMessages: !!settingsData.headroomCompressUserMessages }; setSettings(next); persistedSettings.current = next; if (statusData && statusData.ok === false && statusData.diagnostic) { setDiagnostic(statusData.diagnostic); setStatus({ installed: false, running: false, loading: false }); } else { setDiagnostic(null); setStatus(statusData); } setStats(statsData); setLoadError(false); } catch { if (!cancelled) { setLoadError(true); setSettingsLoadError(true); } } finally { if (!cancelled) setLoading(false); } }; load(); return () => { cancelled = true; }; }, []);
+  useEffect(() => { let cancelled = false; const load = async () => { try { const [settingsRes, statusRes, statsRes] = await Promise.all([requestSettings( { headers: { "Cache-Control": "no-store" } }), fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" } }), fetch("/api/headroom/stats")]); if (globalThis.document?.documentElement.dataset.ui === "v5" && (!settingsRes.ok || !statusRes.ok || !statsRes.ok)) throw new Error("Headroom data unavailable"); const [settingsData, statusData, statsData] = await Promise.all([settingsRes.json(), statusRes.json(), statsRes.json()]); if (cancelled) return; const next = { headroomEnabled: !!settingsData.headroomEnabled, headroomCompressUserMessages: !!settingsData.headroomCompressUserMessages }; setSettings(next); persistedSettings.current = next; if (statusData && statusData.ok === false && statusData.diagnostic) { setDiagnostic(statusData.diagnostic); setStatus({ installed: false, running: false, loading: false }); } else { setDiagnostic(null); setStatus(statusData); } setStats(statsData); setLoadError(false); } catch { if (!cancelled) { setLoadError(true); setSettingsLoadError(true); } } finally { if (!cancelled) setLoading(false); } }; load(); return () => { cancelled = true; }; }, []);
   // A failed initial load also needs settings, which the normal refresh does not fetch.
   const retryLoad = async () => {
     if (settingsLoadError) {
       try {
-        const response = await fetch("/api/settings", { headers: { "Cache-Control": "no-store" } });
+        const response = await requestSettings( { headers: { "Cache-Control": "no-store" } });
         if (!response.ok) throw new Error("Settings unavailable");
         const data = await response.json();
         const next = { headroomEnabled: !!data.headroomEnabled, headroomCompressUserMessages: !!data.headroomCompressUserMessages };
@@ -48,7 +50,7 @@ export default function HeadroomClient() {
     }
     await refreshStats();
   };
-  const patch = async (patchValue) => { setSaving(true); try { const res = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patchValue) }); if (!res.ok) throw new Error("settings update failed"); persistedSettings.current = { ...persistedSettings.current, ...patchValue }; return true; } catch (error) { console.log("Error updating headroom settings:", error); return false; } finally { setSaving(false); } };
+  const patch = async (patchValue) => { setSaving(true); try { const res = await requestSettings( { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patchValue) }); if (!res.ok) throw new Error("settings update failed"); persistedSettings.current = { ...persistedSettings.current, ...patchValue }; return true; } catch (error) { console.log("Error updating headroom settings:", error); return false; } finally { setSaving(false); } };
   const handleToggleEnabled = async (value) => { setSettings((s) => ({ ...s, headroomEnabled: value })); const ok = await patch({ headroomEnabled: value }); if (!ok) setSettings((s) => ({ ...s, headroomEnabled: persistedSettings.current.headroomEnabled })); else refreshStats(); };
   const handleToggleCompressUserMessages = async (value) => { setSettings((s) => ({ ...s, headroomCompressUserMessages: value })); const ok = await patch({ headroomCompressUserMessages: value }); if (!ok) setSettings((s) => ({ ...s, headroomCompressUserMessages: persistedSettings.current.headroomCompressUserMessages })); };
   const w = stats?.windows?.[windowId];

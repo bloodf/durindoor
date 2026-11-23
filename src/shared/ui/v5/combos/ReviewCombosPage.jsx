@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useRef } from "react";
 import { CardSkeleton } from "@/shared/components";
 import ModelSelectModal from "./ReviewModelSelectModal.jsx";
@@ -44,7 +46,7 @@ export default function CombosPage() {
   const strategyWrites = useRef(0);
   const strategyVersion = useRef(0);
   const [strategyQueue] = useState(() => createSettingsQueue({}, async (updated) => {
-    const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comboStrategies: updated }) });
+    const response = await requestSettings({ method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comboStrategies: updated }) });
     if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Could not save routing strategy. Retry."); }
     setComboStrategies(updated);
   }));
@@ -168,7 +170,7 @@ export default function CombosPage() {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
-        fetch("/api/settings"),
+        requestSettings(),
         fetch("/api/connection-groups"),
       ]);
       const combosData = await combosRes.json();

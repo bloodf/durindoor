@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const NOW_TICK_MS = 5000;
@@ -139,7 +141,7 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live, retry 
         schedule();
       }
     })();
-    fetch("/api/settings", options).then(async (response) => {
+    requestSettings(options).then(async (response) => {
       if (!response.ok) throw new Error("Failed to load timeline settings");
       const body = await response.json();
       if (!controller.signal.aborted) setCaptureOn(body.enableProxyTimeline === true);

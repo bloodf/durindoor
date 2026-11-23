@@ -47,7 +47,10 @@ export function renameGeminiProperties(schema) {
 
 /** Restore only renames confirmed by the client's schema and the sent schema. */
 function restoreProperties(args, original, sent) {
-  if (Array.isArray(args)) return args.map((item) => restoreProperties(item, original?.items, sent?.items));
+  if (Array.isArray(args)) {
+    const mapped = args.map((item) => restoreProperties(item, original?.items, sent?.items));
+    return mapped.some((item, i) => item !== args[i]) ? mapped : args;
+  }
   if (!isRecord(args) || !isRecord(original?.properties) || !isRecord(sent?.properties)) return args;
   const source = original.properties;
   let renamed = null;
@@ -56,15 +59,18 @@ function restoreProperties(args, original, sent) {
     while (hasOwn(source, renamed)) renamed += "_";
     if (!hasOwn(sent.properties, renamed)) renamed = null;
   }
-  const result = { ...args };
+  // Copy only when a key is renamed or a nested value changes; otherwise keep identity.
+  let result = null;
   for (const [name, child] of Object.entries(source)) {
     const wireName = name === "properties" && renamed ? renamed : name;
     if (!hasOwn(args, wireName) || !hasOwn(sent.properties, wireName)) continue;
     const value = restoreProperties(args[wireName], child, sent.properties[wireName]);
+    if (wireName === name && value === args[wireName]) continue;
+    result ??= { ...args };
     if (wireName !== name) delete result[wireName];
     Object.defineProperty(result, name, { value, enumerable: true, configurable: true, writable: true });
   }
-  return result;
+  return result ?? args;
 }
 
 function restoreSchemaNames(original, sent) {

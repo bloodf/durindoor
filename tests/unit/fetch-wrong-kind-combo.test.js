@@ -29,7 +29,8 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   recordApiKeyUsageForResponse: state.recordUsage,
 }));
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: vi.fn() }));
-vi.mock("../../src/sse/services/model.js", () => ({ getAutoComboCatalog: vi.fn() }));
+vi.mock("../../src/sse/services/model.js", () => ({ filterDisabledComboModels: async (models) => models,
+  getAutoComboCatalog: vi.fn() }));
 vi.mock("../../src/sse/services/mediaRoutes.js", () => ({ wantsDefaultRoute: () => false, resolveMediaRoute: vi.fn(), defaultRouteComboOptions: vi.fn() }));
 vi.mock("../../src/sse/utils/requestCorrelation.js", () => ({ getRequestId: () => "request", withRequestCorrelation: (handler) => handler }));
 vi.mock("@/shared/utils/ssrfGuard.js", async (importOriginal) => ({

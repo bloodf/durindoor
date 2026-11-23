@@ -28,6 +28,7 @@ vi.mock("../../src/sse/utils/logger.js", () => ({
   request: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), maskKey: () => "masked",
 }));
 vi.mock("../../src/sse/services/model.js", () => ({
+  filterDisabledComboModels: async (models) => models,
   getAutoComboCatalog: () => { throw new Error("Unexpected automatic combo"); },
 }));
 vi.mock("open-sse/services/combo.js", () => ({

@@ -465,6 +465,26 @@ async function getComboWithSuffixFallback(modelStr) {
   return stripped !== modelStr ? getComboForModel(stripped) : null;
 }
 
+// Provider-only web members refer to the endpoint model (search or fetch).
+// A disabled model from another endpoint must not disable the whole provider.
+export async function filterDisabledComboModels(models, providerModel = null) {
+  if (!Array.isArray(models)) return models;
+  const disabledByProvider = await getDisabledModels().catch(() => ({}));
+  if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) return models;
+  const [aliases, openaiNodes, anthropicNodes] = await Promise.all([
+    getModelAliases().catch(() => ({})),
+    getProviderNodes({ type: "openai-compatible" }).catch(() => []),
+    getProviderNodes({ type: "anthropic-compatible" }).catch(() => []),
+  ]);
+  const isDisabled = buildDisabledComboMemberMatcher(disabledByProvider, aliases, [...openaiNodes, ...anthropicNodes]);
+  const enabled = models.filter((member) => {
+    const target = providerModel && isString(member) && !member.includes("/") && !aliases?.[member]
+      ? `${member}/${providerModel}` : member;
+    return !isDisabled(target);
+  });
+  return enabled.length === models.length ? models : enabled;
+}
+
 export async function getComboModels(modelStr, hidePaidModels = false, exposureSettings = null) {
   if (isAutoComboId(modelStr)) {
     const family = familyOfAutoId(modelStr);
@@ -476,7 +496,7 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
     // fixed once for hidePaidModels (a denied model stayed reachable through
     // an auto combo even after being hidden from GET /v1/models).
     return filterExposedModels(
-      filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true),
+      filterPaidModels(await filterDisabledComboModels(resolveAutoCombo(family, catalog)), hidePaidModels === true),
       exposureSettings
     );
   }
@@ -487,22 +507,8 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
   // must save the combo under the full `provider/name` form.
   const combo = await getComboWithSuffixFallback(modelStr);
   if (!combo || !Array.isArray(combo.models)) return null;
-  const disabledByProvider = await getDisabledModels().catch(() => ({}));
-  if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) {
-    return filterPaidModels(combo.models, hidePaidModels === true);
-  }
-  const [aliases, openaiNodes, anthropicNodes] = await Promise.all([
-    getModelAliases().catch(() => ({})),
-    getProviderNodes({ type: "openai-compatible" }).catch(() => []),
-    getProviderNodes({ type: "anthropic-compatible" }).catch(() => []),
-  ]);
-  const isDisabled = buildDisabledComboMemberMatcher(
-    disabledByProvider,
-    aliases,
-    [...openaiNodes, ...anthropicNodes],
-  );
-  const enabledMembers = combo.models.filter((member) => !isDisabled(member));
-  return filterPaidModels(enabledMembers.length === combo.models.length ? combo.models : enabledMembers, hidePaidModels === true);
+  const enabledMembers = await filterDisabledComboModels(combo.models);
+  return filterPaidModels(enabledMembers, hidePaidModels === true);
 }
 
 // Canonical stored combo name for a request string, so ACL checks, per-combo

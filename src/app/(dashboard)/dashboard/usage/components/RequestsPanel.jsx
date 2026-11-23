@@ -57,6 +57,7 @@ export default function RequestsPanel({ recentRequests = [], activeSessions = []
           ? <StatusDot tone="warning" label="Accepted" title="Provider accepted the job; outcome not observed" />
           : <StatusDot tone={!request.status || request.status === "ok" || request.status === "success" ? "success" : "danger"} /> },
         { key: "model", label: "Model", mono: true, rowHeader: true, render: (request) => <span title={request.model}>{request.model}</span> },
+        { key: "keyName", label: "API key", render: (request) => <span title={request.keyName || "Local (No API Key)"}>{request.keyName || "Local (No API Key)"}</span> },
         { key: "tokens", label: "In / Out", align: "right", mono: true, render: (request) => <>{tokens(request.promptTokens, formatToken)} / {tokens(request.completionTokens, formatToken)}</> },
         { key: "cache", label: "Cache", align: "right", mono: true, render: (request) => request.cachedTokens
           ? <span className="dd-tnum" title={`Cache read tokens · ${cacheHitRate(request)}% of input`}>{tokens(request.cachedTokens, formatToken)} · {cacheHitRate(request)}%</span>

@@ -41974,7 +41974,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx#RequestsPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx",
       "symbol": "RequestsPanel",
-      "sourceSha256": "31a5a443628c75e5ef1023a5808d08b58c2d06a6b4ba1ec02a89810bb604bfed",
+      "sourceSha256": "f13f96298e3889beded9c12077ee21e5f87ce8785e9be1513417ae442d03b5c3",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -41994,7 +41994,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx": "31a5a443628c75e5ef1023a5808d08b58c2d06a6b4ba1ec02a89810bb604bfed",
+            "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx": "f13f96298e3889beded9c12077ee21e5f87ce8785e9be1513417ae442d03b5c3",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -42163,7 +42163,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx#tokens",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx",
       "symbol": "tokens",
-      "sourceSha256": "31a5a443628c75e5ef1023a5808d08b58c2d06a6b4ba1ec02a89810bb604bfed",
+      "sourceSha256": "f13f96298e3889beded9c12077ee21e5f87ce8785e9be1513417ae442d03b5c3",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -42184,7 +42184,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx": "31a5a443628c75e5ef1023a5808d08b58c2d06a6b4ba1ec02a89810bb604bfed",
+            "src/app/(dashboard)/dashboard/usage/components/RequestsPanel.jsx": "f13f96298e3889beded9c12077ee21e5f87ce8785e9be1513417ae442d03b5c3",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -103019,7 +103019,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "f8a8d79c05c40c7089fd0c7501c415ad85d13373ec9c83a31d5a7d86af78a81f",
+    "sourceCensusSha256": "774ed627ff017f1afe4797aa70b1d9daa8406701e4882b37b77035d7ea6c262e",
     "pendingRows": 438,
     "retainedApprovedRows": 202,
     "pendingReferences": 1488,

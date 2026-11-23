@@ -26,7 +26,8 @@ const mocks = vi.hoisted(() => ({
   getApiKeyUsageLimitStatus: vi.fn(async () => ({ allowed: true, remaining: null })),
   getQuotaReservationPressure: vi.fn(async () => 0),
    getSettings: vi.fn(async () => ({ requireApiKey: false, comboStrategy: "weighted" })),
-   getAutoComboCatalog: vi.fn(async () => ({})),
+   filterDisabledComboModels: async (models) => models,
+  getAutoComboCatalog: vi.fn(async () => ({})),
   recordApiKeyUsageForResponse: vi.fn(async (_apiKey, response) => response),
   // Mirrors unrestricted no-auth selection after the canonical helper strips
   // its synthetic `noauth` connection metadata.

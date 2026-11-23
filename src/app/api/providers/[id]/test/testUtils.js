@@ -383,8 +383,8 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
     }
 
     return null;
-  } catch (err) {
-    console.log(`Error refreshing ${provider} token:`, err.message);
+  } catch {
+    console.log(`Error refreshing ${provider} token`);
     return null;
   }
 }
@@ -447,6 +447,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return { valid: true, error: null, refreshed: false, newTokens: null };
   }
 
+  try {
   if (connection.provider === "gemini-cli" || connection.provider === "antigravity" || connection.provider === "agy") {
     const initial = await probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy);
     if (initial.valid) return { valid: true, error: null, refreshed, newTokens };
@@ -454,6 +455,8 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (initial.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens?.accessToken) {
+        refreshed = true;
+        newTokens = tokens;
         const retry = await probeCloudCodeAssistAccess(connection, tokens.accessToken, effectiveProxy);
         if (retry.valid) return { valid: true, error: null, refreshed: true, newTokens: tokens };
         return { valid: false, error: retry.error, refreshed: true, newTokens: tokens };
@@ -461,20 +464,20 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
       return { valid: false, error: "Token invalid or revoked", refreshed: false };
     }
 
-    return { valid: false, error: initial.error, refreshed };
+    return { valid: false, error: initial.error, refreshed, newTokens };
   }
 
   if (connection.provider === "cline") {
     const tryProbe = async (token) => {
       const res = await probeClineAccessToken(token, effectiveProxy);
       if (res.ok) return { valid: true, error: null, refreshed, newTokens };
-      if (res.status === 401) return { valid: false, error: "Token invalid or revoked", refreshed };
-      if (res.status === 403) return { valid: false, error: "Access denied", refreshed };
-      return { valid: false, error: `API returned ${res.status}`, refreshed };
+      if (res.status === 401) return { valid: false, error: refreshed ? "API rejected token after refresh (401)" : "Token invalid or revoked", refreshed, newTokens };
+      if (res.status === 403) return { valid: false, error: "Access denied", refreshed, newTokens };
+      return { valid: false, error: `API returned ${res.status}`, refreshed, newTokens };
     };
 
     const initial = await tryProbe(accessToken);
-    if (initial.valid || initial.error !== "Token invalid or revoked" || !connection.refreshToken) {
+    if (initial.valid || initial.error !== "Token invalid or revoked" || refreshed || !connection.refreshToken) {
       return initial;
     }
 
@@ -489,7 +492,6 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return await tryProbe(accessToken);
   }
 
-  try {
     const testUrl = config.buildUrl ? config.buildUrl(accessToken, connection) : config.url;
     const headers = config.noAuth ?
     { ...config.extraHeaders } :
@@ -507,12 +509,14 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     // Generic OAuth endpoint failures do not establish credential rejection.
     // Preserve saved metadata through testSingleConnection's unavailable boundary.
     if (res.status === 429 || res.status >= 500) {
-      return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false };
+      return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed, newTokens };
     }
 
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens?.accessToken) {
+        refreshed = true;
+        newTokens = tokens;
         if (connection.provider === "codex") {
           // The refresh grant has already rotated even when the follow-up
           // probe fails. Commit the replacement before attempting that probe.
@@ -531,6 +535,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
             return { valid: false, unavailable: true, error: "Provider credentials changed during the test" };
           }
         }
+        if (connection.provider === "codex") newTokens = null;
         const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken, connection) : testUrl;
         const retryHeaders = config.noAuth ?
         { ...config.extraHeaders } :
@@ -546,21 +551,22 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
           return { valid: true, error: null, refreshed: true, newTokens: connection.provider === "codex" ? null : tokens };
         }
         if (retryRes.status === 429 || retryRes.status >= 500) {
-          return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false };
+          return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed, newTokens };
         }
+        return { valid: false, error: retryRes.status === 401 ? "API rejected token after refresh (401)" : retryRes.status === 403 ? "Access denied" : `API returned ${retryRes.status}`, refreshed, newTokens };
       }
-      return { valid: false, error: "Token invalid or revoked", refreshed: false };
+      return { valid: false, error: "Token invalid or revoked (refresh failed)", refreshed: false };
     }
 
-    if (res.status === 401) return { valid: false, error: "Token invalid or revoked", refreshed };
-    if (res.status === 403) return { valid: false, error: "Access denied", refreshed };
-    return { valid: false, error: `API returned ${res.status}`, refreshed };
+    if (res.status === 401) return { valid: false, error: refreshed ? "API rejected token after refresh (401)" : "Token invalid or revoked", refreshed, newTokens };
+    if (res.status === 403) return { valid: false, error: "Access denied", refreshed, newTokens };
+    return { valid: false, error: `API returned ${res.status}`, refreshed, newTokens };
   } catch (err) {
     // Do not turn SSRF blocks or arbitrary application errors into outages.
     if (!(err instanceof OutboundUrlGuardError) && (err.name === "TimeoutError" || err.name === "AbortError")) {
-      return { valid: false, unavailable: true, error: "Provider unavailable - request interrupted", refreshed: false };
+      return { valid: false, unavailable: true, error: "Provider unavailable - request interrupted", refreshed, newTokens };
     }
-    return { valid: false, error: err.message, refreshed };
+    return { valid: false, error: refreshed ? "Provider probe failed after token refresh" : err.message, refreshed, newTokens };
   }
 }
 
@@ -1289,11 +1295,12 @@ export async function testSingleConnection(id) {
   sanitizeErrorMessage(result.error || "Connection validation failed");
 
   // A provider outage says nothing about the stored credential or prior status.
-  if (result.unavailable === true) {
-    return { valid: false, unavailable: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
+  if (result.unavailable === true && !result.newTokens) {
+    return { valid: false, unavailable: true, error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
   }
 
-  const updateData = {
+  // A failed probe must not discard a refresh token already rotated upstream.
+  const updateData = result.unavailable ? {} : {
     testStatus: result.skipped ? "unknown" : result.valid ? "active" : "error",
     lastError: resultError,
     lastErrorAt: result.valid ? null : new Date().toISOString()
@@ -1320,5 +1327,5 @@ export async function testSingleConnection(id) {
 
   await updateProviderConnection(id, updateData);
 
-  return { valid: result.valid, ...(result.skipped ? { skipped: true } : null), error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
+  return { valid: result.valid, ...(result.skipped ? { skipped: true } : null), ...(result.unavailable ? { unavailable: true } : null), error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
 }

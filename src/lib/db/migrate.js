@@ -3,7 +3,6 @@ import path from "node:path";
 import { currentDataFile, currentDbDir, currentLegacyFiles } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
-import { migrateUsageKeyIdentities } from "./migrations/033-usage-key-identity.js";
 import { backfillUsageHistoryApiKeyIds } from "./migrations/030-usage-history-api-key-id.js";
 import { PG_MIGRATIONS, bootstrapPgMetaTable } from "./migrations/postgres/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
@@ -474,7 +473,6 @@ async function runMigrationOnceLeased(adapter, lease) {
         importLegacyUsage(adapter, legacyUsage);
         backfillUsageHistoryApiKeyIds(adapter);
         backfillApiKeyUsageTotals(adapter);
-        migrateUsageKeyIdentities(adapter);
         importLegacyDisabled(adapter, legacyDisabled);
         importLegacyDetails(adapter, legacyDetails);
         setMetaSync(adapter, "appVersion", getAppVersion());

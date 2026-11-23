@@ -152,7 +152,7 @@ async function probeApiKey({ key, cliToken = null, remotePeer = false, authUrl, 
  * @returns {string}
  */
 function loopbackAuthUrl(port) {
-  return `http://127.0.0.1:${port}/api/v1/realtime/auth`;
+  return `http://127.0.0.1:${port}${process.env.DURINDOOR_BASE_PATH || ""}/api/v1/realtime/auth`;
 }
 
 /**
@@ -162,17 +162,19 @@ function loopbackAuthUrl(port) {
  * @returns {string}
  */
 function loopbackChatUrl(port) {
-  return `http://127.0.0.1:${port}/api/v1/chat/completions`;
+  return `http://127.0.0.1:${port}${process.env.DURINDOOR_BASE_PATH || ""}/api/v1/chat/completions`;
 }
 
 function loopbackNativeRealtimeUrl(port) {
-  return `http://127.0.0.1:${port}/api/v1/realtime/native`;
+  return `http://127.0.0.1:${port}${process.env.DURINDOOR_BASE_PATH || ""}/api/v1/realtime/native`;
 }
 
 /** True for supported native realtime WebSocket paths (trailing slash allowed). */
 function isRealtimePath(url) {
   try {
-    const pathname = new URL(url || "/", "http://localhost").pathname;
+    let pathname = new URL(url || "/", "http://localhost").pathname;
+    const basePath = process.env.DURINDOOR_BASE_PATH || "";
+    if (basePath && pathname.startsWith(`${basePath}/`)) pathname = pathname.slice(basePath.length);
     return pathname === "/v1/realtime" || pathname === "/v1/realtime/" ||
       pathname === "/v1/realtime/translations" || pathname === "/v1/realtime/translations/" ||
       pathname === "/v1/live/sessions" || pathname === "/v1/live/sessions/" ||

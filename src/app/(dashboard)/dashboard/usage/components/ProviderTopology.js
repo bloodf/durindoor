@@ -80,7 +80,7 @@ function RouterNode({ data }) {
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Left} id="left" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <img src="/favicon.svg" alt="DurinDoor" className="size-6" />
+      <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/favicon.svg`} alt="DurinDoor" className="size-6" />
       <span className="text-[13px] font-bold text-dd-text">DurinDoor</span>
       {data.activeCount > 0 ? (
         <span role="status" aria-label={`${data.activeCount} active`} className="ml-auto rounded-full bg-dd-accent px-1.5 py-0.5 text-[11px] font-bold text-dd-on-accent dd-tnum">

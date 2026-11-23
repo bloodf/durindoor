@@ -102,6 +102,8 @@ function isMitmMutation(req) {
   } catch {
     return false;
   }
+  const basePath = process.env.DURINDOOR_BASE_PATH || "";
+  if (basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`))) pathname = pathname.slice(basePath.length) || "/";
   const method = String(req.method || "GET").toUpperCase();
   return ((pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) && method !== "GET") ||
   (pathname === REALTIME_NATIVE_CONTROL_PATH && method === "POST");
@@ -166,7 +168,12 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
           const remotePort = req.socket?.remotePort;
           const proof = createControlProof({
             method: req.method,
-            pathname: req.url,
+            pathname: (() => {
+              const url = new URL(req.url, "http://localhost");
+              const basePath = process.env.DURINDOOR_BASE_PATH || "";
+              if (basePath && (url.pathname === basePath || url.pathname.startsWith(`${basePath}/`))) url.pathname = url.pathname.slice(basePath.length) || "/";
+              return url.pathname;
+            })(),
             remotePort,
             secret: controlSecret
           });
@@ -441,7 +448,8 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
 
       const requestedModel = modelFromUrl(req.url);
       const nativeUrl = new URL(req.url, "http://localhost");
-      const nativePath = nativeUrl.pathname.replace(/\/$/, "");
+      const basePath = process.env.DURINDOOR_BASE_PATH || "";
+      const nativePath = (basePath && nativeUrl.pathname.startsWith(`${basePath}/`) ? nativeUrl.pathname.slice(basePath.length) : nativeUrl.pathname).replace(/\/$/, "");
       let nativeModel = requestedModel || "openai/gpt-4o-mini";
       if (nativePath === "/v1/native/gemini/live") {
         const first = queue[0] || await Promise.race([firstFrame, new Promise((resolve) => setTimeout(() => resolve(null), 10_000)), new Promise((resolve) => setupAbort.signal.addEventListener("abort", () => resolve(null), { once: true }))]);

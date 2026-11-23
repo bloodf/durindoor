@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBetterSqliteAdapter } from "@/lib/db/adapters/betterSqliteAdapter.js";
-import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "@/lib/db/helpers/usageKeyIdentity.js";
 import { MIGRATIONS } from "@/lib/db/migrations/index.js";
 import { PG_MIGRATIONS } from "@/lib/db/migrations/postgres/index.js";
 import { applyVersionedMigrations } from "@/lib/db/migrate.js";
@@ -54,8 +53,8 @@ it("backfills exact matches atomically and preserves all legacy fields", () => {
     expect(markers()).toEqual(markersBefore);
 
     db.exec(`DROP TRIGGER fail_stamp`);
-    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 4, from: 28, to: 33 });
-    const after = before.map((row, index) => ({ ...row, apiKey: fingerprintApiKey(row.apiKey, getOrCreateUsageIdentitySalt(db)), apiKeyId: index === 0 ? "stable-id" : null }));
+    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 3, from: 28, to: 32 });
+    const after = before.map((row, index) => ({ ...row, apiKeyId: index === 0 ? "stable-id" : null }));
     expect(db.all(`SELECT * FROM usageHistory ORDER BY id`)).toEqual(after);
     expect(db.all(`SELECT * FROM apiKeys`)).toEqual(keys);
 

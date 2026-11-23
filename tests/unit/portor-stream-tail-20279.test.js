@@ -31,3 +31,17 @@ it("keeps valid zero and numeric-string cache evidence", () => {
 it("retains an output-only provider receipt", () => {
   expect(extractUsage({ usage: { completion_tokens: 7 } })).toMatchObject({ completion_tokens: 7 });
 });
+
+it("records content in an unterminated translated tail", async () => {
+  const { complete } = await run([`data: ${JSON.stringify(part({ content: "tail text" }))}`]);
+  expect(complete.mock.calls[0][0].content).toBe("tail text");
+});
+
+it("keeps provider usage in an interrupted stream snapshot", async () => {
+  const transform = createSSETransformStreamWithLogger(FORMATS.OPENAI, FORMATS.CLAUDE, "openai", null, null, "test", "connection", { messages: [] }, vi.fn());
+  const input = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(frame({ ...part({ content: "answer" }), usage: { prompt_tokens: 12, completion_tokens: 7 } }))); } });
+  const reader = input.pipeThrough(transform).getReader();
+  await reader.read();
+  expect(transform.getStreamSnapshot().usage).toMatchObject({ input_tokens: 12, output_tokens: 7 });
+  void reader.cancel();
+});

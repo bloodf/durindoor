@@ -64,6 +64,22 @@ const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
 
+for (let i = 0; i < args.length; i++) {
+  if (["--port", "-p", "--host", "-H"].includes(args[i])) {
+    const flag = args[i];
+    const value = args[i + 1];
+    if (!value || value.startsWith("--")) {
+      console.error(`Error: ${flag} requires a value.`);
+      process.exit(2);
+    }
+    if ((flag === "--port" || flag === "-p") && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535)) {
+      console.error(`Error: ${flag} must be an integer from 1 to 65535.`);
+      process.exit(2);
+    }
+    i++;
+  }
+}
+
 function hasFlag(flag, shortFlag) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -151,7 +167,7 @@ let headless = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--port" || args[i] === "-p") {
-    port = parseInt(args[i + 1], 10) || DEFAULT_PORT;
+    port = Number(args[i + 1]);
     i++;
   } else if (args[i] === "--host" || args[i] === "-H") {
     host = args[i + 1] || DEFAULT_HOST;

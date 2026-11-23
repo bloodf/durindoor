@@ -1,3 +1,4 @@
+import { hasPaidEvidence } from "../config/freeModelCatalog.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { extractLiveModelLimits } from "./modelMetadata.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -37,6 +38,7 @@ const stringSet = (value) => new Set(Array.isArray(value) ? value.filter(isStrin
 const isZeroPrice = (price) => (isNumber(price) || isString(price) && price.trim() !== "") && Number(price) === 0;
 
 export function isOpenRouterFreeModel(entry) {
+  if (hasPaidEvidence(entry)) return false;
   if (!isRecord(entry) || !isString(entry.id) || !entry.id.endsWith(":free")) return false;
   // Only scalar fee fields are prices; nested values such as the
   // `pricing.overrides` array describe per-provider variants, not this variant's fee.

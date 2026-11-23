@@ -1,3 +1,5 @@
+import { encodeClaudeThinking } from "../../translator/concerns/claudeThinkingEnvelope.js";
+import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
@@ -6,6 +8,7 @@ import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, estimateNonStreamingUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { detectQuotaExhaustion } from "../../services/accountFallback.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
@@ -34,9 +37,10 @@ import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/respons
 import { classifyMaskedGatewayError, hasTokenLimitCompletion, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
-import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
+import { CLAUDE_STOP, GEMINI_FINISH } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
+import { evictResponseDispatcher } from "../../utils/proxyFetch.js";
 
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
 // arrays, null) before any envelope unwrap or property access can throw or
@@ -183,9 +187,10 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
 // prompt_tokens: reverse projection reports full input plus cache fields.
 function normalizeClaudeCacheUsage(claudeMsg, originalBody) {
   if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
-  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens || 0;
+  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens;
   claudeMsg.usage = claudeMsg.usage || {};
-  if (cached > 0) claudeMsg.usage.cache_read_input_tokens = cached;
+  // An explicit reported zero is kept; an omitted counter is not invented.
+  if (Number.isFinite(cached) && cached >= 0) claudeMsg.usage.cache_read_input_tokens = cached;
   return claudeMsg;
 }
 
@@ -456,7 +461,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     if (!message.content && !message.tool_calls) message.content = "";
 
-    let finishReason = (candidate.finishReason || "stop").toLowerCase();
+    // Same mapping as the streaming Gemini translator (MAX_TOKENS → length, SAFETY → content_filter).
+    let finishReason = toOpenAIFinish(candidate.finishReason || GEMINI_FINISH.STOP, "gemini");
     if (finishReason === "stop" && toolCalls.length > 0) finishReason = "tool_calls";
 
     const result = {
@@ -511,6 +517,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const message = { role: "assistant" };
     if (textContent) message.content = textContent;
     if (thinkingContent) message.reasoning_content = thinkingContent;
+    const thinkingBlocks = (responseBody.content || []).filter((block) => block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING);
+    const envelope = encodeClaudeThinking(options.effectiveModel || options.model || responseBody.model, thinkingBlocks);
+    if (envelope) message.reasoning_encrypted_content = envelope;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     // A refusal (stop_reason "refusal") carries no content blocks at all: fall back to
     // Anthropic's own explanation so the client sees why the turn is empty instead of
@@ -557,7 +566,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -609,7 +618,18 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
       }
-      const sseError = createSSEErrorResult(parsed || jsonDocument.body, credentials);
+      let errorPayload = parsed || jsonDocument.body;
+      if ((provider === "antigravity" || provider === "agy") && isJsonRecord(errorPayload?.error)) {
+        const code = errorPayload.error.code;
+        if (code === 401 || code === 403) evictResponseDispatcher(providerResponse);
+        errorPayload = { ...errorPayload, error: { ...errorPayload.error, status: code } };
+      }
+      const quotaError = detectQuotaExhaustion({ error: errorPayload?.error });
+      if (quotaError.exhausted) {
+        appendLog({ status: "FAILED 429" });
+        return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quotaError.resetAtMs, undefined, null, credentials);
+      }
+      const sseError = createSSEErrorResult(errorPayload, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;
@@ -653,6 +673,31 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
       }
+      // Inspect only the error envelope, never echoed request content.
+      if (responseBody.error) {
+        const quota = detectQuotaExhaustion({ error: responseBody.error });
+        if (quota.exhausted) {
+          appendLog({ status: "FAILED 429" });
+          return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quota.resetAtMs, undefined, null, credentials);
+        }
+      }
+      // Cloud Code can return a Google RPC error inside an HTTP 200 response.
+      // Preserve its numeric code so account-level authentication handling sees it.
+      if ((provider === "antigravity" || provider === "agy") && isJsonRecord(responseBody.error)) {
+        const code = responseBody.error.code;
+        const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : HTTP_STATUS.BAD_GATEWAY;
+        if (status === 401 || status === 403) evictResponseDispatcher(providerResponse);
+        const message = isString(responseBody.error.message) && responseBody.error.message.trim() ?
+          responseBody.error.message : "Upstream Antigravity request failed";
+        appendLog({ status: `FAILED ${status}` });
+        return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
+      }
+    }
+
+    if (clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && responseFormat === FORMATS.ANTIGRAVITY) {
+      // Validate and account for the same completed native response we return.
+      const normalized = antigravityGeminiResponse(responseBody, toolNameMap, true);
+      responseBody = responseBody.response ? { ...responseBody, response: normalized } : normalized;
     }
 
     // Unwrap ClinePass {success, data} envelope before marking success: a
@@ -746,7 +791,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // so neither path is mistaken for a retryable empty-content gateway fault.
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
     if (!isNativeClaudeRefusal && !isTokenLimited &&
-        !hasUsefulContent(translatedResponse) && !isTrustedEmptyStop(translatedResponse, provider)) {
+        !hasUsefulContent(translatedResponse) && !(clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && hasUsefulContent(responseBody)) && !isTrustedEmptyStop(translatedResponse, provider)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(
@@ -843,6 +888,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency: { ttft: totalLatency, total: totalLatency },
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
@@ -859,6 +905,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }, { endpoint: clientRawRequest?.endpoint || null })).catch((err) => {
       console.error("[RequestDetail] Failed to save:", err.message);
     });
+
+    const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && responseFormat === FORMATS.ANTIGRAVITY;
+    if (nativeGemini) {
+      const nativeResponse = antigravityGeminiResponse(responseBody, toolNameMap, true);
+      await markSuccess();
+      return { success: true, response: new Response(streamToClient ? formatSSE(nativeResponse, FORMATS.GEMINI) : JSON.stringify(nativeResponse), {
+        headers: { "Content-Type": streamToClient ? "text/event-stream" : "application/json", "Access-Control-Allow-Origin": "*", "x-durindoor-internal-gemini-native": "1", ...resolvedModelHeaders(provider, model) }
+      }) };
+    }
 
     // Client requested streaming but the provider only returned a non-stream JSON
     if (streamToClient === true) {

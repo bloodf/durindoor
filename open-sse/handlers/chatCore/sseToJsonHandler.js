@@ -1,3 +1,4 @@
+import { collectAntigravityGeminiSSE } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
@@ -149,6 +150,7 @@ function aggregateParsedChunks(chunks, fallbackModel, {
         if (isString(delta.audio.data)) accumulator.audioParts.push(Buffer.from(delta.audio.data, "base64"));
         if (isString(delta.audio.transcript)) accumulator.transcriptParts.push(delta.audio.transcript);
       }
+      if (delta.reasoning_encrypted_content) accumulator.reasoningEncryptedContent = delta.reasoning_encrypted_content;
       const reasoning = extractReasoningText(delta);
       if (reasoning) accumulator.reasoningParts.push(reasoning);
       if (choice?.finish_reason) accumulator.finishReason = choice.finish_reason;
@@ -192,6 +194,7 @@ function aggregateParsedChunks(chunks, fallbackModel, {
       role: accumulator.role,
       content: text || (accumulator.toolCallMap.size > 0 ? null : "")
     };
+    if (accumulator.reasoningEncryptedContent) message.reasoning_encrypted_content = accumulator.reasoningEncryptedContent;
     if (accumulator.reasoningParts.length > 0) {
       message.reasoning_content = accumulator.reasoningParts.join("");
     }
@@ -377,7 +380,7 @@ function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nati
   if (incomplete.size > 0 && stopReason !== CLAUDE_STOP.MAX_TOKENS) return { completion: null };
   const terminalObservations = parsedEvents.filter(({ chunk }) => !(isClaudeBlockEvent(chunk) && incomplete.has(chunk.index)));
 
-  const state = { toolCalls: new Map(), toolNameMap };
+  const state = { toolCalls: new Map(), toolNameMap, providerBody, requestedModel: fallbackModel };
   const chunks = [];
   for (const { chunk } of terminalObservations) {
     // The converter keeps growing the tool_call it already emitted. A stream
@@ -422,7 +425,7 @@ function withNativeClaudeFields(projected, message, claudeCompat) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -488,6 +491,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
           const totalLatency = Date.now() - requestStartTime;
           saveRequestDetail(buildRequestDetail({
+            comboNoLog,
             ...ctx,
             latency: { ttft: totalLatency, total: totalLatency },
             tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
@@ -517,6 +521,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
         const totalLatency = Date.now() - requestStartTime;
         saveRequestDetail(buildRequestDetail({
+          comboNoLog,
           ...ctx,
           latency: { ttft: totalLatency, total: totalLatency },
           tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
@@ -562,6 +567,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         providerBody: finalBody || translatedBody,
         provider
       });
+      if (!parsed && clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY) {
+        const native = collectAntigravityGeminiSSE(sseText, toolNameMap);
+        if (native.candidates?.length) {
+          parsed = parseGeminiSSEToOpenAIResponse(`data: ${JSON.stringify(native)}\n\n`, model, finalBody || translatedBody, toolNameMap);
+        }
+      }
       // A forced-streaming upstream can answer with one complete JSON response
       // document under the event-stream media type (OmniRoute #18377). The
       // document is the response it describes, so read it as one instead of
@@ -644,6 +655,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const totalLatency = Date.now() - requestStartTime;
       saveRequestDetail(buildRequestDetail({
+        comboNoLog,
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
         tokens: usage,
@@ -675,7 +687,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
       const resolveToolName = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ? createResponsesToolNameResolver(body, toolNameMap) : undefined;
       const projected = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
-      const finalResp = claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
+      const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
+      const finalResp = nativeGemini ? collectAntigravityGeminiSSE(sseText, toolNameMap) : claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
       if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
@@ -688,7 +701,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         try {Promise.resolve(onEmptyStream()).catch(() => console.error("[ChatCore] empty-stream cooldown failed"));}
         catch {console.error("[ChatCore] empty-stream cooldown failed");}
       }
-      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
+      const responseHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) };
+      if (nativeGemini) responseHeaders["x-durindoor-internal-gemini-native"] = "1";
+      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: responseHeaders }) };
     } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);
       const status = err?.name === "AbortError" ?

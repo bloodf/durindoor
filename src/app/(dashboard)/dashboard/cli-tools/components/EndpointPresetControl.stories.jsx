@@ -21,7 +21,7 @@ function withSeededPreset(Story) {
   function Wrapper() {
     useState(() => {
       if (isBrowser()) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify([{ name: "Prod", baseUrl: "https://api.example.com/v1", apiKey: "sk_1234" }]));
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify([{ name: "Prod", baseUrl: "https://api.example.com/v1", apiKeyId: "key-story", maskedLabel: "sk-••••••••" }]));
       }
       return true;
     });

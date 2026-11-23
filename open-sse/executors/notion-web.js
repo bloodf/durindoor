@@ -37,7 +37,11 @@ function headers(cookie, spaceId = "", userId = "") {
 }
 
 async function request(url, init, fetcher) {
-  return fetcher(url, init);
+  const response = await fetcher(url, { ...init, redirect: "manual" });
+  if (response.status >= 300 && response.status < 400) {
+    throw Object.assign(new Error("Notion session was rejected"), { status: 401 });
+  }
+  return response;
 }
 
 function parseModels(json) {
@@ -65,6 +69,26 @@ export async function discoverNotionModels(cookie, fetcher = proxyAwareFetch) {
   return { spaceId, userId, models: parseModels(await response.json()) };
 }
 
+/**
+ * Read-only session check for Validate and Test Connection: resolve the workspace and list its
+ * models (POST getSpaces / getAvailableModels). It never calls runInferenceTranscript, so no
+ * AI transcript is created on the account.
+ */
+export async function validateNotionWebSession({ apiKey, providerSpecificData, fetcher = proxyAwareFetch } = {}) {
+  const cookie = notionCookie({ apiKey, providerSpecificData });
+  if (!cookie) return { valid: false, status: null, error: "Paste the token_v2 cookie or the Cookie header from app.notion.com" };
+  try {
+    await discoverNotionModels(cookie, fetcher);
+    return { valid: true, status: 200 };
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : null;
+    if (status === 401 || status === 403) return { valid: false, status, expired: true, error: "Notion session expired - sign in again and re-import the cookie" };
+    if (status === 429) return { valid: false, status, rateLimited: true, unavailable: true, error: "Notion rate limit reached - try again later" };
+    if (status === null || status >= 500) return { valid: false, status, unavailable: true, error: "Provider unavailable - try again later" };
+    return { valid: false, status, error: isString(error?.message) ? error.message : `Notion validation failed (HTTP ${status})` };
+  }
+}
+
 function transcript(messages, model, spaceId, userId) {
   return [{ type: "config", value: { model: model || "notion-ai" } }, { type: "context", value: { spaceId, userId } }, ...messages.map((message) => ({ type: "step", value: { type: message.role === "assistant" ? "assistant" : message.role === "system" ? "system" : "user", content: isString(message.content) ? message.content : JSON.stringify(message.content) } }))];
 }
@@ -83,18 +107,20 @@ export function parseNotionInference(raw) {
 }
 
 export class NotionWebExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("notion-web", { id: "notion-web", baseUrl: INFERENCE }); this.fetcher = deps.fetcher || proxyAwareFetch; }
+  constructor(deps = {}) { super("notion-web", { id: "notion-web", baseUrl: INFERENCE }); this.fetcher = deps.fetcher || ((...args) => proxyAwareFetch(...args)); }
   async execute(input) {
     const cookie = notionCookie(input.credentials);
     const body = input.body || {};
-    if (!cookie || !/(?:^|;\\s*)token_v2=/i.test(cookie)) return this.fail(401, "Missing Notion token_v2 cookie", body);
+    if (!cookie || !/(?:^|;\s*)token_v2=/i.test(cookie)) return this.fail(401, "Missing Notion token_v2 cookie", body);
     if (!Array.isArray(body.messages) || !body.messages.some((message) => message.role === "user")) return this.fail(400, "No user message found", body);
     try {
       const { spaceId, userId } = await discoverNotionModels(cookie, this.fetcher);
       const clientId = input.clientHeaders?.["x-notion-thread-id"] || body.notion_thread_id || "";
-      const scope = `${cookieValue(cookie, "notion_user_id")}:${spaceId}:${input.credentials?.connectionId || ""}`;
-      const key = `${scope}:${clientId || body.messages.filter((m) => m.role === "user").map((m) => m.content).join("|").slice(0, 100)}`;
-      const oldId = sessions.get(key);
+      const apiKeyId = input.apiKeyId;
+      const connectionId = input.connectionId || input.credentials?.connectionId;
+      const scope = apiKeyId && connectionId ? JSON.stringify([apiKeyId, connectionId, cookieValue(cookie, "notion_user_id"), spaceId]) : null;
+      const key = scope ? `${scope}:${clientId || body.messages.filter((m) => m.role === "user").map((m) => m.content).join("|").slice(0, 100)}` : null;
+      const oldId = key ? sessions.get(key) : null;
       const threadId = oldId || randomUUID();
       const payload = { traceId: randomUUID(), spaceId, threadId, createThread: !oldId, generateTitle: !oldId, asPatchResponse: true, patchResponseVersion: 2, isPartialTranscript: Boolean(oldId), saveAllThreadOperations: true, setUnreadState: !oldId, createdSource: "ai_module", threadType: "workflow", transcript: transcript(body.messages, body.model, spaceId, userId), threadParentPointer: { table: "space", id: spaceId, spaceId }, debugOverrides: { annotationInferences: {}, cachedInferences: {}, emitAgentSearchExtractedResults: true, emitInferences: false } };
       const response = await request(INFERENCE, { method: "POST", headers: headers(cookie, spaceId, userId), body: JSON.stringify(payload), signal: input.signal }, this.fetcher);
@@ -103,12 +129,13 @@ export class NotionWebExecutor extends BaseExecutor {
       if (!response.ok) return this.fail(response.status >= 500 ? 502 : response.status, `Notion inference failed (${response.status})`, body);
       const text = parseNotionInference(await response.text());
       if (!text) return this.fail(502, "Notion returned no assistant text", body);
-      sessions.set(key, threadId);
+      if (key) sessions.set(key, threadId);
       const model = String(body.model || "notion-ai").replace(/^(notion-web|nw)\//, "");
       const id = `chatcmpl-notion-${threadId}`;
       const chunk = (content, finish_reason = null) => ({ id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: content ? { content } : {}, finish_reason }] });
       const result = body.stream ? new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk(text))}\n\ndata: ${JSON.stringify(chunk("", "stop"))}\n\ndata: [DONE]\n\n`)); controller.close(); } }), { headers: { "content-type": "text/event-stream", "x-notion-thread-id": threadId } }) : new Response(JSON.stringify({ id, object: "chat.completion", created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }] }), { headers: { "content-type": "application/json", "x-notion-thread-id": threadId } });
-      return { response: result, url: INFERENCE, headers: headers(cookie, spaceId, userId), transformedBody: payload };
+      // The logged request headers never carry the session cookie.
+      return { response: result, url: INFERENCE, headers: { ...headers(cookie, spaceId, userId), cookie: "[REDACTED]" }, transformedBody: payload };
     } catch (error) {
       return this.fail(error.status || 502, error.message || "Notion request failed", body);
     }

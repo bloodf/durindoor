@@ -21,3 +21,27 @@ Work order #2034, based on DurinDoor `d8e716371de104c63ce7a873860b62f59397261d`.
 The pre-change focused test failed all four assertions. The international start returned HTTP 400 for an unsupported provider, `kimi.ai` had no registered alias or request route, and the existing Coding start lacked the device identity used in the upstream lifecycle. The closed mock suite exercises the real OAuth handlers and chat core, substituting the storage write and outbound transport. It checks expiry, cross-provider rejection, replay, credential rotation and Anthropic request/response handling for both hosts.
 
 Live account eligibility, provider acceptance of DurinDoor's client identity, direct Anthropic wire requests with a `.ai` OAuth token, regional quota/model discovery and the installed EasyCLIProxyAPI core build remain unverified.
+
+## Pinned behavior pass
+
+The following compares CLIProxyAPI `6eb8554f0ede` and OmniRoute `5ffa68e83544`. DurinDoor retains its existing regional routing and shared gateway policies.
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Device authorization and token URLs, public client and form grant | CLIProxyAPI `internal/auth/kimi/kimi.go`; OmniRoute `src/lib/oauth/providers/kimi-coding.ts` | Already matched for both regional hosts. |
+| PKCE and scopes | Same device-flow sources | Already matched: neither sends PKCE or a scope in the device request. |
+| Device identity | Same device-flow sources | Intentionally different: a random identity is bound to each flow and persisted for refresh; machine identity and identity cloaking are out of scope. |
+| Pending and slow-down polling | CLIProxyAPI `internal/auth/kimi/kimi.go` | Already matched by the shared OAuth flow. |
+| Permanent refresh errors | OmniRoute `open-sse/services/tokenRefresh/providers/kimiCoding.ts` | Ported here: `invalid_grant` and `invalid_request` are permanent; other failures remain transient. |
+| Refresh response credentials | CLIProxyAPI `internal/auth/kimi/kimi.go` | Ported here: reject malformed access or supplied refresh tokens; preserve the existing refresh token when omitted. |
+| OpenAI request envelope | OmniRoute `open-sse/executors/kimi.ts`, `kimiToolNames.ts` | Ported here: preserve existing tool names, fill missing names from matching calls, use `max_completion_tokens`, and include usage in streams. |
+| Claude and Responses routing | CLIProxyAPI `internal/runtime/executor/kimi_executor.go`; OmniRoute `open-sse/executors/kimi.ts` | Intentionally different: DurinDoor selects registered transports, and its regional OAuth route translates to Chat. Responses support is limited to the existing API-key route. |
+| Kimi Web function tools | OmniRoute `open-sse/executors/kimi-web.ts` | Ported here: reject unsupported tools instead of silently dropping them. |
+| Web models and origin | OmniRoute `open-sse/executors/kimi-web.ts` | Intentionally different: DurinDoor supports both `.com` and `.ai` session origins and its own catalog. |
+| Retries and errors | CLIProxyAPI `internal/runtime/executor/kimi_executor.go`; OmniRoute `open-sse/executors/kimi-web.ts` | Intentionally different: DurinDoor uses shared retry policy and its existing sanitized error mapping; web stream trailers are handled by its adapter. |
+| Quota and rate limits | OmniRoute `open-sse/services/usage/kimi.ts`, `open-sse/handlers/chatCore/kimiQuotaRecovery.ts` | Existing usage and temporary-limit recovery use DurinDoor's quota representation; regional discovery and wallet details are not implemented. |
+| Model list | OmniRoute `open-sse/config/providers/registry/kimi/coding/index.ts` | DurinDoor retains additional configured models and context metadata; the upstream fallback list is not authoritative for regional availability. |
+| Account information | CLIProxyAPI `internal/auth/kimi/kimi.go`; OmniRoute `src/lib/oauth/providers/kimi-coding.ts` | Neither device adapter retrieves a profile; DurinDoor stores the tokens and flow identity. |
+| Device authorization response | OmniRoute `src/lib/oauth/providers/kimi-coding.ts` | Remaining: require a nonempty `device_code` in `src/lib/oauth/providers.js`; that file is excluded from this work order. |
+
+Remaining comparison and implementation work: OmniRoute K3.1 thinking effort defaults and aliases, Anthropic context-management and thinking backfill; CLIProxyAPI tool-call ID inference, local schema reference inlining, temperature rules, model alias normalization, Responses compaction and scoped thinking replay; and OmniRoute regional usage endpoint selection and wallet data. These need route-level tests before claiming parity.

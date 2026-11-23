@@ -10,7 +10,7 @@ const REPO = path.resolve(new URL(".", import.meta.url).pathname, "../../..");
 describe("noPgImportWhenSqlite — static guard", () => {
   it("the settings row defaults to databaseEngine = 'sqlite'", async () => {
     const fs = await import("node:fs");
-    const file = path.join(REPO, "src/lib/db/repos/settingsRepo.js");
+    const file = path.join(REPO, "src/lib/settings/settingsSchema.js");
     const src = fs.readFileSync(file, "utf-8");
     expect(src).toMatch(/databaseEngine:\s*"sqlite"/);
   });

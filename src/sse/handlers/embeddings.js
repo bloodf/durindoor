@@ -1,10 +1,11 @@
+import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -14,7 +15,6 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js";
 
 /**
@@ -40,10 +40,7 @@ async function handleEmbeddingsHandler(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "embeddings" });
   // Keep the admission epoch, including null, across upstream retries.
   const { billingEpoch } = apiKeyAuth;
   if (apiKey) {
@@ -51,13 +48,9 @@ async function handleEmbeddingsHandler(request) {
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (!apiKeyAuth.ok) {
-    if (apiKeyAuth.reason === "missing") {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"), "auth_missing");
-    }
-    log.warn("AUTH", "Invalid API key");
-    return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), "auth_invalid");
+  if (admissionError) {
+    log.warn("AUTH", apiKeyAuth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
+    return admissionError;
   }
 
   if (!body.input) {
@@ -126,9 +119,11 @@ async function handleEmbeddingsHandler(request) {
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
+      routingPolicy: (await getSettings()).openrouterRouting,
       credentials: refreshedCredentials,
       signal: request.signal,
       log,
@@ -140,7 +135,7 @@ async function handleEmbeddingsHandler(request) {
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       }
     });
 
@@ -161,7 +156,8 @@ async function handleEmbeddingsHandler(request) {
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
 
     if (shouldFallback) {

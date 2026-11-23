@@ -34,6 +34,12 @@ function tokens(value, formatToken) {
   return <span role="img" className="dd-tnum" title={compact.title} aria-label={compact.title}>{compact.display}</span>;
 }
 
+/** Prompt tokens are cache-inclusive, so cached / prompt is the hit rate (capped at 100). */
+export function cacheHitRate(request) {
+  if (!request?.cachedTokens || !request?.promptTokens) return 0;
+  return Math.min(100, Math.round((request.cachedTokens / request.promptTokens) * 100));
+}
+
 export default function RequestsPanel({ recentRequests = [], activeSessions = [], formatToken = formatCompactToken }) {
   const [tab, setTab] = useState("recent");
   const now = useClock();
@@ -52,6 +58,9 @@ export default function RequestsPanel({ recentRequests = [], activeSessions = []
           : <StatusDot tone={!request.status || request.status === "ok" || request.status === "success" ? "success" : "danger"} /> },
         { key: "model", label: "Model", mono: true, rowHeader: true, render: (request) => <span title={request.model}>{request.model}</span> },
         { key: "tokens", label: "In / Out", align: "right", mono: true, render: (request) => <>{tokens(request.promptTokens, formatToken)} / {tokens(request.completionTokens, formatToken)}</> },
+        { key: "cache", label: "Cache", align: "right", mono: true, render: (request) => request.cachedTokens
+          ? <span className="dd-tnum" title={`Cache read tokens · ${cacheHitRate(request)}% of input`}>{tokens(request.cachedTokens, formatToken)} · {cacheHitRate(request)}%</span>
+          : "—" },
         { key: "timestamp", label: "When", align: "right", render: (request) => timeAgo(request.timestamp) },
       ]
     : [

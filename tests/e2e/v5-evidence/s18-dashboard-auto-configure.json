@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/auto-configure",
+  "stories": [
+    "v5-review-pages-auto-configure--status-preview",
+    "v5-review-pages-auto-configure--run-success",
+    "v5-review-pages-auto-configure--run-failure",
+    "v5-review-pages-auto-configure--status-load-recovery"
+  ]
+}

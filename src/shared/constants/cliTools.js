@@ -42,6 +42,7 @@ export const MITM_TOOLS = {
       { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
       { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
       { id: "deepseek-3.2", name: "DeepSeek 3.2", alias: "deepseek-3.2" },
+      { id: "minimax-m2.5", name: "MiniMax M2.5", alias: "minimax-m2.5" },
       { id: "minimax-m2.1", name: "MiniMax M2.1", alias: "minimax-m2.1" },
       // decolua/9router#2596 — GPT-5.6 family picker slots. Static rows (not
       // imported from open-sse/config/providerModels.js): this file ships in
@@ -49,6 +50,7 @@ export const MITM_TOOLS = {
       { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", alias: "gpt-5.6-sol", contextLength: 1050000, rateMultiplier: 2.4 },
       { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", alias: "gpt-5.6-terra", contextLength: 1050000, rateMultiplier: 1.2 },
       { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", alias: "gpt-5.6-luna", contextLength: 1050000, rateMultiplier: 0.6 },
+      { id: "glm-5", name: "GLM 5", alias: "glm-5" },
       { id: "simple-task", name: "Simple Task", alias: "simple-task" },
     ],
   },

@@ -1,0 +1,11 @@
+{
+  "route": "/dashboard/settings/database",
+  "stories": [
+    "production-settings-databasesettingspage--default",
+    "production-settings-databasesettingspage--startup-env-from-environment",
+    "production-settings-databasesettingspage--startup-env-from-file",
+    "production-settings-databasesettingspage--postgres-cutover-target",
+    "production-settings-databasesettingspage--status-unavailable",
+    "production-settings-databasesettingspage--cutover-confirm"
+  ]
+}

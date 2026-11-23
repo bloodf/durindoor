@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { jsonNotFoundResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 
@@ -13,9 +14,7 @@ import { jsonNotFoundResponse, headNotFoundResponse } from "open-sse/translator/
  */
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  ...corsHeaders(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]),
 };
 
 async function OPTIONSHandler() {

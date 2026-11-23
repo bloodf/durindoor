@@ -35,7 +35,7 @@ WORKDIR /app
 
 # The base stage's mirror swap does not reach here: runner starts from
 # ${NODE_IMAGE} directly, so this stage needs its own swap or the apk add
-# below hangs on networks that cannot reach dl-cdn.alpinelinux.org.
+# hangs on networks that cannot reach dl-cdn.alpinelinux.org.
 RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
       sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
     fi
@@ -63,6 +63,8 @@ COPY --from=builder /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeC
 COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs
 COPY --from=builder /app/open-sse ./open-sse
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
+# MITM DNS loads its host mapping at runtime, outside Next standalone tracing.
+COPY --from=builder /app/src/shared/constants/mitmToolHosts.js ./src/shared/constants/mitmToolHosts.js
 COPY --from=builder /app/src/mitm ./src/mitm
 # scripts/build-app.mjs materializes every runtime dependency and its closure
 # into .next/standalone above, including sql.js assets and optional native bindings.
@@ -95,6 +97,8 @@ RUN apk add --no-cache su-exec ffmpeg && \
   chmod +x /entrypoint.sh
 
 EXPOSE 20128
+
+HEALTHCHECK CMD wget -qO- http://127.0.0.1:20128/api/livez || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "custom-server.js"]

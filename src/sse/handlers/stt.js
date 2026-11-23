@@ -1,7 +1,8 @@
+import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
-  resolveClientApiKey,
   getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError,
 } from "../services/auth.js";
@@ -14,10 +15,35 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
+import { MAX_AUDIO_BYTES } from "open-sse/handlers/codexSttAudio.js";
+const MAX_UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
+
+async function readBoundedRequest(request, maxBytes) {
+  if (!request.body) return request;
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  return new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal });
+}
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -28,26 +54,26 @@ const CREDENTIALED_PROVIDERS = new Set(
 
 async function handleSttHandler(request, { kind = "transcription" } = {}) {
   await captureRequestBillingEpoch(request);
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES + MAX_UPLOAD_OVERHEAD_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
+  const boundedRequest = await readBoundedRequest(request, MAX_AUDIO_BYTES + MAX_UPLOAD_OVERHEAD_BYTES);
+  if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
   let formData;
   try {
-    formData = await request.formData();
+    formData = await boundedRequest.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart form data");
   }
+  const audioFile = formData.get("file");
+  if (audioFile instanceof Blob && audioFile.size > MAX_AUDIO_BYTES) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, "Audio exceeds 25 MiB");
 
   const modelStr = formData.get("model");
   log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "stt" });
   // Keep the admission epoch, including null, through combo and account retries.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  if (admissionError) return admissionError;
 
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
@@ -57,6 +83,7 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
     const route = await resolveMediaRoute("stt", { settings, supports, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body: {},
       models: route.models,
       handleSingleModel: (_b, m) => handleSingleModelStt(formData, m, kind, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
@@ -151,14 +178,19 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
 
     const isCodex = provider === "codex";
     let result;
+    let dispatch = credentialDispatchSnapshot(credentials);
     try {
       const attemptCredentials = isCodex ? await checkAndRefreshToken(provider, credentials) : credentials;
+      dispatch = credentialDispatchSnapshot(attemptCredentials);
       const args = { provider, model, formData, kind, credentials: attemptCredentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig, signal: request.signal, log };
       result = await handleSttCore(args);
       // One forced refresh when a Codex token is rejected mid-validity.
       if (isCodex && result.status === 401 && attemptCredentials.refreshToken && !request.signal.aborted) {
         const refreshed = await checkAndRefreshToken(provider, attemptCredentials, null, { force: true });
-        if (refreshed.accessToken !== attemptCredentials.accessToken) result = await handleSttCore({ ...args, credentials: refreshed });
+        if (refreshed.accessToken !== attemptCredentials.accessToken) {
+          dispatch = credentialDispatchSnapshot(refreshed);
+          result = await handleSttCore({ ...args, credentials: refreshed });
+        }
       }
     } catch (error) {
       if (!isCodex) throw error;
@@ -166,7 +198,7 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     }
 
     if (result.success) {
-      if (isCodex) await clearAccountError(credentials.connectionId, credentials, model);
+      if (isCodex) await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       return recordSuccess(result, credentials);
     }
     if (isCodex) {
@@ -178,7 +210,8 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);

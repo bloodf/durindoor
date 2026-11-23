@@ -10,7 +10,17 @@ import CooldownTimer from "./CooldownTimer";
 import { buildTimelineHref } from "../../timeline/href.js";
 import { classifyProviderDiagnostic } from "./providerDiagnostics.js";
 
-export default function ConnectionRow({ connection, providerId = null, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, onClearCooldown = null, clearingCooldown = false, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, providerId = null, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateQuotaLockout, onUpdateProxy, onEdit, onDelete, onReconnect = null, onClearCooldown = null, clearingCooldown = false, oneByOneStatus = null, autoPing = null }) {
+  const [quotaInput, setQuotaInput] = useState("");
+  const [quotaError, setQuotaError] = useState("");
+  const [quotaSaving, setQuotaSaving] = useState(false);
+  const quota = connection.quotaLockout;
+  const quotaActive = quota?.status && (quota.reactivateAt == null || !Number.isFinite(Date.parse(quota.reactivateAt)) || Date.parse(quota.reactivateAt) > Date.now());
+  const saveQuota = async (value) => {
+    setQuotaSaving(true);
+    setQuotaError("");
+    try { await onUpdateQuotaLockout(value); } catch { setQuotaError("Could not update quota schedule."); } finally { setQuotaSaving(false); }
+  };
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -76,12 +86,13 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
   const rowAuthType = connection.authType || (isOAuth ? "oauth" : "apikey");
   const isOAuthConnection = rowAuthType === "oauth";
   const isCookieConnection = rowAuthType === "cookie";
-  const authIcon = isCookieConnection ? "cookie" : isOAuthConnection ? "lock" : "key";
-  const authLabel = isOAuthConnection ? "OAuth" : isCookieConnection ? "Cookie" : "API Key";
+  const isAuthTokenConnection = rowAuthType === "auth_token";
+  const authIcon = isCookieConnection ? "cookie" : isOAuthConnection ? "lock" : isAuthTokenConnection ? "token" : "key";
+  const authLabel = isOAuthConnection ? "OAuth" : isCookieConnection ? "Cookie" : isAuthTokenConnection ? "Auth Token" : "API Key";
   const displayName = connection.name?.trim()
     || connection.email?.trim()
     || connection.displayName?.trim()
-    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
+    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : isAuthTokenConnection ? "Auth Token" : "API Key");
   // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
   // connection badges. The live quota plan wins; the connection's stored OAuth
   // metadata is only written at authorization time, so it goes stale after an
@@ -219,6 +230,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                 Proxy
               </Badge>
             )}
+            {quotaActive && <Badge variant="error" size="sm" title={quota.message || "Quota exhausted"}>{quota.source === "manual" ? "Manual quota lock" : "Quota locked"} {quota.reactivateAt ? `until ${new Date(quota.reactivateAt).toLocaleString()}` : "indefinitely"}</Badge>}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
             {isRateLimited && connection.isActive !== false && (
               <span className="inline-flex items-center gap-1">
@@ -238,6 +250,13 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                 )}
               </span>
             )}
+            {quotaActive && onUpdateQuotaLockout && <span className="flex flex-wrap items-center gap-2">
+              <label className="text-xs">Reactivate at <input type="datetime-local" value={quotaInput} onChange={(event) => setQuotaInput(event.target.value)} className="rounded border border-border bg-transparent p-1" /></label>
+              <Button variant="outline" size="sm" disabled={quotaSaving || !quotaInput} onClick={() => saveQuota({ reactivateAt: new Date(quotaInput).toISOString() })}>Schedule</Button>
+              <Button variant="outline" size="sm" disabled={quotaSaving} onClick={() => saveQuota({ reactivateAt: null })}>Suspend indefinitely</Button>
+              <Button variant="outline" size="sm" disabled={quotaSaving} onClick={() => saveQuota(null)}>Reactivate now</Button>
+              {quotaError && <span role="alert" className="text-xs text-dd-danger">{quotaError}</span>}
+            </span>}
             {savedDiagnostic && <span className="max-w-full text-xs text-dd-danger" role="status">{savedDiagnostic.title}: {savedDiagnostic.guidance}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}</span>}
             <span className="text-xs text-dd-muted">#{connection.priority}</span>
             {connection.globalPriority && (
@@ -406,6 +425,7 @@ ConnectionRow.propTypes = {
   onMoveUp: PropTypes.func.isRequired,
   onMoveDown: PropTypes.func.isRequired,
   onToggleActive: PropTypes.func.isRequired,
+  onUpdateQuotaLockout: PropTypes.func,
   onUpdateProxy: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,

@@ -31,6 +31,7 @@ import {
   KIMCHI_CONFIG } from
 "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { providerRefreshContext } from "@/shared/utils/providerCredentialContext";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
@@ -43,8 +44,11 @@ import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/provi
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
+  // Native Microsoft 365 sign-in rows: the token expiry is the probe, and an expired one renews with its refresh token.
+  "copilot-m365-web": { checkExpiry: true, refreshable: true },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/responses",
     method: "POST",
@@ -126,6 +130,13 @@ export const OAUTH_TEST_CONFIG = {
   // A minted Muse key has no expiry; presence is the check, and a dca-only
   // login is reminted on first use.
   "muse-code": { tokenExists: true },
+  // Opt-in session providers (#2034). The test never calls their gateways: a stored
+  // credential is the check, and a token with an expiry is checked locally.
+  "devin-desktop": { tokenExists: true },
+  freebuff: { tokenExists: true },
+  "zed-hosted": { tokenExists: true },
+  "minimax-code": { checkExpiry: true, refreshable: false },
+  workbuddy: { checkExpiry: true, refreshable: false },
   qoder: {
     // Test by hitting Qoder's userinfo endpoint with the device token.
     // refreshable: false because the device-flow refresh endpoint returns
@@ -171,7 +182,21 @@ export const OAUTH_TEST_CONFIG = {
     authHeader: "Authorization",
     authPrefix: "Bearer "
   },
-  "codebuddy-cn": { tokenExists: true },
+  // Real probe: billing endpoint answers code:0 for a valid token, 401/403 otherwise.
+  // tokenExists was a no-op that never caught revoked/expired tokens.
+  "codebuddy-cn": {
+    url: PROVIDERS["codebuddy-cn"]?.usage?.url || "https://copilot.tencent.com/v2/billing/meter/get-user-resource",
+    method: "POST",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(PROVIDERS["codebuddy-cn"]?.headers || {}),
+    },
+    body: "{}",
+    refreshable: true,
+  },
   kimchi: {
     url: KIMCHI_CONFIG.validationUrl || "https://api.cast.ai/v1/llm/openai/supported-providers",
     method: "GET",
@@ -267,7 +292,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "codex" || provider === "grok-cli") {
+    if (provider === "codex" || provider === "grok-cli" || provider === "copilot-m365-web") {
       return await refreshProviderCredentials(provider, connection, console, effectiveProxy);
     }
 
@@ -485,7 +510,25 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection, effectiveProxy);
-      if (tokens) {
+      if (tokens?.accessToken) {
+        if (connection.provider === "codex") {
+          // The refresh grant has already rotated even when the follow-up
+          // probe fails. Commit the replacement before attempting that probe.
+          const commit = await updateProviderConnection(connection.id, {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            idToken: tokens.idToken,
+            lastRefreshAt: tokens.lastRefreshAt,
+            expiresIn: tokens.expiresIn,
+            expiresAt: tokens.expiresAt
+          }, {
+            expectedRefreshContext: providerRefreshContext(connection),
+            returnCommitResult: true
+          });
+          if (!commit?.applied) {
+            return { valid: false, unavailable: true, error: "Provider credentials changed during the test" };
+          }
+        }
         const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken, connection) : testUrl;
         const retryHeaders = config.noAuth ?
         { ...config.extraHeaders } :
@@ -497,7 +540,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
         if (config.body) retryOpts.body = config.body;
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);
         const retryAccepted = retryRes.ok || config.acceptStatuses && config.acceptStatuses.includes(retryRes.status);
-        if (retryAccepted) return { valid: true, error: null, refreshed: true, newTokens: tokens };
+        if (retryAccepted) {
+          return { valid: true, error: null, refreshed: true, newTokens: connection.provider === "codex" ? null : tokens };
+        }
         if (retryRes.status === 429 || retryRes.status >= 500) {
           return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false };
         }
@@ -603,7 +648,7 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
       body: JSON.stringify({
         model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
         messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1,
+        max_tokens: 10,
         stream: false
       })
     }, effectiveProxy);
@@ -630,7 +675,7 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
     body: JSON.stringify({
       model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
       messages: [{ role: "user", content: "ping" }],
-      max_tokens: 1,
+      max_tokens: 10,
       stream: false
     })
   }, effectiveProxy);
@@ -664,7 +709,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       if (modelsBase.endsWith("/messages")) modelsBase = modelsBase.slice(0, -9);
       if (modelsBase.endsWith("/v1")) modelsBase = modelsBase.slice(0, -3);
       const messagesUrl = `${modelsBase}/v1/messages`;
-      const model = connection.defaultModel || "claude-3-haiku-20240307";
+      const model = connection.defaultModel || ANTHROPIC_VALIDATION_MODEL;
       const res = await fetchWithConnectionProxy(messagesUrl, {
         method: "POST",
         headers: {
@@ -675,7 +720,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 1,
+          max_tokens: 10,
           messages: [{ role: "user", content: "test" }]
         })
       }, effectiveProxy);
@@ -710,7 +755,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           headers: chatHeaders,
           body: JSON.stringify({
             model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
-            max_tokens: 1,
+            max_tokens: 10,
             messages: [{ role: "user", content: "test" }]
           })
         },
@@ -738,7 +783,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy(url, {
             method: "POST",
             headers: { "Authorization": `Bearer ${connection.apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: getDefaultModel("cloudflare-ai"), messages: [{ role: "user", content: "test" }], max_tokens: 1 })
+            body: JSON.stringify({ model: getDefaultModel("cloudflare-ai"), messages: [{ role: "user", content: "test" }], max_tokens: 10 })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403 && res.status !== 404;
           return { valid, error: valid ? null : "Invalid API token or Account ID" };
@@ -794,7 +839,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: ANTHROPIC_VALIDATION_MODEL, max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -811,7 +856,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy("https://api.z.ai/api/anthropic/v1/messages", {
             method: "POST",
             headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "glm-4.7", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: "glm-4.7", max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -825,7 +870,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions", {
             method: "POST",
             headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: "glm-4.7", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: "glm-4.7", max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -836,7 +881,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy(endpoints[connection.provider], {
             method: "POST",
             headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "minimax-m2", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: "minimax-m2", max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -845,7 +890,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy(KIMI_PLATFORM_CHAT_URL, {
             method: "POST",
             headers: { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: "kimi-for-coding", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: "kimi-for-coding", max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -859,7 +904,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy(aliBaseUrl, {
             method: "POST",
             headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -869,7 +914,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy(PROVIDERS[connection.provider]?.baseUrl, {
             method: "POST",
             headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -922,7 +967,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
         }
       case "cohere":{
-          const res = await fetchWithConnectionProxy("https://api.cohere.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          const res = await fetchWithConnectionProxy(PROVIDERS.cohere.validateUrl, { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
         }
       case "nebius":{
@@ -1013,7 +1058,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy("https://opencode.ai/zen/v1/chat/completions", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
-            body: JSON.stringify({ model: getDefaultModel("opencode-zen") || "big-pickle", messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false })
+            body: JSON.stringify({ model: getDefaultModel("opencode-zen") || "big-pickle", messages: [{ role: "user", content: "ping" }], max_tokens: 10, stream: false })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
@@ -1076,7 +1121,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             },
             body: JSON.stringify({
               model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
-              max_tokens: 1,
+              max_tokens: 10,
               messages: [{ role: "user", content: "test" }]
             })
           }, effectiveProxy);
@@ -1095,7 +1140,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             },
             body: JSON.stringify({
               model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
-              max_tokens: 1,
+              max_tokens: 10,
               messages: [{ role: "user", content: "test" }]
             })
           }, effectiveProxy);
@@ -1125,6 +1170,35 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             effectiveProxy
           );
           return { valid: res.ok, error: res.ok ? null : "Invalid Personal Access Token" };
+        }
+      case "codebuddy-cn":{
+          // API key and auth_token connections both carry the bearer token in apiKey.
+          // Probe the billing endpoint — code:0 means valid, 401/403 means revoked/invalid.
+          const billingUrl = PROVIDERS["codebuddy-cn"]?.usage?.url || "https://copilot.tencent.com/v2/billing/meter/get-user-resource";
+          const res = await fetchWithConnectionProxy(billingUrl, {
+            method: "POST",
+            headers: {
+              ...(PROVIDERS["codebuddy-cn"]?.headers || {}),
+              Authorization: `Bearer ${connection.apiKey}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: "{}",
+          }, effectiveProxy);
+          if (res.status === 401 || res.status === 403) {
+            return { valid: false, error: "Token invalid or revoked" };
+          }
+          if (res.status === 429 || res.status >= 500) {
+            return { valid: false, unavailable: true, error: "Provider unavailable - try again later" };
+          }
+          if (!res.ok) {
+            return { valid: false, error: `API returned ${res.status}` };
+          }
+          const data = await res.json().catch(() => null);
+          if (data && Number.isFinite(data.code) && data.code !== 0) {
+            return { valid: false, error: data.msg || "Token rejected by CodeBuddy" };
+          }
+          return { valid: true, error: null };
         }
       default:{
           const result = await probeRegistryProvider(
@@ -1194,7 +1268,7 @@ export async function testSingleConnection(id) {
   const start = Date.now();
   let result;
 
-  if (connection.authType === "apikey" || connection.authType === "cookie") {
+  if (connection.authType === "apikey" || connection.authType === "cookie" || connection.authType === "auth_token") {
     result = await testApiKeyConnection(connection, effectiveProxy);
   } else {
     result = await testOAuthConnection(connection, effectiveProxy);

@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, readBoundedResponseText } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
@@ -20,6 +21,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 export async function handleEmbeddingsCore({
   body,
   modelInfo,
+  routingPolicy,
   credentials,
   log,
   onCredentialsRefreshed,
@@ -60,12 +62,16 @@ export async function handleEmbeddingsCore({
     : body.input_type;
   const url = adapter.buildUrl(model, credentials, ctx);
   const headers = adapter.buildHeaders(credentials, ctx);
-  const requestBody = adapter.buildBody(model, {
+  let requestBody = adapter.buildBody(model, {
     input,
     encoding_format: body.encoding_format || "float",
     dimensions: body.dimensions,
   });
   if (inputType) requestBody.input_type = inputType;
+  if (provider === "openrouter") {
+    try { requestBody = applyOpenRouterRouting({ ...requestBody, provider: body.provider }, routingPolicy, "embedding"); }
+    catch (error) { return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
 
   log?.debug?.("EMBEDDINGS", `${provider.toUpperCase()} | ${model} | input=${Array.isArray(input) ? `array[${input.length}]` : "string"}${inputType ? ` | input_type=${inputType}` : ""}`);
 

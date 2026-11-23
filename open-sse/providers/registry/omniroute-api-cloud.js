@@ -260,16 +260,6 @@ openAiProvider({
   website: "https://piapi.ai"
 }),
 openAiProvider({
-  id: "poe",
-  alias: "poe",
-  name: "Poe",
-  baseUrl: "https://api.poe.com/v1/chat/completions",
-  validateUrl: "https://api.poe.com/v1/models",
-  color: "#F97316",
-  textIcon: "PO",
-  website: "https://creator.poe.com/api-reference"
-}),
-openAiProvider({
   id: "sap",
   alias: "sap",
   name: "SAP Generative AI Hub",

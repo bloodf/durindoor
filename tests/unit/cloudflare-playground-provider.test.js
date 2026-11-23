@@ -2,11 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
 const world = vi.hoisted(() => ({ mode: "ok", starts: [] }));
-vi.mock("../../open-sse/providers/registry/index.js", async (importOriginal) => {
-  const original = await importOriginal();
-  const { default: entry } = await import("../../open-sse/providers/private/cloudflare-playground.js");
-  return { ...original, default: [...original.default.filter((row) => row.id !== entry.id), entry] };
-});
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const original = await importOriginal();
   const { CloudflarePlaygroundExecutor } = await import("../../open-sse/executors/cloudflare-playground.js");
@@ -35,7 +30,7 @@ vi.mock("@/lib/usageDb.js", () => ({
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import provider from "../../open-sse/providers/private/cloudflare-playground.js";
+import provider from "../../open-sse/providers/registry/cloudflare-playground.js";
 import { cloudflareErrorStatus, hasCloudflareUnsupportedImage, toCloudflareMessages } from "../../open-sse/executors/cloudflare-playground.js";
 
 const MODEL = "zai-org/glm-5.2";

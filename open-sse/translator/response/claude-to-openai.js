@@ -1,4 +1,5 @@
-import { register } from "../index.js";
+import { encodeClaudeThinking } from "../concerns/claudeThinkingEnvelope.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, OPENAI_FINISH, CLAUDE_STOP } from "../schema/index.js";
 import { buildChunk } from "../concerns/chunk.js";
@@ -28,6 +29,14 @@ function pushSyntheticContentIfEmpty(state, results) {
   if (state.contentEmitted || state.toolCalls?.size > 0) return;
   results.push(createChunk(state, { content: " " }));
   state.contentEmitted = true;
+}
+
+function flushThinking(state, results) {
+  if (!state.claudeThinkingBlocks?.size) return;
+  const blocks = [...state.claudeThinkingBlocks.entries()].sort(([a], [b]) => a - b).map(([, block]) => block);
+  const envelope = encodeClaudeThinking(state.providerBody?.model || state.requestedModel || state.model, blocks);
+  if (envelope) results.push(createChunk(state, { reasoning_encrypted_content: envelope }));
+  state.claudeThinkingBlocks.clear();
 }
 
 // Convert Claude stream chunk to OpenAI format
@@ -67,6 +76,7 @@ export function claudeToOpenAIResponse(chunk, state) {
 
     case "content_block_start":{
         const block = chunk.content_block;
+        if (block?.type !== CLAUDE_BLOCK.THINKING && block?.type !== CLAUDE_BLOCK.REDACTED_THINKING) flushThinking(state, results);
         if (block?.type === "server_tool_use") {
           // Built-in tool (web search) - Claude handles internally, skip
           state.serverToolBlockIndex = chunk.index;
@@ -74,7 +84,11 @@ export function claudeToOpenAIResponse(chunk, state) {
         }
         if (block?.type === CLAUDE_BLOCK.TEXT) {
           state.textBlockStarted = true;
-        } else if (block?.type === CLAUDE_BLOCK.THINKING) {
+        } else if (block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING) {
+          const blocks = state.claudeThinkingBlocks ||= new Map();
+          blocks.set(chunk.index, block.type === CLAUDE_BLOCK.THINKING ?
+            { type: block.type, thinking: block.thinking || "", signature: block.signature || "" } :
+            { type: block.type, data: block.data });
           // Track the thinking block internally only. Thinking text flows through
           // reasoning_content (see thinking_delta below) — never inject literal
           // <think>/</think> markers into content. They leak as visible text to any
@@ -108,8 +122,13 @@ export function claudeToOpenAIResponse(chunk, state) {
         if (delta?.type === "text_delta" && delta.text) {
           state.contentEmitted = true;
           results.push(createChunk(state, { content: delta.text }));
-        } else if (delta?.type === "thinking_delta" && delta.thinking) {
-          results.push(createChunk(state, reasoningDelta(delta.thinking)));
+        } else if (delta?.type === "thinking_delta" && isString(delta.thinking)) {
+          const block = state.claudeThinkingBlocks?.get(chunk.index);
+          if (block?.type === CLAUDE_BLOCK.THINKING) block.thinking += delta.thinking;
+          if (delta.thinking) results.push(createChunk(state, reasoningDelta(delta.thinking)));
+        } else if (delta?.type === "signature_delta" && isString(delta.signature)) {
+          const block = state.claudeThinkingBlocks?.get(chunk.index);
+          if (block?.type === CLAUDE_BLOCK.THINKING) block.signature += delta.signature;
         } else if (delta?.type === "input_json_delta" && delta.partial_json) {
           const toolCall = state.toolCalls.get(chunk.index);
           if (toolCall) {
@@ -159,6 +178,7 @@ export function claudeToOpenAIResponse(chunk, state) {
       }
 
     case "message_delta":{
+        flushThinking(state, results);
         // Extract usage from message_delta event (Claude native format).
         // Anthropic sends input/cache in message_start and only output here, so
         // fall back to cache captured in message_start when the delta omits it.
@@ -222,6 +242,7 @@ export function claudeToOpenAIResponse(chunk, state) {
       }
 
     case "message_stop":{
+        flushThinking(state, results);
         if (!state.finishReasonSent) {
           const finishReason = state.finishReason || (state.toolCalls?.size > 0 ? OPENAI_FINISH.TOOL_CALLS : OPENAI_FINISH.STOP);
           pushSyntheticContentIfEmpty(state, results);

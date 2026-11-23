@@ -15,6 +15,8 @@ import { Card } from "@/shared/ui/components/Card.jsx";
 import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 import { formatCompactToken } from "@/shared/utils/formatCompact";
 import { createLatestRequestGuard } from "@/shared/utils/requestFreshness";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import Button from "@/shared/ui/components/Button.jsx";
 
 // Chart labels use the same compact units as the other usage surfaces.
 export const fmtTokens = (n) => formatCompactToken(n).display;
@@ -30,23 +32,37 @@ const fmtCost = (n) => `$${(n || 0).toFixed(4)}`;
 export default function UsageChart({ period = "7d", refreshKey = 0 }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [requestGuard] = useState(createLatestRequestGuard);
+  const uiV5 = useUiV5();
 
   const fetchData = useCallback(async (signal, requestToken) => {
     setLoading(true);
+    if (uiV5) setError(false);
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await fetch(`/api/usage/chart?period=${encodeURIComponent(period)}&tz=${encodeURIComponent(tz)}`, { signal });
-      if (res.ok) {
-        const json = await res.json();
-        if (!signal.aborted && requestToken.isCurrent()) setData(json);
+      if (!uiV5) {
+        if (res.ok) {
+          const json = await res.json();
+          if (!signal.aborted && requestToken.isCurrent()) setData(json);
+        }
+        return;
       }
+      if (!res.ok) throw new Error(`Usage chart request failed: ${res.status}`);
+      const json = await res.json();
+      if (!Array.isArray(json)) throw new Error("Usage chart response must be an array");
+      if (!signal.aborted && requestToken.isCurrent()) setData(json);
     } catch (e) {
-      if (e?.name !== "AbortError") console.error("Failed to fetch chart data:", e);
+      if (e?.name !== "AbortError" && !signal.aborted && requestToken.isCurrent()) {
+        if (uiV5) setError(true);
+        else console.error("Failed to fetch chart data:", e);
+      }
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [period, refreshKey]);
+  }, [period, refreshKey, retryNonce, uiV5]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,9 +88,11 @@ export default function UsageChart({ period = "7d", refreshKey = 0 }) {
           Cost
         </span>
       </div>
-      {loading ? (
+      {uiV5 && error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 p-3 text-dd-danger"><div><p>Unable to load usage chart.</p>{data.length > 0 ? <p className="text-dd-muted">Showing the last loaded chart data.</p> : null}</div><Button variant="secondary" size="sm" onClick={() => setRetryNonce((value) => value + 1)}>Retry chart</Button></div> : null}
+      {uiV5 && loading && data.length > 0 ? <p role="status" className="text-dd-muted">Updating usage chart…</p> : null}
+      {loading && (!uiV5 || data.length === 0) ? (
         <div className="flex h-48 items-center justify-center text-[13px] text-dd-muted">Loading…</div>
-      ) : !hasData ? (
+      ) : uiV5 && error && data.length === 0 ? null : !hasData ? (
         <div className="flex h-48 items-center justify-center text-[13px] text-dd-muted">No data for this period</div>
       ) : (
         <>

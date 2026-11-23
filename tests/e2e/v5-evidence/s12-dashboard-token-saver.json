@@ -1,0 +1,12 @@
+{
+  "route": "/dashboard/token-saver",
+  "stories": [
+    "production-savers-tokensaverclient--dashboard-overview",
+    "production-savers-tokensaverclient--empty",
+    "production-savers-tokensaverclient--service-unavailable",
+    "production-savers-tokensaverclient--loading-metrics",
+    "production-savers-tokensaverclient--pxpipe-initial-loading",
+    "production-savers-tokensaverclient--pxpipe-stats-unavailable",
+    "production-savers-tokensaverclient--pxpipe-events-retry"
+  ]
+}

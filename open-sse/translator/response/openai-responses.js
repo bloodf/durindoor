@@ -7,7 +7,7 @@
  * (apply_patch) stream via custom_tool_call_input.* events, and output_index
  * is offset past a preceding reasoning item so items never collide at 0.
  */
-import { register, initState } from "../index.js";
+import { register, initState } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
@@ -184,6 +184,11 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     emitReasoningDelta(state, emit, reasoningText);
   }
 
+  if (isString(delta.reasoning_encrypted_content) && delta.reasoning_encrypted_content) {
+    state.reasoningEncryptedContent = delta.reasoning_encrypted_content;
+    startReasoning(state, emit, idx);
+  }
+
   // Handle text content
   if (delta.content) {
     let content = delta.content;
@@ -216,6 +221,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     state.finishReason = choice.finish_reason;
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
+    mintMissingToolCallIds(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
     if (state.responsesUsage) {
       sendTerminal(state, emit);
@@ -237,7 +243,7 @@ function startReasoning(state, emit, idx) {
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [] }
+      item: { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [], status: "in_progress" }
     });
 
     emit("response.reasoning_summary_part.added", {
@@ -283,15 +289,9 @@ function closeReasoning(state, emit) {
       part: { type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }
     });
 
-    emit("response.output_item.done", {
-      type: "response.output_item.done",
-      output_index: state.reasoningIndex,
-      item: {
-        id: state.reasoningId,
-        type: RESPONSES_ITEM.REASONING,
-        summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }]
-      }
-    });
+    const item = { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }], status: "completed" };
+    if (state.reasoningEncryptedContent) item.encrypted_content = state.reasoningEncryptedContent;
+    emit("response.output_item.done", { type: "response.output_item.done", output_index: state.reasoningIndex, item });
   }
 }
 
@@ -305,7 +305,7 @@ function emitTextContent(state, emit, idx, content) {
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT }
+      item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT, status: "in_progress" }
     });
   }
 
@@ -367,7 +367,8 @@ function closeMessage(state, emit, idx) {
         id: msgId,
         type: RESPONSES_ITEM.MESSAGE,
         content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: fullText }],
-        role: ROLE.ASSISTANT
+        role: ROLE.ASSISTANT,
+        status: "completed"
       }
     });
   }
@@ -527,8 +528,8 @@ function emitToolCall(state, emit, tc) {
           output_index: outputIndex,
           delta
         });
-      } else if (refCallId) {
-        // Name not yet known; queue regular delta for replay once name arrives.
+      } else {
+        // Id or name not yet known; queue regular delta for replay on output_item.added.
         (state.funcPendingArgs[tcIdx] ||= []).push(delta);
       }
     }
@@ -570,6 +571,22 @@ function isCustomToolByState(state, tcIdx, funcName) {
   const name = resolved.name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
+}
+
+/**
+ * Upstreams (vLLM/compat gateways) may omit the id on every fragment. At close
+ * time mint a stable id for each named call that never got one, so the item is
+ * announced and closed instead of vanishing from response.completed
+ * (decolua/9router#5636). Deferred to close so a real id arriving after the name
+ * (parallel, out-of-order fragments) still wins.
+ */
+function mintMissingToolCallIds(state, emit) {
+  for (const i in state.funcNames) {
+    if (state.funcCallIds[i] || !state.funcNames[i]) continue;
+    const idx = Number(i);
+    state.funcCallIds[i] = fallbackToolCallId(idx);
+    emitToolCall(state, emit, { index: idx });
+  }
 }
 
 function closeToolCall(state, emit, idx) {
@@ -696,6 +713,7 @@ function flushEvents(state) {
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
+  mintMissingToolCallIds(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
   sendTerminal(state, emit);
 

@@ -4,6 +4,7 @@ import { getExecutor } from "open-sse/index.js";
 import { isChatProvider } from "open-sse/providers/chatCapability.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { providerRefreshContext } from "@/shared/utils/providerCredentialContext.js";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
@@ -32,8 +33,16 @@ async function persistRefreshedCredentials(connection, newCredentials) {
   }
 
   if (Object.keys(updateData).length > 0) {
+    if (connection.provider === "codex") {
+      const result = await updateProviderConnection(connection.id, updateData, {
+        expectedRefreshContext: providerRefreshContext(connection),
+        returnCommitResult: true
+      });
+      return result?.applied === true;
+    }
     await updateProviderConnection(connection.id, updateData);
   }
+  return true;
 }
 
 async function POSTHandler(request) {
@@ -65,6 +74,7 @@ async function POSTHandler(request) {
     };
 
     const credentials = {
+      id: provider === "codex" ? connection.id : undefined,
       apiKey: connection.apiKey,
       accessToken: connection.accessToken,
       refreshToken: connection.refreshToken,
@@ -88,9 +98,9 @@ async function POSTHandler(request) {
     // Auto-refresh token on 401/403 and retry (same as chatCore.js)
     if (response.status === 401 || response.status === 403) {
       const newCredentials = await executor.refreshCredentials(credentials, console, proxyOptions);
-      if (newCredentials?.accessToken || newCredentials?.copilotToken) {
+      if ((newCredentials?.accessToken || newCredentials?.copilotToken) &&
+          await persistRefreshedCredentials(connection, newCredentials)) {
         Object.assign(credentials, newCredentials);
-        await persistRefreshedCredentials(connection, newCredentials);
         ({ response } = await executor.execute({ model, body, stream, credentials, proxyOptions }));
       }
     }

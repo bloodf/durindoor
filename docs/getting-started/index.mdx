@@ -36,7 +36,7 @@ npm install -g durindoor
 durindoor --host 127.0.0.1
 ```
 
-This example binds port 20128 on loopback and opens `http://localhost:20128/dashboard`. Without the host flag, the CLI defaults to `0.0.0.0` and also prints a LAN URL.
+This example binds port 20128 on loopback and opens `http://localhost:20128/dashboard`. Without the host flag, the CLI binds to `0.0.0.0` and prints a LAN URL, making the dashboard and API reachable by other devices on the network. If `requireApiKey` is off, remote clients may reach endpoints that do not require login. Keep the loopback host unless you intend to expose the service; configure authentication and a firewall before using the LAN address.
 
 | Surface | URL |
 | --- | --- |

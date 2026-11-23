@@ -12,5 +12,5 @@ resources:
 # The Secret is NOT listed: create it from your own values (see secret.example.yaml).
 images:
   - name: ghcr.io/bloodf/durindoor
-    # Pin a verified numbered tag (X.Y.Z, no "v") or a digest for production.
-    newTag: latest
+    # Bump this tag to the current published DurinDoor release.
+    newTag: 4.9.2

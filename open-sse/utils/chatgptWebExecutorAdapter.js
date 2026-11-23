@@ -318,25 +318,29 @@ async function createDefaultSession(input) {
     .update(JSON.stringify(input.storageState))
     .update("\0")
     .update(input.proxyUrl || "")
+    .update(input.sameOriginRedirects ? "\0guarded" : "")
     .digest("hex");
   const pooled = await acquireBrowserContext(`chatgpt-web-cleanroom:${digest}`, {
     cookieDomain: "chatgpt.com",
+    blockServiceWorkers: input.sameOriginRedirects === true,
     proxyUrl: input.proxyUrl,
     storageState: input.storageState,
     userAgent: input.userAgent,
     locale: input.locale,
     timezone: input.timezone,
-      warmupUrl: CHATGPT_WEB_PAGE_URL,
+    warmupUrl: input.sameOriginRedirects ? undefined : CHATGPT_WEB_PAGE_URL,
     headless: input.headless === true,
     executablePath: input.chromeExecutablePath,
   });
   const page =
-    pooled.warmupPage && !pooled.warmupPage.isClosed() ? pooled.warmupPage : await openPage(pooled);
-  if (pooled.warmupPage !== page) pooled.warmupPage = page;
+    !input.sameOriginRedirects && pooled.warmupPage && !pooled.warmupPage.isClosed()
+      ? pooled.warmupPage : await openPage(pooled);
+  if (!input.sameOriginRedirects && pooled.warmupPage !== page) pooled.warmupPage = page;
   return new PlaywrightChatGptWebBrowserSession(page, {
     pageUrl: CHATGPT_WEB_PAGE_URL,
     selection: input.selection,
-    closePageOnCleanup: false,
+    closePageOnCleanup: input.sameOriginRedirects === true,
+    sameOriginRedirects: input.sameOriginRedirects,
   });
 }
 
@@ -439,6 +443,7 @@ export async function executeChatGptWebCleanRoom(input, deps = {}) {
   const providerData = input.credentials.providerSpecificData;
   const session = await (deps.createSession ?? createDefaultSession)({
     connectionId,
+    sameOriginRedirects: input.sameOriginRedirects,
     storageState,
     selection: prepared.selection,
     userAgent: optionalString(providerData?.customUserAgent),

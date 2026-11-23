@@ -1,0 +1,8 @@
+{
+  "route": "/dashboard/headroom",
+  "stories": [
+    "production-savers-headroomclient--running-with-events",
+    "production-savers-headroomclient--setup-diagnostic",
+    "production-savers-headroomclient--load-failure"
+  ]
+}

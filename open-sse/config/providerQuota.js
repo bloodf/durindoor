@@ -131,6 +131,11 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     runtimeScopes: { cooldown: "model", exhausted: "account" },
     preflightPolicy: PREFLIGHT_POLICY.kiro
   },
+  "zed-hosted": {
+    adapter: "zed-hosted",
+    sourceId: "zed-hosted:orb-credit-ledger:v1",
+    runtimeScopes: { cooldown: "model", exhausted: "account" }
+  },
   "kimi-coding": {
     adapter: "kimi",
     sourceId: "kimi-coding:coding-usages:v1",

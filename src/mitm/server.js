@@ -164,6 +164,9 @@ function getMappedOverride(tool, model, aliases) {
     for (const { match, alias } of patterns) {
       if (match.test(lookup) && aliases[alias]) return aliases[alias];
     }
+    // Wildcard catch-all: a "*" entry maps every model no other rule matched, so an
+    // operator can configure one default instead of enumerating every model id.
+    if (aliases["*"]) return aliases["*"];
     return null;
   } catch { return null; }
 }
@@ -186,7 +189,7 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
     ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers, req.url)
     : { bodyBuffer, headers: req.headers };
   const bodyForForwarding = versionOverride.bodyBuffer;
-  const headersForForwarding = { ...versionOverride.headers, host: targetHost };
+  const headersForForwarding = upstreamHeaders(versionOverride.headers, targetHost);
   if (bodyForForwarding !== bodyBuffer) {
     headersForForwarding["content-length"] = String(bodyForForwarding.length);
   }
@@ -202,6 +205,15 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
   }
 
   return passthroughHttps(req, res, bodyForForwarding, headersForForwarding, targetHost, onResponse, dumper);
+}
+
+// The loop marker is consumed locally and must not reach the upstream service.
+function upstreamHeaders(headers, targetHost) {
+  const forwarded = { ...headers, host: targetHost };
+  for (const name of Object.keys(forwarded)) {
+    if (name.toLowerCase() === INTERNAL_REQUEST_HEADER.name) delete forwarded[name];
+  }
+  return forwarded;
 }
 
 // ── ALPN negotiation cache ────────────────────────────────────
@@ -496,4 +508,5 @@ module.exports = {
   runMain,
   sniCallback,
   startMitmServer,
+  upstreamHeaders,
 };

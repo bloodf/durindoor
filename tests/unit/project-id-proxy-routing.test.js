@@ -118,6 +118,15 @@ describe("project-id proxy routing", () => {
     );
   });
 
+  it("does not discover a project for a disabled Antigravity connection even when eager discovery is enabled", async () => {
+    vi.stubEnv("EAGER_PROJECT_ID_REFRESH", "true");
+    await checkAndRefreshToken("antigravity", {
+      connectionId: "connection-direct", accessToken: "old-access", refreshToken: "refresh-token", isActive: false,
+    }, { disableEnvProxy: true }, { force: true });
+    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+    expect(mocks.updateProviderConnection).toHaveBeenCalledOnce();
+  });
+
   it("does not eagerly discover a missing project ID after refresh by default (upstream #3813)", async () => {
     // Lazy by default: eager multi-account discovery trips Google Cloud anti-abuse
     // rate limits, so runtime handlers resolve projectId on demand instead.

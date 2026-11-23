@@ -48,3 +48,18 @@ export const EmptyPricing = {
     await expect(canvas.getAllByRole("button", { name: "Edit Pricing" })).toHaveLength(2);
   },
 };
+
+export const PricingLoadFailure = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/settings/pricing",
+      routes: { "GET /api/pricing": () => ({ status: 503, body: { error: "Pricing unavailable" } }) },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // V5 reports the failure with Retry; the legacy page keeps its empty guidance.
+    await waitFor(() => expect(canvas.queryByRole("alert") ?? canvas.queryByText("No pricing data available")).toBeVisible());
+  },
+};

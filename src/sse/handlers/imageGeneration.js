@@ -1,10 +1,12 @@
+import { admit } from "../services/admission.js";
+import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey, getComboForModel } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getComboCanonicalName } from "../services/model.js";
@@ -13,11 +15,10 @@ import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
@@ -48,16 +49,14 @@ async function handleImageGenerationHandler(request) {
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "imageGeneration" });
   // Capture once for combo retries and delayed stream completion, preserving null.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  if (admissionError) return admissionError;
+  const authenticatedKeyRecord = apiKey ? await getApiKeyByKey(apiKey) : null;
+  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combos are not allowed for this API key");
+  }
 
   // Per-key combo access control
   if (apiKey && modelStr) {
@@ -72,14 +71,19 @@ async function handleImageGenerationHandler(request) {
   }
 
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
+  // Binary output carries one image payload; reject n > 1 before combo/account/upstream dispatch.
+  if (binaryOutput && Number(body.n) > 1) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Binary image output (response_format=binary) supports at most n=1");
+  }
 
   if (wantsDefaultRoute(modelStr)) {
     const route = await resolveMediaRoute("image", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
       log,
       signal: request.signal,
       ...defaultRouteComboOptions("image")
@@ -104,9 +108,10 @@ async function handleImageGenerationHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("IMAGE", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting }),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
       log,
       signal: request.signal,
       comboName,
@@ -118,13 +123,18 @@ async function handleImageGenerationHandler(request) {
   return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId });
 }
 
-async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting = null } = {}) {
+async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting = null, reportComboPolicyRejections = false } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  if (provider === "openrouter") {
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, "image"); }
+    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
+
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (resolvedPolicyError) return resolvedPolicyError;
+  if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
   // Shut-down image ids answer 410 with their replacement before any account
   // is selected, so a retired model never marks a healthy connection unavailable.
   const lifecycleError = checkModelLifecycle({ provider, canonicalModel: model, log });
@@ -206,6 +216,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
     const result = await handleImageGenerationCore({
       body,
@@ -228,7 +239,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       }
     });
 
@@ -244,7 +255,8 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     const accountFailureContext = {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     };
     if (result.rateLimitEvidence) {
       accountFailureContext.rateLimitEvidence = result.rateLimitEvidence;

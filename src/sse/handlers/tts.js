@@ -1,7 +1,8 @@
+import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
-  resolveClientApiKey,
   getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
@@ -12,10 +13,9 @@ import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
@@ -41,16 +41,14 @@ async function handleTtsHandler(request) {
   const language = body.language || "";
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "tts" });
   // Capture once for combo retries and delayed stream EOF, preserving null.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  if (admissionError) return admissionError;
+  const authenticatedKeyRecord = apiKey ? await getApiKeyByKey(apiKey) : null;
+  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combos are not allowed for this API key");
+  }
 
   // Per-key combo access control
   if (apiKey && modelStr) {
@@ -70,9 +68,10 @@ async function handleTtsHandler(request) {
     const route = await resolveMediaRoute("tts", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, null, attemptOptions?.reportComboPolicyRejections),
       log,
       ...defaultRouteComboOptions("tts")
     });
@@ -96,9 +95,10 @@ async function handleTtsHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("TTS", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, comboRouting),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, comboRouting, attemptOptions?.reportComboPolicyRejections),
       log,
       comboName,
       comboStrategy,
@@ -109,13 +109,13 @@ async function handleTtsHandler(request) {
   return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch);
 }
 
-async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId, billingEpoch, comboRouting = null) {
+async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId, billingEpoch, comboRouting = null, reportComboPolicyRejections = false) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (resolvedPolicyError) return resolvedPolicyError;
+  if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
   const kindError = await modelKindError(provider, model, await getSettings(), "tts");
   if (kindError) return kindError;
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
@@ -195,7 +195,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { ...body, provider, model, input: body.input, credentials, responseFormat, language, signal: request.signal };
+    const coreOptions = { ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, language, signal: request.signal };
     const result = await handleTtsCore(coreOptions);
     if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
@@ -230,14 +230,16 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleTtsCore({ ...body, provider, model, input: body.input, credentials, responseFormat, language, signal: request.signal });
+    const dispatch = credentialDispatchSnapshot(credentials);
+    const result = await handleTtsCore({ ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, language, signal: request.signal });
 
     if (result.success) return recordSuccess(result, credentials);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);

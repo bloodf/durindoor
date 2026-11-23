@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { createIsolatedBuildEnvironment } from "./build-environment.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -107,7 +107,7 @@ export function materializeStandaloneDependencies(standaloneDir, distDir, source
   for (const [name, source] of seeds) install(source, path.join(modules, name));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
 const nextBin = require.resolve("next/dist/bin/next");
 const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-build-"));
 

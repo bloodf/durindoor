@@ -517,7 +517,7 @@ describe("GET /v1/models/{kind-or-model} route handler (mocked DB)", () => {
 
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("access-control-allow-methods")).toBe("GET, HEAD, OPTIONS");
-    expect(res.headers.get("access-control-allow-headers")).toBe("*");
+    expect(res.headers.get("access-control-allow-headers")).toBe("Authorization, *");
   });
 });
 

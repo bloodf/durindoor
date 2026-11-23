@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
 
@@ -27,14 +28,21 @@ export async function POST(request) {
 
     const base = (baseUrl?.trim() || GITLAB_DEFAULT_BASE).replace(/\/$/, "");
 
+    // PATs are sent only to a resolved public instance, without redirects.
+    try {
+      await assertPublicUrlResolved(`${base}/api/v4/user`);
+    } catch {
+      return NextResponse.json({ error: "Invalid GitLab base URL" }, { status: 400 });
+    }
+
     // Verify token by fetching current user
     const userRes = await fetch(`${base}/api/v4/user`, {
       headers: { "Private-Token": token.trim(), Accept: "application/json" },
+      redirect: "manual",
     });
 
     if (!userRes.ok) {
-      const err = await userRes.text();
-      return NextResponse.json({ error: `GitLab token verification failed: ${err}` }, { status: 401 });
+      return NextResponse.json({ error: "GitLab token verification failed" }, { status: 401 });
     }
 
     const user = await userRes.json();

@@ -19,7 +19,7 @@ import { sanitizeErrorMessage } from "../utils/error.js";
 import { GITHUB_COPILOT } from "../config/appConstants.js";
 import { refreshCopilotToken } from "./tokenRefresh.js";
 import { readCopilotEndpointContract } from "./copilotEndpointContract.js";
-import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const MODELS_URL = "https://api.githubcopilot.com/models";
 const FETCH_TIMEOUT_MS = 10_000;
@@ -76,12 +76,17 @@ function expandCatalog(raw, includeMetadata = false) {
   const models = [];
   for (const m of raw) {
     if (!m || !isObject(m)) continue;
-    if (m.capabilities?.type !== "chat") continue;
-    if (m.policy && m.policy.state !== "enabled") continue;
-    const id = m.id;
-    if (!id || seen.has(id)) continue;
+    if (m.policy?.state && m.policy.state !== "enabled") continue;
+    if (m.model_picker_enabled === false) continue;
+    const id = m.id || m.model;
+    if (!isString(id) || !id || seen.has(id)) continue;
+    const type = m.capabilities?.type;
+    const endpoints = m.supported_endpoints || m.capabilities?.supported_endpoints;
+    if (type ? type !== "chat" : Array.isArray(endpoints) && endpoints.length
+      ? !endpoints.some((endpoint) => isString(endpoint) && /\/(chat\/completions|responses|v1\/messages)/.test(endpoint))
+      : /embedding/i.test(id) || id.toLowerCase() === "gpt-41-copilot") continue;
     seen.add(id);
-    const model = { id, name: m.name || id };
+    const model = { id, name: m.name || m.display_name || id };
     // Copilot's own endpoint contract decides which of its routes serves this
     // model (OmniRoute #15337). A model with no declared endpoint keeps no
     // contract here, so the executor falls back to its current behavior.

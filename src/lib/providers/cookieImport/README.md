@@ -53,6 +53,22 @@ through the normal connection path.
 | Perplexity Web | Extension and dashboard | Existing `www.perplexity.ai` profile. NextAuth session cookie or contiguous numbered chunks. |
 | Grok Web | Extension and dashboard | Existing `grok.com` profile requires `sso`. |
 | Muse Spark Web | Extension and dashboard, guarded runtime | Existing `www.meta.ai` profile requires `ecto_1_sess`. Import leaves guard-only dispatch in place. |
+| ChatGPT Web Codex | Extension and dashboard | Same `chatgpt.com` profile as ChatGPT Web: NextAuth session cookie or contiguous numbered chunks. |
+| Claude Web | Extension and dashboard | `claude.ai` profile requires `sessionKey`. |
+| Gemini Web | Extension and dashboard | `gemini.google.com` profile requires `__Secure-1PSID` and `__Secure-1PSIDTS`, which Google sets on the parent `.google.com` domain; the contract accepts a parent domain of the origin host. |
+| Doubao Web | Extension and dashboard | `www.dola.com` profile requires `sessionid` and `s_v_web_id`. A pasted header that carries `fp` instead of `s_v_web_id` still works through manual paste. |
+| Z.ai Web | Extension and dashboard | `chat.z.ai` profile requires the `token` cookie. |
+| MaxAI | Extension and dashboard | `www.maxai.co` profile requires `access_token`, `device_id` and `user_id` from the same browser session. |
+| Arena | Extension and dashboard | `arena.ai` profile requires `arena-auth-prod-v1`; numbered `arena-auth-prod-v1.N` chunks must be contiguous. |
+| ChatPlayground | Extension and dashboard | `app.chatplayground.ai` profile requires `__client` and `__session`. |
+| DeepSeek Web | Manual token | The credential is the `userToken` from local storage, saved as an API-key credential; there is no cookie to capture. |
+| PromptQL | Extension and dashboard | `prompt.ql.app` profile requires `__Host-next-auth.csrf-token` and `next-auth.session-token`. Chat resolves the playground JWT and project ID through the imported session and saves them on that connection. |
+| Notion AI Web | Extension and dashboard | `app.notion.com` profile requires `token_v2`. |
+| NoTrack Web | Extension and dashboard | `notrack.ai` profile requires `uid`, `si_usr_id` and `si_ses_id`; the optional `nt_session` is stored when the capture or pasted header carries it and is never required. |
+| Tencent AI Studio Web | Extension and dashboard, unverified | `aistudio.tencent.ai` profile requires `sessionid`. The pinned source forwards the whole header and names no cookie, so this allowlist was not confirmed against a live capture. |
+| Blackbox Web | Extension and dashboard | `app.blackbox.ai` profile requires `next-auth.session-token`. |
+| Conol Web | Extension and dashboard | `conol.ai` profile requires `__Secure-better-auth.session_token`. |
+| TinyCMS Web | Extension and dashboard, localStorage | No cookie. The profile names the `app-config-uuid` localStorage item of `https://site.tinycms.xyz` and a credential pattern. The dashboard takes it as a pasted field; the extension reads it with `chrome.scripting`. It is stored in `providerSpecificData["app-config-uuid"]` of an API-key connection. |
 | Adapta Web | Dashboard only | `__client` is accepted as a Cookie header at the Clerk origin, `https://clerk.agent.adapta.one`. The chat site `agent.adapta.one` has a separate origin. cURL and HAR input must identify the Clerk origin. [Pinned comparison](../../../../internal/docs/adapta-t3-web-cookie-parity-2034.md) |
 | Tencent Yuanbao Web | Extension and dashboard | The normal connection requires both `hy_user` and `hy_token` for `https://yuanbao.tencent.com`. The executor supplies `hy_source=web`. [Pinned comparison](../../../../internal/docs/yuanbao-web-signin-parity-2034.md) |
 | T3 Chat Web | Manual header | The local parser requires `convex-session-id`, and the pinned source calls for the full session cookie set. A complete narrow allowlist is unverified. [Pinned comparison](../../../../internal/docs/t3-web-signin-parity-2034.md) |
@@ -64,14 +80,26 @@ through the normal connection path.
 | Suno | Manual header | The session header and separate API host are documented, with no complete cookie-name allowlist. [Pinned comparison](../../../../internal/docs/suno-signin-parity-2034.md) |
 | Udio | Manual header | The parity source forwards the supplied session header and does not specify an exact cookie set. [Pinned comparison](../../../../internal/docs/udio-signin-parity-2034.md) |
 
+## localStorage items
+
+A provider whose credential is a browser localStorage value (TinyCMS) declares `localStorageKeys` (at most four names) and optionally a `credentialPattern` in its registry `cookieImport` profile. Such a profile may belong to a provider of any category and may name no cookie. The contract then:
+
+- describes the items to the client as `contract.localStorageKeys`;
+- requires the import body to carry `localStorage: { "<key>": "<value>" }` with exactly those keys, printable ASCII values of at most 8192 characters that match the pattern (`validateImportedLocalStorage`);
+- refuses any cookie when it names no cookie;
+- stores the values in the connection's `providerSpecificData` under their own key, never in the Cookie header. A create relies on the registry's `apiKeyOptionalWith`; an update clears the API-key field so the imported value is the one used;
+- binds an update pairing to a connection of the provider's own auth type (`apikey` for TinyCMS) instead of `cookie`.
+
+The stored key is listed in the connections API's sensitive provider-specific fields, so it is never returned.
+
 ## Flow
 
 1. **Pair.** The operator, in the dashboard, calls `POST /api/providers/cookie-import/pairing` with either
    `{ "provider", "action": "create", "name" }` or `{ "provider", "action": "update", "connectionId" }`.
    The action is explicit; the other action's fields are rejected. An update target must exist, belong to the provider and be a cookie connection. The response carries the secret once, plus the contract the extension should collect:
-   `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes, extensionCapture? } } }`.
+   `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes, optionalCookies?, localStorageKeys?, extensionCapture? } } }`.
 2. **Import.** The extension reads the approved cookies for the provider origin and calls `POST /api/providers/cookie-import` with header `x-durindoor-pairing-token: <token>` and
-   `{ "provider", "origin", "cookies": [{ "name", "value", "domain"?, "secure"?, "expirationDate"? }], "connectionId"? , "name"? }`.
+   `{ "provider", "origin", "cookies": [{ "name", "value", "domain"?, "secure"?, "expirationDate"? }], "localStorage"?: { "<key>": "<value>" }, "connectionId"? , "name"? }`. `cookies` is omitted for a localStorage-only profile.
    `connectionId` is required and must match for an update pairing, and must be absent for a create pairing. `name` may be repeated for a create pairing and must then match.
 3. **Result.** `201` (create) or `200` (update) with `{ ok: true, action, connection: { id, provider, name } }`. Nothing else about the connection, and never a cookie, is returned.
 
@@ -91,7 +119,7 @@ The store is per process (a `globalThis` map, like web-login sessions). A deploy
 
 - **Transport:** HTTPS, or plain HTTP to `localhost`, `127.0.0.1` or `[::1]` for local development. The scheme is the transport's, unless the `Host` is the operator-configured `BASE_URL` / `NEXT_PUBLIC_BASE_URL` (a TLS terminator). Forwarded headers are not trusted.
 - **Origin:** `origin` must equal the contract origin byte for byte. `http://`, a trailing slash, a port, a suffix or a sibling host are rejected.
-- **Cookies:** names must be approved (above); chunked cookies must be contiguous from `.0`; the required cookies must be present (the same `hasRequiredCookies` rule the dashboard capture applies); no duplicates; at most 16 cookies and 8192 characters per value; values must be printable ASCII without `;` or edge whitespace; `domain`, when sent, must be the provider host or a parent of it (never a bare public suffix); `secure: false` and past `expirationDate` (seconds, as browsers report it) are rejected. Cookies outside the allowlist, such as `cf_clearance`, are rejected rather than dropped.
+- **Cookies:** names must be approved (above); chunked cookies must be contiguous from `.0`; the required cookies must be present (the same `hasRequiredCookies` rule the dashboard capture applies); a provider's `optionalCookies` (NoTrack Web `nt_session`) are approved names that are kept when sent and never required; no duplicates; at most 16 cookies and 8192 characters per value; values must be printable ASCII without `;` or edge whitespace; `domain`, when sent, must be the provider host or a parent of it (never a bare public suffix); `secure: false` and past `expirationDate` (seconds, as browsers report it) are rejected. Cookies outside the allowlist, such as `cf_clearance`, are rejected rather than dropped.
 - **Header composition:** `composeCookieHeader` from web-login builds the stored value, required cookies first, chunks in index order.
 - **Size:** the import body is at most 32 KiB and the pairing body 4 KiB, enforced on the declared length and again while streaming. Content type must be `application/json`.
 - Validation is structural. No request is made to the provider.

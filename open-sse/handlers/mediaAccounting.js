@@ -1,3 +1,4 @@
+import { decodeUsdReceipt } from "../../src/lib/usage/receipt.js";
 import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 
 /**
@@ -55,8 +56,9 @@ export function mediaAccounting(value, provider, modality) {
     for (const field of fields) {
       if (usage[field] === undefined || usage[field] === null) continue;
       accounting.meta.providerCost = { path: `${path}.${field}`, value: usage[field] };
-      if (isNumber(usage[field]) && Number.isFinite(usage[field]) && usage[field] >= 0) {
-        accounting.cost = field === "cost_in_usd_ticks" ? usage[field] / 1e12 : usage[field];
+      const cost = decodeUsdReceipt(usage[field], field);
+      if (cost !== null) {
+        accounting.cost = cost;
         accounting.costStatus = "known";
         accounting.costSource = "provider";
       }

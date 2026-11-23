@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
 import { isNumber, isObject, isString } from "../src/shared/utils/typeChecks.js";
 import { artifactKey, validateStorybookLifecycle } from "../tests/e2e/storybook-lifecycle.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_EXT = /\.(?:js|jsx|mjs|ts|tsx)$/;
 const TEST_FILE = /(?:test|spec)\./;
@@ -185,4 +186,4 @@ export async function validateCoverage({ manifest, index = null, artifactDir = n
   return errors;
 }
 function args(argv) { const result = { manifest: path.join(ROOT, "tests/e2e/storybook-surfaces.json"), mode: "inventory" }; for (let i = 2; i < argv.length; i += 1) { const value = argv[++i]; if (argv[i - 1] === "--manifest") result.manifest = path.resolve(value); else if (argv[i - 1] === "--index") result.index = path.resolve(value); else if (argv[i - 1] === "--artifact-dir") result.artifactDir = path.resolve(value); else if (argv[i - 1] === "--candidate-sha") result.candidateSha = value; else if (argv[i - 1] === "--mode") result.mode = value; else throw new Error(`unknown argument: ${argv[i - 1]}`); } return result; }
-if (process.argv[1] === fileURLToPath(import.meta.url)) (async () => { const input = args(process.argv); const errors = await validateCoverage({ manifest: JSON.parse(readFileSync(input.manifest)), index: input.index && JSON.parse(readFileSync(input.index)), artifactDir: input.artifactDir, mode: input.mode, candidateSha: input.candidateSha }); if (errors.length) throw new Error(errors.join("\n")); console.log(input.mode === "inventory" ? "Storybook inventory valid; pending rows remain unapproved and no coverage is claimed." : "Storybook coverage closed."); })().catch((error) => { console.error(error.message); process.exit(1); });
+if (isMainModule(import.meta.url)) (async () => { const input = args(process.argv); const errors = await validateCoverage({ manifest: JSON.parse(readFileSync(input.manifest)), index: input.index && JSON.parse(readFileSync(input.index)), artifactDir: input.artifactDir, mode: input.mode, candidateSha: input.candidateSha }); if (errors.length) throw new Error(errors.join("\n")); console.log(input.mode === "inventory" ? "Storybook inventory valid; pending rows remain unapproved and no coverage is claimed." : "Storybook coverage closed."); })().catch((error) => { console.error(error.message); process.exit(1); });

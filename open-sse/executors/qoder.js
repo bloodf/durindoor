@@ -26,14 +26,17 @@ import {
   QODER_QUEUE_MAX_ATTEMPTS,
   computeQoderQueueDelayMs,
   parseQoderQueueInfo,
-  qoderQueueMaxWaitMs } from
-"../shared/qoder/queue.js";
+  parseQoderQueueStatus,
+  qoderQueueStatusUrl,
+  qoderQueueMaxWaitMs,
+} from "../shared/qoder/queue.js";
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS, HTTP_STATUS } from "../config/runtimeConfig.js";
@@ -348,6 +351,7 @@ function isBillingBlock(body) {
 }
 
 const QODER_QUEUE_DELAY_HEADER = "x-qoder-queue-delay-ms";
+const QODER_QUEUE_INFO_HEADER = "x-qoder-queue-info";
 
 /** Sleep that rejects as soon as the caller's signal aborts, so a hang-up releases the request. */
 function sleep(ms, signal) {
@@ -433,6 +437,7 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
           // A real billing signature wins above; otherwise a queue signal is retryable.
           const queue = status !== 200 ? parseQoderQueueInfo(body) : null;
           if (queue) return { chunks, done: false, queue };
+          if (status !== 200) return { chunks, done: false, errorStatus: Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502 };
         } catch {
 
           // Malformed frames remain existing stream-transform failures.
@@ -503,8 +508,7 @@ async function wrapQoderSSE(response, model, options = {}) {
   if (peeked.billing) {
     // First-frame billing block detected — return 403 so chatCore fails this
     // connection and triggers combo fallback instead of leaking error text
-    // into chat. Non-billing first-frame errors intentionally fall through
-    // to the sanitized generic-failure path below (no raw upstream text).
+    // into chat.
     await cancelAndReleaseReader(reader, "Qoder billing block");
     return Response.json(
       { error: { message: peeked.billing.body, code: HTTP_STATUS.FORBIDDEN } },
@@ -519,7 +523,22 @@ async function wrapQoderSSE(response, model, options = {}) {
     await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
     return Response.json(
       { error: { message: "qoder model is queued; retry shortly", code: "qoder_model_queued", type: "rate_limit_error" } },
-      { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { [QODER_QUEUE_DELAY_HEADER]: String(computeQoderQueueDelayMs(peeked.queue)) } }
+      {
+        status: HTTP_STATUS.SERVICE_UNAVAILABLE,
+        headers: {
+          [QODER_QUEUE_DELAY_HEADER]: String(computeQoderQueueDelayMs(peeked.queue)),
+          [QODER_QUEUE_INFO_HEADER]: JSON.stringify(peeked.queue),
+        },
+      }
+    );
+  }
+  // Promote first-frame errors so account and combo fallback can run. Do not
+  // expose the upstream body, which can contain sensitive provider details.
+  if (peeked.errorStatus) {
+    await cancelAndReleaseReader(reader, "Qoder upstream error");
+    return Response.json(
+      { error: { message: "Qoder upstream request failed", type: "upstream_error" } },
+      { status: peeked.errorStatus }
     );
   }
   const body = replayQoderBody(reader, peeked.chunks, peeked.done);
@@ -900,23 +919,87 @@ export class QoderExecutor extends BaseExecutor {
       };
     };
 
-    // 10605 (model queue) is transient: replay after the server's hint, bounded by
-    // both an attempt cap and a wall-clock budget, then return a retryable 503.
+    // 10605 (model queue) is transient: poll queue-status and replay as soon as
+    // it clears, falling back to the server's delay when status is unusable.
+    // Bounded by both an attempt cap and a wall-clock budget, then a retryable 503.
     const maxWaitMs = qoderQueueMaxWaitMs();
     const startedAt = Date.now();
-    for (let attempt = 1;; attempt += 1) {
+    const fetchQueueStatus = async (queueInfo) => {
+      const statusUrl = qoderQueueStatusUrl(new URL(url).origin, {
+        requestSetId: payload.request_set_id,
+        modelKey: queueInfo.modelKey || qoderKey,
+        queueType: queueInfo.queueType,
+      });
+      try {
+        const signedHeaders = buildCosyHeaders(Buffer.alloc(0), statusUrl, {
+          userId: psd.userId,
+          authToken: credentials.accessToken,
+          name: credentials.displayName || "",
+          email: credentials.email || "",
+          machineId: psd.machineId || deriveMachineId(psd.userId),
+        });
+        const response = await credentialFetch(
+          (target, init) => proxyAwareFetch(target, init, proxyOptions),
+          statusUrl,
+          {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              "Accept-Encoding": "identity",
+              "X-Request-ID": payload.request_id,
+              "X-Session-ID": payload.session_id || "",
+              ...signedHeaders,
+            },
+            signal,
+          }
+        );
+        if (!response.ok) return null;
+        return parseQoderQueueStatus(await response.text());
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        return null;
+      }
+    };
+    for (let attempt = 1; ; attempt += 1) {
       const result = await sendOnce();
       const delayHeader = result.response.headers.get(QODER_QUEUE_DELAY_HEADER);
       if (delayHeader === null) return result;
 
-      const delayMs = Number(delayHeader);
+      let delayMs = Number(delayHeader);
       const elapsedMs = Date.now() - startedAt;
       if (attempt >= QODER_QUEUE_MAX_ATTEMPTS || elapsedMs + delayMs > maxWaitMs) {
         log?.warn?.("QODER", `model queue still busy after ${attempt} attempt(s) / ${Math.round(elapsedMs / 1000)}s for ${this.provider}/${qoderKey}`);
         return { ...result, response: Response.json(await result.response.json(), { status: HTTP_STATUS.SERVICE_UNAVAILABLE }) };
       }
       log?.info?.("QODER", `model queued; replaying ${this.provider}/${qoderKey} in ${Math.round(delayMs / 1000)}s (attempt ${attempt}/${QODER_QUEUE_MAX_ATTEMPTS})`);
-      await sleep(delayMs, signal);
+      let queueInfo;
+      try {
+        queueInfo = JSON.parse(result.response.headers.get(QODER_QUEUE_INFO_HEADER) || "null");
+      } catch {
+        queueInfo = null;
+      }
+      let status = queueInfo ? await fetchQueueStatus(queueInfo) : null;
+      if (status?.isQueued === false) {
+        delayMs = 0;
+      } else if (status?.isQueued === true) {
+        // Keep polling while the same request remains in Qoder's queue. A
+        // failed/unknown status response falls back to the original retry delay.
+        while (status?.isQueued === true) {
+          const pollDelay = computeQoderQueueDelayMs(status, { fromStatus: true });
+          const elapsed = Date.now() - startedAt;
+          if (elapsed + pollDelay > maxWaitMs) {
+            log?.warn?.("QODER", `model queue wait budget exhausted while polling ${this.provider}/${qoderKey}`);
+            return {
+              ...result,
+              response: Response.json(await result.response.clone().json(), { status: HTTP_STATUS.SERVICE_UNAVAILABLE }),
+            };
+          }
+          await sleep(pollDelay, signal);
+          status = await fetchQueueStatus(queueInfo);
+        }
+        if (status?.isQueued === false) delayMs = 0;
+      }
+      if (delayMs > 0) await sleep(delayMs, signal);
     }
   }
 

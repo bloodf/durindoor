@@ -1,0 +1,14 @@
+---
+title: "WorkBuddy"
+description: Connect WorkBuddy and optionally enable session dispatch.
+---
+
+WorkBuddy uses its own account and is separate from CodeBuddy. Add it under **Providers**, then turn on **Allow session dispatch** in the connection's edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`) to allow chat dispatch. It is off for every new connection. The upstream gateway receives WorkBuddy client channel headers.
+
+## Sign in
+
+Start the WorkBuddy device sign-in, open the provided authorization URL, and complete sign-in. The gateway returns the token only once; save the completed connection. Refresh uses the connection's refresh token. If authentication fails, sign in again. Model discovery reads the authenticated `/v3/config` catalog and needs no opt-in; available models and quota depend on the account.
+
+The pinned upstream flow does not define a cookie credential or cookie validation probe. Extension capture and pasted cURL, Cookie headers, and HAR imports therefore cannot establish this OAuth connection. Use device sign-in; do not paste browser cookies as an access token.
+
+WorkBuddy requires streaming upstream. JSON clients receive an accumulated response. The gateway may reject unsupported models, malformed tool histories, expired credentials, or quota-exhausted accounts. Error status 401 indicates authentication failure and 429 indicates a rate or quota limit. Channel and history requirements may change upstream.

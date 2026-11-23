@@ -3,6 +3,7 @@
 // (they require inline base64). Runs on the source-format body.
 import { FORMATS } from "../formats.js";
 import { fetchImageAsBase64, parseDataUri } from "./image.js";
+import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 
 // Targets that require inline base64 images (cannot accept remote URLs).
 import { isString } from "../../../src/shared/utils/typeChecks.js";
@@ -11,6 +12,7 @@ FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX,
 FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO,
 FORMATS.COMMANDCODE]
 );
+const MAX_IMAGES_PER_REQUEST = 10;
 
 function isRemoteUrl(url) {
   return isString(url) && (url.startsWith("http://") || url.startsWith("https://"));
@@ -84,11 +86,23 @@ export async function prefetchRemoteImages(body, sourceFormat, targetFormat, opt
   if (!refs.length) return 0;
 
   let converted = 0;
-  for (const ref of refs) {
+  let totalBytes = 0;
+  for (const ref of refs.slice(0, MAX_IMAGES_PER_REQUEST)) {
     const url = ref.get();
     if (parseDataUri(url)) continue; // already inline
-    const fetched = await fetchImageAsBase64(url, options);
+    const remainingBytes = MAX_IMAGE_BYTES - totalBytes;
+    const configuredMaxBytes = options.maxBytes ?? MAX_IMAGE_BYTES;
+    const fetchOptions = totalBytes === 0 && configuredMaxBytes <= MAX_IMAGE_BYTES ? options : {
+      ...options,
+      maxBytes: Math.min(configuredMaxBytes, remainingBytes),
+    };
+    const fetched = await fetchImageAsBase64(url, fetchOptions);
     if (!fetched) continue;
+    const payload = fetched.url.split(",")[1] || "";
+    const imageBytes = Math.max(0, Math.floor(payload.length * 3 / 4) -
+      (payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0));
+    if (totalBytes + imageBytes > MAX_IMAGE_BYTES) continue;
+    totalBytes += imageBytes;
     if (ref.set) ref.set(fetched.url);else
     if (ref.part) {delete ref.part.fileData;ref.part.inlineData = { mimeType: fetched.mimeType, data: fetched.url.split(",")[1] };} else
     if (ref.claudeBlock) ref.claudeBlock.source = { type: "base64", media_type: fetched.mimeType, data: fetched.url.split(",")[1] };

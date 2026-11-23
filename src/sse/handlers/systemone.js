@@ -1,3 +1,5 @@
+import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { randomUUID } from "node:crypto";
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -5,9 +7,7 @@ import {
   getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleSystemoneCore } from "open-sse/handlers/systemoneCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -15,7 +15,6 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { nativeUsageAdmission, observeNativeResponse } from "../services/nativeUsage.js";
 import { isObject } from "../../shared/utils/typeChecks.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -67,22 +66,15 @@ async function handleSystemoneHandler(request) {
   const modelStr = body.model;
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "systemone" });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (!apiKeyAuth.ok) {
-    if (apiKeyAuth.reason === "missing") {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"), "auth_missing");
-    }
-    log.warn("AUTH", "Invalid API key");
-    return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), "auth_invalid");
+  if (admissionError) {
+    log.warn("AUTH", apiKeyAuth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
+    return admissionError;
   }
   // Retain the admission generation through retries and deferred response usage.
   const billingEpoch = apiKeyAuth.billingEpoch;
@@ -134,6 +126,7 @@ async function handleSystemoneHandler(request) {
     }
     const result = toCoreResult(
       await handleSystemoneCore({
+        routingPolicy: (await getSettings()).openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials,
@@ -181,8 +174,10 @@ async function handleSystemoneHandler(request) {
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
+    const dispatch = credentialDispatchSnapshot(credentials);
     const result = toCoreResult(
       await handleSystemoneCore({
+        routingPolicy: (await getSettings()).openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),
@@ -190,7 +185,7 @@ async function handleSystemoneHandler(request) {
         signal: request.signal,
         proxyOptions: proxyOptionsFromCredentials(credentials),
         onRequestSuccess: async () => {
-          await clearAccountError(credentials.connectionId, credentials, model);
+          await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         },
       }),
       "System One request failed",
@@ -203,7 +198,8 @@ async function handleSystemoneHandler(request) {
     if (result.status === 499) return result.response;
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

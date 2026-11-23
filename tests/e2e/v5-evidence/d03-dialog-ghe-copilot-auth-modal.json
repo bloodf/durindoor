@@ -1,0 +1,8 @@
+{
+  "route": "dialog/GheCopilotAuthModal",
+  "stories": [
+    "production-shared-auth-ghecopilotauthmodal--default",
+    "production-shared-auth-ghecopilotauthmodal--invalid-origin",
+    "production-shared-auth-ghecopilotauthmodal--device-code-handoff"
+  ]
+}

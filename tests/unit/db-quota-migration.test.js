@@ -147,7 +147,7 @@ describe("quota schema migration", () => {
     const db = await getAdapter();
     expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(latestVersion()));
     const connData = JSON.parse(db.get(`SELECT data FROM providerConnections WHERE id='conn-1'`).data);
-    expect(connData.accessToken).toEqual(expect.objectContaining({ v: 1, iv: expect.any(String), ct: expect.any(String) }));
+    expect(connData.accessToken).toEqual(expect.objectContaining({ v: 2, iv: expect.any(String), ct: expect.any(String) }));
     expect(db.get(`SELECT key FROM apiKeys WHERE id='key-1'`).key).toBe("sk-deadbeef");
     expect(db.all(`PRAGMA table_info(providerQuotaSnapshots)`)).not.toHaveLength(0);
     expect(db.all(`PRAGMA table_info(quotaFetchStates)`)).not.toHaveLength(0);

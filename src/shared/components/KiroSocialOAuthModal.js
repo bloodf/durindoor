@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -24,9 +26,11 @@ export default function KiroSocialOAuthModal({
   proxyPools = [],
   proxyPoolsReady = false,
 }) {
+  const uiV5 = useUiV5();
   const [step, setStep] = useState("loading");
   const [authUrl, setAuthUrl] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
+  const [userCode, setUserCode] = useState("");
   const [error, setError] = useState(null);
   const [selectedProxyPoolId, setSelectedProxyPoolId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +38,7 @@ export default function KiroSocialOAuthModal({
   const lifecycleRef = useRef(null);
   const selectedProxyPoolIdRef = useRef("");
   const cancelChainRef = useRef(Promise.resolve());
+  const pollTimerRef = useRef(null);
   const latestRef = useRef(null);
   if (lifecycleRef.current === null) lifecycleRef.current = createOAuthFlowLifecycle();
 
@@ -42,6 +47,8 @@ export default function KiroSocialOAuthModal({
   }, [isOpen, onClose, onSuccess, provider, proxyPoolsReady]);
 
   const cancelServerFlow = useCallback((flow) => {
+    clearTimeout(pollTimerRef.current);
+    pollTimerRef.current = null;
     const cancel = async () => {
       if (!flow?.flowId) return;
       const controller = new AbortController();
@@ -96,6 +103,7 @@ export default function KiroSocialOAuthModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: flow.socialProvider,
+          mode: "device",
           ownerId: flow.ownerId,
           ...oauthProxySelection(flow.proxyPoolId),
         }),
@@ -108,8 +116,34 @@ export default function KiroSocialOAuthModal({
         throw new Error("OAuth server returned an incomplete flow");
       }
       setAuthUrl(data.authUrl);
-      setStep("input");
+      setUserCode(data.userCode || "");
+      setStep("polling");
       openTrackedPopup(flow, data.authUrl);
+      let interval = Math.max(1, Number(data.interval) || 5) * 1000;
+      const poll = async () => {
+        if (!lifecycle.isActive(flow)) return;
+        if (Date.now() >= data.expiresAt) return finishError(flow, "Authorization expired. Please try again.");
+        try {
+          const response = await fetch("/api/oauth/kiro/social-exchange", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ flowId: flow.flowId, state: flow.expectedState }),
+            signal: flow.controller.signal
+          });
+          const result = await response.json();
+          if (!lifecycle.isActive(flow)) return;
+          if (!response.ok) throw new Error(result.error || "Authentication failed");
+          if (result.success) {
+            lifecycle.settle(flow, () => { setStep("success"); latestRef.current.onSuccess?.(); });
+            return;
+          }
+          if (!result.pending) throw new Error(result.error || "Authentication failed");
+          if (result.error === "slow_down") interval += 5000;
+          pollTimerRef.current = setTimeout(poll, interval);
+        } catch (error) {
+          if (lifecycle.isActive(flow)) finishError(flow, error.message || "Authentication failed");
+        }
+      };
+      pollTimerRef.current = setTimeout(poll, interval);
     } catch (startError) {
       if (lifecycle.isActive(flow)) {
         finishError(flow, startError instanceof Error ? startError.message : "Authentication failed");
@@ -208,11 +242,12 @@ export default function KiroSocialOAuthModal({
   const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
-    <Modal open={isOpen} title={`Connect Kiro via ${providerName}`} subtitle="Complete authentication in your browser, then paste callback URL." onClose={() => { void handleClose(); }} size="lg" pending={submitting} closeOnEscape={!submitting} closeOnOverlay={!submitting}>
+    <Modal {...(uiV5 ? { surfaceClassName: "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none border-dd-border bg-dd-surface shadow-dd-elevated [&>header]:bg-dd-surface-2" } : {})} open={isOpen} title={`Connect Kiro via ${providerName}`} subtitle="Complete authentication in your browser." onClose={() => { void handleClose(); }} size="lg" pending={submitting} closeOnEscape={!submitting} closeOnOverlay={!submitting}>
+      {uiV5 ? <span className="sr-only" aria-live="polite">{copied ? "Copied to clipboard" : ""}</span> : null}
       <div className="flex flex-col gap-5">
         {!proxyPoolsReady && <LoadingState title="Loading routing options…" />}
 
-        {proxyPoolsReady && activeProxyPools.length > 0 && (step === "loading" || step === "input") && (
+        {proxyPoolsReady && activeProxyPools.length > 0 && (step === "loading" || step === "input" || step === "polling") && (
           <div className="flex flex-col gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 p-3">
             <label htmlFor="kiro-proxy-pool" className="text-xs font-medium text-dd-muted">Routing proxy pool</label>
             <Select id="kiro-proxy-pool" value={selectedProxyPoolId} disabled={submitting} onChange={(value) => { void restartFlow(value); }} options={[{ value: "", label: "Direct connection" }, ...activeProxyPools.map((pool) => ({ value: pool.id, label: pool.name }))]} />
@@ -220,6 +255,13 @@ export default function KiroSocialOAuthModal({
         )}
 
         {proxyPoolsReady && step === "loading" && <LoadingState title="Initializing…" message={`Setting up ${providerName} authentication`} />}
+
+        {step === "polling" && <div className="flex flex-col gap-3" role="status">
+          <p>Open the authorization page and complete sign in{userCode ? ` using code ${userCode}` : ""}.</p>
+          <Input value={authUrl} readOnly aria-label="Authorization URL" />
+          <div className="flex gap-2"><Button variant="secondary" onClick={() => copy(authUrl, "auth_url")}>Copy URL</Button><Button variant="ghost" onClick={() => openTrackedPopup(lifecycleRef.current.current(), authUrl)}>Open</Button></div>
+          <p>Waiting for authorization…</p>
+        </div>}
 
         {step === "input" && (
           <>

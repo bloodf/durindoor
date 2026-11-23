@@ -28,7 +28,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "@/shared/utils/typeChecks";
-import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import { getCombos } from "@/lib/localDb";
 import { getModelInfo, loadCustomCapabilities, parseModel } from "@/sse/services/model";
 import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
@@ -39,6 +39,10 @@ const PROVIDER_ID = "durindoor";
 const LEGACY_PROVIDER_ID = "9router";
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const DEFAULT_MAX_TOKENS = 16384;
+// Placeholder the dashboard card sends when no key is selected; it is never a
+// real credential, so it must not replace a key already stored in models.json.
+const PLACEHOLDER_API_KEYS = new Set(["sk_durindoor", "sk_9router"]);
+const isPlaceholderKey = (key) => !isString(key) || !key.trim() || PLACEHOLDER_API_KEYS.has(key.trim());
 
 const getAgentModelsPath = () => path.join(os.homedir(), ".pi", "agent", "models.json");
 const getRootModelsPath = () => path.join(os.homedir(), ".pi", "models.json");
@@ -175,13 +179,15 @@ export async function POST(request) {
     providers[PROVIDER_ID] = {
       ...previousProvider,
       baseUrl: baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`,
-      apiKey: apiKey || "sk_durindoor",
+      apiKey: isPlaceholderKey(apiKey)
+        ? (isPlaceholderKey(previousProvider.apiKey) ? "sk_durindoor" : previousProvider.apiKey)
+        : apiKey,
       api: "openai-completions",
       models: modelList,
     };
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON.stringify({ ...existing, providers }, null, 2), "utf-8");
+    await writeConfigAtomic(configPath, JSON.stringify({ ...existing, providers }, null, 2), "utf-8");
 
     return NextResponse.json({
       success: true,
@@ -207,7 +213,7 @@ export async function DELETE() {
       delete providers[LEGACY_PROVIDER_ID];
       const next = { ...existing, providers };
       if (Object.keys(providers).length === 0) delete next.providers;
-      await fs.writeFile(configPath, JSON.stringify(next, null, 2), "utf-8");
+      await writeConfigAtomic(configPath, JSON.stringify(next, null, 2), "utf-8");
     }
 
     return NextResponse.json({ success: true, message: "DurinDoor removed from Pi" });

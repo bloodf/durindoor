@@ -1,6 +1,72 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { createHash } from "node:crypto";
+
+const XAI_RESPONSE_TOOLS = new Set(["web_search", "x_search", "image_generation", "collections_search", "file_search", "code_execution", "code_interpreter", "mcp", "shell", "tool_search"]);
+
+/** Normalize Chat content and tool declarations accepted by xAI Responses. */
+function normalizeResponses(body) {
+  if (Array.isArray(body.input)) body.input = body.input.map((item) => {
+    if (!isObject(item) || !Array.isArray(item.content)) return item;
+    return { ...item, content: item.content.map((part) => {
+      if (!isObject(part)) return part;
+      if (part.type === "text") return { ...part, type: item.role === "assistant" ? "output_text" : "input_text" };
+      if (part.type === "image_url") return { type: "input_image", image_url: isObject(part.image_url) ? part.image_url.url : part.image_url };
+      return part;
+    }) };
+  });
+  if (Array.isArray(body.tools)) {
+    const tools = [];
+    const names = new Set();
+    const pending = [...body.tools];
+    for (const tool of pending) {
+      if (!isObject(tool)) continue;
+      if (tool.type === "namespace") {
+        const namespace = isString(tool.name) ? tool.name : "";
+        for (const child of Array.isArray(tool.tools) ? tool.tools : []) {
+          if (!isObject(child)) continue;
+          const fn = isObject(child.function) ? child.function : child;
+          if (!isString(fn.name) || !fn.name.trim()) continue;
+          const leaf = fn.name.trim();
+          let name = !namespace || namespace === "functions" || leaf.includes("__") ? leaf : `${namespace}${namespace.endsWith("__") ? "" : "__"}${leaf}`;
+          if (name.length > 64) name = `${name.slice(0, 56)}_${createHash("sha256").update(name).digest("hex").slice(0, 7)}`;
+          pending.push({ ...fn, type: "function", name });
+        }
+        continue;
+      }
+      if (tool.type === "custom" && isString(tool.name)) {
+        pending.push({ type: "function", name: tool.name, description: tool.description, parameters: { type: "object", properties: { input: { type: "string" } }, required: ["input"] } });
+        continue;
+      }
+      if (!tool.type || tool.type === "function") {
+        const fn = isObject(tool.function) ? tool.function : tool;
+        if (!isString(fn.name) || !fn.name.trim() || names.has(fn.name.trim())) continue;
+        const { name, description, parameters, strict } = fn;
+        const normalized = { type: "function", name: name.trim() };
+        if (isString(description)) normalized.description = description;
+        if (parameters !== undefined) normalized.parameters = parameters;
+        if (strict === true || strict === false) normalized.strict = strict;
+        tools.push(normalized);
+        names.add(name.trim());
+      } else if (XAI_RESPONSE_TOOLS.has(tool.type)) {
+        if (tool.type !== "web_search") { tools.push(tool); continue; }
+        const { external_web_access, search_context_size, filters, ...search } = tool;
+        if (isObject(filters)) {
+          if (Array.isArray(filters.allowed_domains) && search.allowed_domains === undefined) search.allowed_domains = filters.allowed_domains;
+          if (Array.isArray(filters.blocked_domains) && search.excluded_domains === undefined) search.excluded_domains = filters.blocked_domains;
+        }
+        tools.push(search);
+      }
+    }
+    if (tools.length) body.tools = tools; else delete body.tools;
+  }
+  if (!Array.isArray(body.tools) || !body.tools.length) {
+    delete body.tool_choice;
+    delete body.parallel_tool_calls;
+  }
+}
 
 export class XaiExecutor extends BaseExecutor {
   constructor() {
@@ -32,8 +98,10 @@ export class XaiExecutor extends BaseExecutor {
 
     let out = { ...body };
     // CLIProxyAPI xai_executor_request.go: Responses does not support stop.
-    if (credentials?.runtimeTransport?.format === "openai-responses-oauth") {
+    if (credentials?.runtimeTransport?.format === "openai-responses-oauth" ||
+        getModelTargetFormat("xai", model) === "openai-responses") {
       delete out.stop;
+      normalizeResponses(out);
     }
     const modelId = (out.model || model || "").toLowerCase();
 
@@ -42,7 +110,7 @@ export class XaiExecutor extends BaseExecutor {
     for (const level of effortLevels) {
       if (out.model && out.model.endsWith(`-${level}`)) {
         modelEffort = level;
-        out.model = out.model.replace(`-${level}`, "");
+        out.model = out.model.slice(0, -level.length - 1);
         break;
       }
     }

@@ -73,3 +73,5 @@ Then run `codex --model provider/model-id "Reply with one short sentence."` and 
 ## Standalone Alpha Search
 
 With a Codex client that supports standalone web search, add `supports_standalone_web_search = true` to the `model_providers.9router` table above and select a `cx/` Codex model backed by a connected Codex OAuth account. Enable web search in the client as appropriate. DurinDoor accepts the client's native SearchRequest at `/v1/alpha/search`; `/backend-api/codex/alpha/search` is also available for compatible clients. The selected account must have upstream access to this feature; an upstream authorization failure is returned without exposing its diagnostic body. API-key and non-Codex provider connections are not supported for this route. This endpoint is separate from `/v1/search` and does not translate its schema. Requests are limited to 1 MiB and responses to 4 MiB. Support is verified with closed mocks; account entitlement and client availability vary.
+
+Codex requests that replay hosted web-search calls declare the search tool automatically. A Responses Lite request with such history uses the standard Responses transport.

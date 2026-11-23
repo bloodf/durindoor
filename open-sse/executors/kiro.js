@@ -434,6 +434,14 @@ export class KiroExecutor extends BaseExecutor {
     return headers;
   }
 
+  /** The branded gateway can reject otherwise valid requests accepted by AWS. */
+  shouldFallbackResponse(response, url, errorText) {
+    if (!new URL(url).hostname.endsWith(".kiro.dev")) return false;
+    if ([401, 403, 404].includes(response.status)) return true;
+    return response.status === 400 &&
+      (errorText?.includes("profileArn is required for this request") || errorText?.includes("Improperly formed request"));
+  }
+
   /**
    * Build the region-correct, auth-aware ordered endpoint list.
    *
@@ -458,6 +466,9 @@ export class KiroExecutor extends BaseExecutor {
     const region = resolveKiroRuntimeRegion(credentials);
     const baseUrls = buildKiroBaseUrls(region);
     const authMethod = credentials?.providerSpecificData?.authMethod;
+    if (authMethod === "api_key") {
+      return baseUrls.filter((url) => new URL(url).hostname === `q.${region}.amazonaws.com`);
+    }
     // api_key / external_idp / idc tokens are rejected by the kiro.dev IDE
     // gateway (403 "bearer token invalid") and must hit the CodeWhisperer
     // *.amazonaws.com surface first. For non-default regions we likewise prefer
@@ -471,6 +482,10 @@ export class KiroExecutor extends BaseExecutor {
     const amazon = [...new Set(baseUrls.filter((u) => u.includes("amazonaws.com")))];
     const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
     return amazon.length > 0 ? [...amazon, ...others] : baseUrls;
+  }
+
+  getFallbackCount(credentials) {
+    return credentials?.providerSpecificData?.authMethod === "api_key" ? 1 : super.getFallbackCount();
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
@@ -678,6 +693,7 @@ export class KiroExecutor extends BaseExecutor {
     ) === true;
     let buffer = new Uint8Array(0);
     let chunkIndex = 0;
+    let bufferedFlushCount = 0;
     const responseId = `chatcmpl-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
     const capabilityModel = resolveKiroModel(model).upstream;
@@ -694,6 +710,7 @@ export class KiroExecutor extends BaseExecutor {
       toolCallIndex: 0,
       seenToolIds: new Map(),
       toolArgsEmitted: new Map(),
+      toolArgsBuffered: new Map(),
       pendingWrapperToolCalls: new Map(),
       inThinking: false,
       stopReason: null
@@ -760,6 +777,29 @@ export class KiroExecutor extends BaseExecutor {
       state.seenToolIds.set(toolCallId, toolIndex);
       state.toolArgsEmitted.set(toolCallId, argumentsStr);
     };
+    // Object inputs are growing snapshots, not concatenable argument fragments.
+    const flushObjectToolArgs = (controller) => {
+      for (const [id, canonical] of state.toolArgsBuffered) {
+        const emitted = state.toolArgsEmitted.get(id) || "";
+        if (!canonical.startsWith(emitted)) {
+          rejectToolCall(controller, "Invalid Kiro tool call: object input conflicts with streamed arguments");
+          return false;
+        }
+        const suffix = canonical.slice(emitted.length);
+        if (suffix) {
+          const index = state.seenToolIds.get(id);
+          const chunk = { id: responseId, object: "chat.completion.chunk", created, model,
+            choices: [{ index: 0, delta: { tool_calls: [{ index, function: { arguments: suffix } }] }, finish_reason: null }] };
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+          state.totalContentLength += suffix.length;
+          state.toolArgsEmitted.set(id, canonical);
+          chunkIndex++;
+          bufferedFlushCount++;
+        }
+      }
+      state.toolArgsBuffered.clear();
+      return true;
+    };
     // Fill argument-less calls only at the terminal boundary, after all fragments arrive.
     const flushEmptyToolArgs = (controller) => {
       for (const [id, index] of state.seenToolIds) {
@@ -791,6 +831,7 @@ export class KiroExecutor extends BaseExecutor {
         if (state.failureSeen) return;
         // Track output so we can emit a keepalive if this frame yields no chunk.
         const enqueueCountBefore = chunkIndex;
+        bufferedFlushCount = 0;
         // Append to buffer
         const newBuffer = new Uint8Array(buffer.length + chunk.length);
         newBuffer.set(buffer);
@@ -1001,7 +1042,7 @@ export class KiroExecutor extends BaseExecutor {
                     argumentsStr = toolInput;
                   } else if (isObject(toolInput)) {
                     try {
-                      argumentsStr = JSON.stringify(toolInput);
+                      state.toolArgsBuffered.set(toolCallId, JSON.stringify(toolInput));
                     } catch (error) {
                       console.error(`[Kiro] dropping malformed tool input: ${error.message}`);
                       continue;
@@ -1081,7 +1122,7 @@ export class KiroExecutor extends BaseExecutor {
 
           // A terminal event is the completion boundary for nested wrapper fragments.
           if (eventType === "messageStopEvent") {
-            if (!flushPendingWrappers(controller)) return;
+            if (!flushPendingWrappers(controller) || !flushObjectToolArgs(controller)) return;
             state.rawTerminalSeen = true;
             state.stopReason = event.payload?.stopReason || event.payload?.stop_reason || null;
           }
@@ -1155,10 +1196,12 @@ export class KiroExecutor extends BaseExecutor {
               Math.max(1, Math.floor(state.totalContentLength / 4)) :
               0;
 
-              // Estimate input tokens from contextUsagePercentage
-              const estimatedInputTokens = state.contextUsagePercentage > 0 ?
+              // The context percentage includes the response, so split its total
+              // rather than adding the estimated completion a second time.
+              const estimatedTotalTokens = state.contextUsagePercentage > 0 ?
               Math.floor(state.contextUsagePercentage * contextWindow / 100) :
               0;
+              const estimatedInputTokens = Math.max(0, estimatedTotalTokens - estimatedOutputTokens);
 
               state.usage = {
                 ...(state.usage || {}),
@@ -1196,7 +1239,7 @@ export class KiroExecutor extends BaseExecutor {
 
         // No client chunk produced this frame — emit an SSE comment keepalive
         // so the stall watchdog sees upstream activity (ignored by parser/client).
-        if (chunkIndex === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
+        if (chunkIndex - bufferedFlushCount === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
           controller.enqueue(new TextEncoder().encode(": ka\n\n"));
         }
       },
@@ -1223,9 +1266,10 @@ export class KiroExecutor extends BaseExecutor {
           Number.isFinite(Number(state.usage?.completion_tokens));
           if (!hasTokenUsage && state.totalContentLength > 0) {
             const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
-            const promptTokens = state.contextUsagePercentage > 0 ?
+            const totalTokens = state.contextUsagePercentage > 0 ?
             Math.floor(state.contextUsagePercentage * contextWindow / 100) :
             0;
+            const promptTokens = Math.max(0, totalTokens - completionTokens);
             state.usage = {
               ...(state.usage || {}),
               prompt_tokens: promptTokens,

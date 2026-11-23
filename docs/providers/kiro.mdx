@@ -15,9 +15,9 @@ Open **Providers**, then **Kiro**, then Connect. The modal offers seven methods.
 | --- | --- | --- |
 | AWS Builder ID (recommended) | Nothing up front. Device code login at AWS | AWS OIDC, us-east-1 |
 | IAM Identity Center | Start URL (`https://your-org.awsapps.com/start`) and region | AWS OIDC in your region |
-| Google | Browser login, then paste a `kiro://` URL | Kiro auth service |
-| GitHub | Browser login, then paste a `kiro://` URL | Kiro auth service |
-| API Key | A Kiro API key and region (default `us-east-1`) | None; the key is stored for 365 days |
+| Google | Browser device authorization | Kiro auth service |
+| GitHub | Browser device authorization | Kiro auth service |
+| API Key | A Kiro API key and region (automatic by default) | None; the key is stored for 365 days |
 | Import Token | A refresh token, auto-filled from the Kiro IDE when DurinDoor finds one | Depends on what the token is |
 | CLIProxyAPI JSON | An auth file exported by CLIProxyAPI | The provider's own token endpoint |
 
@@ -32,11 +32,11 @@ These use a device code. DurinDoor registers an OIDC client at `oidc.<region>.am
 
 ### Google and GitHub
 
-Kiro's login only redirects to a `kiro://` address, which a browser cannot open. After you sign in, the browser shows or fails on a `kiro://kiro.kiroAgent/authenticate-success?code=...&state=...` URL. Copy that whole URL from the address bar and paste it into the modal.
+Open the authorization page shown in the modal and complete sign-in. Enter the displayed code if prompted. DurinDoor polls for completion; keep the modal open until the connection is confirmed.
 
 ### API key
 
-DurinDoor checks the key against Kiro's profile list before saving. It has no refresh token. Requests send the key as Bearer with `tokentype: API_KEY`.
+DurinDoor checks the key against the Amazon Q model catalog before saving. Automatic detection tries `us-east-1` and `eu-central-1`; profile discovery is optional. The key has no refresh token. Requests send it as Bearer with `tokentype: API_KEY`.
 
 ### Import from the Kiro IDE
 
@@ -52,7 +52,7 @@ Use this for Microsoft external identity accounts that CLIProxyAPI already signe
 
 ## Refresh
 
-Before a request the executor re-reads the SSO cache, then refreshes if needed. External identity tokens refresh at their own token endpoint. Connections with a client id and secret refresh through AWS OIDC, in your region for Identity Center and in us-east-1 otherwise. The rest go to Kiro's own refresh endpoint. API key connections never refresh.
+Before a request the executor re-reads the SSO cache, then refreshes if needed. External identity tokens refresh at their own token endpoint. OIDC connections with a client id and secret refresh through AWS OIDC in the registered region. Imported social tokens use Kiro's own refresh endpoint. API key connections never refresh.
 
 ## Models and quota
 
@@ -92,3 +92,5 @@ Kiro does not retry 429 on its own; the request moves on to the next account.
 **MITM Proxy** (`/dashboard/mitm`) can also intercept the Kiro IDE's calls to its us-east-1 runtime hosts and send them through DurinDoor. That is separate from the connection on this page. See [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors) for recovery steps.
 
 After connecting, send a short request with an ID from `GET /v1/models` and confirm **Usage**. If an imported token lacks the profile ARN, use Builder ID or Identity Center to acquire it. Token acquisition and a quota row do not prove that the selected model can answer.
+
+Kiro does not support Anthropic's `[1m]` context suffix. Use a direct Anthropic provider for that context option.

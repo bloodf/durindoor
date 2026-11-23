@@ -6,8 +6,19 @@ import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
 import { generateId } from "@/shared/utils";
+import { isString } from "@/shared/utils/typeChecks";
 
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
+import { assertOutboundUrlAllowed } from "open-sse/utils/outboundUrlGuard.js";
+
+function isAllowedNodeBaseUrl(value) {
+  try {
+    assertOutboundUrlAllowed(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +33,15 @@ const ANTHROPIC_COMPATIBLE_DEFAULTS = {
 const CUSTOM_EMBEDDING_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1"
 };
+const PROVIDER_ID_SUFFIX_REGEX = /^[a-zA-Z0-9_.-]+$/;
+
+// Optional operator-chosen ID suffix (#4710). Returns "" when absent, null when invalid.
+function normalizeProviderIdSuffix(value) {
+  if (value == null) return "";
+  if (!isString(value)) return null;
+  const suffix = value.trim();
+  return suffix && !PROVIDER_ID_SUFFIX_REGEX.test(suffix) ? null : suffix;
+}
 
 // GET /api/provider-nodes - List all provider nodes
 export async function GET() {
@@ -42,7 +62,10 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { name, prefix, apiType, baseUrl, type, iconUrl } = body;
+    const { name, prefix, apiType, baseUrl, type, iconUrl, providerIdSuffix } = body;
+    if (baseUrl !== undefined && baseUrl !== null && !isString(baseUrl)) {
+      return NextResponse.json({ error: "Invalid base URL" }, { status: 400 });
+    }
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -57,18 +80,29 @@ export async function POST(request) {
 
     // Determine type
     const nodeType = type || "openai-compatible";
+    const providerSuffix = nodeType === "openai-compatible" || nodeType === "anthropic-compatible" ?
+    normalizeProviderIdSuffix(providerIdSuffix) :
+    "";
+    if (providerSuffix === null) {
+      return NextResponse.json(
+        { error: "Provider ID suffix can only contain letters, numbers, -, _ and ." },
+        { status: 400 }
+      );
+    }
 
     if (nodeType === "openai-compatible") {
       if (!apiType || !["chat", "responses"].includes(apiType)) {
         return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
       }
+      const nodeBaseUrl = (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim();
+      if (!isAllowedNodeBaseUrl(nodeBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
 
       const node = await createProviderNode({
-        id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
+        id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${providerSuffix || generateId()}`,
         type: "openai-compatible",
         prefix: prefix.trim(),
         apiType,
-        baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
+        baseUrl: nodeBaseUrl,
         name: name.trim(),
         ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
       });
@@ -81,6 +115,7 @@ export async function POST(request) {
       if (sanitizedBaseUrl.endsWith("/embeddings")) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
       }
+      if (!isAllowedNodeBaseUrl(sanitizedBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
 
       const node = await createProviderNode({
         id: `${CUSTOM_EMBEDDING_PREFIX}${generateId()}`,
@@ -103,6 +138,7 @@ export async function POST(request) {
       try { normalizedBaseUrl = normalizeSystemoneBaseUrl(baseUrl); } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      if (!isAllowedNodeBaseUrl(normalizedBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
       const node = await createProviderNode({
         id: `${SYSTEMONE_COMPATIBLE_PREFIX}${generateId()}`,
         type: "systemone-compatible",
@@ -121,9 +157,10 @@ export async function POST(request) {
       if (sanitizedBaseUrl.endsWith("/messages")) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
       }
+      if (!isAllowedNodeBaseUrl(sanitizedBaseUrl)) return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
 
       const node = await createProviderNode({
-        id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
+        id: `${ANTHROPIC_COMPATIBLE_PREFIX}${providerSuffix || generateId()}`,
         type: "anthropic-compatible",
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
@@ -135,6 +172,9 @@ export async function POST(request) {
 
     return NextResponse.json({ error: "Invalid provider node type" }, { status: 400 });
   } catch (error) {
+    if (error?.code === "PROVIDER_NODE_ID_CONFLICT") {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     console.log("Error creating provider node:", error);
     return NextResponse.json({ error: "Failed to create provider node" }, { status: 500 });
   }

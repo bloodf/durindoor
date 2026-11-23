@@ -1,14 +1,35 @@
 services:
   durindoor:
-    image: ghcr.io/bloodf/durindoor:latest
+    # Bump this tag to the current published DurinDoor release.
+    image: ghcr.io/bloodf/durindoor:4.9.2
     container_name: durindoor
     restart: always
+    read_only: true
+    cap_drop:
+      - ALL
+    # The root entrypoint needs these capabilities before it drops to node.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "20128:20128"
+      # Keep the app private by default; route a reverse proxy to this port.
+      - "127.0.0.1:20128:20128"
     volumes:
       - durindoor-data:/app/data
+    tmpfs:
+      - /tmp
     env_file:
-      - .env
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:20128/api/livez || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     environment:
       DATA_DIR: /app/data
       PORT: "20128"
@@ -35,7 +56,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: durindoor
-      POSTGRES_PASSWORD: durindoor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: durindoor
       # PG 18 AIO subsystem; 2-3x sequential-scan speedup on the
       # cutover mirror.
@@ -46,8 +67,6 @@ services:
       - "wal_level=replica"
       - "-c"
       - "log_lock_waits=on"
-    ports:
-      - "5432:5432"
     volumes:
       - durindoor-pg18-data:/var/lib/postgresql/data
     healthcheck:
@@ -66,7 +85,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: durindoor
-      POSTGRES_PASSWORD: durindoor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: durindoor
     command:
       - "postgres"
@@ -74,8 +93,6 @@ services:
       - "log_lock_waits=on"
       - "-c"
       - "wal_level=replica"
-    ports:
-      - "5432:5432"
     volumes:
       - durindoor-pg17-data:/var/lib/postgresql/data
     healthcheck:
@@ -92,10 +109,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: durindoor
-      POSTGRES_PASSWORD: durindoor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: durindoor
-    ports:
-      - "5432:5432"
     volumes:
       - durindoor-pg16-data:/var/lib/postgresql/data
     healthcheck:

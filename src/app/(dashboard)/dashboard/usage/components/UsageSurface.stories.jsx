@@ -98,6 +98,20 @@ export const UsageTrendEmpty = {
   },
 };
 
+export const UsageTrendError = {
+  render: () => <UsageChart period="7d" refreshKey={0} />,
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/usage",
+      params: {},
+      routes: {
+        "GET /api/usage/chart?period=7d&tz=UTC": { body: { error: "Usage unavailable" }, status: 503 },
+      },
+    },
+  },
+};
+
 const groupedData = [
   {
     groupKey: "gpt-5",

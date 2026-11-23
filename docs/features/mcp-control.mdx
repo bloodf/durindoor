@@ -28,6 +28,8 @@ Remote clients can use this endpoint with any of these credentials:
 - header `x-9r-cli-token`
 - DurinDoor API key (`Authorization: Bearer`, `x-api-key`, or `?key=`)
 
+Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
+
 When `requireApiKey` is off, a loopback caller on the same machine may omit credentials. That skip is for CLI and MCP clients, which send no `Origin`. A request that carries an `Origin` which is not this server is refused even on loopback: the wrapper stamps trusted-peer headers on every request, including a browser's, and a page on a hostile origin would otherwise drive these tools from the victim's machine. Remote callers always authenticate, even when `requireApiKey` and `requireLogin` are off. Unauthenticated requests receive `{ error: "Unauthorized" }` with HTTP 401.
 
 A gateway key does not unlock this endpoint.

@@ -34,7 +34,7 @@ describe("kiro API-key auth (KiroService.validateApiKey)", () => {
       authMethod: "api_key",
     });
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe("https://codewhisperer.us-east-1.amazonaws.com");
     expect(init.headers.Authorization).toBe("Bearer my-secret-key");
     expect(init.headers["x-amz-target"]).toBe(

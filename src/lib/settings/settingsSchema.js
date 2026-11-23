@@ -51,6 +51,16 @@ const DEFAULT_SETTINGS = {
    * applyEgressBucketCooldown). Empty by default -- opt-in per provider id.
    */
   egressBucketedProviders: [],
+  // Settings used by routing, CLI integrations and the MITM manager.
+  ccFilterNaming: false,
+  enableTranslator: false,
+  providerThinking: {},
+  fallbackStrategy: "fill-first",
+  quotaSelection: {},
+  cloudUrl: "",
+  cliproxyapi_url: "",
+  mitmEnabled: false,
+  mitmCertInstalled: false,
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",
@@ -249,7 +259,7 @@ const specialTypes = {
   comboStrategies: "object", comboPrompts: "object", compressionEngines: "object",
   modelFallbacks: "object", mediaRoutes: "object",
   requireApiKey: "boolean", password: "string", mitmSudoEncrypted: "string",
-  postgresUrl: "string", operatorWebhooks: "array", claudeAutoPing: "boolean", codexAutoPing: "boolean",
+  postgresUrl: "string", operatorWebhooks: "array", claudeAutoPing: "object", codexAutoPing: "object",
   theme: "string",
   pxpipeAutoInstall: "unknown",
 };

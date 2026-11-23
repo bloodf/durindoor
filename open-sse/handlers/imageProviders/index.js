@@ -14,6 +14,7 @@ import cloudflareAi from "./cloudflareAi.js";
 import antigravity from "./antigravity.js";
 import minimax from "./minimax.js";
 import together from "./together.js";
+import nvidia from "./nvidia.js";
 import magnific from "./magnific.js";
 import deepai from "./deepai.js";
 import copilotM365 from "./copilotM365.js";
@@ -34,6 +35,7 @@ const ADAPTERS = {
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
   uberllm: createOpenAIAdapter("uberllm"),
   together,
+  nvidia,
   xai: createOpenAIAdapter("xai"),
   gemini,
   codex,

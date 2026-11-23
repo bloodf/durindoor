@@ -12,8 +12,6 @@
 //   - A row is counted once. New rows match on the id, legacy rows match on
 //     the secret they already carry, and the two branches are disjoint.
 
-import { getMetaSync } from "./metaStore.js";
-import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "./usageKeyIdentity.js";
 import { tableColumnNames } from "./apiKeyUsageTotals.js";
 
 const columnsCache = new WeakMap();
@@ -76,18 +74,16 @@ export function resolveUsageApiKeyIdSync(db, apiKey, admittedApiKeyId) {
 export function apiKeyUsageScope(db, { apiKeyId = null, apiKey = null } = {}) {
   const columns = usageHistoryColumns(db);
   const hasSecret = columns.has("apiKey");
-  const identity = apiKey && Number(getMetaSync(db, "schemaVersion", "0")) >= 33 ?
-    fingerprintApiKey(apiKey, getOrCreateUsageIdentitySalt(db)) : apiKey;
   if (columns.has("apiKeyId") && apiKeyId) {
     // A legacy row is only reachable through the secret it still stores.
     if (hasSecret && apiKey) {
       return {
         clause: "(apiKeyId = ? OR (apiKeyId IS NULL AND apiKey = ?))",
-        params: [apiKeyId, identity],
+        params: [apiKeyId, apiKey],
       };
     }
     return { clause: "apiKeyId = ?", params: [apiKeyId] };
   }
-  if (hasSecret && apiKey) return { clause: "apiKey = ?", params: [identity] };
+  if (hasSecret && apiKey) return { clause: "apiKey = ?", params: [apiKey] };
   return { clause: "1 = 0", params: [] };
 }

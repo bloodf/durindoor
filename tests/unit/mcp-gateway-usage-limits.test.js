@@ -1,4 +1,3 @@
-import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "@/lib/db/helpers/usageKeyIdentity.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,8 +23,7 @@ vi.mock("@/lib/localDb", async () => {
 let KEY; let gatewayKey;
 const RECORD = { key: null, policy: { monthlyRequestLimit: 2 } };
 const original = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"].map((name) => [name, process.env[name]]));
-let directory; let adapter;
-const usageKey = (key) => fingerprintApiKey(key, getOrCreateUsageIdentitySalt(adapter)); let database; let handleJsonRpc; let checkApiKeyLimits;
+let directory; let adapter; let database; let handleJsonRpc; let checkApiKeyLimits;
 
 async function call(key = KEY) {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "tools__echo", arguments: {} } };
@@ -78,7 +76,7 @@ afterAll(async () => {
 it.each(failures)("%s keeps its error row but uses none of the key's limits", async (_name, arrange) => {
   arrange();
   for (let i = 0; i < 2; i++) await call();
-  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[usageKey(KEY), "error"], [usageKey(KEY), "error"]]);
+  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "error"], [KEY, "error"]]);
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
   const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
@@ -114,7 +112,7 @@ it("successful calls still count toward the key's request limit", async () => {
   state.dispatch.mockResolvedValue({ result: { content: [], isError: false } });
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
   for (let i = 0; i < 2; i++) await call();
-  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[usageKey(KEY), "ok"], [usageKey(KEY), "ok"]]);
+  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "ok"], [KEY, "ok"]]);
   expect((await checkApiKeyLimits(RECORD))?.message || "").toContain("monthly requests limit reached");
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 2 });
 });
@@ -144,7 +142,7 @@ it.each(failures)("%s identifies a real gateway-only key through auth and grants
     [{ instanceId: "instance-1", slug: "tools", toolAllowlist: ["echo"] }],
     "tools__echo", {},
   );
-  expect(rows()).toEqual([expect.objectContaining({ apiKey: usageKey(gateway.key), status: "error" })]);
+  expect(rows()).toEqual([expect.objectContaining({ apiKey: gateway.key, status: "error" })]);
   for (const period of ["all", "today", "24h"]) {
     const stats = await database.getUsageStats(period);
     expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
@@ -275,7 +273,7 @@ it.each([[{}, 0], [{ prompt_tokens: 5 }, null]])("excludes failed MCP ledger usa
   const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
   expect(window.day).toEqual({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
   expect(window.month).toEqual(window.day);
-  expect(rows()).toEqual([expect.objectContaining({ apiKey: usageKey(KEY), status: "error" })]);
+  expect(rows()).toEqual([expect.objectContaining({ apiKey: KEY, status: "error" })]);
 });
 
 it.each([
@@ -299,12 +297,12 @@ it.each(["missing", "overwrite", "legacy"])("keeps failed calls out of the %s li
   state.dispatch.mockRejectedValue(new Error("upstream down"));
   await call();
   // Imported history already has attribution, independently of the handler fix.
-  adapter.run("UPDATE usageHistory SET apiKey = ?", [usageKey(KEY)]);
+  adapter.run("UPDATE usageHistory SET apiKey = ?", [KEY]);
   const at = new Date().toISOString();
   // Non-MCP errors and incomplete historical attribution must still count.
   for (const [provider, status] of [["mcp-gateway", "ok"], ["fixture", "error"], [null, "error"], ["mcp-gateway", null], [null, null]]) {
     adapter.run("INSERT INTO usageHistory(timestamp, apiKey, provider, status, promptTokens, completionTokens, cost, tokens) VALUES(?, ?, ?, ?, 3, 2, 0.25, ?)",
-      [at, usageKey(KEY), provider, status, JSON.stringify({ prompt_tokens: 3, completion_tokens: 2 })]);
+      [at, KEY, provider, status, JSON.stringify({ prompt_tokens: 3, completion_tokens: 2 })]);
   }
   if (mode === "missing") adapter.run("DELETE FROM apiKeyUsageTotals");
   else adapter.run("INSERT INTO apiKeyUsageTotals(apiKeyId, totalRequests) VALUES('mcp-key', 99)");
@@ -362,7 +360,7 @@ it("preserves unknown-cost failed MCP attribution through replay and rebuild", a
   const paid = { usageEventId: "preserved-chat-paid-replay", provider: "openai", status: "error", apiKey: KEY, tokens: { prompt_tokens: 3 }, cost: 1, strict: true };
   for (const entry of [failed, failed, paid, paid]) await database.saveRequestUsage({ ...entry });
 
-  expect(rows().map(({ apiKey, status }) => [apiKey, status])).toEqual([[usageKey(KEY), "error"], [usageKey(KEY), "error"]]);
+  expect(rows().map(({ apiKey, status }) => [apiKey, status])).toEqual([[KEY, "error"], [KEY, "error"]]);
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 3, totalCost: 1, unknownCostRequests: 0 });
   const window = await database.getApiKeyWindowUsageTotals(KEY, start, start);
   expect(window.day).toEqual({ inputTokens: 3, outputTokens: 0, requests: 1, cost: 1, unknownCostRequests: 0 });

@@ -59,7 +59,7 @@ describe("API-key lifetime usage accounting", () => {
       totalCost: 0,
       totalRequests: 3,
     });
-    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE apiKeyId = ? AND apiKey != ?`, ["key-1", secret]).count).toBe(3);
+    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?`, [secret]).count).toBe(3);
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'key-1'`).key).toBe(secret);
   });
 
@@ -87,7 +87,7 @@ describe("API-key lifetime usage accounting", () => {
     await database.saveRequestUsage({ ...base, usageEventId: "event-b" });
 
     expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 10, totalRequests: 2 });
-    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE apiKeyId = ? AND apiKey != ?`, ["key-1", secret]).count).toBe(2);
+    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?`, [secret]).count).toBe(2);
   });
 
   it("preserves authoritative direct cost for an unpriced model", async () => {

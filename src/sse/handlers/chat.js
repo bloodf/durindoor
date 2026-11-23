@@ -497,7 +497,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     required: settings.requireApiKey === true
   });
   if (apiKey) {
-    log.debug("AUTH", "API key provided");
+    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }

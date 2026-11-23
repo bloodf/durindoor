@@ -1,11 +1,10 @@
 import { decodeUsdReceipt } from "../../usage/receipt.js";
 import { MAX_ATTRIBUTION_VALUES, validAttributionValue } from "../../usageAttribution.js";
 import { EventEmitter } from "events";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMetaSync } from "../helpers/metaStore.js";
-import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "../helpers/usageKeyIdentity.js";
 import {
   EMPTY_ALL_TIME_CHART_DAYS,
   MAX_USAGE_CHART_BUCKETS,
@@ -36,8 +35,28 @@ function maskApiKey(key) {
   return "***";
 }
 
-function getApiKeyStatsKey(apiKey, model, provider) {
-  return `${apiKey || "local-no-key"}|${model}|${provider || "unknown"}`;
+const USAGE_IDENTITY_SALT_META_KEY = "usageIdentitySalt";
+
+function getOrCreateUsageIdentitySalt(adapter) {
+  const existing = getMetaSync(adapter, USAGE_IDENTITY_SALT_META_KEY);
+  if (existing) return existing;
+  const generated = randomBytes(32).toString("hex");
+  adapter.run(`INSERT OR IGNORE INTO _meta(key, value) VALUES(?, ?)`, [USAGE_IDENTITY_SALT_META_KEY, generated]);
+  return getMetaSync(adapter, USAGE_IDENTITY_SALT_META_KEY);
+}
+
+/**
+ * Derives a stable installation-scoped identity without exposing API-key
+ * material or an offline-verifiable unsalted digest.
+ */
+function fingerprintApiKey(key, salt) {
+  if (!key || !isString(key)) return null;
+  return `hmac-sha256:${createHmac("sha256", salt).update(key).digest("hex")}`;
+}
+
+function getApiKeyStatsKey(apiKey, model, provider, salt) {
+  const keyIdentity = fingerprintApiKey(apiKey, salt) || "local-no-key";
+  return `${keyIdentity}|${model}|${provider || "unknown"}`;
 }
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
@@ -779,7 +798,8 @@ async function commitUsageTransaction(db, entry, write) {
  * apiKeyId is the stable id of the key that was admitted for this event. It
  * is authoritative over the stored secret: only the id survives a later
  * secret change, so the request stays attached to the key's budgets. The
- * usage history stores an installation-scoped HMAC rather than the credential.
+ * secret is still stored, and legacy rows without an id keep their existing
+ * scoped association through it.
  */
 export async function saveRequestUsage(entry) {
   entry = { ...entry };
@@ -959,7 +979,7 @@ export async function saveRequestUsage(entry) {
       ];
       const historyValues = [
         entry.timestamp, entry.provider || null, entry.model || null,
-        entry.connectionId || null, fingerprintApiKey(entry.apiKey, identitySalt), entry.endpoint || null,
+        entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost, entry.status || "ok",
         stringifyJson(tokens), stringifyJson(entry.meta), usageEventId || null,
         entry.comboId || null, entry.comboName || null, usageSessionId, usageProjectId, ...Object.values(usageTokenColumns(tokens)),
@@ -976,7 +996,7 @@ export async function saveRequestUsage(entry) {
         historyValues
       );
       if ((insert?.changes ?? 0) === 0) return;
-      upsertLastSeen(db, { ...entry, apiKey: fingerprintApiKey(entry.apiKey, identitySalt) });
+      upsertLastSeen(db, entry);
 
       const dateKey = toLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
@@ -984,7 +1004,7 @@ export async function saveRequestUsage(entry) {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
         byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {}
       };
-      aggregateEntryToDay(day, { ...entry, apiKey: fingerprintApiKey(entry.apiKey, identitySalt), latencyMs, ttftMs, ...costSplit }, identitySalt);
+      aggregateEntryToDay(day, { ...entry, latencyMs, ttftMs, ...costSplit }, identitySalt);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
       // Atomic counter increment in same transaction
@@ -1011,7 +1031,7 @@ export async function saveRequestUsage(entry) {
     }
 
     if (inserted) {
-      pushToRing({ ...entry, apiKey: fingerprintApiKey(entry.apiKey, getOrCreateUsageIdentitySalt(db)), storedEventId: usageEventId });
+      pushToRing({ ...entry, storedEventId: usageEventId });
       // Non-success usage remains billable history but must not overwrite the
       // request lifecycle's error/cancellation state with a completed session.
       if (!entry.status || entry.status === "ok") {
@@ -1272,11 +1292,11 @@ export async function getUsageStats(period = "all", opts = {}) {
   let allApiKeys = [];
   try {allApiKeys = await getApiKeys();} catch {}
   const apiKeyMap = Object.create(null);
-  for (const k of allApiKeys) apiKeyMap[fingerprintApiKey(k.key, identitySalt)] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
   let gatewayKeys = [];
   try {gatewayKeys = await getGatewayKeys();} catch {}
   const gatewayKeyMap = Object.create(null);
-  for (const k of gatewayKeys) gatewayKeyMap[fingerprintApiKey(k.key, identitySalt)] = { name: k.name, id: k.id };
+  for (const k of gatewayKeys) gatewayKeyMap[k.key] = { name: k.name, id: k.id };
 
   // API responses use database IDs for registered keys and salted HMACs for
   // deleted/unknown keys. Neither identity contains raw key material.
@@ -1312,7 +1332,7 @@ export async function getUsageStats(period = "all", opts = {}) {
     }
     const ordinal = unknownApiKeyIds.get(lookup);
     return {
-      id: `api-key:${lookup}`,
+      id: `api-key:${fingerprintApiKey(lookup, identitySalt)}`,
       keyName: `Deleted API key ${ordinal}`,
       apiKeyMasked: maskApiKey(apiKey || "unknown")
     };
@@ -1665,7 +1685,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
 
       if (r.apiKey && isString(r.apiKey)) {
-        const identity = getPublicApiKeyIdentity(r.apiKey, r.apiKey, r.provider);
+        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt), r.provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
         const akKey = `${identity.id}|${r.model}|${r.provider || "unknown"}`;

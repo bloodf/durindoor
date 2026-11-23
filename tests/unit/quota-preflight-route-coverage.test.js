@@ -8,15 +8,14 @@ const handlersDir = join(here, "../../src/sse/handlers");
 
 // OmniRoute PR #6742 regression guard (its "issue-6686 quota preflight
 // coverage" test): every credentialed route that must route account selection
-// through the live quota preflight has to import AND call the wrapper, and
-// must not fall back to the bare selector. Best-effort single-attempt routes
+// through the live quota preflight has to call the wrapper directly or via
+// the shared media pipeline, and must not fall back to the bare selector. Best-effort single-attempt routes
 // (count_tokens, Gemini-native v1beta) intentionally keep the plain selector.
 const QUOTA_PREFLIGHT_ROUTES = [
   "chat/singleModel.js",
   "embeddings.js",
   "fetch.js",
-  "imageEdit.js",
-  "imageGeneration.js",
+  "media/pipeline.js",
   "moderations.js",
   "music.js",
   "rerank.js",
@@ -27,6 +26,15 @@ const QUOTA_PREFLIGHT_ROUTES = [
 ];
 
 describe("quota preflight route coverage (OmniRoute #6742)", () => {
+  for (const file of ["imageEdit.js", "imageGeneration.js"]) {
+    it(`${file} delegates account selection to the shared media pipeline`, () => {
+      const source = readFileSync(join(handlersDir, file), "utf8");
+      expect(source).toMatch(/import\s*\{[^}]*\brunMediaAccounts\b[^}]*\}\s*from\s*["']\.\/media\/pipeline\.js["']/s);
+      expect(source).toMatch(/\brunMediaAccounts\s*\(/);
+      expect(source).not.toMatch(/getProviderCredentials(?!WithQuotaPreflight)\s*\(/);
+    });
+  }
+
   for (const file of QUOTA_PREFLIGHT_ROUTES) {
     it(`${file} selects credentials through getProviderCredentialsWithQuotaPreflight only`, () => {
       const source = readFileSync(join(handlersDir, file), "utf8");

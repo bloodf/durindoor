@@ -3,8 +3,8 @@
 // The connection URL (with password) is stored inside the canonical
 // settings row at `settings.postgresUrl`, encrypted with the same
 // AES-256-GCM master key that `columnCrypto.encryptField` uses. The
-// AAD is the literal name `postgres-url`, so the ciphertext cannot be
-// replayed into another settings field.
+// Version 2 binds the ciphertext to the settings field; version 1 remains
+// readable with its historical `postgres-url` AAD.
 //
 // Why the settings row and not a separate `durindoor-secrets.json`
 // file? The settings row is the single source of truth for runtime
@@ -43,7 +43,7 @@ import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 // Public name of the encrypted field inside the settings row.
 export const SETTINGS_FIELD = "postgresUrl";
-export const AAD = "postgres-url";
+export const AAD = "settings:postgresUrl";
 export const POSTGRES_URL_KEY = "postgres-url";
 
 // Legacy file name (v1 layout). Read-only after this module ships.
@@ -79,7 +79,7 @@ export function secretsReadLegacy(key) {
   if (blob == null) return null;
   if (!isEncryptedBlob(blob)) return null;
   try {
-    return decryptField(blob, key);
+    return decryptField(blob, blob.v === 1 ? key : AAD);
   } catch {
     return null;
   }
@@ -95,7 +95,8 @@ export function secretsReadLegacy(key) {
 export function decryptPostgresUrl(blob) {
   if (!isEncryptedBlob(blob)) return null;
   try {
-    return decryptField(blob, AAD);
+    if (blob.v !== 1) return decryptField(blob, AAD);
+    try { return decryptField(blob, POSTGRES_URL_KEY); } catch { return decryptField(blob); }
   } catch {
     return null;
   }
@@ -110,7 +111,7 @@ export function encryptPostgresUrl(url) {
   if (!isString(url) || !url.length) {
     throw new Error("encryptPostgresUrl: url must be a non-empty string");
   }
-  return encryptField(url, AAD);
+  return encryptField(url, AAD, 2);
 }
 
 /**

@@ -18,6 +18,7 @@ import { getAppVersion } from "../../version.js";
 import { chmodQuiet } from "../../paths.js";
 
 export const SNAPSHOT_PREFIX = "data.sqlite.postgres-cutover-";
+const KEEP_SNAPSHOTS = 3;
 
 function ts() {
   const d = new Date();
@@ -34,6 +35,10 @@ export async function snapshotSqlite() {
   const dest = path.join(backupsDir, `${SNAPSHOT_PREFIX}${ts()}-${getAppVersion()}.sqlite`);
   fs.copyFileSync(src, dest);
   try { chmodQuiet(dest, 0o600); } catch { /* noop on win32 */ }
+  // Keep recent cutover restore points without retaining every historical copy.
+  for (const old of listSnapshots().filter((file) => file !== dest).slice(KEEP_SNAPSHOTS - 1)) {
+    try { fs.rmSync(old, { force: true }); } catch { /* best effort */ }
+  }
   return dest;
 }
 
@@ -41,7 +46,7 @@ export function listSnapshots() {
   const backupsDir = currentBackupsDir();
   if (!fs.existsSync(backupsDir)) return [];
   return fs.readdirSync(backupsDir)
-    .filter((n) => n.startsWith(SNAPSHOT_PREFIX))
+    .filter((n) => n.startsWith(SNAPSHOT_PREFIX) && n.endsWith(".sqlite") && fs.lstatSync(path.join(backupsDir, n)).isFile())
     .map((n) => path.join(backupsDir, n))
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 }

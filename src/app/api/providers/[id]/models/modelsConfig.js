@@ -1,3 +1,4 @@
+import { FILTERS } from "../../suggested-models/filters.js";
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
@@ -706,7 +707,7 @@ export const PROVIDER_MODELS_CONFIG = {
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
-  chutes: createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"),
+  chutes: { ...createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"), parseResponse: (data) => FILTERS["chutes-all"](parseOpenAIStyleModels(data)) },
   nvidia: createOpenAIModelsConfig("https://integrate.api.nvidia.com/v1/models"),
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),

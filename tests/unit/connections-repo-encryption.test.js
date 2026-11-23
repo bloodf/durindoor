@@ -154,7 +154,10 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
       `UPDATE providerConnections SET data = ? WHERE id = ?`,
       [JSON.stringify(parsedA), b.id],
     );
-    expect((await repo.getProviderConnectionById(b.id)).accessToken).toBeNull();
+    const unreadable = await repo.getProviderConnectionById(b.id);
+    expect(unreadable.accessToken).toBeNull();
+    expect(unreadable.testStatus).toBe("error");
+    expect((await repo.getProviderConnectionById(a.id)).accessToken).toBe("AT-A");
   });
 
   it("reads legacy plaintext rows (pre-migration compat)", async () => {

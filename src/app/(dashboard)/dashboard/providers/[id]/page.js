@@ -2028,7 +2028,7 @@ function ProviderDetail({ providerId }) {
               />
             ) : isCompatible ? (
               <ProviderIcon
-                src={`/providers/${providerId}.png`}
+                src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/${providerId}.png`}
                 fallbackSrc={isAnthropicCompatible ? "/providers/anthropic-m.png" : providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png"}
                 alt={providerInfo.name}
                 size={48}

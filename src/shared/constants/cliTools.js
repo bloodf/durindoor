@@ -3,7 +3,7 @@ export const MITM_TOOLS = {
   antigravity: {
     id: "antigravity",
     name: "Antigravity",
-    image: "/providers/antigravity.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/antigravity.png`,
     color: "#4285F4",
     description: "Google Antigravity IDE with MITM",
     configType: "mitm",
@@ -30,7 +30,7 @@ export const MITM_TOOLS = {
   kiro: {
     id: "kiro",
     name: "Kiro",
-    image: "/providers/kiro.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/kiro.png`,
     color: "#FF6B00",
     description: "Kiro IDE with MITM",
     configType: "mitm",
@@ -57,7 +57,7 @@ export const MITM_TOOLS = {
   // cursor: {
   //   id: "cursor",
   //   name: "Cursor",
-  //   image: "/providers/cursor.png",
+  //   image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/cursor.png`,
   //   color: "#000000",
   //   description: "Cursor IDE with MITM",
   //   configType: "mitm",
@@ -75,7 +75,7 @@ export const CLI_TOOLS = {
   claude: {
     id: "claude",
     name: "Claude Code",
-    image: "/providers/claude.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/claude.png`,
     color: "#D97757",
     description: "Anthropic Claude Code CLI",
     configType: "env",
@@ -99,7 +99,7 @@ export const CLI_TOOLS = {
   openclaw: {
     id: "openclaw",
     name: "Open Claw",
-    image: "/providers/openclaw.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/openclaw.png`,
     color: "#FF6B35",
     description: "Open Claw AI Assistant",
     configType: "custom",
@@ -107,7 +107,7 @@ export const CLI_TOOLS = {
   codex: {
     id: "codex",
     name: "OpenAI Codex CLI / App",
-    image: "/providers/codex.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/codex.png`,
     color: "#10A37F",
     description: "OpenAI Codex CLI",
     configType: "custom",
@@ -115,7 +115,7 @@ export const CLI_TOOLS = {
   copilot: {
     id: "copilot",
     name: "GitHub Copilot",
-    image: "/providers/copilot.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/copilot.png`,
     color: "#1F6FEB",
     description: "GitHub Copilot in VS Code via 9Router extension",
     configType: "guide",
@@ -143,7 +143,7 @@ export const CLI_TOOLS = {
   opencode: {
     id: "opencode",
     name: "OpenCode",
-    image: "/providers/opencode.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/opencode.png`,
     color: "#E87040",
     description: "OpenCode AI Terminal Assistant",
     configType: "custom",
@@ -151,7 +151,7 @@ export const CLI_TOOLS = {
   cowork: {
     id: "cowork",
     name: "Claude Cowork",
-    image: "/providers/claude.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/claude.png`,
     color: "#D97757",
     description: "Claude Desktop Cowork (third-party inference)",
     configType: "custom",
@@ -159,7 +159,7 @@ export const CLI_TOOLS = {
   hermes: {
     id: "hermes",
     name: "Hermes Agent",
-    image: "/providers/hermes.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/hermes.png`,
     color: "#8B5CF6",
     description: "Nous Research self-improving AI agent",
     configType: "custom",
@@ -167,7 +167,7 @@ export const CLI_TOOLS = {
   droid: {
     id: "droid",
     name: "Factory Droid",
-    image: "/providers/droid.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/droid.png`,
     color: "#00D4FF",
     description: "Factory Droid AI Assistant",
     configType: "custom",
@@ -175,7 +175,7 @@ export const CLI_TOOLS = {
   cursor: {
     id: "cursor",
     name: "Cursor",
-    image: "/providers/cursor.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/cursor.png`,
     color: "#000000",
     description: "Cursor AI Code Editor",
     configType: "guide",
@@ -196,7 +196,7 @@ export const CLI_TOOLS = {
   cline: {
     id: "cline",
     name: "Cline",
-    image: "/providers/cline.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/cline.png`,
     color: "#00D1B2",
     description: "Cline AI Coding Assistant",
     configType: "custom",
@@ -204,7 +204,7 @@ export const CLI_TOOLS = {
   kilo: {
     id: "kilo",
     name: "Kilo Code",
-    image: "/providers/kilocode.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/kilocode.png`,
     color: "#FF6B6B",
     description: "Kilo Code AI Assistant",
     configType: "custom",
@@ -212,7 +212,7 @@ export const CLI_TOOLS = {
   roo: {
     id: "roo",
     name: "Roo",
-    image: "/providers/roo.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/roo.png`,
     color: "#FF6B6B",
     description: "Roo AI Assistant",
     configType: "guide",
@@ -227,7 +227,7 @@ export const CLI_TOOLS = {
   continue: {
     id: "continue",
     name: "Continue",
-    image: "/providers/continue.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/continue.png`,
     color: "#7C3AED",
     description: "Continue AI Assistant",
     configType: "guide",
@@ -251,7 +251,7 @@ export const CLI_TOOLS = {
   amp: {
     id: "amp",
     name: "Amp CLI",
-    image: "/providers/amp.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/amp.png`,
     color: "#F97316",
     description: "Amp coding agent — custom API endpoints unsupported",
     docsUrl: "https://ampcode.com/manual",
@@ -265,7 +265,7 @@ export const CLI_TOOLS = {
   qwen: {
     id: "qwen",
     name: "Qwen Code",
-    image: "/providers/qwen.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/qwen.png`,
     color: "#10B981",
     description: "Alibaba Qwen Code CLI — supports OpenAI, Anthropic & Gemini providers via DurinDoor",
     docsUrl: "https://qwenlm.github.io/qwen-code-docs/en/users/configuration/model-providers/",
@@ -314,7 +314,7 @@ export const CLI_TOOLS = {
   "deepseek-tui": {
     id: "deepseek-tui",
     name: "DeepSeek TUI",
-    image: "/providers/deepseek-tui.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/deepseek-tui.png`,
     color: "#4D6BFE",
     description: "DeepSeek Terminal Coding Agent (Rust TUI)",
     docsUrl: "https://github.com/DeepSeek-TUI/DeepSeek-TUI",
@@ -334,7 +334,7 @@ export const CLI_TOOLS = {
   jcode: {
     id: "jcode",
     name: "jcode",
-    image: "/providers/jcode.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/jcode.png`,
     color: "#FF6B35",
     description: "High-performance Rust-based coding agent harness",
     configType: "custom",
@@ -363,7 +363,7 @@ export const CLI_TOOLS = {
   "grok-build": {
     id: "grok-build",
     name: "Grok Build",
-    image: "/providers/grok-web.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/grok-web.png`,
     color: "#1DA1F2",
     description: "xAI Grok Build TUI coding agent",
     configType: "custom",
@@ -388,7 +388,7 @@ export const CLI_TOOLS = {
   omp: {
     id: "omp",
     name: "Oh My Pi",
-    image: "/providers/oh-my-pi.svg",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/oh-my-pi.svg`,
     color: "#7C3AED",
     description: "Oh My Pi coding agent with DurinDoor model discovery",
     docsUrl: "https://github.com/can1357/oh-my-pi",
@@ -418,7 +418,7 @@ omp`,
   pi: {
     id: "pi",
     name: "Pi (pi-coding-agent)",
-    image: "/providers/pi.svg",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/pi.svg`,
     color: "#6366F1",
     description: "Pi coding agent - minimal, extensible agent harness (pi.dev)",
     configType: "custom",
@@ -430,7 +430,7 @@ omp`,
   crush: {
     id: "crush",
     name: "Crush",
-    image: "/providers/crush.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/crush.png`,
     color: "#FB923C",
     description: "Charm Crush terminal AI coding agent",
     configType: "custom",
@@ -442,7 +442,7 @@ omp`,
   forge: {
     id: "forge",
     name: "ForgeCode",
-    image: "/providers/forge.png",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/forge.png`,
     color: "#EAB308",
     description: "Antinomy HQ ForgeCode agent harness",
     configType: "custom",
@@ -454,7 +454,7 @@ omp`,
   smelt: {
     id: "smelt",
     name: "Smelt",
-    image: "/providers/smelt.svg",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/smelt.svg`,
     color: "#EF4444",
     description: "Smelt terminal AI coding assistant",
     configType: "custom",
@@ -466,7 +466,7 @@ omp`,
   codewhale: {
     id: "codewhale",
     name: "CodeWhale",
-    image: "/providers/codewhale.svg",
+    image: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/codewhale.svg`,
     color: "#4F46E5",
     description: "CodeWhale terminal coding agent (successor to DeepSeek TUI)",
     configType: "custom",

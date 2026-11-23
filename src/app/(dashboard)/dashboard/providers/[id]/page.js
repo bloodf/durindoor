@@ -663,6 +663,12 @@ function ProviderDetail({ providerId }) {
     saveProviderStrategy(strategy, providerStickyLimit);
   };
 
+  const handleEarliestResetToggle = (enabled) => {
+    const strategy = enabled ? "earliest-reset" : null;
+    setProviderStrategy(strategy);
+    saveProviderStrategy(strategy, providerStickyLimit);
+  };
+
   const saveThinkingConfig = async (mode) => {
     try {
       const settingsRes = await fetch("/api/settings", { cache: "no-store" });
@@ -2222,6 +2228,10 @@ function ProviderDetail({ providerId }) {
                       onChange={handleCacheAffinityToggle} />
                   </>
                 )}
+              </div>
+              <div className="inline-flex items-center gap-2">
+                <span className="text-xs text-dd-muted font-medium">Earliest Reset</span>
+                <Toggle ariaLabel="Toggle earliest reset" checked={providerStrategy === "earliest-reset"} onChange={handleEarliestResetToggle} />
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">

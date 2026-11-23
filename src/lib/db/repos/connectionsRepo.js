@@ -7,6 +7,11 @@ import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
+import {
+  advanceAntigravityGeneration,
+  deleteAntigravityRotationRows,
+  seedAntigravityLease,
+} from "../../antigravity/leaseSql.js";
 import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { ORCAROUTER_ID, credentialHint } from "open-sse/providers/orcarouterCatalog.js";
@@ -496,6 +501,9 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
       mergeCodexReauthorization(existing, data, now) :
       { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: now };
       upsert(db, merged);
+      if ((merged.provider === "antigravity" || merged.provider === "agy") && isString(data.refreshToken) && data.refreshToken && data.refreshToken !== existing.refreshToken) {
+        advanceAntigravityGeneration(db, merged.id, data.refreshToken, data.providerSpecificData?.antigravitySubject || null);
+      }
       result = merged;
       return;
     }
@@ -528,6 +536,9 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     if (data.email !== undefined) conn.email = data.email;
 
     upsert(db, conn);
+    if (conn.provider === "antigravity" || conn.provider === "agy") {
+      seedAntigravityLease(db, conn.id, conn.refreshToken, conn.providerSpecificData?.antigravitySubject || null);
+    }
     reorderInTx(db, data.provider);
     result = conn;
   });
@@ -536,7 +547,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
 }
 
 // Critical: OAuth refresh token race — atomic merge inside transaction
-export async function updateProviderConnection(id, data, {
+export function applyProviderConnectionPatchInTx(db, id, data, {
   expectedUpdatedAt = null,
   expectedRefreshContext = null,
   returnCommitResult = false,
@@ -545,9 +556,10 @@ export async function updateProviderConnection(id, data, {
   shouldCommitConnection = null,
   // Compatibility fallback writer (#1324/#1311): re-read under the write lock
   // and refuse demoting a concurrent durable reauth marker.
-  refuseIfReauth = false
+  refuseIfReauth = false,
+  antigravityLeaseCommit = false,
+  advanceAntigravityGeneration: shouldAdvanceAntigravityGeneration = false
 } = {}) {
-  const db = await getAdapter();
   let result;
   db.transaction(() => {
     if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
@@ -600,11 +612,23 @@ export async function updateProviderConnection(id, data, {
       throw error;
     }
     upsert(db, merged);
+    if (!antigravityLeaseCommit && (existing.provider === "antigravity" || existing.provider === "agy")) {
+      const nextRefresh = isString(data.refreshToken) && data.refreshToken ? data.refreshToken : null;
+      const subject = data.providerSpecificData?.antigravitySubject || existing.providerSpecificData?.antigravitySubject || null;
+      if (shouldAdvanceAntigravityGeneration || (nextRefresh && nextRefresh !== existing.refreshToken)) {
+        advanceAntigravityGeneration(db, id, nextRefresh || existing.refreshToken, subject);
+      }
+    }
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false, null);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = returnCommitResult ? { applied: true, connection: merged } : merged;
   });
   return result;
+}
+
+export async function updateProviderConnection(id, data, options = {}) {
+  const db = await getAdapter();
+  return applyProviderConnectionPatchInTx(db, id, data, options);
 }
 
 // Atomic compare-and-set on ping markers so two processes cannot both send the
@@ -920,6 +944,7 @@ export async function deleteProviderConnection(id) {
     assertDeletionDoesNotBroadenScopedKeys(db, [id]);
     updateAutoPingEntryInTx(db, row.provider, id, false, null);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
+    deleteAntigravityRotationRows(db, [id]);
     reorderInTx(db, row.provider);
     ok = true;
   });
@@ -969,7 +994,9 @@ export function deleteProviderConnectionsByProviderInTx(db, providerId) {
     }
     assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
     for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false, null);
+    const ids = rows.map((row) => row.id);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
+    deleteAntigravityRotationRows(db, ids);
     return rows.length;
 }
 

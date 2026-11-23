@@ -150,6 +150,7 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
     );
   }
 
+  if (refreshedCredentials.rotationCommitted === true) next.rotationCommitted = true;
   if (refreshedCredentials.copilotToken) next.copilotToken = refreshedCredentials.copilotToken;
   if (refreshedCredentials.copilotTokenExpiresAt) {
     next.copilotTokenExpiresAt = refreshedCredentials.copilotTokenExpiresAt;

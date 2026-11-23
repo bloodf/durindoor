@@ -8,7 +8,7 @@ import openaiCompatNode from "./openaiCompatNode.js";
 import ollamaLocal from "./ollama-local.js";
 
 const OPENAI_COMPAT_PROVIDERS = [
-  "paraloncloud",
+  "paraloncloud", "morph",
   "openai", "openrouter", "mistral", "voyage-ai", "fireworks",
   "together", "nebius", "nvidia", "jina-ai",
   "vercel-ai-gateway", "venice", "nan",

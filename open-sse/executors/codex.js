@@ -996,6 +996,7 @@ export class CodexExecutor extends BaseExecutor {
     const delegationModel = /^(?:gpt-6\.1-(?:sol|terra)|gpt-5\.6-(?:sol|terra)|gpt-6-(?:astra|sol))(?:-ultra|\(ultra\))$/.test(model) ||
       /^gpt-5\.6-luna(?:-max|\(max\))$/.test(model);
     if (responsesLite && !delegationModel) body.parallel_tool_calls = false;
+    else if (!responsesLite && !isCompact) delete body.parallel_tool_calls;
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)

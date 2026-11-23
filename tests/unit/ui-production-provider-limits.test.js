@@ -54,6 +54,14 @@ describe("ProviderLimits delete confirmation", () => {
 
   afterEach(() => { act(() => root.unmount()); container.remove(); });
 
+  it("requests a Codex credential refresh from the connection row", async () => {
+    await act(async () => { root.render(React.createElement(ProviderLimits)); await Promise.resolve(); await Promise.resolve(); });
+    const refresh = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Refresh credential");
+    expect(refresh).toBeDefined();
+    await act(async () => { refresh.click(); await Promise.resolve(); });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/providers/codex-1/refresh-token", { method: "POST" });
+  });
+
   it("requires DS confirmation before destructive provider deletion", async () => {
     await act(async () => { root.render(React.createElement(ProviderLimits)); await Promise.resolve(); await Promise.resolve(); });
     const deleteButton = Array.from(container.querySelectorAll("button")).find((button) => button.getAttribute("aria-label") === "Delete connection");

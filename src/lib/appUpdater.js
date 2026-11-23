@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
-import os from "os";
+import { getDataDir } from "./dataDir.js";
 import { createHash } from "crypto";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import processExitCodes from "@/shared/constants/processExitCodes";
@@ -31,15 +31,6 @@ function collectAppPids() {
   return processScan.collectAppPids({ appDir: process.cwd() });
 }
 
-// Copy updater.js into DATA_DIR so npm -g can overwrite node_modules safely
-function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router");
-  }
-  return path.join(os.homedir(), ".9router");
-}
-
 function resolveBundledUpdaterPath() {
   if (process.env.UPDATER_SCRIPT_PATH && fs.existsSync(process.env.UPDATER_SCRIPT_PATH)) {
     return process.env.UPDATER_SCRIPT_PATH;
@@ -63,6 +54,11 @@ export function ensureRuntimeUpdater(bundledPath) {
     if (!bundledPath || !fs.existsSync(bundledPath)) return bundledPath;
     const runtimeDir = path.join(getDataDir(), "runtime", "updater");
     const runtimePath = path.join(runtimeDir, "updater.js");
+    // The detached updater needs the same resolver after the package is replaced.
+    const resolverPath = path.join(path.dirname(bundledPath), "dataDir.cjs");
+    const runtimeResolver = path.join(runtimeDir, "dataDir.cjs");
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    if (fs.existsSync(resolverPath)) fs.copyFileSync(resolverPath, runtimeResolver);
     if (fs.existsSync(runtimePath)) {
       try {
         if (fileSha256(bundledPath) === fileSha256(runtimePath)) return runtimePath;

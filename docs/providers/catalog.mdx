@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 396 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 398 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -13,7 +13,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
 | Agnes | `agnes` | apikey | 4 |  |
 | Agnes (China) | `agnes-cn` | apikey | 3 |  |
-| Antigravity CLI | `agy` | oauth | 50 | [site](https://antigravity.google) |
+| Antigravity CLI | `agy` | oauth | 52 | [site](https://antigravity.google) |
 | AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
 | AI Horde | `aihorde` | apikey | 0 | [site](https://aihorde.net) |
 | AI/ML API | `aimlapi` | apikey | 6 | [site](https://aimlapi.com) |
@@ -28,7 +28,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Amazon Q | `amazon-q` | oauth | 47 | [site](https://aws.amazon.com/q/developer/) |
 | Ant Ling / Ring (inclusionAI) | `ant-ling` | apikey | 3 | [site](https://developer.ant-ling.com/en/docs/) |
 | Anthropic | `anthropic` | apikey | 20 | [site](https://console.anthropic.com) |
-| Antigravity | `antigravity` | oauth | 50 | [site](https://antigravity.google) |
+| Antigravity | `antigravity` | oauth | 52 | [site](https://antigravity.google) |
 | AnyAPI | `anyapi` | apikey | 0 |  |
 | AnySearch | `anysearch` | apikey | 0 | [site](https://anysearch.com) |
 | Api.airforce | `api-airforce` | apikey | 7 | [site](https://api.airforce) |
@@ -62,6 +62,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | BytePlus ModelArk | `byteplus` | freeTier | 7 | [site](https://console.byteplus.com/ark) |
 | Bytez | `bytez` | apikey | 3 | [site](https://bytez.com) |
 | CablyAI | `cablyai` | apikey | 0 | [site](https://cablyai.com) |
+| CanopyWave | `canopywave` | apikey | 5 | [site](https://canopywave.com) |
 | Cartesia | `cartesia` | apikey | 2 | [site](https://cartesia.ai) |
 | Cerebras | `cerebras` | apikey | 7 | [site](https://www.cerebras.ai) |
 | Cerebrium | `cerebrium` | apikey | 0 | [site](https://cerebrium.ai) |
@@ -74,7 +75,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Cheaper Inference | `cheaperinference` | apikey | 39 | [site](https://cheaperinference.com) |
 | Chenzk API | `chenzk` | apikey | 16 | [site](https://chenzk.top) |
 | Chipotle Pepper | `chipotle` | none | 1 | [site](https://amelia.chipotle.com) |
-| Chutes AI | `chutes` |  | 0 | [site](https://chutes.ai) |
+| Chutes AI | `chutes` | apikey | 0 | [site](https://chutes.ai) |
 | Clarifai | `clarifai` | apikey | 0 | [site](https://docs.clarifai.com) |
 | Claude Code | `claude` | oauth | 15 | [site](https://claude.ai) |
 | Claude Web | `claude-web` | cookie | 10 | [site](https://claude.ai) |
@@ -82,7 +83,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | ClinePass | `clinepass` | apikey, oauth | 10 | [site](https://cline.bot) |
 | CLIProxyAPI | `cliproxyapi` | apikey | 0 | [site](https://github.com/router-for-me/CLIProxyAPI) |
 | CloudCode.ONE | `cloudcode-one` | apikey | 2 | [site](https://cloudcode.one) |
-| Cloudflare | `cloudflare-ai` | apikey | 42 | [site](https://developers.cloudflare.com/workers-ai/) |
+| Cloudflare | `cloudflare-ai` | apikey | 40 | [site](https://developers.cloudflare.com/workers-ai/) |
 | Cloudflare AI Playground | `cloudflare-playground` | none | 20 | [site](https://playground.ai.cloudflare.com) |
 | Naver CLOVA Studio | `clova-studio` | apikey | 3 | [site](https://api.ncloud-docs.com/docs/en/ai-naver-clovastudio-summary) |
 | CodeBuddy CN | `codebuddy-cn` | oauth, apikey, auth_token | 11 | [site](https://copilot.tencent.com) |
@@ -157,7 +158,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | g4f Ollama | `g4f-ollama` | apikey | 1 | [site](https://g4f.dev) |
 | g4f Pollinations | `g4f-pollinations` | apikey | 2 | [site](https://g4f.dev) |
 | Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |
-| Gemini | `gemini` | freeTier | 33 | [site](https://ai.google.dev) |
+| Gemini | `gemini` | freeTier | 34 | [site](https://ai.google.dev) |
 | Gemini CLI | `gemini-cli` | oauth | 7 | [site](https://github.com/google-gemini/gemini-cli) |
 | Gemini Interactions | `gemini-interactions` | apikey | 3 | [site](https://aistudio.google.com/docs/interactions-overview) |
 | Gemini Web (Subscription) | `gemini-web` | cookie | 3 | [site](https://gemini.google.com) |
@@ -256,7 +257,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | MNN AI | `mnn-ai` | apikey | 0 | [site](https://mnnai.ru) |
 | Modal | `modal` | apikey | 1 | [site](https://modal.com/docs) |
 | ModelScope | `modelscope` | apikey | 0 | [site](https://modelscope.cn) |
-| Morph | `morph` | apikey | 7 | [site](https://morphllm.com) |
+| Morph | `morph` | apikey | 8 | [site](https://morphllm.com) |
 | Muse Code (Meta) | `muse-code` | oauth, apikey | 13 | [site](https://dev.meta.ai/docs/muse-code/auth) |
 | Muse Spark Web | `muse-spark-web` | cookie | 3 | [site](https://www.meta.ai) |
 | Naga.ac | `naga-ac` | optional | 0 | [site](https://docs.naga.ac) |
@@ -350,6 +351,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | SubQ (Decisions API) | `subq` | apikey | 1 | [site](https://subq.ai) |
 | SumoPod | `sumopod` | apikey | 0 | [site](https://ai.sumopod.com) |
 | Suno | `suno` | cookie | 4 | [site](https://suno.ai) |
+| SwiftRouter | `swiftrouter` | apikey | 16 | [site](https://swiftrouter.com) |
 | Synthetic | `synthetic` | apikey | 13 | [site](https://synthetic.new) |
 | T3 Chat Web | `t3-web` | cookie | 23 | [site](https://t3.chat) |
 | TabiToken | `tabitoken` | apikey | 4 | [site](https://tabitoken.com) |

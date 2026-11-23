@@ -100,7 +100,7 @@ it("snapshots only stored credentials; derived tokens stay fail-open", async () 
 });
 
 const HANDLERS = [
-  "chat", "embeddings", "fetch", "imageEdit", "imageGeneration", "moderations", "music",
+  "chat/singleModel", "embeddings", "fetch", "imageEdit", "imageGeneration", "moderations", "music",
   "rerank", "search", "stt", "systemone", "tts", "video", "codexAlphaSearch",
 ];
 it.each(HANDLERS)("%s handler passes a dispatch snapshot to outcome writes", (name) => {

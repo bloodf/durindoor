@@ -93,7 +93,7 @@ describe("MITM runtime lifecycle packaging", () => {
   it("wires development WebSocket upgrades before loading Next", () => {
     const source = fs.readFileSync(path.join(repoRoot, "scripts/next-owner-server.cjs"), "utf8");
     expect(source).toContain('process.env.NODE_ENV = "development"');
-    expect(source).toContain('server.on("upgrade", app.getUpgradeHandler())');
+    expect(source).toContain("upgradeHandler: app.getUpgradeHandler()");
     expect(source).toContain("webpack: true");
     expect(source.indexOf('process.env.NODE_ENV = "development"')).toBeLessThan(source.indexOf('require("next")'));
   });

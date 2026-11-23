@@ -1,5 +1,14 @@
 # iFlow compatibility investigation (#2034)
 
+## Upstream status
+
+The pinned trees requested for this pass contain no iFlow paths: [CLIProxyAPI `6eb8554f0ede`](https://github.com/router-for-me/CLIProxyAPI/tree/6eb8554f0ede) and [OmniRoute `5ffa68e83544`](https://github.com/cheaper-inference/OmniRoute/tree/5ffa68e83544). Both recursive Git tree responses were complete, not truncated.
+
+- CLIProxyAPI removed the iFlow auth modules, executor, tests and references in [`f5dc6483d5bfdc254938f91e824a45afb0774005`](https://github.com/router-for-me/CLIProxyAPI/commit/f5dc6483d5bfdc254938f91e824a45afb0774005). The commit describes the removal but does not state its underlying reason.
+- OmniRoute migrated the iFlow provider to Qoder AI in [`a5393a3ec4e717f2ef97fe4f66f3bc836c996ba2`](https://github.com/cheaper-inference/OmniRoute/commit/a5393a3ec4e717f2ef97fe4f66f3bc836c996ba2), renaming the executor and OAuth service and provider files. The commit describes a migration but does not state why it was made. Later, [`888ce1a73b05109d50b8968381c5b9370fb2fc1c`](https://github.com/cheaper-inference/OmniRoute/commit/888ce1a73b05109d50b8968381c5b9370fb2fc1c) removed the leftover refresh-lead entry because the provider had already been removed and nothing dispatched to it.
+
+Neither pinned upstream supplies an iFlow implementation to compare or port for this pass. This does not establish whether iFlow itself remains available.
+
 Comparison on 2026-11-20, against the default-branch heads fetched on that date:
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI/tree/6faa8d20b2673404cff70a2f2d9537ae0d0e684d), revision `6faa8d20b2673404cff70a2f2d9537ae0d0e684d`: no iFlow references in the checked source tree. No current iFlow OAuth, refresh, model, chat or quota contract was found there.

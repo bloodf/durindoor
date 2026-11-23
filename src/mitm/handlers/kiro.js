@@ -534,12 +534,19 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       model: mappedModel,
       messages,
       stream: true,
+      // Forward requested inference settings so the selected provider can enforce them.
+      ...(body.inferenceConfig?.maxTokens != null && { max_tokens: body.inferenceConfig.maxTokens }),
+      ...(body.inferenceConfig?.temperature != null && { temperature: body.inferenceConfig.temperature }),
+      ...(body.inferenceConfig?.topP != null && { top_p: body.inferenceConfig.topP }),
       // Forward tools so Claude uses structured tool_calls instead of XML text fallback
       ...(tools.length > 0 && { tools, tool_choice: "auto" })
     };
 
     // 3: Forward to 9router
     const routerRes = await fetchRouter(openaiBody, "/v1/chat/completions", req.headers);
+
+    // Preserve gateway errors, including providers rejecting an unsupported limit.
+    if (!routerRes.ok) return pipeSSE(routerRes, res);
 
     // 4 + 5: Re-encode response as AWS EventStream binary using standard pipeline
     const state = initKiroState(mappedModel);

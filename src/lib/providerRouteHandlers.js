@@ -38,6 +38,7 @@ const NON_SECRET_PROVIDER_SPECIFIC_FIELDS = new Set([
 "tokenEndpoint", "token_endpoint", "enablePromptCacheKey", "copilotTokenExpiresAt"]
 );
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"opendesignControlKey",
 "chatgptPlanAccount",
 "chatgptPlanBindingRevision",
 "managementApiKey",

@@ -7,4 +7,4 @@ cd tests
 node node_modules/vitest/vitest.mjs run unit/port9r-kiro-responses-0957919.test.js --maxWorkers=2
 ```
 
-With `DURINDOOR_KIRO_CREATE_RESPONSE=off` supplied to the same command, two tests failed because fallback was disabled. This demonstrates an environment dependency in the test file, but does not establish the cause of the reported integration failures. The original failure output and environment are needed to investigate those failures further.
+During the investigation, removing the test's environment isolation caused two tests to fail when `DURINDOOR_KIRO_CREATE_RESPONSE=off` was supplied. The isolation has been restored so ambient settings do not affect the default fallback tests. This does not establish the cause of the reported integration failures. The original failure output and environment are needed to investigate those failures further.

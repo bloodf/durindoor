@@ -241,6 +241,9 @@ describe("#2288 headroom process — attached child + handle stop", () => {
     expect(src).not.toMatch(/detached:\s*true/);
     expect(src).not.toMatch(/child\.unref\s*\(/);
 
+    const os = await import("node:os");
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "headroom-test-"));
+    vi.doMock("@/lib/dataDir.js", () => ({ DATA_DIR: dataDir }));
     vi.useFakeTimers();
     try {
       const { stopHeadroomProxy, __test__ } = await import("../../src/lib/headroom/process.js");
@@ -268,6 +271,8 @@ describe("#2288 headroom process — attached child + handle stop", () => {
       __test__.setManagedChild(null);
     } finally {
       vi.useRealTimers();
+      vi.doUnmock("@/lib/dataDir.js");
+      await fs.rm(dataDir, { recursive: true, force: true });
     }
   });
 });
@@ -340,6 +345,7 @@ describe("#2288 initializeApp shutdown cleans stdio + headroom", () => {
       restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
     }));
     vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {} }));
+    vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {}, stopQuotaAutoPing: () => {} }));
     vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
     vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));
     vi.doMock("@/lib/mcp/gateway/stdioClient", () => ({ killAllStdioEntries: killAllStdioEntriesFn }));

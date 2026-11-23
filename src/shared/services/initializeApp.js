@@ -14,7 +14,7 @@ import {
   WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS, VIRTUAL_IFACE_REGEX,
 } from "@/lib/tunnel";
 import { getMitmStatus, startMitm, stopMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, isSudoPasswordRequired } from "@/mitm/manager";
-import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
+import { startQuotaAutoPing, stopQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 import { killAllBridges } from "@/lib/mcp/stdioSseBridge";
 import { killAllStdioEntries } from "@/lib/mcp/gateway/stdioClient";
@@ -80,6 +80,13 @@ export async function initializeApp() {
           // promise with an outer race: Windows stop can require two serial UAC
           // operations, and a late success must still reach the exit path.
           await stopMitm(undefined, { preserveDesiredState: true });
+          g.shuttingDown = true;
+          clearInterval(g.watchdogInterval);
+          clearInterval(g.networkMonitorInterval);
+          g.watchdogInterval = null;
+          g.networkMonitorInterval = null;
+          stopQuotaAutoPing();
+          g.stopBackgroundTokenRefresh?.();
           try { killAllBridges(); } catch { /* best effort */ }
           try { killAllStdioEntries(); } catch { /* best effort */ }
           try { await stopHeadroomProxy(); } catch { /* best effort */ }
@@ -116,10 +123,19 @@ export async function initializeApp() {
     // grok-cli's ~6h TTL expires while the router is idle). The scheduler is
     // idempotent and fail-open, so a double start or an import failure is safe.
     import("@/sse/services/backgroundTokenRefresh.js")
-      .then(({ startBackgroundTokenRefresh }) => startBackgroundTokenRefresh())
+      .then(({ startBackgroundTokenRefresh, stopBackgroundTokenRefresh }) => {
+        g.stopBackgroundTokenRefresh = stopBackgroundTokenRefresh;
+        if (!g.shuttingDown) startBackgroundTokenRefresh();
+      })
       .catch((e) => console.log("[BackgroundTokenRefresh] scheduler start failed:", e.message));
   } catch (error) {
+    clearInterval(g.watchdogInterval);
+    clearInterval(g.networkMonitorInterval);
+    g.watchdogInterval = null;
+    g.networkMonitorInterval = null;
+    stopQuotaAutoPing();
     console.error("[InitApp] Error:", error);
+    throw error;
   }
 }
 

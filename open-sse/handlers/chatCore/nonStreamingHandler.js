@@ -1,3 +1,4 @@
+import { encodeClaudeThinking } from "../../translator/concerns/claudeThinkingEnvelope.js";
 import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
@@ -516,6 +517,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const message = { role: "assistant" };
     if (textContent) message.content = textContent;
     if (thinkingContent) message.reasoning_content = thinkingContent;
+    const thinkingBlocks = (responseBody.content || []).filter((block) => block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING);
+    const envelope = encodeClaudeThinking(options.effectiveModel || options.model || responseBody.model, thinkingBlocks);
+    if (envelope) message.reasoning_encrypted_content = envelope;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     // A refusal (stop_reason "refusal") carries no content blocks at all: fall back to
     // Anthropic's own explanation so the client sees why the turn is empty instead of

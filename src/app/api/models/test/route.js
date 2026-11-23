@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { isString } from "@/shared/utils/typeChecks";
 import { pingModelByKind } from "./ping";
+import { getProviderModels } from "open-sse/config/providerModels.js";
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -20,7 +21,9 @@ export async function POST(request) {
         return NextResponse.json({ error: "connectionId requires an operator session" }, { status: 403 });
       }
     }
-    const result = await pingModelByKind(model, kind || "llm", undefined, connectionId?.trim());
+    const slash = isString(model) ? model.indexOf("/") : -1;
+    const entry = slash > 0 ? getProviderModels(model.slice(0, slash)).find((item) => item.id === model.slice(slash + 1)) : null;
+    const result = await pingModelByKind(model, kind || entry?.kind || entry?.type || "llm", undefined, connectionId?.trim());
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });

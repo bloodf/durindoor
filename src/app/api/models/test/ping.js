@@ -108,11 +108,13 @@ async function pingModelByKindImpl(model, kind, baseUrl, connectionId) {
   }
 
   if (kind === "image") {
+    const imageBody = { model, prompt: "test" };
+    if (model === "nvidia/black-forest-labs/flux.1-kontext-dev") imageBody.image = "data:image/png;example_id,0";
     const res = await fetchModelTest(`${baseUrl}/api/v1/images/generations`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ model, prompt: "test" }),
-      signal: AbortSignal.timeout(15000)
+      body: JSON.stringify(imageBody),
+      signal: AbortSignal.timeout(60000)
     });
     const latencyMs = Date.now() - start;
     const rawText = await res.text().catch(() => "");
@@ -124,7 +126,7 @@ async function pingModelByKindImpl(model, kind, baseUrl, connectionId) {
       return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
     }
 
-    const hasImages = Array.isArray(parsed?.data) && parsed.data.length > 0;
+    const hasImages = Array.isArray(parsed?.data) && parsed.data.some((item) => item?.url || item?.b64_json);
     if (!hasImages) {
       return { ok: false, latencyMs, status: res.status, error: "Provider returned no image data for this model" };
     }

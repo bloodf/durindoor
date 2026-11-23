@@ -96,6 +96,7 @@ it("stores one daily key bucket without retaining either rotated secret", async 
 it("migrates legacy last-seen rows across pages and keeps the greatest timestamp on collision", async () => {
   const { default: migration } = await import("@/lib/db/migrations/034-usage-last-seen-key-identity.js");
   insertKey("alpha", "fixture-current", "Alpha");
+  insertKey("beta", "alpha", "Beta");
   db.run("DELETE FROM _meta WHERE key = 'usageLastSeenKeyIdentity'");
   db.run("INSERT INTO usageHistory(timestamp, provider, model, apiKey, apiKeyId) VALUES (?, 'fixture', 'model', 'fixture-old', 'alpha')", [initial]);
   const insert = (model, key, timestamp) => db.run(
@@ -105,18 +106,22 @@ it("migrates legacy last-seen rows across pages and keeps the greatest timestamp
   insert("model", "fixture-old", initial);
   const latest = "2026-09-19T17:00:00.000Z";
   insert("model", "fixture-current", latest);
+  insert("model", "alpha", initial);
   for (let i = 0; i < 101; i++) insert(`extra-${i}`, "fixture-unknown", initial);
 
   db.transaction(() => migration.up(db));
-  const rows = db.all("SELECT model, apiKey, lastUsed FROM usageLastSeen ORDER BY model");
-  expect(rows).toHaveLength(102);
-  expect(rows.at(-1)).toEqual({ model: "model", apiKey: "alpha", lastUsed: latest });
+  const rows = db.all("SELECT model, apiKey, lastUsed FROM usageLastSeen ORDER BY model, apiKey");
+  expect(rows).toHaveLength(103);
+  expect(rows.slice(-2)).toEqual([
+    { model: "model", apiKey: "alpha", lastUsed: latest },
+    { model: "model", apiKey: "beta", lastUsed: initial },
+  ]);
   const { createHmac } = await import("node:crypto");
   const digest = createHmac("sha256", fs.readFileSync(path.join(dir, "master-key")))
-    .update("durindoor:usage-api-key\0").update("fixture-unknown").digest("hex");
-  expect(new Set(rows.slice(0, -1).map((row) => row.apiKey))).toEqual(new Set([`hmac:${digest}`]));
+    .update("fixture-unknown").digest("hex");
+  expect(new Set(rows.slice(0, -2).map((row) => row.apiKey))).toEqual(new Set([`hmac:${digest}`]));
   db.transaction(() => migration.up(db));
-  expect(db.all("SELECT model, apiKey, lastUsed FROM usageLastSeen ORDER BY model")).toEqual(rows);
+  expect(db.all("SELECT model, apiKey, lastUsed FROM usageLastSeen ORDER BY model, apiKey")).toEqual(rows);
 });
 
 it("migrates legacy daily buckets without changing the period totals or dropping archived counters", async () => {
@@ -152,4 +157,104 @@ it("migrates legacy daily buckets without changing the period totals or dropping
   expect(Object.values(stats.byApiKey)).toContainEqual(expect.objectContaining({ keyName: "Deleted API key 1", requests: 3 }));
   db.transaction(() => migration.up(db));
   expect(db.get("SELECT data FROM usageDaily").data).toBe(data);
+});
+
+it("uses a recorded ID even when the historical secret now belongs to another key", async () => {
+  insertKey("alpha", "fixture-old", "Alpha");
+  await writeUsage(initial, "fixture-old", "alpha");
+  db.run("UPDATE apiKeys SET key = ? WHERE id = ?", ["fixture-current", "alpha"]);
+  insertKey("beta", "fixture-old", "Beta");
+  await writeUsage(rotated, "fixture-old", "beta");
+
+  const stats = await repo.getUsageStats("24h");
+  expect(Object.values(stats.byApiKey)).toEqual([
+    expect.objectContaining({ apiKeyKey: "api-key:alpha", keyName: "Alpha", requests: 1, lastUsed: initial }),
+    expect.objectContaining({ apiKeyKey: "api-key:beta", keyName: "Beta", requests: 1, lastUsed: rotated }),
+  ]);
+});
+
+it("resolves a current secret to its stable window even when the caller omits the ID", async () => {
+  insertKey("alpha", "fixture-old", "Alpha");
+  await writeUsage(initial, "fixture-old", "alpha");
+  db.run("UPDATE apiKeys SET key = ? WHERE id = ?", ["fixture-current", "alpha"]);
+  await writeUsage(rotated, "fixture-current", "alpha");
+
+  const window = await repo.getApiKeyWindowUsageTotals("fixture-current", initial, initial);
+  expect(window.day).toMatchObject({ requests: 2, inputTokens: 4, outputTokens: 6 });
+  const staleWindow = await repo.getApiKeyWindowUsageTotals("fixture-old", initial, initial);
+  expect(staleWindow.day.requests).toBe(0);
+});
+
+it("normalizes rollups when a fresh database imports legacy usage JSON", async () => {
+  db.close();
+  delete global._dbAdapter;
+  const legacyDir = path.join(dir, "legacy");
+  fs.mkdirSync(legacyDir);
+  vi.stubEnv("DATA_DIR", legacyDir);
+  vi.resetModules();
+
+  const apiKey = "fixture-legacy";
+  fs.writeFileSync(path.join(legacyDir, "db.json"), JSON.stringify({
+    apiKeys: [{ id: "alpha", key: apiKey, name: "Alpha", createdAt: initial }],
+  }));
+  fs.writeFileSync(path.join(legacyDir, "usage.json"), JSON.stringify({
+    history: [{ timestamp: initial, provider: "fixture", model: "model", apiKey, tokens: { prompt_tokens: 2 } }],
+    dailySummary: {
+      "2026-09-19": { requests: 1, byApiKey: { legacy: { apiKey, provider: "fixture", rawModel: "model", requests: 1 } } },
+    },
+  }));
+  db = await (await import("@/lib/db/driver.js")).getAdapter();
+  expect(db.get("SELECT apiKey, apiKeyId FROM usageHistory")).toEqual({ apiKey, apiKeyId: "alpha" });
+  expect(db.get("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual({ apiKey: "alpha", lastUsed: initial });
+  expect(JSON.parse(db.get("SELECT data FROM usageDaily").data).byApiKey).toEqual({
+    "alpha|model|fixture": { apiKey: "alpha", provider: "fixture", rawModel: "model", requests: 1 },
+  });
+});
+
+it.skipIf(!process.env.DURINDOOR_TEST_PG_URL)("rewrites populated last-seen and daily rollups on PostgreSQL", async () => {
+  vi.useRealTimers();
+  const { Client } = await import("pg");
+  const { createPostgresAdapter } = await import("@/lib/db/adapters/pgAdapter.js");
+  const { PG_MIGRATIONS, bootstrapPgMetaTable } = await import("@/lib/db/migrations/postgres/index.js");
+  const { applyVersionedMigrations } = await import("@/lib/db/migrate.js");
+  const schema = `k_agg_${process.pid}_${Date.now()}`;
+  const url = new URL(process.env.DURINDOOR_TEST_PG_URL);
+  const client = new Client({ connectionString: url.toString() });
+  await client.connect();
+  let pgDb;
+  try {
+    await client.query(`CREATE SCHEMA "${schema}"`);
+    url.searchParams.set("options", `-c search_path=${schema}`);
+    pgDb = await createPostgresAdapter({ url: url.toString() });
+    bootstrapPgMetaTable(pgDb);
+    applyVersionedMigrations(pgDb, PG_MIGRATIONS.filter(({ version }) => version <= 32));
+    pgDb.run("INSERT INTO apiKeys(id, key, createdAt) VALUES ('alpha', 'fixture-current', ?)", [initial]);
+    pgDb.run("INSERT INTO usageHistory(timestamp, provider, model, apiKey, apiKeyId) VALUES (?, 'fixture', 'model', 'fixture-old', 'alpha')", [initial]);
+    const latest = "2026-09-19T17:00:00.000Z";
+    for (const [key, timestamp] of [["fixture-old", initial], ["fixture-current", latest]]) {
+      pgDb.run("INSERT INTO usageLastSeen VALUES ('2026-09-19', 'fixture', 'model', '', ?, '', ?)", [key, timestamp]);
+    }
+    pgDb.run("INSERT INTO usageDaily VALUES ('2026-09-19', ?)", [JSON.stringify({
+      byApiKey: {
+        legacy: { apiKey: "fixture-old", provider: "fixture", rawModel: "model", requests: 1 },
+        current: { apiKey: "fixture-current", provider: "fixture", rawModel: "model", requests: 2 },
+        stranger: { apiKey: "fixture-unknown", provider: "fixture", rawModel: "model", requests: 3 },
+      },
+    })]);
+
+    expect(applyVersionedMigrations(pgDb, PG_MIGRATIONS)).toEqual({ applied: 2, from: 32, to: 35 });
+    expect(pgDb.all("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual([{ apiKey: "alpha", lastUsed: latest }]);
+    const { data } = pgDb.get("SELECT data FROM usageDaily");
+    expect(data).not.toMatch(/fixture-(old|current|unknown)/);
+    expect(Object.values(JSON.parse(data).byApiKey)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ apiKey: "alpha", requests: 3 }),
+      expect.objectContaining({ apiKey: expect.stringMatching(/^hmac:[a-f0-9]{64}$/), requests: 3 }),
+    ]));
+    expect(applyVersionedMigrations(pgDb, PG_MIGRATIONS).applied).toBe(0);
+    expect(pgDb.get("SELECT data FROM usageDaily").data).toBe(data);
+  } finally {
+    await pgDb?.close();
+    await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await client.end();
+  }
 });

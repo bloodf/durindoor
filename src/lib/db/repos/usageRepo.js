@@ -579,7 +579,7 @@ function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
 // group's split sums are either complete or NULL, never a partial total.
 function aggregateUsageWindow(db, start, end) {
   return db.all(`SELECT provider, model, connectionId, endpoint, ${usageHistoryKeyColumnsSql(db)},
-      MAX(h.apiKey) AS apiKey, MAX(timestamp) AS timestamp, COUNT(*) AS requests,
+      MAX(timestamp) AS timestamp, COUNT(*) AS requests,
       SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
       SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
       SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost,
@@ -603,7 +603,7 @@ function aggregateRowsToDay(rows) {
   return day;
 }
 
-function upsertLastSeen(db, entry, apiKeyId = apiKeyIdForSync(db, entry.apiKey, entry.apiKeyId)) {
+function upsertLastSeen(db, entry, apiKeyId = entry.apiKeyId || apiKeyIdForSync(db, entry.apiKey)) {
   upsertUsageLastSeen(db, [{
     dateKey: entry.timestamp.slice(0, 10),
     provider: entry.provider || "", model: entry.model || "", connectionId: entry.connectionId || "",
@@ -613,7 +613,9 @@ function upsertLastSeen(db, entry, apiKeyId = apiKeyIdForSync(db, entry.apiKey, 
 }
 
 function historyLastSeen(db, where, params) {
-  return db.all(`SELECT provider, model, connectionId, endpoint, ${usageHistoryKeyColumnsSql(db)}, MAX(timestamp) AS timestamp
+  return db.all(`SELECT NULLIF(provider, '') AS provider, NULLIF(model, '') AS model,
+    NULLIF(connectionId, '') AS connectionId, NULLIF(endpoint, '') AS endpoint,
+    ${usageHistoryKeyColumnsSql(db)}, MAX(timestamp) AS timestamp
     FROM usageHistory h WHERE ${where} GROUP BY 1, 2, 3, 4, 5, 6`, params).map((row) => ({
     ...row, apiKey: usageKeyIdentity(row.usageKeyId, row.legacyKey, row.provider),
   }));
@@ -692,7 +694,7 @@ function acceptedReceiptSync(db, usageEventId) {
 // Re-derive one dimension's last-seen time after a row left it.
 function refreshLastSeenSync(db, row) {
   const day = row.timestamp.slice(0, 10);
-  const keyId = apiKeyIdForSync(db, row.apiKey, row.apiKeyId);
+  const keyId = row.apiKeyId || apiKeyIdForSync(db, row.apiKey);
   const identity = usageKeyIdentity(keyId, row.apiKey, row.provider);
   const dims = [row.provider || "", row.model || "", row.connectionId || "", row.endpoint || ""];
   db.run(`DELETE FROM usageLastSeen WHERE dateKey = ? AND provider = ? AND model = ?
@@ -1099,7 +1101,8 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
     return none;
   }
   const db = await getAdapter();
-  const scope = apiKeyUsageScope(db, { apiKeyId, apiKey });
+  const resolvedId = apiKeyId || apiKeyIdForSync(db, apiKey);
+  const scope = apiKeyUsageScope(db, { apiKeyId: resolvedId, apiKey });
   // One pass over the widest window; each period is a conditional sum. The
   // weekly window is optional so callers that never ask for it keep the
   // original { day, month } shape.
@@ -1512,7 +1515,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         const identity = getPublicApiKeyIdentity(keyIdentity, provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
-        const statsKey = `${identity.id}|${rawModel}|${provider || "unknown"}`;
+        const statsKey = usageKeyStatsKey(identity.id, rawModel, provider);
         if (!stats.byApiKey[statsKey]) {
           stats.byApiKey[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel, provider: providerDisplayName, rawProvider: provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
@@ -1582,7 +1585,7 @@ export async function getUsageStats(period = "all", opts = {}) {
     }
     for (const e of views[2].values()) {
       const identity = getPublicApiKeyIdentity(e.apiKey, e.provider);
-      const apiKeyKey = `${identity.id}|${e.model}|${e.provider || "unknown"}`;
+      const apiKeyKey = usageKeyStatsKey(identity.id, e.model, e.provider);
       if (stats.byApiKey[apiKeyKey] && new Date(e.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = e.timestamp;
     }
     for (const e of views[3].values()) {
@@ -1671,32 +1674,19 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
       }
 
-      if (r.apiKey && isString(r.apiKey)) {
-        const identity = getPublicApiKeyIdentity(legacyIdentity(r.apiKey, r.provider), r.provider);
-        const { keyName, apiKeyMasked } = identity;
-        const apiKeyKey = identity.id;
-        const akKey = `${identity.id}|${r.model}|${r.provider || "unknown"}`;
-        if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
-        }
-        const ake = stats.byApiKey[akKey];
-        addCostSplit(ake, r);
-        ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
-        addLatency(ake, r, completionTokens);
-        ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
-        if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
-      } else {
-        const akKey = usageKeyStatsKey(null, r.model, r.provider);
-        if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
-        }
-        const ake = stats.byApiKey[akKey];
-        addCostSplit(ake, r);
-        ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
-        addLatency(ake, r, completionTokens);
-        ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
-        if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
+      const identity = getPublicApiKeyIdentity(r.keyIdentity, r.provider);
+      const { keyName, apiKeyMasked } = identity;
+      const apiKeyKey = identity.id;
+      const akKey = usageKeyStatsKey(identity.id, r.model, r.provider);
+      if (!stats.byApiKey[akKey]) {
+        stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
       }
+      const ake = stats.byApiKey[akKey];
+      addCostSplit(ake, r);
+      ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
+      addLatency(ake, r, completionTokens);
+      ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
+      if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
 
       const endpoint = r.endpoint || "Unknown";
       const epKey = `${endpoint}|${r.model}|${r.provider || "unknown"}`;

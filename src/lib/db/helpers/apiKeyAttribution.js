@@ -15,6 +15,7 @@
 import { tableColumnNames } from "./tableColumns.js";
 import { usageKeyDigest } from "../../crypto/columnCrypto.js";
 import { isString } from "../../../shared/utils/typeChecks.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "../repos/quotaSql.js";
 
 const columnsCache = new WeakMap();
 
@@ -86,13 +87,14 @@ export function apiKeyUsageScope(db, { apiKeyId = null, apiKey = null } = {}) {
     }
     return { clause: "apiKeyId = ?", params: [apiKeyId] };
   }
-  if (hasSecret && apiKey) return { clause: "apiKey = ?", params: [apiKey] };
+  if (hasSecret && apiKey) {
+    const legacyOnly = columns.has("apiKeyId") ? "apiKeyId IS NULL AND " : "";
+    return { clause: `(${legacyOnly}apiKey = ?)`, params: [apiKey] };
+  }
   return { clause: "1 = 0", params: [] };
 }
 
 // MCP gateway credentials have a separate namespace from ordinary API keys.
-export const isUsageKeyDigest = (value) => /^hmac:[a-f0-9]{64}$/.test(value);
-
 export function usageKeyIdentity(apiKeyId, apiKey, provider) {
   if (apiKeyId && provider !== "mcp-gateway") return apiKeyId;
   return apiKey && isString(apiKey) ? `hmac:${usageKeyDigest(apiKey)}` : "";
@@ -126,4 +128,10 @@ export function usageHistoryKeyColumnsSql(db) {
 
 export function usageKeyStatsKey(identity, model, provider) {
   return `${identity || "local-no-key"}|${model}|${provider || "unknown"}`;
+}
+
+// Versioned migrations call this inside their transaction, before reading a rollup.
+export function lockUsageIdentityRewrite(db) {
+  if (db.driver === "pg") db.get(QUOTA_WRITE_LOCK_SQL_PG);
+  else db.run(QUOTA_WRITE_LOCK_SQL);
 }

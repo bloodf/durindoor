@@ -1,5 +1,5 @@
 import { addLocalCalendarDays, localDateFromKey } from "../../usagePeriods.js";
-import { usageKeyIdentity, usageKeyStatsKey } from "../helpers/apiKeyAttribution.js";
+import { lockUsageIdentityRewrite, usageKeyIdentity, usageKeyStatsKey } from "../helpers/apiKeyAttribution.js";
 import { addToCounter } from "../helpers/usageCounters.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { tableColumnNames } from "../helpers/tableColumns.js";
@@ -15,22 +15,27 @@ function migrateDay(db, row, hasHistory, hasKeys) {
   if (!legacy.length) return;
 
   const recorded = new Map();
-  if (hasHistory) {
-    const start = localDateFromKey(row.dateKey);
+  let start;
+  try { start = localDateFromKey(row.dateKey); } catch { /* Preserve counters for malformed legacy dates. */ }
+  if (hasHistory && start) {
     const end = addLocalCalendarDays(start, 1);
     // The retained ID can identify a rotated secret. Scope to the original
     // day/model/provider so reuse elsewhere cannot reassign the archived bucket.
-    let offset = 0;
+    const dims = "apiKey, COALESCE(provider, ''), COALESCE(model, '')";
+    let cursor = [];
     for (;;) {
-      const page = db.all(`SELECT apiKey, provider, model, MIN(apiKeyId) AS resolvedId, COUNT(DISTINCT apiKeyId) AS identities
+      const page = db.all(`SELECT apiKey, COALESCE(provider, '') AS provider, COALESCE(model, '') AS model,
+        MIN(apiKeyId) AS resolvedId, COUNT(DISTINCT apiKeyId) AS identities
         FROM usageHistory WHERE timestamp >= ? AND timestamp < ? AND apiKey IS NOT NULL AND apiKeyId IS NOT NULL
-        GROUP BY apiKey, provider, model ORDER BY apiKey, provider, model LIMIT ${PAGE_SIZE} OFFSET ?`,
-      [start.toISOString(), end.toISOString(), offset]);
+        ${cursor.length ? `AND (${dims}) > (?, ?, ?)` : ""}
+        GROUP BY 1, 2, 3 ORDER BY 1, 2, 3 LIMIT ${PAGE_SIZE}`,
+      [start.toISOString(), end.toISOString(), ...cursor]);
       for (const item of page) {
         recorded.set(contextKey(item.apiKey, item.provider, item.model), Number(item.identities) === 1 ? item.resolvedId : null);
       }
       if (page.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
+      const last = page.at(-1);
+      cursor = [last.apiKey, last.provider, last.model];
     }
   }
 
@@ -51,11 +56,12 @@ function migrateDay(db, row, hasHistory, hasKeys) {
   db.run("UPDATE usageDaily SET data = ? WHERE dateKey = ?", [stringifyJson(day), row.dateKey]);
 }
 
-export default {
+const migration = {
   version: 35,
   name: "usage-daily-key-identity",
   up(db) {
     if (!tableColumnNames(db, "usageDaily").size) return;
+    lockUsageIdentityRewrite(db);
     const hasHistory = tableColumnNames(db, "usageHistory").has("apiKeyId");
     const hasKeys = tableColumnNames(db, "apiKeys").has("key");
     // A single day's JSON can be large on the PostgreSQL sync bridge.
@@ -68,3 +74,5 @@ export default {
     }
   },
 };
+
+export default migration;

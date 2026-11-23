@@ -97,8 +97,7 @@ function loadMasterKey() {
 
 /** Derive an installation-scoped usage identity without exporting the master key. */
 export function usageKeyDigest(secret) {
-  return crypto.createHmac("sha256", loadMasterKey())
-    .update("durindoor:usage-api-key\0").update(secret).digest("hex");
+  return crypto.createHmac("sha256", loadMasterKey()).update(secret).digest("hex");
 }
 
 function validateKey(raw, keyPath) {

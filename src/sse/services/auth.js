@@ -3,61 +3,30 @@ import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
 import { connectionHasCredential, credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
-import {
-  getProviderConnections, getProviderConnectionById, getApiKeyByKey, getApiKeyById, validateApiKey,
-  updateProviderConnection, getSettings, getProxyPools,
-  getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
-"@/lib/localDb";
-import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
-import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
-import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
+import { getProviderConnections, getProviderConnectionById, updateProviderConnection, getSettings, getProxyPools, getQuotaReservationPressure, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields, isRelayGatewayFailure, countEligibleAccounts, detectQuotaExhaustion, isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
-import { describeProviderError } from "open-sse/utils/error.js";
-import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
+import { formatRetryAfter, getActiveModelLockUntil, isModelLockActive, countEligibleAccounts, isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
+import { AI_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
-import {
-  buildQuotaResourceKeys,
-  evaluateProviderQuotaPreflight,
-  inspectProviderQuota } from
-"@/shared/services/providerQuotaPreflight";
+import { buildQuotaResourceKeys, evaluateProviderQuotaPreflight, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
-import {
-  clearProviderRateLimitEvidence,
-  recordProviderRateLimitEvidence } from
-"@/shared/services/providerRateLimitEvidence";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
-import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
-import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { rankQuotaConnections, pickQuotaWeightedConnection, pickEarliestResetConnection } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
-import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
-import { notifyWebhookEvent } from "@/lib/webhooks/index.js";
 import { isOverLimit as isRpdOverLimit, recordRequest as recordRpdRequest, retryAfterMs as rpdRetryAfterMs } from "./rpdLimiter.js";
 import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
-import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
-import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
-import { getBatchRequestKeyId, rememberAdmittedRequestKey } from "./batchKeyIdentity.js";
-
-const CLI_AUTH_SALT = "9r-cli-auth";
-export async function hasValidCliToken(request) {
-  const supplied = request?.headers?.get?.("x-9r-cli-token");
-  if (!supplied) return false;
-  const expected = await getConsistentMachineId(CLI_AUTH_SALT);
-  return timingSafeCompare(String(supplied), String(expected));
-}
+import { getSessionAffinity, normalizeSessionAffinityId, pickByCacheAffinity, rememberSessionAffinity } from "./auth/sessionAffinity.js";
+import { OLLAMA_LOCAL_PROVIDER_ID, rankOllamaConnectionsByCatalog } from "./auth/ollamaRouting.js";
+import { requestedModelLockActive, requestedModelLockUntil, summarizeBlockedConnections } from "./auth/connectionLocks.js";
+import { hasValidCliToken, resolveClientApiKey, isValidApiKey } from "./auth/clientApiKeys.js";
 
 // Round-robin metadata still needs ordered selection within one provider, but
 // unrelated providers must never queue behind each other's quota/settings I/O.
 const selectionMutexes = new Map();
 
-import { getSessionAffinity, normalizeSessionAffinityId, pickByCacheAffinity, rememberSessionAffinity } from "./auth/sessionAffinity.js";
 export { resetProviderSessionAffinity } from "./auth/sessionAffinity.js";
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode", "devin-cli-agentic"]);
@@ -73,141 +42,9 @@ const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_c
 // with its own models and its own health. A request for one model must only
 // reach the nodes whose discovered catalog lists it, and a node that fails must
 // not take the healthy ones down with it.
-const OLLAMA_LOCAL_PROVIDER_ID = "ollama-local";
-const OLLAMA_CATALOG_PROBE_TIMEOUT_MS = 5_000;
 // Reading one node's catalog costs an /api/tags request (plus one /api/show per
 // model on daemons that omit capabilities), so the routing verdict is memoized
 // briefly instead of being re-read on every request.
-const OLLAMA_CATALOG_ROUTE_TTL_MS = 60_000;
-const MAX_OLLAMA_CATALOG_ROUTE_ENTRIES = 512;
-const ollamaCatalogRouteCache = new Map();
-
-/**
- * Normalize an Ollama model tag for comparison: lowercased, namespace-stripped
- * and without the implicit `:latest` tag, so `llama3.2`, `llama3.2:latest` and
- * `Library/Llama3.2` all compare equal.
- * @param {unknown} value
- * @returns {string}
- */
-export function normalizeOllamaModelId(value) {
-  const text = isString(value) ? value.trim().toLowerCase() : "";
-  if (!text) return "";
-  const withoutNamespace = text.includes("/") ? text.slice(text.lastIndexOf("/") + 1) : text;
-  return withoutNamespace.endsWith(":latest") ? withoutNamespace.slice(0, -":latest".length) : withoutNamespace;
-}
-
-/**
- * Whether a discovered Ollama catalog lists `model`.
- * @param {Array<object>|null} models catalog entries
- * @param {string} model requested model
- * @returns {boolean}
- */
-export function ollamaCatalogServesModel(models, model) {
-  const target = normalizeOllamaModelId(model);
-  if (!target || !Array.isArray(models)) return false;
-  return models.some((entry) =>
-    normalizeOllamaModelId(entry?.id) === target ||
-    normalizeOllamaModelId(entry?.name) === target);
-}
-
-/**
- * Fetch one catalog path from a node. The host is the node's own configured
- * address, so it is fetched directly (the same trust level as the executor
- * that later talks to it) with a bounded timeout.
- */
-function ollamaCatalogFetchFactory(host, { signal } = {}) {
-  return async (path, init = {}) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), OLLAMA_CATALOG_PROBE_TIMEOUT_MS);
-    const abort = () => controller.abort();
-    if (signal?.aborted) controller.abort();
-    else signal?.addEventListener?.("abort", abort, { once: true });
-    try {
-      return await fetch(`${host}${path}`, { ...init, cache: "no-store", signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener?.("abort", abort);
-    }
-  };
-}
-
-/**
- * Read one connection's discovered catalog and classify the requested model.
- *
- * `known: false` means the node's model list could not be read (node down,
- * probe blocked) — that is different from "the node does not serve this model".
- * A cached (last known good) catalog counts as known.
- *
- * @param {object} connection
- * @param {string} model
- * @param {{signal?: AbortSignal|null, ttlMs?: number, loader?: Function|null}} [options]
- * @returns {Promise<{known: boolean, serves: boolean}>}
- */
-async function loadOllamaCatalogState(connection, model, options = {}) {
-  const host = resolveOllamaLocalHost(connection);
-  const accountId = connection?.id || "";
-  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : OLLAMA_CATALOG_ROUTE_TTL_MS;
-  const cacheKey = `${accountId}\0${host}\0${normalizeOllamaModelId(model)}`;
-  if (ttlMs > 0) {
-    const cached = ollamaCatalogRouteCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached.value;
-  }
-  let value = { known: false, serves: false };
-  try {
-    const catalog = await discoverOllamaCatalog({
-      host,
-      accountId,
-      fetchImpl: options.fetchImpl || ollamaCatalogFetchFactory(host, { signal: options.signal }),
-    });
-    const models = Array.isArray(catalog?.models) ? catalog.models : [];
-    // "unavailable" means discovery failed: the node's list is unknown, not
-    // empty. "cache" is the last known good catalog and counts as known.
-    const known = catalog?.source !== "unavailable";
-    value = { known, serves: known && ollamaCatalogServesModel(models, model) };
-  } catch {
-    value = { known: false, serves: false };
-  }
-  if (ttlMs > 0) {
-    if (ollamaCatalogRouteCache.size >= MAX_OLLAMA_CATALOG_ROUTE_ENTRIES) {
-      ollamaCatalogRouteCache.delete(ollamaCatalogRouteCache.keys().next().value);
-    }
-    ollamaCatalogRouteCache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
-  }
-  return value;
-}
-
-/**
- * Order ollama-local connections by what their discovered catalog says about the
- * requested model (#2024).
- *
- * - confirmed: the catalog lists the model → eligible, selected first.
- * - unknown: the catalog could not be read → still eligible, after the
- *   confirmed ones.
- * - absent: the catalog is known and does not list the model → not eligible.
- *
- * When no connection confirms the model the incoming order is returned
- * unchanged: routing keeps today's behaviour instead of refusing every node.
- *
- * @param {Array<object>} connections candidate connections
- * @param {string} model requested model
- * @param {{signal?: AbortSignal|null, ttlMs?: number, loader?: Function|null}} [options]
- * @returns {Promise<Array<object>>} eligible connections in selection order
- */
-export async function rankOllamaConnectionsByCatalog(connections, model, options = {}) {
-  const list = (Array.isArray(connections) ? connections : []).filter(Boolean);
-  if (list.length < 2 || !model) return list;
-  const loader = options.loader || loadOllamaCatalogState;
-  const states = await Promise.all(list.map((connection) => loader(connection, model, options)));
-  if (!states.some((state) => state?.serves)) return list;
-  const confirmed = [];
-  const unknown = [];
-  list.forEach((connection, index) => {
-    const state = states[index] || { known: false, serves: false };
-    if (state.serves) confirmed.push(connection);
-    else if (!state.known) unknown.push(connection);
-  });
-  return [...confirmed, ...unknown];
-}
 
 // Canonical roster of providers eligible for the public no-auth fallback when
 // no saved connection row exists. Mimocode stays in the roster so zero-row
@@ -331,104 +168,6 @@ export async function projectProviderCredentials(connection, quotaPreflight = nu
     lastError: connection.lastError,
     _connection: connection,
     _quotaPreflight: quotaPreflight
-  };
-}
-
-function requestedLockScopes(rawModel, boundedModel) {
-  return [...new Set([boundedModel, rawModel].filter((value) => value !== undefined))];
-}
-
-function requestedModelLockActive(connection, rawModel, boundedModel, now) {
-  return requestedModelLockUntil(connection, rawModel, boundedModel, now) !== null;
-}
-
-/** Shared read-only eligibility predicate used by combo preview and auth. */
-export function isProviderConnectionModelLocked(connection, provider, model, now = Date.now()) {
-  const boundedModel = resolveFallbackModelScope(resolveProviderId(provider), model);
-  return isQuotaLockoutActive(connection, now) || requestedModelLockActive(connection, model, boundedModel, now);
-}
-
-function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
-  const deadlines = requestedLockScopes(rawModel, boundedModel).
-  map((scope) => getActiveModelLockUntil(connection, scope, now)).
-  filter(Boolean).
-  sort((left, right) => Date.parse(right) - Date.parse(left));
-  return deadlines[0] || null;
-}
-
-function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
-  const deadlines = [];
-  let unknown = false;
-  if (isQuotaLockoutActive(connection, now)) {
-    if (connection.quotaLockout.reactivateAt) deadlines.push(connection.quotaLockout.reactivateAt); else unknown = true;
-  }
-  if (requestedModelLockActive(connection, rawModel, boundedModel, now)) {
-    const deadline = requestedModelLockUntil(connection, rawModel, boundedModel, now);
-    if (deadline) deadlines.push(deadline);else
-    unknown = true;
-  }
-  if (decision?.skip) {
-    if (decision.retryAt) deadlines.push(decision.retryAt);else
-    unknown = true;
-  }
-  if (unknown || deadlines.length === 0) return null;
-  return deadlines.sort((a, b) => Date.parse(b) - Date.parse(a))[0];
-}
-
-function summarizeBlockedConnections(connections, decisions, rawModel, boundedModel, now) {
-  const blocked = connections.filter((connection) =>
-  requestedModelLockActive(connection, rawModel, boundedModel, now) || isQuotaLockoutActive(connection, now) || decisions.get(connection.id)?.skip
-  );
-  // Search locks have their own status; the row-wide errorCode describes chat.
-  // An account-wide lock still uses the shared status. Older search locks with
-  // no scoped status were rate limits, so keep their 429 fallback.
-  const searchScope = boundedModel?.startsWith("websearch:") ? boundedModel : null;
-  const legacyLocked = blocked.filter((connection) =>
-    requestedModelLockActive(connection, rawModel, boundedModel, now)
-  );
-  const lockStatus = (connection) => searchScope && !getActiveModelLockUntil(connection, null, now) ?
-  Number(connection[`modelError_${searchScope}`]) || 429 :
-  Number(connection.errorCode);
-  // Authentication failures must not be hidden by an earlier priority account's
-  // rate-limit lock. Legacy 429 deadlines are combined with quota decisions
-  // below so a no-reset exhaustion cannot expose the local breaker as provider
-  // Retry-After evidence.
-  const legacy = legacyLocked.find((connection) => [401, 403].includes(lockStatus(connection))) ||
-  legacyLocked.find((connection) => lockStatus(connection) !== 429);
-  if (legacy) {
-    const code = lockStatus(legacy);
-    const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : 503;
-    const message = status === 429 ?
-    "Rate limited" :
-    status === 401 ?
-    "Authentication failed" :
-    status === 403 ?
-    "Access forbidden" :
-    "Provider unavailable";
-    const retryAfter = status === 429 ?
-    requestedModelLockUntil(legacy, rawModel, boundedModel, now) :
-    null;
-    return {
-      status,
-      message,
-      retryAfter,
-      retryAfterHuman: retryAfter ? formatRetryAfter(retryAfter, now) : ""
-    };
-  }
-  const retries = blocked.map((connection) => blockedRetryAt(
-    connection,
-    decisions.get(connection.id),
-    rawModel,
-    boundedModel,
-    now
-  ));
-  const knownRetries = retries.filter(Boolean).sort((left, right) => Date.parse(left) - Date.parse(right));
-  const earliest = retries.every(Boolean) || blocked.some((connection) => isQuotaLockoutActive(connection, now)) ? knownRetries[0] || null : null;
-  return {
-    status: 429,
-    message: "Rate limited",
-    retryAfter: earliest,
-    retryAfterHuman: earliest ? formatRetryAfter(earliest, now) : ""
   };
 }
 
@@ -1211,106 +950,7 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
 
 export { markAccountUnavailable, clearAccountError } from "./auth/accountErrors.js";
 
-/**
- * Extract the first API key credential presented by a request.
- *
- * @param {Request} request
- * @returns {string | null}
- */
-export function extractApiKey(request) {
-  return extractApiKeyCandidates(request)[0] || null;
-}
 
-/**
- * Extract every distinct API key credential presented by one request, in
- * precedence order. Some Anthropic clients send a stale Bearer token beside a
- * valid `x-api-key`, so authentication must check both without trusting any
- * credential from another request.
- *
- * @param {Request} request
- * @returns {string[]}
- */
-export function extractApiKeyCandidates(request) {
-  if (!request?.headers?.get) return [];
-  const candidates = [];
-  const add = (value) => {
-    if (value && !candidates.includes(value)) candidates.push(value);
-  };
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) add(authHeader.slice(7));
-  add(request.headers.get("x-api-key"));
-  add(request.headers.get("x-goog-api-key"));
-  add(new URL(request.url).searchParams.get("key"));
-  return candidates;
-}
-
-/**
- * Resolve all credentials presented by one request and return the credential
- * that authenticated. Unknown placeholder keys remain allowed only in local
- * mode, after every candidate has been checked for a valid stored identity.
- * auth.billingEpoch is captured before credential reads and remains bound to
- * this Request across retries. Pass it unchanged into every usage event and
- * durable job; completion must never look up the current billing generation.
- *
- * @param {Request} request
- * @param {{ required?: boolean, now?: number }} options
- * @returns {Promise<{apiKey: string | null, auth: { apiKeyId?: string, ok: boolean, billingEpoch: string | null }}>}
- */
-export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
-  const billingEpoch = await captureRequestBillingEpoch(request);
-  const batchKeyId = getBatchRequestKeyId(request);
-  if (batchKeyId) {
-    const record = await getApiKeyById(batchKeyId);
-    const valid = record?.isActive === true && !isApiKeyExpired(record.expiresAt, now);
-    return { apiKey: valid ? record.key : null, auth: { ok: valid, reason: valid ? null : "invalid", stored: true, apiKeyId: valid ? batchKeyId : undefined, billingEpoch } };
-  }
-  const candidates = extractApiKeyCandidates(request);
-  if (await hasValidCliToken(request)) {
-    return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true, billingEpoch } };
-  }
-  for (const apiKey of candidates) {
-    const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
-    if (auth.ok) {
-      if (auth.apiKeyId) rememberAdmittedRequestKey(request, auth.apiKeyId);
-      return { apiKey, auth: { ...auth, billingEpoch } };
-    }
-  }
-  const apiKey = candidates[0] || null;
-  return { apiKey, auth: { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch } };
-}
-
-/**
- * Validate API key (optional - for local use can skip)
- */
-export async function isValidApiKey(apiKey) {
-  if (!apiKey) return false;
-  return await validateApiKey(apiKey);
-}
-
-/**
- * Evaluate a caller credential before any model/provider work.
- *
- * Local mode still permits an unknown placeholder credential for compatibility,
- * but once a credential matches a stored row it must be active and unexpired.
- * This prevents an expired or malformed stored key from becoming a policy/usage
- * identity when global API-key enforcement is disabled.
- */
-async function evaluateApiKeyCredential(apiKey, { required, now }) {
-  if (!apiKey) {
-    return { ok: !required, reason: required ? "missing" : null, stored: false };
-  }
-  const record = await getApiKeyByKey(apiKey);
-  if (!record) {
-    return { ok: !required, reason: required ? "invalid" : null, stored: false };
-  }
-
-  const valid = record.isActive === true && !isApiKeyExpired(record.expiresAt, now);
-  return { ok: valid, reason: valid ? null : "invalid", stored: true, apiKeyId: valid ? record.id : undefined };
-}
-
-export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {
-  if (request) return (await resolveClientApiKey(request, { required, now })).auth;
-  // Without a Request, this call is admission; callers must retain its result.
-  const billingEpoch = await getBillingEpoch();
-  return { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch };
-}
+export { hasValidCliToken, extractApiKey, extractApiKeyCandidates, resolveClientApiKey, isValidApiKey, evaluateApiKeyAuth } from "./auth/clientApiKeys.js";
+export { normalizeOllamaModelId, ollamaCatalogServesModel, rankOllamaConnectionsByCatalog } from "./auth/ollamaRouting.js";
+export { isProviderConnectionModelLocked } from "./auth/connectionLocks.js";

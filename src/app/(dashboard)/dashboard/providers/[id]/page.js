@@ -212,6 +212,8 @@ function ProviderDetail({ providerId }) {
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
+  const [refreshingProfiles, setRefreshingProfiles] = useState(false);
+  const [profileRefreshStatus, setProfileRefreshStatus] = useState("");
   const [oneByOneRunning, setOneByOneRunning] = useState(false);
   const [oneByOneStopping, setOneByOneStopping] = useState(false);
   const [oneByOneCurrentConnectionId, setOneByOneCurrentConnectionId] = useState(null);
@@ -2154,6 +2156,27 @@ function ProviderDetail({ providerId }) {
 
                     {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
                   </Button>
+                  {["codebuddy-cn", "qoder-cn"].includes(providerId) && connections.some((connection) => connection.authType === "oauth") && (
+                    <>
+                      <Button size="sm" variant="secondary" icon="sync" disabled={refreshingProfiles} onClick={async () => {
+                        setRefreshingProfiles(true);
+                        setProfileRefreshStatus("");
+                        let failures = 0;
+                        for (const connection of connections.filter((item) => item.authType === "oauth")) {
+                          try {
+                            const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/refresh-profile`, { method: "POST" });
+                            if (!response.ok) failures++;
+                          } catch { failures++; }
+                        }
+                        await fetchConnections();
+                        setProfileRefreshStatus(failures ? `${failures} profile refresh failed. Try again.` : "Profiles refreshed.");
+                        setRefreshingProfiles(false);
+                      }}>
+                        {refreshingProfiles ? "Refreshing profiles..." : "Refresh profiles"}
+                      </Button>
+                      <span role="status">{profileRefreshStatus}</span>
+                    </>
+                  )}
                   {oneByOneRunning &&
               <Button
                 size="sm"

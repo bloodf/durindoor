@@ -108,7 +108,7 @@ describe("chatCore provider-error result preserves internal source status while 
     expect(result.status).toBe(401);
     expect(result.response.status).toBe(404);
     await expect(result.response.json()).resolves.toMatchObject({
-      type: "ModelError", message: "model not found",
+      error: { type: "ModelError", message: "model not found" },
     });
   });
 });

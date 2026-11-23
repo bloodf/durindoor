@@ -5,7 +5,7 @@ import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
-import { createErrorResult } from "../../utils/error.js";
+import { createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
@@ -262,7 +262,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
  * Never forward raw envelopes, coerce object/array status fields, or mark an
  * SSE error as successful usage. Finish-reason errors keep their separate 502.
  */
-export function createSSEErrorResult(parsed, credentials = null) {
+export function createSSEErrorResult(parsed, credentials = null, sourceFormat = FORMATS.OPENAI) {
   if (!parsed?.error) return null;
   const rawStatus = parsed.error.status;
   const candidate = isString(rawStatus) ? Number(rawStatus) : rawStatus;
@@ -270,7 +270,7 @@ export function createSSEErrorResult(parsed, credentials = null) {
     candidate : HTTP_STATUS.BAD_GATEWAY;
   const message = isString(parsed.error.message) && parsed.error.message.trim() ?
     parsed.error.message : "Upstream SSE stream failed";
-  return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
+  return { ...createFormattedErrorResult(status, message, undefined, undefined, null, credentials, status, sourceFormat), quotaTerminalReason: "stream_error" };
 }
 
 export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null) {
@@ -427,6 +427,8 @@ function withNativeClaudeFields(projected, message, claudeCompat) {
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
 export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
+  const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
+    createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -461,7 +463,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           timeoutMs: PROVIDER_BODY_TIMEOUT_MS
         });
         const jsonDocument = parseJsonDocumentBehindEventStream(rawBody, targetFormat);
-        const documentError = jsonDocument ? createSSEErrorResult(jsonDocument.body, credentials) : null;
+        const documentError = jsonDocument ? createSSEErrorResult(jsonDocument.body, credentials, sourceFormat) : null;
         if (documentError) {
           appendLog({ status: `FAILED ${documentError.status}` });
           return documentError;
@@ -581,7 +583,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       // failing the request as an invalid event stream.
       const jsonDocument = parsed ? null : parseJsonDocumentBehindEventStream(sseText, targetFormat);
       if (jsonDocument) {
-        const documentError = createSSEErrorResult(jsonDocument.body, credentials);
+        const documentError = createSSEErrorResult(jsonDocument.body, credentials, sourceFormat);
         if (documentError) {
           appendLog({ status: `FAILED ${documentError.status}` });
           return documentError;
@@ -608,7 +610,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
       }
-      const sseError = createSSEErrorResult(parsed, credentials);
+      const sseError = createSSEErrorResult(parsed, credentials, sourceFormat);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;

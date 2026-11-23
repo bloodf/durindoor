@@ -1,3 +1,4 @@
+import { FORMATS, detectFormatByEndpoint } from "../translator/formats.js";
 import { claudeFastCreditsRequired, claudeUnifiedQuotaRejected, claudeUnifiedResetAt } from "./claudeProtocol.js";
 import {
   ERROR_TYPES,
@@ -80,19 +81,8 @@ export function errorResponse(statusCode, message, overrides = null, retryAfterS
  * @returns {Response}
  */
 export function authErrorResponse(endpoint, message) {
-  if (endpoint?.includes("/v1/messages")) {
-    return new Response(JSON.stringify({
-      type: "error",
-      error: { type: "authentication_error", message }
-    }), {
-      status: 401,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
-  }
-  return errorResponse(401, message);
+  const format = detectFormatByEndpoint(endpoint || "", null) || FORMATS.OPENAI;
+  return createErrorResult(401, message, undefined, undefined, null, null, 401, format).response;
 }
 
 /**
@@ -689,10 +679,11 @@ export function getClientStatusFromError(status, errorText = null) {
  * @param {object} [errorBody] - Structured upstream error response
  * @param {object} [rateLimitEvidence] - Normalized quota evidence
  * @param {object} [credentialSource] - Selected credentials whose values must never be echoed
- * @param {number} [clientStatus] - Optional client-facing status; does not discard structured body
+ * @param {number} [clientStatus] - Optional client-facing status
+ * @param {string} [clientFormat] - Client format for the sanitized error envelope
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null, clientStatus = statusCode) {
+export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null, clientStatus = statusCode, clientFormat = FORMATS.OPENAI) {
   // Preserve provider error type/code/details while rebuilding every nested
   // value. Both sensitive field names and the selected connection's opaque
   // credential values are redacted without mutating the caller-owned object.
@@ -706,23 +697,28 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   const retryAfterSec = Number.isFinite(resetsAtMs) ?
   Math.max(Math.ceil((resetsAtMs - Date.now()) / 1000), 1) :
   null;
+  const details = isObject(safeBody?.error) ? safeBody.error : safeBody;
+  const defaults = buildErrorBody(clientStatus, safeMessage).error;
+  const rendered = {
+    message: isString(details?.message) ? details.message : safeMessage,
+    type: isString(details?.type) ? details.type : defaults.type,
+    code: isString(details?.code) ? details.code : defaults.code
+  };
+  const body = clientFormat === FORMATS.CLAUDE ? {
+    type: "error",
+    error: { type: clientStatus === 401 ? "authentication_error" : rendered.type, message: rendered.message }
+  } : { ...(isObject(safeBody?.error) ? safeBody : null), error: { ...(isObject(safeBody?.error) ? details : null), ...rendered } };
   return {
-    success: false,
-    status: statusCode,
-    error: safeMessage,
-    resetsAtMs,
+    success: false, status: statusCode, error: safeMessage, resetsAtMs,
     ...(rateLimitEvidence ? { rateLimitEvidence } : null),
     ...(safeBody ? { errorBody: safeBody } : null),
-    response: safeBody ?
-    new Response(JSON.stringify(safeBody), {
+    response: new Response(JSON.stringify(body), {
       status: clientStatus,
       headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json", "Access-Control-Allow-Origin": "*",
         ...(retryAfterSec !== null ? { "Retry-After": String(retryAfterSec) } : null)
       }
-    }) :
-    errorResponse(clientStatus, safeMessage, null, retryAfterSec)
+    })
   };
 }
 

@@ -247,6 +247,17 @@ export const MODEL_CAPABILITIES = {
   "longcat-2.0": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "longcat-2.0-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "longcat-2.5-preview-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  // OpenCode free-model windows published by its live catalog.
+  "longcat-2.5-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 262144 },
+  "iceman-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 131072 },
+  "inkling-2-small-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "beam-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "flint-40b-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 },
+  "nemotron-3.5-super-vl-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "jev-1.13-free": { reasoning: false, thinkingFormat: "openai", contextWindow: 64000, maxOutput: 32000 },
+  "nemotron-3.5-lightning-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 262144 },
+  "hy4-flash-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 65536 },
+  "tidepool-alpha-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
   "north-mini-code-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
   "ring-2.6-1t-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 66000 },
 
@@ -1143,8 +1154,8 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
-    const model = slash === -1 ? fullId : fullId.slice(slash + 1);
     const providerId = aliasToProviderId?.[provider] ?? provider;
+    const model = stripThinkingSuffix(slash === -1 ? fullId : fullId.slice(slash + 1), providerId);
     // Persisted custom-model overrides (keyed canonical "providerId/modelId")
     // merge over the static catalog so advertised combo capabilities match
     // routing. Members may use a static alias or a connection's custom output

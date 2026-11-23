@@ -1,3 +1,6 @@
+import { buildKiroCreateResponseUrl, buildKiroCreateResponseBody, buildKiroCreateResponseHeaders, transformCreateResponseStreamToSSE } from "../utils/kiroCreateResponse.js";
+import { readBoundedResponseText } from "../utils/error.js";
+import { getCurrentProviderAttemptTimestamp, runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { BaseExecutor } from "./base.js";
 import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -559,7 +562,25 @@ export class KiroExecutor extends BaseExecutor {
     // Profile discovery is not the quota-bearing runtime request. Allocate a
     // fresh fencing clock immediately before BaseExecutor begins dispatch so a
     // slow discovery cannot make later 429 evidence appear older than it is.
+    if (process.env.DURINDOOR_KIRO_CREATE_RESPONSE?.toLowerCase() === "always" && args.body?.conversationState) {
+      return this.executeCreateResponse(args);
+    }
     let currentResult = await super.execute({ ...args, attemptStartedAt: null });
+    // Kiro enrolled accounts may reject the legacy API despite available quota.
+    // Preserve explicit caller skip rules and the original response on probe failure.
+    if (currentResult?.response?.status === 429 && args.body?.conversationState &&
+        process.env.DURINDOOR_KIRO_CREATE_RESPONSE?.toLowerCase() !== "off" && !args.requestPolicy?.skipRules?.length) {
+      let text = "";
+      try {
+        text = await readBoundedResponseText(currentResult.response.clone(), { signal: args.signal, maxBytes: 65536, timeoutMs: 2000 });
+      } catch (error) {
+        if (args.signal?.aborted) throw error;
+      }
+      if (text.includes("USER_REQUEST_RATE_EXCEEDED")) {
+        await settleProviderAttemptDispatch(currentResult.response, { success: false, reason: "fallback" });
+        return this.executeCreateResponse(args);
+      }
+    }
     if (!currentResult?.response?.ok) return currentResult;
     if (args.stream === false) {
       currentResult.response = this.transformEventStreamToSSE(currentResult.response, args.model, args.body);
@@ -586,6 +607,21 @@ export class KiroExecutor extends BaseExecutor {
       });
       if (!currentResult?.response?.ok) return currentResult;
     }
+  }
+
+  async executeCreateResponse(args) {
+    const { model, body, credentials, signal, proxyOptions = null, directFetch } = args;
+    const url = buildKiroCreateResponseUrl(resolveKiroRegion(credentials));
+    const transformedBody = buildKiroCreateResponseBody({ body, credentials, model });
+    const headers = buildKiroCreateResponseHeaders({ credentials, body });
+    const fetchOptions = { method: "POST", headers, body: JSON.stringify(transformedBody), signal };
+    if (directFetch) fetchOptions.directFetch = directFetch;
+    const response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, fetchOptions, proxyOptions));
+    const attemptStartedAt = getCurrentProviderAttemptTimestamp() || Date.now();
+    if (!response.ok) return { response, url, headers, transformedBody, attemptStartedAt, terminalProvenance: "upstream" };
+    const converted = new Response(transformCreateResponseStreamToSSE(response.body, model), { status: 200, headers: SSE_HEADERS });
+    transferProviderAttemptDispatch(response, converted);
+    return { response: converted, url, headers, transformedBody, attemptStartedAt, terminalProvenance: "upstream" };
   }
 
   /**

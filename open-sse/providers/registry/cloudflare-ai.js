@@ -33,9 +33,7 @@ export default {
     // Active Workers AI catalog replacements (upstream #5746).
     { id: "@cf/deepseek-ai/deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash" },
     { id: "@cf/qwen/qwen3.8-27b", name: "Qwen 3.8 27B" },
-    { id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", name: "DeepSeek R1 Distill Qwen 32B" },
     { id: "@cf/moonshotai/kimi-k2.5", name: "Kimi K2.5" },
-    { id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6" },
     { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash" },
     { id: "@cf/qwen/qwen2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B Instruct" },
     /** Live Workers AI search 2026-08-13: chat-compatible Text Generation models missing from the static registry. */

@@ -1,3 +1,4 @@
+import { buildKiroIdentityHeaders } from "../../shared/kiroHeaders.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, buildKimiDeviceHeaders, buildKimiHeaders, getKimiOAuthClientId } from "../../config/appConstants.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
@@ -636,7 +637,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        "User-Agent": "kiro-cli/1.0.0"
+        ...buildKiroIdentityHeaders({ refreshToken })
       },
       body: JSON.stringify({
         refreshToken: refreshToken

@@ -1,3 +1,4 @@
+import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { CLAUDE_FAST_MODE_BETA, claudeFunctionalBetas, claudeRequestedBetas, prepareClaudeOAuthBody } from "../utils/claudeProtocol.js";
 import crypto from "crypto";
 import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
@@ -998,7 +999,7 @@ export class DefaultExecutor extends BaseExecutor {
   async refreshKiro(refreshToken, proxyOptions = null) {
     const response = await proxyAwareFetch(PROVIDERS.kiro.tokenUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": "kiro-cli/1.0.0" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", ...buildKiroIdentityHeaders({ refreshToken }) },
       body: JSON.stringify({ refreshToken })
     }, proxyOptions);
     if (!response.ok) return null;

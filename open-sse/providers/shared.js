@@ -303,7 +303,7 @@ export function isOpenCodeZenBaseUrl(baseUrl) {
 // host like the Antigravity client and upstream 9router 783e271c. Discovery
 // (loadCodeAssist, onboardUser, fetchAvailableModels, quota summary, the
 // connection probe) stays on PROD cloudcode-pa via its own constants.
-export const ANTIGRAVITY_IDE_VERSION = "2.24.0";
+export const ANTIGRAVITY_IDE_VERSION = "2.33.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 

@@ -18,4 +18,4 @@ Sources inspected: CLIProxyAPI `6eb8554f0ede` (`internal/auth` and `internal/run
 
 The social device endpoints and client identifier are defined in the service, so no change to `src/lib/oauth/providers.js` is required for this port. The two existing assertions changed by this pass pinned the old API-key validation call order and CodeWhisperer-first API-key runtime host.
 
-One follow-up in the protected `src/lib/oauth/providers.js`: device polling currently calls `response.text()` after a failed `response.json()` read, so malformed non-JSON responses may throw because the body was consumed. Read the body once and parse it to return the intended `invalid_response` classification. This file was not changed in this pass.
+Follow-up completed: device polling reads the response body once and classifies malformed non-JSON responses as `invalid_response`.

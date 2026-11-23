@@ -76,7 +76,7 @@ describe("usage storage does not retain raw API keys", () => {
     expect(db.get("SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?", [hmac]).count).toBe(502);
     const repo = await import("@/lib/db/repos/usageRepo.js");
     expect((await repo.getApiKeyWindowUsageTotals(unknown, "2026-11-01T00:00:00.000Z", "2026-11-01T00:00:00.000Z")).day.requests).toBe(502);
-    expect((await import("@/lib/db/migrations/postgres/index.js")).PG_MIGRATIONS.at(-1)).toBe(migration);
+    expect((await import("@/lib/db/migrations/postgres/index.js")).PG_MIGRATIONS.find(({ version }) => version === 36)).toBe(migration);
     migration.up(db);
     expect(db.get("SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?", [hmac]).count).toBe(502);
   });

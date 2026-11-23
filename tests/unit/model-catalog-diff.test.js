@@ -175,6 +175,30 @@ describe("localAudit", () => {
     }
   });
 
+  it("accepts Antigravity Neon XHigh and Claude 5.5 Max self-tier wire ids only", async () => {
+    const audit = (provider, id, upstreamModelId) => localAudit(
+      [{ id: provider, models: [{ id, upstreamModelId }] }],
+      FORMATS,
+      { model: {}, provider: {}, pattern: [] }
+    );
+
+    for (const provider of ["antigravity", "agy"]) {
+      expect(await audit(provider, "gemini-4-neon-xhigh", "gemini-4-neon-xhigh(xhigh)")).toEqual([]);
+      expect(await audit(provider, "claude-opus-5-5-max", "claude-opus-5-5-max(max)")).toEqual([]);
+      expect(await audit(provider, "claude-sonnet-5-5-max", "claude-sonnet-5-5-max(max)")).toEqual([]);
+    }
+    for (const [provider, id, upstreamModelId] of [
+      ["antigravity", "claude-opus-5-5-max", "claude-opus-5-5-max(xhigh)"],
+      ["antigravity", "claude-opus-5-5-high", "claude-opus-5-5-high(max)"],
+      ["antigravity", "claude-opus-5-5-max", "claude-opus-5-5-typo(max)"],
+      ["other", "claude-opus-5-5-max", "claude-opus-5-5-max(max)"],
+      ["agy", "gemini-4-neon-xhigh", "gemini-4-neon-xhigh(max)"],
+    ]) {
+      const findings = await audit(provider, id, upstreamModelId);
+      expect(findings.some((f) => f.includes(`upstreamModelId "${upstreamModelId}" resolves to no id`))).toBe(true);
+    }
+  });
+
   it("resolves PROVIDER_PRICING keyed by alias (not falsely orphan)", async () => {
     const registry = [{ id: "github", alias: "gh", models: [{ id: "gpt-5.3-codex" }] }];
     const pricing = { model: {}, provider: { gh: { "gpt-5.3-codex": { input: 1 } } }, pattern: [] };

@@ -55,6 +55,28 @@ function findSuffixBlocks(lines, minBlockChars) {
   return results;
 }
 
+/**
+ * Qualifying suffix blocks of `text` (same rules as findSuffixBlocks), longest first.
+ * Each carries its start offset and a chained key: sha256(next key + NUL + line).
+ */
+function indexSuffixBlocks(text, minBlockChars) {
+  const lines = text.split("\n");
+  const n = lines.length;
+  const offsets = new Array(n);
+  for (let i = 0, offset = 0; i < n; i++) {
+    offsets[i] = offset;
+    offset += lines[i].length + 1;
+  }
+  const results = [];
+  let key = "";
+  for (let start = n - 1; start >= 0; start--) {
+    key = crypto.createHash("sha256").update(key).update("\0").update(lines[start]).digest("hex");
+    const offset = offsets[start];
+    if (n - start >= MIN_BLOCK_LINES && text.length - offset >= minBlockChars) results.push({ key, offset });
+  }
+  return results.reverse();
+}
+
 function dedupeWithinMessage(text, minBlockChars) {
   const lines = text.split("\n");
   const blocks = findSuffixBlocks(lines, minBlockChars);
@@ -107,59 +129,30 @@ function dedupMessageTexts(msgTexts, minBlockChars) {
     return { deduped, dedupCount };
   }
 
+  // Suffix blocks are keyed by a chained hash (one sha256 per line), so the scan is
+  // linear in message size instead of materializing and hashing every suffix.
+  const indexed = msgTexts.map((entry) => ({ ...entry, suffixes: indexSuffixBlocks(entry.text, minBlockChars) }));
   const firstSeen = new Map();
-
-  for (const { msgIdx, text } of msgTexts) {
-    const lines = text.split("\n");
-    const blocks = findSuffixBlocks(lines, minBlockChars);
-    for (const { block } of blocks) {
-      const sha = hashBlock(block);
-      if (!firstSeen.has(sha)) {
-        firstSeen.set(sha, { ownerMsgIdx: msgIdx, block });
-      }
+  for (const { msgIdx, text, suffixes } of indexed) {
+    for (const { key, offset } of suffixes) {
+      if (!firstSeen.has(key)) firstSeen.set(key, { ownerMsgIdx: msgIdx, text, offset });
     }
   }
 
-  for (const { msgIdx, text } of msgTexts) {
-    const lines = text.split("\n");
-    const blocks = findSuffixBlocks(lines, minBlockChars);
+  for (const { msgIdx, text, suffixes } of indexed) {
+    // Suffixes are ordered longest-first; replace the longest block first seen in an
+    // earlier message. Comparing the text guards against a key collision.
+    const dup = suffixes.find(({ key, offset }) => {
+      const owner = firstSeen.get(key);
+      return owner && owner.ownerMsgIdx < msgIdx && owner.text.slice(owner.offset) === text.slice(offset);
+    });
+    if (!dup) continue;
 
-    const dupBlocks = [];
-    for (const { block } of blocks) {
-      const sha = hashBlock(block);
-      const owner = firstSeen.get(sha);
-      // owner.block === block guards against a hash collision substituting a marker that
-      // would reference the wrong block.
-      if (owner && owner.ownerMsgIdx < msgIdx && owner.block === block) {
-        dupBlocks.push({ block, sha });
-      }
-    }
-
-    if (dupBlocks.length === 0) continue;
-
-    dupBlocks.sort((a, b) => b.block.length - a.block.length);
-
-    let result = text;
-    let changed = false;
-    const replaced = new Set();
-
-    for (const { block, sha } of dupBlocks) {
-      if ([...replaced].some((r) => r.includes(block))) continue;
-
-      const idx = result.indexOf(block);
-      if (idx !== -1) {
-        const marker = `[dedup:ref sha=${sha}]`;
-        result = result.slice(0, idx) + marker + result.slice(idx + block.length);
-        changed = true;
-        replaced.add(block);
-        break;
-      }
-    }
-
-    if (changed) {
-      deduped.set(msgIdx, result);
-      dedupCount++;
-    }
+    const block = text.slice(dup.offset);
+    const idx = text.indexOf(block);
+    const marker = `[dedup:ref sha=${hashBlock(block)}]`;
+    deduped.set(msgIdx, text.slice(0, idx) + marker + text.slice(idx + block.length));
+    dedupCount++;
   }
 
   return { deduped, dedupCount };

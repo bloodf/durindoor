@@ -1,3 +1,4 @@
+import { stripRecognizedContextSuffix } from "open-sse/services/contextSuffix.js";
 import { capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { getOpenRouterModelCapabilities } from "open-sse/services/openrouterCatalog.js";
@@ -474,7 +475,7 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
   // genuine `provider/model` routing whenever a saved combo happened to share
   // the basename. Callers that still want provider-prefixed combo resolution
   // must save the combo under the full `provider/name` form.
-  const combo = await getComboForModel(modelStr);
+  const combo = await getComboForModel(modelStr) || await getComboForModel(stripRecognizedContextSuffix(modelStr));
   if (!combo || !Array.isArray(combo.models)) return null;
   const disabledByProvider = await getDisabledModels().catch(() => ({}));
   if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) {
@@ -502,6 +503,6 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
 // with a slash is treated as a provider/model call, never a basename lookup.
 export async function getComboCanonicalName(modelStr) {
   if (isAutoComboId(modelStr)) return modelStr;
-  const combo = await getComboForModel(modelStr);
+  const combo = await getComboForModel(modelStr) || await getComboForModel(stripRecognizedContextSuffix(modelStr));
   return combo ? combo.name : null;
 }

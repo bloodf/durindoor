@@ -1,3 +1,4 @@
+import { stripRecognizedContextSuffix } from "./contextSuffix.js";
 import REGISTRY from "../providers/registry/index.js";
 import { detectRequiredCapabilities, detectToolOutputCapabilities } from "./combo.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
@@ -171,7 +172,7 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
   aliasesOrGetter;
 
   // Resolve alias
-  const resolved = resolveModelAliasFromMap(parsed.model, aliases);
+  const resolved = resolveModelAliasFromMap(parsed.model, aliases) || resolveModelAliasFromMap(stripRecognizedContextSuffix(parsed.model), aliases);
   if (resolved) {
     // An operator alias that explicitly targets a provider goes through the
     // same provider-scoped normalization as a direct `provider/model` request.

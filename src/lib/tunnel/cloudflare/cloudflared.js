@@ -536,7 +536,7 @@ function killCloudflaredByPort(port) {
 
 export function killCloudflared(localPort) {
   intentionalKill = true;
-  if (cloudflaredProcess) {
+  if (cloudflaredProcess && isCloudflaredProcess(cloudflaredProcess.pid)) {
     try {
       cloudflaredProcess.kill();
     } catch (e) { /* ignore */ }
@@ -544,12 +544,12 @@ export function killCloudflared(localPort) {
   }
 
   const pid = loadPid();
-  if (pid) {
+  if (pid && isCloudflaredProcess(pid)) {
     try {
       process.kill(pid);
     } catch (e) { /* ignore */ }
-    clearPid();
   }
+  clearPid();
 
   killCloudflaredByPort(localPort);
 }
@@ -557,10 +557,30 @@ export function killCloudflared(localPort) {
 export function isCloudflaredRunning() {
   const pid = loadPid();
   if (!pid) return false;
+  if (isCloudflaredProcess(pid)) return true;
+  clearPid();
+  return false;
+}
+
+function isCloudflaredProcess(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    return true;
-  } catch (e) {
+    let command;
+    if (os.platform() === "linux") {
+      const executable = fs.realpathSync(`/proc/${pid}/exe`);
+      command = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean);
+      if (path.basename(executable).toLowerCase() !== BINARY_NAME) return false;
+    } else if (IS_WINDOWS) {
+      const output = execSync(`powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine"`, { encoding: "utf8", windowsHide: true });
+      command = [output.trim()];
+    } else {
+      const output = execSync(`ps -p ${pid} -o args=`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 });
+      command = [output];
+    }
+    const text = command.join(" ").toLowerCase();
+    return text.includes(BINARY_NAME) && /(?:^|\s)tunnel(?:\s|$)/.test(text) && /(?:^|\s)--url(?:\s|$)/.test(text);
+  } catch {
     return false;
   }
 }

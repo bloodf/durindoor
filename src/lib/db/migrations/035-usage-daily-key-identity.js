@@ -1,6 +1,6 @@
 import { addLocalCalendarDays, localDateFromKey } from "../../usagePeriods.js";
 import { lockUsageIdentityRewrite, usageKeyIdentity, usageKeyStatsKey } from "../helpers/apiKeyAttribution.js";
-import { addToCounter } from "../helpers/usageCounters.js";
+import { addCostSplit, addToCounter } from "../helpers/usageCounters.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { tableColumnNames } from "../helpers/tableColumns.js";
 
@@ -48,9 +48,12 @@ function migrateDay(db, row, hasHistory, hasKeys) {
     const destination = usageKeyStatsKey(identity, rawModel, provider);
     delete day.byApiKey[key];
     if (Object.hasOwn(day.byApiKey, destination)) {
-      addToCounter(day.byApiKey, destination, bucket);
+      addToCounter(day.byApiKey, destination, { ...bucket, requests: bucket.requests ?? 0 });
     } else {
-      day.byApiKey[destination] = { ...bucket, apiKey: identity };
+      const migrated = { ...bucket, apiKey: identity };
+      // Legacy buckets may have a cost but no explicit unsplit accumulator yet.
+      if (bucket.inputCost == null && !bucket.unsplit) addCostSplit(migrated, bucket);
+      day.byApiKey[destination] = migrated;
     }
   }
   db.run("UPDATE usageDaily SET data = ? WHERE dateKey = ?", [stringifyJson(day), row.dateKey]);

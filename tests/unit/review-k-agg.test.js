@@ -148,7 +148,7 @@ it("migrates legacy daily buckets without changing the period totals or dropping
   expect(JSON.parse(data)).toMatchObject({
     requests: 6, promptTokens: 12, completionTokens: 18, cost: 6,
     byApiKey: {
-      "alpha|model|fixture": { apiKey: "alpha", requests: 3, promptTokens: 6, completionTokens: 9, cost: 3, latencyMs: 200, latencySamples: 2 },
+      "alpha|model|fixture": { apiKey: "alpha", requests: 3, promptTokens: 6, completionTokens: 9, cost: 3, latencyMs: 200, latencySamples: 2, unsplit: { cost: 3 } },
     },
   });
   const stats = await repo.getUsageStats("all", { startDate: "2026-09-19", endDate: "2026-09-19" });

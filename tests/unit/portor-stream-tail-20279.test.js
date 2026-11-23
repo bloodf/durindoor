@@ -27,3 +27,7 @@ it("keeps valid zero and numeric-string cache evidence", () => {
   expect(extractUsage({ usage: { prompt_tokens: 10, prompt_tokens_details: { cached_tokens: -1 }, prompt_cache_hit_tokens: "0" } }).cached_tokens).toBe(0);
   expect(extractUsage({ usageMetadata: { promptTokenCount: 10, cached_content_token_count: "3" } }).cached_tokens).toBe(3);
 });
+
+it("retains an output-only provider receipt", () => {
+  expect(extractUsage({ usage: { completion_tokens: 7 } })).toMatchObject({ completion_tokens: 7 });
+});

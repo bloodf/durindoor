@@ -21,4 +21,6 @@ Locally, the dashboard uses `src/lib/oauth/providers.js` and `src/app/api/oauth/
 
 The separate CLI flow in `src/lib/oauth/services/iflow.js` generates state but does not compare the callback state before exchanging a code. This remains an unresolved security concern. The dashboard's flow-bound state check does not cover that CLI path.
 
+The CLI service also imports `../config/index.js`, `../utils/server.js`, and `../utils/ui.js`, which are absent under `src/lib/oauth/`; importing that service currently fails before its flow can run. The offline parity-pass tests therefore exercise the dashboard OAuth implementation, not this CLI service.
+
 `tests/unit/iflow-signin-parity.test.js` uses fake credentials and closed fetch mocks to exercise the retained dashboard OAuth exchange, refresh, static list, chat stream, an upstream 429 and local quota message. It does not verify provider acceptance, full gateway error mapping, the CLI callback or live quota. No provider, browser or credential access is needed for these tests.

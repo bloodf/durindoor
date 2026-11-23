@@ -234,6 +234,25 @@ function leastHealthy(...states) {
   return states.filter(Boolean).sort((left, right) => (rank[left] ?? 2) - (rank[right] ?? 2))[0] || "healthy";
 }
 
+// Read live per-connection locks on every request. A model is unavailable only
+// when every eligible credential is locked; no shared model cooldown is stored.
+export async function rankComboModelsByLocks(models, now = Date.now(), dependencies = {}, comboRouting = null) {
+  const resolveModel = dependencies.getModelInfo || resolveQuotaModelInfo;
+  const loadConnections = dependencies.getProviderConnections || getProviderConnections;
+  const isLocked = dependencies.isProviderConnectionModelLocked || isProviderConnectionModelLocked;
+  const allowsPublic = dependencies.providerAllowsPublicNoAuthFallback || providerAllowsPublicNoAuthFallback;
+  const availability = await Promise.all(models.map(async (value) => {
+    const { provider, model } = await resolveModel(value);
+    if (!provider) return { value, locked: false };
+    const all = await loadConnections({ provider, isActive: true });
+    const restricted = comboRouting?.restrictionApplied === true;
+    const connections = restricted ? all.filter((connection) => comboRouting.allowedConnectionIds?.includes(connection.id)) : all;
+    const locked = connections.length > 0 && connections.every((connection) => isLocked(connection, provider, model, now));
+    return { value, locked: locked && (restricted || !allowsPublic(provider)) };
+  }));
+  return [...availability.filter((entry) => !entry.locked), ...availability.filter((entry) => entry.locked)].map((entry) => entry.value);
+}
+
 export async function rankComboModelsByQuota(
 models,
 settings,
@@ -715,6 +734,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboRouting,
         body
       ),
+      lockRanker: (ordered) => rankComboModelsByLocks(ordered, Date.now(), {}, comboRouting),
       jevClassify: true,
       decisionBackend: resolveDecisionBackend,
       signal: request?.signal || null
@@ -938,6 +958,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           mergedRouting,
           body
         ),
+        lockRanker: (ordered) => rankComboModelsByLocks(ordered, Date.now(), {}, mergedRouting),
         jevClassify: true,
         decisionBackend: resolveDecisionBackend,
         signal: requestSignal

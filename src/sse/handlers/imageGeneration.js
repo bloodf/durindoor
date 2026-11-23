@@ -1,16 +1,12 @@
 import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
-import { admit } from "../services/admission.js";
-import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
-  getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
-  markAccountUnavailable,
   clearAccountError,
 } from "../services/auth.js";
-import { getSettings, getApiKeyByKey, getComboForModel } from "@/lib/localDb";
-import { getModelInfo, getComboModels, getComboCanonicalName } from "../services/model.js";
+import { getApiKeyByKey, getComboForModel } from "@/lib/localDb";
+import { getComboModels, getComboCanonicalName } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -19,11 +15,11 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
-import { imageModelKindError } from "./imageModelKind.js";
+import { resolveImageModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -45,15 +41,22 @@ async function handleImageGenerationHandler(request) {
   }
 
   const url = new URL(request.url);
-  const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const wantsStream = (request.headers.get("accept") || "").includes("text/event-stream");
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
 
-  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "imageGeneration" });
+  return runMediaEndpoint(request, {
+    kind: "imageGeneration",
+    pinConnection: true,
+    route: (admission, pinOptions) => routeImageGeneration(request, body, {
+      modelStr, wantsStream, binaryOutput, pinOptions,
+    }, admission),
+  });
+}
+
+async function routeImageGeneration(request, body, { modelStr, wantsStream, binaryOutput, pinOptions }, { settings, apiKey, auth: apiKeyAuth }) {
   // Capture once for combo retries and delayed stream completion, preserving null.
   const { billingEpoch } = apiKeyAuth;
-  if (admissionError) return admissionError;
   const authenticatedKeyRecord = apiKey ? await getApiKeyByKey(apiKey) : null;
   if (authenticatedKeyRecord && authenticatedKeyRecord.policy?.allowAutoCombos === false && (isAutoComboId(modelStr) || (parseAutoModel(modelStr, "image") && !(await getComboForModel(modelStr))))) {
     return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combos are not allowed for this API key");
@@ -84,7 +87,7 @@ async function handleImageGenerationHandler(request) {
       apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
-      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, pinOptions, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
       log,
       signal: request.signal,
       ...defaultRouteComboOptions("image")
@@ -114,7 +117,7 @@ async function handleImageGenerationHandler(request) {
       apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
-      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, pinOptions, comboRouting, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
       log,
       signal: request.signal,
       comboName,
@@ -123,39 +126,27 @@ async function handleImageGenerationHandler(request) {
       comboMembers: combo?.members || []
     });
   }
-  return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId });
+  return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, pinOptions });
 }
 
-async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting = null, reportComboPolicyRejections = false } = {}) {
-  const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, pinOptions, comboRouting = null, reportComboPolicyRejections = false } = {}) {
+  const { provider, model, error } = await resolveImageModel(request, modelStr, body, apiKey, {
+    onPolicyError: (policyError) => reportComboPolicyRejections && policyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError,
+    // Reject retired models before selecting an account or affecting its health.
+    checkLifecycle: (provider, model) => checkModelLifecycle({ provider, canonicalModel: model, log })?.response,
+  });
+  if (error) return error;
 
-  const { provider, model } = modelInfo;
-  if (provider === "openrouter") {
-    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, "image"); }
-    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
-  }
-
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
-  // Shut-down image ids answer 410 with their replacement before any account
-  // is selected, so a retired model never marks a healthy connection unavailable.
-  const lifecycleError = checkModelLifecycle({ provider, canonicalModel: model, log });
-  if (lifecycleError) return lifecycleError.response;
-  const kindError = await imageModelKindError(provider, model, await getSettings());
-  if (kindError) return kindError;
-  const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
-
-
+  const selectionOptions = {
+    ...pinOptions,
+    apiKeyId,
+    allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+    restrictionApplied: comboRouting?.restrictionApplied === true,
+  };
   // Explicit no-auth providers still pass through the shared account selector:
   // scoped keys cannot escape to an anonymous/local endpoint.
   if (NO_AUTH_PROVIDERS.has(provider)) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, {
-      ...pinOptions,
-      apiKeyId,
-      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
-      restrictionApplied: comboRouting?.restrictionApplied === true
-    });
+    const credentials = await getNoAuthProviderCredentials(provider, model, selectionOptions);
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -176,24 +167,14 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
-  // Credentialed providers — fallback loop
-  const excludeConnectionIds = new Set();
-  let lastError = null;
-  let lastStatus = null;
-  // Bounded retry hints from attempted accounts, keyed by connection, so the
-  // final reconstruction can keep them once failover has nothing left to try.
+  // Keep bounded retry hints from accounts actually attempted on this route.
   const attemptedRateLimits = new Map();
 
-  while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
-      ...pinOptions,
-      apiKeyId,
-      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
-      restrictionApplied: comboRouting?.restrictionApplied === true
-    });
-
-    // All accounts unavailable or provider disabled
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+  return runMediaAccounts({
+    provider,
+    model,
+    selectionOptions,
+    buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("IMAGE_GENERATION", `[${provider}/${model}] free no-auth provider disabled by settings`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -208,90 +189,76 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         const hint = combineRetryHint(credentials, aggregateRateLimitHint(attemptedRateLimits, lastStatus));
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, hint.retryAt, hint.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) {
+      if (attempted === 0) {
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       }
-      const attempted = aggregateRateLimitHint(attemptedRateLimits, lastStatus);
-      if (attempted?.retryAt) {
-        return unavailableResponse(429, lastError || "All accounts unavailable", attempted.retryAt, formatRetryAfter(attempted.retryAt));
+      const hint = aggregateRateLimitHint(attemptedRateLimits, lastStatus);
+      if (hint?.retryAt) {
+        return unavailableResponse(429, lastError || "All accounts unavailable", hint.retryAt, formatRetryAfter(hint.retryAt));
       }
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
+    },
+    async runAttempt(credentials) {
+      const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+      const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
-    const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
-    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
-
-    const result = await handleImageGenerationCore({
-      body,
-      modelInfo: { provider, model },
-      credentials: refreshedCredentials,
-      streamToClient: wantsStream,
-      binaryOutput,
-      signal: request.signal,
-      onStreamComplete: async (outcome, response) => {
-        if (outcome.status === "success") {
-          await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+      const result = await handleImageGenerationCore({
+        body,
+        modelInfo: { provider, model },
+        credentials: refreshedCredentials,
+        streamToClient: wantsStream,
+        binaryOutput,
+        signal: request.signal,
+        onStreamComplete: async (outcome, response) => {
+          if (outcome.status === "success") {
+            await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+          }
+        },
+        onCredentialsRefreshed: async (newCreds) => {
+          await updateProviderCredentials(credentials.connectionId, {
+            accessToken: newCreds.accessToken,
+            refreshToken: newCreds.refreshToken,
+            providerSpecificData: newCreds.providerSpecificData,
+            testStatus: "active"
+          });
+        },
+        onRequestSuccess: async () => {
+          await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         }
-      },
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          accessToken: newCreds.accessToken,
-          refreshToken: newCreds.refreshToken,
-          providerSpecificData: newCreds.providerSpecificData,
-          testStatus: "active"
-        });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
+      });
+
+      if (result.success) return { response: await recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId) };
+
+      // Client abort: no account cooldown and no fallthrough to other accounts.
+      if (request.signal?.aborted) {
+        if (!result.acceptedJob) return { response: result.response };
+        await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+        return { response: markAcceptedJob(result.response) };
       }
-    });
-
-    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
-
-    // Client abort: no account cooldown and no fallthrough to other accounts.
-    if (request.signal?.aborted) {
-      if (!result.acceptedJob) return result.response;
+      return {
+        result,
+        dispatch,
+        resetAt: result.rateLimitEvidence?.resetAtMs ?? null,
+        failureContext: result.rateLimitEvidence
+          ? { rateLimitEvidence: result.rateLimitEvidence, exhaustionScope: "model" }
+          : undefined,
+      };
+    },
+    async onAccountFailure(result, credentials) {
+      // The provider may still bill an accepted job, so stop after updating account health.
+      if (!result.acceptedJob) return null;
       await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
       return markAcceptedJob(result.response);
-    }
-
-    const accountFailureContext = {
-      // The credential this attempt actually presented, so a durable-key
-      // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null,
-      ...dispatch
-    };
-    if (result.rateLimitEvidence) {
-      accountFailureContext.rateLimitEvidence = result.rateLimitEvidence;
-      // Image capacity is its own quota: exhaustion stays on the failed model
-      // instead of widening to the whole account that chat paths still use.
-      accountFailureContext.exhaustionScope = "model";
-    }
-    const { shouldFallback, retryAt, retryAtKnown } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.rateLimitEvidence?.resetAtMs ?? null, accountFailureContext);
-
-    // The provider may still run and bill the accepted job, so another account would
-    // be a second billable job. The account health update above still applies.
-    if (result.acceptedJob) {
-      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
-      return markAcceptedJob(result.response);
-    }
-
-    if (shouldFallback) {
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
+    },
+    onFallback(result, credentials, { retryAt, retryAtKnown }) {
       attemptedRateLimits.set(credentials.connectionId, {
         status: result.status,
         retryAt: retryAt || null,
-        // Only a proven, bounded exhaustion hint is carried; an ordinary 429
-        // keeps its existing final response.
-        retryAtKnown: Boolean(result.rateLimitEvidence) && retryAtKnown !== false && Boolean(retryAt)
+        // Only a proven, bounded exhaustion hint is carried.
+        retryAtKnown: Boolean(result.rateLimitEvidence) && retryAtKnown !== false && Boolean(retryAt),
       });
-      continue;
-    }
-
-    return result.response;
-  }
+    },
+  });
 }
 
 /**

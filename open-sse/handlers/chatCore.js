@@ -1,3 +1,5 @@
+import { githubRateLimit } from "./chatCore/githubRateLimit.js";
+import { updateProviderConnection } from "@/lib/localDb.js";
 import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
@@ -1749,6 +1751,16 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
       let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody, antigravityQuotaSignal, noQuotaMetadata } = parsedError;
+      if (provider === "github" && providerResponse.status === 429 && connectionId) {
+        try {
+          await updateProviderConnection(connectionId, { providerSpecificData: { lastRateLimit: githubRateLimit(providerResponse.headers) } }, {
+            shouldCommitConnection: (connection) => connection.provider === "github",
+          });
+        } catch {
+          log?.warn?.("RATE_LIMIT", "Could not save GitHub rate limit");
+        }
+      }
+
       // Kimi docs classify exhausted membership windows as 403. Confirm the
       // rolling 5-hour window is empty while weekly quota remains before
       // attaching a temporary model-scoped reset deadline.

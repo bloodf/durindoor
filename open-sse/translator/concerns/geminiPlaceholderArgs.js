@@ -27,6 +27,64 @@ const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(
 const hasOwn = (record, key) => Object.prototype.hasOwnProperty.call(record, key);
 const EMPTY_OBJECT_SCHEMA = () => ({ type: "object", properties: {} });
 
+/** Rename conflicting schema fields in place, choosing a name unused at that object. */
+export function renameGeminiProperties(schema) {
+  if (!isRecord(schema)) return schema;
+  if (isRecord(schema.properties)) {
+    const properties = schema.properties;
+    if (hasOwn(properties, "properties")) {
+      let replacement = "properties_";
+      while (hasOwn(properties, replacement)) replacement += "_";
+      properties[replacement] = properties.properties;
+      delete properties.properties;
+      if (Array.isArray(schema.required)) schema.required = schema.required.map((name) => name === "properties" ? replacement : name);
+    }
+    for (const child of Object.values(properties)) renameGeminiProperties(child);
+  }
+  if (schema.items) renameGeminiProperties(schema.items);
+  return schema;
+}
+
+/** Restore only renames confirmed by the client's schema and the sent schema. */
+function restoreProperties(args, original, sent) {
+  if (Array.isArray(args)) return args.map((item) => restoreProperties(item, original?.items, sent?.items));
+  if (!isRecord(args) || !isRecord(original?.properties) || !isRecord(sent?.properties)) return args;
+  const source = original.properties;
+  let renamed = null;
+  if (hasOwn(source, "properties") && !hasOwn(sent.properties, "properties")) {
+    renamed = "properties_";
+    while (hasOwn(source, renamed)) renamed += "_";
+    if (!hasOwn(sent.properties, renamed)) renamed = null;
+  }
+  const result = { ...args };
+  for (const [name, child] of Object.entries(source)) {
+    const wireName = name === "properties" && renamed ? renamed : name;
+    if (!hasOwn(args, wireName) || !hasOwn(sent.properties, wireName)) continue;
+    const value = restoreProperties(args[wireName], child, sent.properties[wireName]);
+    if (wireName !== name) delete result[wireName];
+    Object.defineProperty(result, name, { value, enumerable: true, configurable: true, writable: true });
+  }
+  return result;
+}
+
+function restoreSchemaNames(original, sent) {
+  if (!isRecord(original) || !isRecord(sent)) return sent;
+  const out = { ...sent };
+  if (isRecord(original.properties) && isRecord(sent.properties)) {
+    out.properties = { ...sent.properties };
+    let replacement = "properties_";
+    while (hasOwn(original.properties, replacement)) replacement += "_";
+    for (const [name, child] of Object.entries(original.properties)) {
+      const wire = name === "properties" && !hasOwn(sent.properties, name) && hasOwn(sent.properties, replacement) ? replacement : name;
+      if (!hasOwn(sent.properties, wire)) continue;
+      if (wire !== name) delete out.properties[wire];
+      Object.defineProperty(out.properties, name, { value: restoreSchemaNames(child, sent.properties[wire]), enumerable: true, configurable: true, writable: true });
+    }
+  }
+  if (original.items && sent.items) out.items = restoreSchemaNames(original.items, sent.items);
+  return out;
+}
+
 /** Declared name of a client tool in any supported client dialect, or "". */
 function declaredName(tool) {
   if (!isRecord(tool)) return "";
@@ -182,7 +240,8 @@ export function createGeminiPlaceholderStripper({ clientTools, providerBody, too
     if (!isRecord(args) || !isString(providerToolName)) return args;
     if (!cache.has(providerToolName)) cache.set(providerToolName, resolveTrie(providerToolName));
     const trie = cache.get(providerToolName);
-    return trie ? stripAt(args, trie) : args;
+    const restored = trie ? restoreProperties(args, trie.original, trie.sent) : args;
+    return trie?.placeholder ? stripAt(restored, trie.placeholder) : restored;
   };
 
   function resolveTrie(providerToolName) {
@@ -196,7 +255,13 @@ export function createGeminiPlaceholderStripper({ clientTools, providerBody, too
     const mapped = lookup(sentFn.name) ?? lookup(providerToolName);
     const declaration = clientByName.get(isString(mapped) && mapped ? mapped : sentFn.name);
     const sentSchema = sentFn.parameters ?? sentFn.parametersJsonSchema;
-    return declaration && isRecord(sentSchema) ? resolvePlaceholderTrie(declaration, sentSchema) : null;
+    if (!declaration || !isRecord(sentSchema)) return null;
+    let original;
+    try { original = buildGeminiToolParameters(preGeminiSchema(declaration), declaration.name); }
+    catch { return null; }
+    // Placeholder paths are expressed in client names, so compare with a restored schema.
+    const restoredSent = restoreSchemaNames(original, sentSchema);
+    return { original, sent: sentSchema, placeholder: resolvePlaceholderTrie(declaration, restoredSent) };
   }
 }
 

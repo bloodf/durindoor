@@ -1,3 +1,4 @@
+import { renameGeminiProperties } from "../translator/concerns/geminiPlaceholderArgs.js";
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
@@ -99,10 +100,17 @@ const MAX_ANTIGRAVITY_TOOL_COUNT = 40;
 const MAX_TOOL_DESC_CHARS = 200;
 const MAX_SCHEMA_DESC_CHARS = 150;
 
+// Preserve conflicting branches so responses retain their structured arguments.
+function hasPropertiesParameter(schema) {
+  if (!schema || !isObject(schema)) return false;
+  if (schema.properties && Object.prototype.hasOwnProperty.call(schema.properties, "properties")) return true;
+  return Object.values(schema.properties || {}).some(hasPropertiesParameter) || hasPropertiesParameter(schema.items);
+}
+
 function compressToolSchema(schema, depth) {
   if (!schema || !isObject(schema)) return schema;
 
-  if (depth >= MAX_SCHEMA_DEPTH) {
+  if (depth >= MAX_SCHEMA_DEPTH && !hasPropertiesParameter(schema)) {
     if (schema.type === "object" && schema.properties) {
       const propNames = Object.keys(schema.properties);
       return {
@@ -518,6 +526,7 @@ export class AntigravityExecutor extends BaseExecutor {
           }
           normalizeAntigravityBounds(cleanedParams);
           cleanedParams = compressToolSchema(cleanedParams, 0);
+          renameGeminiProperties(cleanedParams);
           allDeclarations.push({
             ...fn,
             name,

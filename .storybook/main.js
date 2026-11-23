@@ -79,6 +79,16 @@ const config = {
             code = `import ${named ? "{ ReviewLoginView as Replacement }" : "Replacement"} from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5", replacement))};\n` + code
               + `\n${named ? "export" : "export default"} function ${name}(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" ? <Replacement {...props} /> : <Incumbent${name} {...props} />; }\n`;
           }
+          if (id.endsWith("/providers/[id]/sections/ProviderDetailSections.jsx")) {
+            // The split source owns both layouts; select its review layout in Storybook.
+            for (const anchor of ["{uiV5 ? (", "{uiV5 ? autoSyncPanel : null}", "{!uiV5 ? autoSyncPanel : null}"]) {
+              const count = code.split(anchor).length - 1;
+              if (count !== (anchor === "{uiV5 ? (" ? 2 : 1)) throw new Error(`Provider review layout anchor changed: ${anchor}`);
+            }
+            code = code.replaceAll("{uiV5 ? (", '{(uiV5 || globalThis.document?.documentElement.dataset.v5Review === "true") ? (')
+              .replace("{uiV5 ? autoSyncPanel : null}", '{(uiV5 || globalThis.document?.documentElement.dataset.v5Review === "true") ? autoSyncPanel : null}')
+              .replace("{!uiV5 ? autoSyncPanel : null}", '{!(uiV5 || globalThis.document?.documentElement.dataset.v5Review === "true") ? autoSyncPanel : null}');
+          }
           if (id.endsWith("/token-saver/TokenSaverClient.jsx")) {
             code = code.replace("export default function TokenSaverClient(", "function IncumbentTokenSaverClient(");
             code = `import TokenSaverDashboard from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx"))};\n` + code

@@ -1,3 +1,4 @@
+import { claudeFastCreditsRequired, claudeUnifiedQuotaRejected, claudeUnifiedResetAt } from "./claudeProtocol.js";
 import {
   ERROR_TYPES,
   DEFAULT_ERROR_MESSAGES,
@@ -537,6 +538,29 @@ export async function parseUpstreamError(response, executor = null, options = {}
   // breaker) on the real reason code instead of the client-facing message.
   const antigravityQuotaSignal = (effectiveStatus === 429 || effectiveStatus === 409) && hasAntigravityQuotaSignal(bodyText);
   if (executorParsed) {
+    const claudeOAuth = executor.provider === "claude" && !options.credentials?.apiKey && options.credentials?.accessToken;
+    const sharedQuota = claudeOAuth && effectiveStatus === 429 && claudeUnifiedQuotaRejected(response.headers);
+    if (sharedQuota) {
+      rateLimitEvidence.state = "exhausted";
+      rateLimitEvidence.scope = "connection";
+      const quotaResetAt = claudeUnifiedResetAt(response.headers, options.now ?? Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
+      if (quotaResetAt && quotaResetAt > (rateLimitEvidence.resetAtMs ?? 0)) {
+        rateLimitEvidence.resetAtMs = quotaResetAt;
+        rateLimitEvidence.source = "reset_header";
+      }
+    }
+
+    let claudeErrorBody;
+    if (claudeOAuth && (options.claudeRequestScoped || effectiveStatus === 529)) {
+      try {
+        const error = JSON.parse(bodyText)?.error;
+        if (effectiveStatus !== 429 && isObject(error)) claudeErrorBody = { type: "error", error };
+        // Keep the generic 429 redaction policy for arbitrary upstream text.
+        if (effectiveStatus === 429 && isString(error?.message) && claudeFastCreditsRequired(error.message)) {
+          claudeErrorBody = { type: "error", error: { type: "rate_limit_error", message: "Usage credits are required for fast mode" } };
+        }
+      } catch { /* Plain upstream error text uses the standard fallback. */ }
+    }
     const parsedMessage = executorParsed.message || DEFAULT_ERROR_MESSAGES[effectiveStatus] || `Upstream error: ${effectiveStatus}`;
     // A 429 evidence object is the bounded authority, including an intentional
     // null reset. Falling back on null would resurrect a rejected raw executor
@@ -551,7 +575,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
       // of band for fallback state.
       message: effectiveStatus === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(parsedMessage),
       resetsAtMs: normalizedResetAtMs,
-      errorBody: effectiveStatus === 429 ? undefined : executorParsed.errorBody,
+      errorBody: claudeErrorBody ?? (effectiveStatus === 429 ? undefined : executorParsed.errorBody),
       rateLimitEvidence,
       antigravityQuotaSignal,
       noQuotaMetadata: executorParsed.noQuotaMetadata === true && !rateLimitEvidence?.resetAtMs && rateLimitEvidence?.state !== "exhausted" && !executorParsed.resetsAtMs && !antigravityQuotaSignal

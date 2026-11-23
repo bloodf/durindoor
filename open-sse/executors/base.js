@@ -1,3 +1,4 @@
+import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError } from "../utils/claudeProtocol.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch, evictResponseDispatcher } from "../utils/proxyFetch.js";
@@ -455,7 +456,9 @@ export class BaseExecutor {
         this.transformRequest(model, body, stream, credentials, requestContext, url),
         requestContext
       );
-      const headers = this.buildHeaders(credentials, stream, requestContext, model);
+      const headers = this.buildHeaders(credentials, stream, requestContext, model, body, transformedBody);
+      const claudeOAuth = this.provider === "claude" && !credentials?.apiKey && Boolean(credentials?.accessToken);
+      const claudeFast = claudeOAuth && isClaudeFastRequest(transformedBody, claudeRequestedBetas(body, requestContext.clientHeaders));
       // Relay correlation is server-owned. Never trust the client's x-request-id;
       // preserve an executor-supplied upstream ID when one is intentional.
       if (proxyOptions?.vercelRelayUrl && requestContext?.requestId &&
@@ -501,7 +504,7 @@ export class BaseExecutor {
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
         let response = await runQuotaBearingProviderRequest(() =>
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
-        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
+        if (!claudeFast && response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
           const errorText = await readOptionalProbeText(response, { signal });
@@ -574,8 +577,26 @@ export class BaseExecutor {
         // (never a transport error that would discard the upstream response), while
         // a caller abort during the probe still cancels the request.
         let errorText = null;
-        if (hasContainsRule && response.status >= 400) {
+        if ((hasContainsRule && response.status >= 400) || (claudeOAuth && !claudeFast && response.status === 429)) {
           errorText = await readOptionalProbeText(response, { signal });
+        }
+
+        if (claudeOAuth && !response.ok && (claudeFast || response.status === 429)) {
+          let message = errorText ?? "";
+          if (errorText) {
+            try {
+              const parsed = JSON.parse(errorText);
+              if (isString(parsed?.error?.message)) message = parsed.error.message;
+            } catch {
+              // Some upstream refusals have a plain-text body.
+            }
+          }
+          const claudeRequestScoped = isClaudeRequestScopedError(response.status, response.headers, message, claudeFast);
+          if (claudeRequestScoped || claudeFast) {
+            return { response, url, headers, transformedBody: requestBody,
+              attemptStartedAt: providerAttemptStartedAt, terminalProvenance: "upstream",
+              claudeRequestScoped };
+          }
         }
 
         // Antigravity 504s move to the account layer without replaying this URL.
@@ -614,7 +635,8 @@ export class BaseExecutor {
           headers,
           transformedBody: requestBody,
           attemptStartedAt: providerAttemptStartedAt,
-          terminalProvenance: "upstream"
+          terminalProvenance: "upstream",
+          ...(claudeFast ? { claudeFast: true } : null)
         };
       } catch (error) {
         clearTimeout(connectTimer);
@@ -634,6 +656,13 @@ export class BaseExecutor {
         if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
           error.errorKind = "aborted";
           error.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw error;
+        }
+
+        if (claudeFast) {
+          error.errorKind = errorKind;
+          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.claudeRequestScoped = true;
           throw error;
         }
 

@@ -1,3 +1,4 @@
+import { CLAUDE_FAST_MODE_BETA, claudeFunctionalBetas, claudeRequestedBetas, prepareClaudeOAuthBody } from "../utils/claudeProtocol.js";
 import crypto from "crypto";
 import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
@@ -5,7 +6,7 @@ import { BaseExecutor, normalizeAnthropicHeaders } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
+import { ANTHROPIC_API_VERSION, FORWARDABLE_CLIENT_BETAS, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders, buildKimiDeviceHeaders, NOUS_ATTRIBUTION, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -16,7 +17,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshOpenferenceToken } from "../services/openferenceAuth.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
-import { refreshKimiToken } from "../services/tokenRefresh/providers.js";
+import { refreshClaudeOAuthToken, refreshKimiToken } from "../services/tokenRefresh/providers.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
@@ -413,6 +414,9 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials, requestContext = null) {
+    if (this.provider === "claude" && !credentials?.apiKey && credentials?.accessToken) {
+      body = prepareClaudeOAuthBody(body);
+    }
     this.applyRequestDefaults(body);
     // Provider-specific request hook (e.g. SenseNova Token Plan clamps
     // max_tokens / max_completion_tokens above its 65536 ceiling).
@@ -725,7 +729,7 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials = {}, stream = true, requestContext = null, model = "") {
+  buildHeaders(credentials = {}, stream = true, requestContext = null, model = "", body = null, wireBody = body) {
     credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
@@ -760,6 +764,15 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider === "claude" && !credentials.apiKey && credentials.accessToken) {
       const betaKey = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
       headers[betaKey] = buildClaudeOAuthAnthropicBeta(headers[betaKey]);
+      const flags = new Set(headers[betaKey].split(",").map((beta) => beta.trim()).filter(Boolean));
+      // Fast mode belongs to this request. An earlier client's cached beta
+      // must not enable it on unrelated requests.
+      flags.delete(CLAUDE_FAST_MODE_BETA);
+      for (const flag of claudeRequestedBetas(body, requestContext?.clientHeaders, FORWARDABLE_CLIENT_BETAS)) flags.add(flag);
+      for (const flag of claudeFunctionalBetas(wireBody)) flags.add(flag);
+      headers[betaKey] = [...flags].join(",");
+      headers.Accept = stream ? "text/event-stream" : "application/json";
+      if (stream) headers["Accept-Encoding"] = "identity";
     }
 
     // The plain `anthropic` provider is an API-key provider: it does not use
@@ -900,7 +913,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     const refreshers = {
       openference: () => refreshOpenferenceToken(credentials, log, proxyOptions),
-      claude: () => this.refreshFromGrant(credentials, proxyOptions),
+      claude: () => refreshClaudeOAuthToken(credentials.refreshToken, log, proxyOptions),
       codex: () => this.refreshFromGrant(credentials, proxyOptions),
       iflow: () => this.refreshIflow(credentials.refreshToken, proxyOptions),
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
@@ -917,7 +930,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     try {
       const result = await refresher();
-      if (result) log?.info?.("TOKEN", `${this.provider} refreshed`);
+      if (result && !result.error) log?.info?.("TOKEN", `${this.provider} refreshed`);
       return result;
     } catch (error) {
       log?.error?.("TOKEN", `${this.provider} refresh error: ${error.message}`);

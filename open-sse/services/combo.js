@@ -1735,6 +1735,11 @@ export async function handleComboChat({
         log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
         continue;
       }
+      if (result.claudeRequestScoped === true) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
+      }
+
       // A provider can tunnel a backend failure through HTTP 200. Classify that
       // payload before recording success so combo fallback can try the next model.
       if (result.ok) {
@@ -1756,6 +1761,14 @@ export async function handleComboChat({
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
           const { hasContent, body: replayBody, streamError } = await peekStreamForContent(result);
+          if (!hasContent && result.claudeFast === true) {
+            releaseFailedAffinity(modelStr, i);
+            return replayBody ? new Response(replayBody, {
+              status: result.status,
+              statusText: result.statusText,
+              headers: result.headers
+            }) : result;
+          }
           if (!hasContent) {
             replayBody?.cancel("combo stream contained no meaningful frame").catch(() => {});
             // A request-scoped refusal (invalid request, context too long) may

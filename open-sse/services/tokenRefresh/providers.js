@@ -588,9 +588,10 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       };
     }
 
-    if (clientId && clientSecret) {
-      const isIDC = authMethod === "idc";
-      const endpoint = buildKiroOidcEndpoint(isIDC ? region : KIRO_DEFAULT_REGION);
+    // Social imports may carry a separate OIDC registration, which cannot
+    // refresh their social token. OIDC credentials use their registered region.
+    if (clientId && clientSecret && authMethod !== "imported") {
+      const endpoint = buildKiroOidcEndpoint(region || KIRO_DEFAULT_REGION);
 
       const response = await proxyAwareFetch(endpoint, {
         method: "POST",
@@ -625,7 +626,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || refreshToken,
-        expiresIn: tokens.expiresIn,
+        expiresIn: tokens.expiresIn || 3600,
         ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn, proxyOptions))
       };
     }

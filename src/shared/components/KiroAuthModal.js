@@ -35,7 +35,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, provide
   const [refreshToken, setRefreshToken] = useState("");
   const [cliProxyJson, setCliProxyJson] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [apiKeyRegion, setApiKeyRegion] = useState("us-east-1");
+  const [apiKeyRegion, setApiKeyRegion] = useState("auto");
   const [error, setError] = useState(null);
   const [importing, setImporting] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
@@ -196,7 +196,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, provide
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           apiKey: apiKey.trim(),
-          region: apiKeyRegion.trim() || "us-east-1",
+          region: apiKeyRegion.trim() || "auto",
         }),
       });
 
@@ -252,7 +252,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, provide
         {selectedMethod === "api-key" && <div className="flex flex-col gap-4">
           <Notice tone="info" icon="info" message="Paste a long-lived Kiro/CodeWhisperer API key. It is validated against AWS and stored directly as a bearer credential." />
           <Input label="API Key" required value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Paste your Kiro API key..." className="font-mono" error={error} />
-          <Input label="AWS Region" value={apiKeyRegion} onChange={(event) => setApiKeyRegion(event.target.value)} placeholder="us-east-1" className="font-mono" hint="AWS region for key." />
+          <Input label="AWS Region" value={apiKeyRegion} onChange={(event) => setApiKeyRegion(event.target.value)} placeholder="auto" className="font-mono" hint="Auto detects us-east-1 or eu-central-1." />
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={handleBack} disabled={importing}>Back</Button><Button variant="primary" loading={importing} disabled={!apiKey.trim()} onClick={handleApiKeyImport}>Add API Key</Button></div>
         </div>}
 

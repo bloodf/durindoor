@@ -45,7 +45,7 @@ cd tests && pnpm run test:ci
 
 That command is the CI gate. It writes a Vitest JSON report and feeds it to `tests/__baseline__/verify-no-regression.mjs`. `tests/__baseline__/known-fails.txt` is empty in this tree, so every failing assertion is a regression. Do not add entries.
 
-Offline translator tests need no credentials. `tests/translator/real/` runs only with `RUN_REAL=1` and reads connections from `~/.9router/db/data.sqlite`. Account and quota errors there are skipped; protocol failures are not.
+Offline translator tests need no credentials. `tests/translator/real/` runs only with `RUN_REAL=1` and requires `DATA_DIR` to point to a disposable copy of the data directory. Never point real tests at `~/.9router`; account and quota errors are skipped, while protocol failures are not.
 
 Bugs that still exist in the app use `it.fails(...)` in `tests/translator/bugs-*.test.js`. After a fix, switch that row to `it` and run the file.
 

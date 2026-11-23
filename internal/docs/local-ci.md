@@ -1,11 +1,8 @@
 # Local CI and manual Actions
 
-Local validation is the ordinary PR path after this transition passes its full
-checkpoint. This PR must remain draft until the integration owner validates the
-exact reviewed head with a newly frozen runner and imported closure. A receipt
-schema or focused unit test pass does not authorize switching off automatic CI.
-The author does not run the candidate to approve it. The contract is in
-[AGENTS.md](../../AGENTS.md) and [testing](./testing.mdx).
+The gate-selection and approval contract is maintained in
+[AGENTS.md](../../AGENTS.md#local-gate-authority). This guide records the
+operational commands and workflow coverage for that contract.
 
 ## One-command full checkpoint
 

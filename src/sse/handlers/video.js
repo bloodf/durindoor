@@ -1,5 +1,6 @@
 import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
 import { getApiKeyByKey } from "@/lib/localDb";
+import { admit } from "../services/admission.js";
 import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
@@ -9,7 +10,7 @@ import { getAdapter } from "@/lib/db/driver.js";
 import { assertBillingEpochSync, retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
-import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
 import { getSettings, getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
@@ -17,7 +18,6 @@ import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } 
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import * as log from "../utils/logger.js";
 import { isString } from "@/shared/utils/typeChecks.js";
@@ -82,14 +82,8 @@ async function handleVideoGenerationHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "video" });
+  if (admissionError) return admissionError;
 
   const selector = parseAutoModel(body.model, "video");
   if (selector && selector.kind === "video") {
@@ -269,7 +263,7 @@ function withConnectionHeader(response, connectionId) {
  * loop here: one credential is selected (honoring a preferred `x-connection-id`)
  * and the upstream result is returned. A network error or 5xx is surfaced as-is
  * rather than re-sent, because the job may already exist upstream.
- * Ported from decolua/9router#2593, adapted to fork auth (`resolveClientApiKey`
+ * Ported from decolua/9router#2593, adapted to fork auth (`admit`
  * + `enforceApiKeyModelPolicy`) and single-credential dispatch.
  */
 async function handleVideoCreateHandler(request, action) {
@@ -278,14 +272,8 @@ async function handleVideoCreateHandler(request, action) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown video action: ${action}`);
   }
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "video" });
+  if (admissionError) return admissionError;
   // Anonymous/operator requests have no durable caller key identity. Reject
   // before submission rather than creating a job anyone could later claim.
   if (!apiKeyAuth.apiKeyId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Video jobs require a stored caller API key");
@@ -407,14 +395,8 @@ async function handleVideoCreateHandler(request, action) {
  */
 async function handleVideoGetHandler(request, requestId) {
   await captureRequestBillingEpoch(request);
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "video" });
+  if (admissionError) return admissionError;
 
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 

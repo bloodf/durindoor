@@ -8,6 +8,7 @@ import "open-sse/index.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
 import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
+import { antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "open-sse/services/antigravityProvisioning.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 
 import { generatePKCE, generateState } from "./utils/pkce";
@@ -261,6 +262,27 @@ function abortableDelay(ms, signal) {
   });
 }
 
+function antigravityRequestSignal(signal) {
+  const timeout = AbortSignal.timeout(30_000);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+async function readAntigravityOAuthJson(response, signal) {
+  const text = await readBoundedResponseText(response, {
+    signal, maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true
+  });
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("Invalid JSON in Antigravity OAuth response");
+  }
+  if (!data || !isObject(data) || Array.isArray(data)) {
+    throw new Error("Invalid Antigravity OAuth response");
+  }
+  return data;
+}
+
 /** Resolve user info and the project for a fresh Antigravity token. */
 async function antigravityResolveAccount(tokens, proxyOptions, signal) {
   // Google fingerprints X-Goog-Api-Client / Client-Metadata on these calls
@@ -274,42 +296,33 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
   };
   const metadata = getOAuthClientMetadata();
 
-  // Fetch user info
+  const userInfoSignal = antigravityRequestSignal(signal);
   const userInfoRes = await fetch(`${ANTIGRAVITY_CONFIG.userInfoUrl}?alt=json`, {
     headers: {
       Authorization: `Bearer ${tokens.access_token}`,
       "x-request-source": "local"
     },
     proxyOptions,
-    signal
+    signal: userInfoSignal
   });
-  const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
-  throwIfOAuthCancelled(signal);
+  if (!userInfoRes.ok) throw new Error(`Antigravity user info failed: ${userInfoRes.status}`);
+  const userInfo = await readAntigravityOAuthJson(userInfoRes, userInfoSignal);
+  if (!isString(userInfo.email) || !userInfo.email.trim()) {
+    throw new Error("Antigravity user info did not return an email");
+  }
 
-  // Load Code Assist to get project ID and tier
-  let projectId = "";
-  let tierId = "legacy-tier";
+  const loadSignal = antigravityRequestSignal(signal);
   const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
     method: "POST",
     headers: loadHeaders,
     body: JSON.stringify({ metadata }),
     proxyOptions,
-    signal
+    signal: loadSignal
   });
-  throwIfOAuthCancelled(signal);
   if (!loadRes.ok) throw new Error(`Antigravity project lookup failed: ${loadRes.status}`);
-  const data = JSON.parse(await readBoundedResponseText(loadRes, { maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true }));
-  const project = data.cloudaicompanionProject;
-  projectId = isString(project) ? project.trim() :
-  isString(project?.id) ? project.id.trim() : "";
-  if (Array.isArray(data.allowedTiers)) {
-    for (const tier of data.allowedTiers) {
-      if (tier.isDefault && tier.id) {
-        tierId = tier.id.trim();
-        break;
-      }
-    }
-  }
+  const data = await readAntigravityOAuthJson(loadRes, loadSignal);
+  let projectId = extractAntigravityProject(data);
+  const tierId = extractAntigravityOnboardTier(data);
 
   // A new account can have no project until onboarding completes. Persist
   // only the project associated with this token, never a placeholder.
@@ -318,34 +331,25 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
     const retryDelayMs = antigravityOnboardRetryDelayMs();
     for (let i = 0; i < maxAttempts; i++) {
       throwIfOAuthCancelled(signal);
+      const pollSignal = antigravityRequestSignal(signal);
       const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
         method: "POST",
         headers: loadHeaders,
-        body: JSON.stringify({ tierId, metadata }),
+        body: JSON.stringify({ tier_id: tierId, metadata }),
         proxyOptions,
-        signal
+        signal: pollSignal
       });
       throwIfOAuthCancelled(signal);
       if (!onboardRes.ok) throw new Error(`Antigravity onboarding failed: ${onboardRes.status}`);
-      const result = JSON.parse(await readBoundedResponseText(onboardRes, { maxBytes: 1024 * 1024, timeoutMs: 30_000, throwOnTimeout: true }));
+      const result = await readAntigravityOAuthJson(onboardRes, pollSignal);
       // onboardUser is a long-running operation: Google answers `done:false`
       // until the project is provisioned. Only a settled `done:true` response
       // carries the project, so keep polling instead of reading a missing
       // project as "this account owns no project".
       if (result.done === true) {
-        const operationError = result.error;
-        if (operationError != null && operationError !== "" &&
-            (!isObject(operationError) || Object.keys(operationError).length > 0)) {
-          const code = operationError?.code;
-          const status = operationError?.status || ({ 3: "INVALID_ARGUMENT", 7: "PERMISSION_DENIED", 8: "RESOURCE_EXHAUSTED", 16: "UNAUTHENTICATED" })[code];
-          const details = isObject(operationError) ?
-            [code != null ? `code ${code}` : "", status, operationError.message].filter(Boolean).join(": ") || JSON.stringify(operationError) :
-            String(operationError);
-          throw new Error(`Antigravity onboarding operation error: ${details}`);
-        }
-        const project = result.response?.cloudaicompanionProject;
-        projectId = isString(project) ? project.trim() :
-        isString(project?.id) ? project.id.trim() : "";
+        const operationError = antigravityOnboardOperationError(result.error);
+        if (operationError) throw operationError;
+        projectId = extractAntigravityProject(result.response);
         break;
       }
       if (i < maxAttempts - 1) await abortableDelay(retryDelayMs, signal);
@@ -353,7 +357,7 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
     if (!projectId) throw new Error("Antigravity onboarding did not return a project ID");
   }
 
-  return { userInfo, projectId };
+  return { userInfo: { email: userInfo.email.trim() }, projectId };
 }
 
 function kimiDeviceProvider(config, fallbackVerificationUrl) {
@@ -526,13 +530,32 @@ const PROVIDERS = {
       const profile = await fetchClaudeProfile(tokens.access_token, CLAUDE_CONFIG.profileUrl, proxyOptions);
       return { profile };
     },
-    mapTokens: (tokens, extra) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-      scope: tokens.scope,
-      ...claudeProfileFields(extra?.profile)
-    })
+    mapTokens: (tokens, extra) => {
+      const profileFields = claudeProfileFields(extra?.profile);
+      const profile = extra?.profile;
+      const account = tokens.account || {};
+      const organization = tokens.organization || {};
+      const populated = (value) => value != null && value !== "";
+      const email = populated(profile?.account?.email) ? profile.account.email : account.email_address;
+      const accountUuid = populated(profile?.account?.uuid) ? profile.account.uuid : account.uuid;
+      const orgUuid = populated(profile?.organization?.uuid) ? profile.organization.uuid : organization.uuid;
+      const orgName = populated(profile?.organization?.name) ? profile.organization.name : organization.name;
+      const providerSpecificData = { ...profileFields.providerSpecificData };
+      if (populated(accountUuid)) providerSpecificData.claudeAccountUuid = accountUuid;
+      if (populated(orgUuid)) providerSpecificData.claudeOrgUuid = orgUuid;
+      if (populated(orgName)) providerSpecificData.claudeOrgName = orgName;
+
+      const mapped = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        ...profileFields
+      };
+      if (populated(email)) mapped.email = email;
+      if (Object.keys(providerSpecificData).length) mapped.providerSpecificData = providerSpecificData;
+      return mapped;
+    }
   },
 
   codex: {
@@ -1072,29 +1095,35 @@ const PROVIDERS = {
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json"
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          code: code,
-          redirect_uri: redirectUri
-        }),
-        proxyOptions
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Token exchange failed: ${error}`);
+    exchangeToken: async (config, code, redirectUri, _verifier, _state, _meta, proxyOptions, signal) => {
+      const requestSignal = antigravityRequestSignal(signal);
+      try {
+        const response = await fetch(config.tokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json"
+          },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            code,
+            redirect_uri: redirectUri
+          }),
+          proxyOptions,
+          signal: requestSignal
+        });
+        if (!response.ok) throw new Error(`Antigravity token exchange failed: ${response.status}`);
+        const tokens = await readAntigravityOAuthJson(response, requestSignal);
+        if (!isString(tokens.access_token) || !tokens.access_token.trim()) {
+          throw new Error("Antigravity token exchange did not return an access token");
+        }
+        return { ...tokens, access_token: tokens.access_token.trim() };
+      } catch (error) {
+        if (signal?.aborted) throw new OAuthCancelledError();
+        throw error;
       }
-
-      return await response.json();
     },
     postExchange: async (tokens, proxyOptions, _extraData, signal) => {
       throwIfOAuthCancelled(signal);
@@ -2197,7 +2226,10 @@ export async function exchangeTokens(providerName, code, redirectUri, codeVerifi
   await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
   provider.config;
 
-  const tokens = await provider.exchangeToken(config, code, redirectUri, codeVerifier, state, meta || {}, proxyOptions);
+  const exchangeArgs = [config, code, redirectUri, codeVerifier, state, meta || {}, proxyOptions];
+  const tokens = providerName === "antigravity" ?
+    await provider.exchangeToken(...exchangeArgs, signal) :
+    await provider.exchangeToken(...exchangeArgs);
 
   let extra = null;
   if (provider.postExchange) {

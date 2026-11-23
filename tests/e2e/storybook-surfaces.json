@@ -50593,7 +50593,7 @@
       "id": "src/shared/components/KiroAuthModal.js#KiroAuthModal",
       "sourcePath": "src/shared/components/KiroAuthModal.js",
       "symbol": "KiroAuthModal",
-      "sourceSha256": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+      "sourceSha256": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50620,7 +50620,7 @@
             "method-selection"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Initial KiroAuthModal method grid renders all visible Kiro authentication method cards. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50638,7 +50638,7 @@
             "validation-error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Story ends in IDC form after empty Continue; Input renders IDC start URL validation error.",
@@ -50653,7 +50653,7 @@
             "back"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Story exits API-key form through Back; final KiroAuthModal method grid renders AWS Builder ID control. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50671,7 +50671,7 @@
             "auto-detect-failure"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Auto-detect failure becomes Refresh Token Input error.",
@@ -50686,7 +50686,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Pending auto-import renders KiroAuthModal LoadingState.",
@@ -50701,7 +50701,7 @@
             "auto-detect-success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Found refresh token renders success Notice and enabled Import Token action.",
@@ -50716,7 +50716,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "CLIProxyAPI import failure renders returned error on textarea.",
@@ -50731,7 +50731,7 @@
             "mobile"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Mobile story retains method grid and verifies rendered Builder ID card geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50749,7 +50749,7 @@
             "RTL"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "RTL fixture renders KiroAuthModal method grid and Builder ID callback control. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50949,7 +50949,7 @@
       "id": "src/shared/components/KiroAuthModal.js#LoadingState",
       "sourcePath": "src/shared/components/KiroAuthModal.js",
       "symbol": "LoadingState",
-      "sourceSha256": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+      "sourceSha256": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50969,7 +50969,7 @@
             "import"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Pending Kiro auto-import selects LoadingState in import branch.",
@@ -51024,7 +51024,7 @@
       "id": "src/shared/components/KiroAuthModal.js#Notice",
       "sourcePath": "src/shared/components/KiroAuthModal.js",
       "symbol": "Notice",
-      "sourceSha256": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+      "sourceSha256": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51044,7 +51044,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroAuthModal.js": "5ef43c67c46f825b3e7c713fd30db6ba6f0df0ecc242811c13bd80015da6ea26",
+            "src/shared/components/KiroAuthModal.js": "8925005f96170453c113f21ef684d3ef440d19ddc3f7948a048c670fb809f9a4",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Found Kiro refresh token selects success Notice in import branch.",
@@ -51184,7 +51184,7 @@
       "id": "src/shared/components/KiroSocialOAuthModal.js#KiroSocialOAuthModal",
       "sourcePath": "src/shared/components/KiroSocialOAuthModal.js",
       "symbol": "KiroSocialOAuthModal",
-      "sourceSha256": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
+      "sourceSha256": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51213,8 +51213,8 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "Initializing holds social-authorize pending after opening Google modal; play asserts rendered loading status.",
           "expectedVisibleText": "Initializing…"
@@ -51228,8 +51228,8 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "RoutingOptionsLoading sets proxyPoolsReady=false and play asserts its rendered status.",
           "expectedVisibleText": "Loading routing options…"
@@ -51243,8 +51243,8 @@
             "callback-input"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "GoogleInput completes authorization setup and play reaches callback input with disabled Connect control.",
           "expectedVisibleText": "2. Paste callback URL"
@@ -51258,8 +51258,8 @@
             "proxy-pool"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "GoogleWithProxyPool provides active US East pool and play asserts routing selector label.",
           "expectedVisibleText": "Routing proxy pool"
@@ -51273,8 +51273,8 @@
             "callback-input"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "GitHubInput sets provider=github and play opens its Connect Kiro via GitHub dialog.",
           "expectedVisibleText": "Connect Kiro via GitHub"
@@ -51288,8 +51288,8 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "ManualCallbackSuccess pastes valid callback then exchanges success; play waits for rendered success result.",
           "expectedVisibleText": "Connected successfully"
@@ -51303,8 +51303,8 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "ManualCallbackFailure returns Invalid authorization code; play asserts alert and Try again control.",
           "expectedVisibleText": "Invalid authorization code"
@@ -51318,8 +51318,8 @@
             "submitting"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "Exchanging holds social-exchange pending after callback submit; play asserts rendered Connect button aria-busy state.",
           "expectedVisibleText": "Connect"
@@ -51335,7 +51335,7 @@
             "open-final"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Own actual export directly renders KiroSocialOAuthModal, not KiroAuthModal. Its visible social dialog heading is source-owned; popup and URL behavior is exercised by its own play.",
@@ -51352,7 +51352,7 @@
             "open-final"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
             "src/shared/components/KiroAuthModal.stories.jsx": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0"
           },
           "proposedSourceEvidence": "Own actual export directly renders KiroSocialOAuthModal, not KiroAuthModal. Its visible social dialog heading is source-owned; popup and URL behavior is exercised by its own play.",
@@ -51555,7 +51555,7 @@
       "id": "src/shared/components/KiroSocialOAuthModal.js#LoadingState",
       "sourcePath": "src/shared/components/KiroSocialOAuthModal.js",
       "symbol": "LoadingState",
-      "sourceSha256": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
+      "sourceSha256": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51576,8 +51576,8 @@
             "initializing"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "LoadingState renders for proxyPoolsReady with step=loading; Initializing play asserts its status text.",
           "expectedVisibleText": "Initializing…"
@@ -51591,8 +51591,8 @@
             "routing-options"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "LoadingState renders when proxyPoolsReady=false; RoutingOptionsLoading play asserts its status text.",
           "expectedVisibleText": "Loading routing options…"
@@ -51662,7 +51662,7 @@
       "id": "src/shared/components/KiroSocialOAuthModal.js#ResultState",
       "sourcePath": "src/shared/components/KiroSocialOAuthModal.js",
       "symbol": "ResultState",
-      "sourceSha256": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
+      "sourceSha256": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -51683,8 +51683,8 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "Successful exchange sets step=success, which renders ResultState; play waits for its success title.",
           "expectedVisibleText": "Connected successfully"
@@ -51698,8 +51698,8 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/KiroSocialOAuthModal.js": "a526de4581edb69a8657dce3007190db0df9cfe2e7004b03c2a810e07c457e47",
-            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "28c9d49c260940ee83cfd9ef70dceb90a1974a20c54f6919d7dbaf0508246b67"
+            "src/shared/components/KiroSocialOAuthModal.js": "97691a70cedf734a3ef83e50bda66d2269df4095bf81ad371dced3b337042b2f",
+            "src/shared/components/KiroSocialOAuthModal.stories.jsx": "d5a5a9357fd9e24a17dd8c50f170242f97560588c77794c7912142ae6a47381c"
           },
           "proposedSourceEvidence": "Failed exchange sets step=error, which renders ResultState error alert; play asserts its server message.",
           "expectedVisibleText": "Invalid authorization code"
@@ -103019,7 +103019,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "46fd5ee1599d924425304948be3ec0e24ec5aff8be4abdc03e05cc0fc853dfa4",
+    "sourceCensusSha256": "9031a9f7b32443ebf5405c22f82c1b3150fb38050e35fc1245594aaf030e3b9e",
     "pendingRows": 438,
     "retainedApprovedRows": 202,
     "pendingReferences": 1488,

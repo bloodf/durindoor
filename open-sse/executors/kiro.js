@@ -434,6 +434,14 @@ export class KiroExecutor extends BaseExecutor {
     return headers;
   }
 
+  /** The branded gateway can reject otherwise valid requests accepted by AWS. */
+  shouldFallbackResponse(response, url, errorText) {
+    if (!new URL(url).hostname.endsWith(".kiro.dev")) return false;
+    if ([401, 403, 404].includes(response.status)) return true;
+    return response.status === 400 &&
+      (errorText?.includes("profileArn is required for this request") || errorText?.includes("Improperly formed request"));
+  }
+
   /**
    * Build the region-correct, auth-aware ordered endpoint list.
    *
@@ -458,6 +466,9 @@ export class KiroExecutor extends BaseExecutor {
     const region = resolveKiroRuntimeRegion(credentials);
     const baseUrls = buildKiroBaseUrls(region);
     const authMethod = credentials?.providerSpecificData?.authMethod;
+    if (authMethod === "api_key") {
+      return baseUrls.filter((url) => new URL(url).hostname === `q.${region}.amazonaws.com`);
+    }
     // api_key / external_idp / idc tokens are rejected by the kiro.dev IDE
     // gateway (403 "bearer token invalid") and must hit the CodeWhisperer
     // *.amazonaws.com surface first. For non-default regions we likewise prefer
@@ -471,6 +482,10 @@ export class KiroExecutor extends BaseExecutor {
     const amazon = [...new Set(baseUrls.filter((u) => u.includes("amazonaws.com")))];
     const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
     return amazon.length > 0 ? [...amazon, ...others] : baseUrls;
+  }
+
+  getFallbackCount(credentials) {
+    return credentials?.providerSpecificData?.authMethod === "api_key" ? 1 : super.getFallbackCount();
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
@@ -1181,10 +1196,12 @@ export class KiroExecutor extends BaseExecutor {
               Math.max(1, Math.floor(state.totalContentLength / 4)) :
               0;
 
-              // Estimate input tokens from contextUsagePercentage
-              const estimatedInputTokens = state.contextUsagePercentage > 0 ?
+              // The context percentage includes the response, so split its total
+              // rather than adding the estimated completion a second time.
+              const estimatedTotalTokens = state.contextUsagePercentage > 0 ?
               Math.floor(state.contextUsagePercentage * contextWindow / 100) :
               0;
+              const estimatedInputTokens = Math.max(0, estimatedTotalTokens - estimatedOutputTokens);
 
               state.usage = {
                 ...(state.usage || {}),
@@ -1249,9 +1266,10 @@ export class KiroExecutor extends BaseExecutor {
           Number.isFinite(Number(state.usage?.completion_tokens));
           if (!hasTokenUsage && state.totalContentLength > 0) {
             const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
-            const promptTokens = state.contextUsagePercentage > 0 ?
+            const totalTokens = state.contextUsagePercentage > 0 ?
             Math.floor(state.contextUsagePercentage * contextWindow / 100) :
             0;
+            const promptTokens = Math.max(0, totalTokens - completionTokens);
             state.usage = {
               ...(state.usage || {}),
               prompt_tokens: promptTokens,

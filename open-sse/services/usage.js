@@ -3,7 +3,7 @@
  */
 
 import { fetchGeminiApiKeyQuota } from "../../src/lib/usage/geminiApiKeyQuotaAdapter.js";
-import { fetchXaiQuota } from "../../src/lib/usage/xaiQuotaAdapter.js";
+import { fetchXaiOAuthQuota, fetchXaiQuota } from "../../src/lib/usage/xaiQuotaAdapter.js";
 import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage, getAntigravityUsage } from "./usage/google.js";
 import { getClaudeUsage, consumeClaudeResetGrant } from "./usage/claude.js";
@@ -69,8 +69,10 @@ const USAGE_HANDLERS = {
   gemini: () => fetchGeminiApiKeyQuota(),
   xai: async (c) => {
     const local = await getXaiUsage(c.connectionId);
-    const snapshot = await fetchXaiQuota({ connection: c.connection, proxyOptions: c.proxyOptions });
-    return { ...local, ...snapshot, message: snapshot.outcome === "unknown" ? local.message : snapshot.message, quotaMessage: snapshot.notice || snapshot.message, quotas: { ...local.quotas, ...snapshot.quotas } };
+    const snapshot = c.authType === "oauth" && c.accessToken ?
+      await fetchXaiOAuthQuota({ connection: c.connection, proxyOptions: c.proxyOptions }) :
+      await fetchXaiQuota({ connection: c.connection, proxyOptions: c.proxyOptions });
+    return { ...local, ...snapshot, message: snapshot.outcome === "success" ? snapshot.message : local.message, quotaMessage: snapshot.notice || snapshot.message, quotas: { ...local.quotas, ...snapshot.quotas } };
   },
   "grok-web": () => getGrokWebUsage(),
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),

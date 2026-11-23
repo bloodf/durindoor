@@ -1,15 +1,14 @@
 import { corsHeaders } from "@/lib/http/cors.js";
-import { annotateClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
+import { inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import {
   clearAccountError,
-  resolveClientApiKey,
   getProviderCredentials,
   markAccountUnavailable,
 } from "@/sse/services/auth.js";
 import { enforceApiKeyModelPolicy } from "@/sse/services/apiKeyPolicy.js";
 import { observeNativeResponse } from "@/sse/services/nativeUsage.js";
-import { getSettings } from "@/lib/localDb";
+import { admit } from "@/sse/services/admission.js";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import {
@@ -176,18 +175,11 @@ function buildGeminiNativeUrl(requestUrl, model, action) {
 }
 
 async function validateGeminiNativeClientKey(request) {
-  const settings = await getSettings();
-  const { apiKey, auth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+  const { apiKey, auth, error } = await admit(request, {
+    kind: "geminiNative",
+    respond: (status, message) => Response.json({ error: { message } }, { status }),
   });
-  if (!auth.ok && auth.reason === "missing") {
-    return { apiKey, apiKeyId: auth.apiKeyId, error: annotateClientAdmissionFailure(
-      Response.json({ error: { message: "Missing API key" } }, { status: 401 }), "auth_missing") };
-  }
-  if (!auth.ok) {
-    return { apiKey, apiKeyId: auth.apiKeyId, error: annotateClientAdmissionFailure(
-      Response.json({ error: { message: "Invalid API key" } }, { status: 401 }), "auth_invalid") };
-  }
+  if (error) return { apiKey, apiKeyId: auth.apiKeyId, error };
   return { apiKey, apiKeyId: auth.apiKeyId, billingEpoch: auth.billingEpoch, error: null };
 }
 

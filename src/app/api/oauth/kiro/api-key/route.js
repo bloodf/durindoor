@@ -6,8 +6,8 @@ import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 /**
  * POST /api/oauth/kiro/api-key
  * Import a Kiro API key (headless auth). The key is a long-lived bearer
- * credential — there is no refresh token. It is validated by listing
- * CodeWhisperer profiles, then stored with authMethod="api_key".
+ * credential — there is no refresh token. It is validated on the Amazon Q
+ * model catalog, then stored with authMethod="api_key".
  */
 import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
@@ -25,14 +25,14 @@ export async function POST(request) {
     try {
       // Region is interpolated into an AWS hostname downstream; reject it at
       // the request boundary before credential validation opens a socket.
-      safeRegion = normalizeKiroRegion(region || "us-east-1");
+      safeRegion = !region || region === "auto" ? "auto" : normalizeKiroRegion(region);
     } catch (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     const kiroService = new KiroService();
 
-    // Validate the key and resolve its profileArn via ListAvailableProfiles
+    // Validate on Amazon Q; profile discovery is best-effort.
     const credential = await kiroService.validateApiKey(
       apiKey,
       safeRegion

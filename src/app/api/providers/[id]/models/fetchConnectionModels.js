@@ -24,6 +24,30 @@ import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { updateProviderConnection } from "@/lib/localDb";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
+// The public Kilo catalog is shared across accounts. Never send stored credentials
+// or follow redirects when fetching it; keep the existing one-hour catalog TTL.
+const KILO_CATALOG_URL = "https://api.kilo.ai/api/gateway/models";
+let kiloCatalog = null;
+let kiloCatalogTimestamp = 0;
+
+async function fetchKiloCatalog() {
+  if (kiloCatalog && Date.now() - kiloCatalogTimestamp < 60 * 60 * 1000) return { models: kiloCatalog };
+  try {
+    const response = await fetch(KILO_CATALOG_URL, {
+      headers: { Accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`Kilo catalog returned ${response.status}`);
+    const data = await response.json();
+    if (!Array.isArray(data.data)) throw new Error("Invalid Kilo catalog");
+    kiloCatalog = data.data.filter((model) => isString(model?.id) && model.id.trim()).map((model) => ({ id: model.id, name: isString(model.name) ? model.name : model.id }));
+    kiloCatalogTimestamp = Date.now();
+    return { models: kiloCatalog };
+  } catch {
+    if (kiloCatalog) return { models: kiloCatalog, warning: "Kilo catalog refresh failed" };
+    return { error: "Kilo catalog unavailable", status: 502 };
+  }
+}
+
 // Safety cap on paginated list endpoints (1000 models/page for Gemini).
 const MAX_MODEL_LIST_PAGES = 20;
 
@@ -86,6 +110,8 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
+  if (connection.provider === "kilocode") return fetchKiloCatalog();
+
   // T3 Chat, Adapta and the staged web-session providers publish a curated
   // catalog; model discovery sends no session cookie or token.
   if (LOCAL_CATALOG_WEB_PROVIDERS.has(connection.provider)) {

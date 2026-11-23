@@ -19,6 +19,7 @@ import {
   canModifySecurityCriticalSettings,
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
+import { REDACT_ON_GET_SETTING_KEYS, SCOPED_SETTING_KEYS, validateSettingsPatch } from "@/lib/settings/settingsSchema.js";
 import { isBoolean, isNumber, isObject, isRecord, isString } from "@/shared/utils/typeChecks.js";
 import { normalizeMediaRoutes } from "@/shared/constants/mediaRoutes.js";
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
@@ -44,8 +45,6 @@ function isUsableProxyUrl(url) {
   }
 }
 
-const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
-
 /**
  * Shape settings for a response.
  *
@@ -61,20 +60,11 @@ const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
  * @param {{ privileged: boolean }} options
  */
 function sanitizeSettingsForResponse(settings, { privileged }) {
-  const {
-    password,
-    passwordSessionEpoch,
-    oidcClientSecret,
-    mitmSudoEncrypted,
-    postgresUrl,
-    mfaSecret,
-    mfaBackupCodes,
-    operatorWebhooks,
-    ...safeSettings
-  } = settings;
-  void postgresUrl;
-  void mfaSecret;
-  void operatorWebhooks;
+  const safeSettings = { ...settings };
+  for (const key of REDACT_ON_GET_SETTING_KEYS) delete safeSettings[key];
+  const password = settings.password;
+  const oidcClientSecret = settings.oidcClientSecret;
+  const mfaBackupCodes = settings.mfaBackupCodes;
   safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
   // mfaEnabled is a plain flag (safe to expose); the secret and recovery-code
   // hashes never leave the server. Only a count is exposed so the profile UI
@@ -140,6 +130,11 @@ export async function PATCH(request) {
     const mayModifySecurityCritical = await canModifySecurityCriticalSettings(request);
     if (!mayModifySecurityCritical) {
       stripSettingKeys(body, AUTH_CRITICAL_SETTING_KEYS);
+    }
+
+    const invalidKeys = validateSettingsPatch(body);
+    if (invalidKeys.length) {
+      return NextResponse.json({ error: "Invalid settings", keys: invalidKeys }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
     if (Object.hasOwn(body, "enableSessionCapture") && !isBoolean(body.enableSessionCapture)) {
@@ -278,7 +273,7 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid retryDelayByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       for (const [providerId, seconds] of Object.entries(overrides)) {
-        if (!providerId || seconds !== "auto" && (!isNumber(seconds) || !Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds)) {
+        if (!providerId || seconds !== null && seconds !== "auto" && (!isNumber(seconds) || !Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds)) {
           return NextResponse.json({ error: "Invalid retryDelayByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
         }
       }
@@ -319,6 +314,7 @@ export async function PATCH(request) {
       let total = 0;
       for (const [providerId, list] of Object.entries(rulesByProvider)) {
         if (!isString(providerId) || !providerId.trim()) return bad();
+        if (list === null) continue;
         if (!Array.isArray(list)) return bad();
         for (const rule of list) {
           total += 1;
@@ -379,7 +375,7 @@ export async function PATCH(request) {
       const prompts = body.comboPrompts;
       if (!prompts || !isObject(prompts) || Array.isArray(prompts) ||
           Object.entries(prompts).some(([name, prompt]) => !name.trim() ||
-            !isString(prompt) || prompt.length > MAX_CUSTOM_PROMPT_CHARS)) {
+            prompt !== null && (!isString(prompt) || prompt.length > MAX_CUSTOM_PROMPT_CHARS))) {
         return NextResponse.json({ error: "Invalid comboPrompts" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }

@@ -17,8 +17,10 @@ colors:
 # Design System: DurinDoor v5 admin review
 
 The active implementation uses `review.css` and source-backed components. The
-previous `v5.css` describes the rejected generic prototype, preserved under
-Archive. It is not the active design specification.
+previous `v5.css` belongs to the rejected generic prototype, preserved under
+Archive. It is imported only by the archive files `AdminReview.jsx`,
+`Foundation.stories.jsx`, and `Forms.stories.jsx`; all three are excluded from
+acceptance. It is not the active design specification.
 
 The active direction uses Inter, green actions and forest-neutral light/dark
 surfaces. `review.css` is the token source, including information states, focus,

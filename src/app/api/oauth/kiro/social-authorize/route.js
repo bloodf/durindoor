@@ -27,6 +27,19 @@ async function beginSocialAuthorization(input) {
   if (hasOwn(input, "proxyPoolId")) selectionInput.proxyPoolId = input.proxyPoolId;
   const resolvedProxy = await resolveOAuthProxySelection(selectionInput);
   const { codeVerifier, codeChallenge, state } = generatePKCE();
+  if (input.mode === "device") {
+    const device = await new KiroService().startSocialDevice(socialProvider, resolvedProxy.proxyOptions);
+    const ttlMs = Number(device.expiresInMilliseconds) || 300000;
+    const flow = createOAuthFlow({
+      provider: "kiro", state, kind: "device", ttlMs, intent,
+      payload: { deviceCode: device.deviceCode, socialProvider, proxySelection: resolvedProxy.selection }
+    });
+    return {
+      authUrl: device.verificationUriComplete, userCode: device.userCode,
+      interval: Math.max(1, Math.ceil((Number(device.intervalInMilliseconds) || 5000) / 1000)),
+      state, flowId: flow.flowId, expiresAt: flow.expiresAt, provider: socialProvider
+    };
+  }
   const authUrl = new KiroService().buildSocialLoginUrl(
     socialProvider,
     codeChallenge,

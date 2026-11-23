@@ -16,15 +16,14 @@ let timer = null;
 let ticking = false;
 
 export async function readAntigravityScheduler() {
-  const stored = await kv.get(SCHEDULER_KEY, { enabled: false });
-  return { enabled: stored?.enabled === true };
+  // Release remains blocked until browser isolation and multi-process gates pass.
+  return { enabled: false };
 }
 
-export async function setAntigravitySchedulerEnabled(enabled) {
-  const next = { enabled: enabled === true, updatedAt: new Date().toISOString() };
+export async function setAntigravitySchedulerEnabled() {
+  const next = { enabled: false, updatedAt: new Date().toISOString() };
   await kv.set(SCHEDULER_KEY, next);
-  if (!next.enabled) stopAntigravityScheduler();
-  else startAntigravitySchedulerLoop();
+  stopAntigravityScheduler();
   return { enabled: next.enabled };
 }
 

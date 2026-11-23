@@ -40,3 +40,11 @@ it("holds one Antigravity refresh lease and leaves browser recovery closed", asy
   expect(first.lease.owner).toBe("owner-a");
   expect(second).toMatchObject({ ok: false, category: "busy" });
 });
+
+it("keeps the scheduler disabled when enable is requested", async () => {
+  const { readAntigravityScheduler, setAntigravitySchedulerEnabled, runAntigravitySchedulerTick } =
+    await import("../../src/lib/antigravity/scheduler.js");
+  expect(await setAntigravitySchedulerEnabled(true)).toEqual({ enabled: false });
+  expect(await readAntigravityScheduler()).toEqual({ enabled: false });
+  expect(await runAntigravitySchedulerTick()).toEqual({ skipped: "disabled" });
+});

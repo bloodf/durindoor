@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { randomUUID } from "node:crypto";
 import { OPTIONS, POST as chat } from "../../v1/chat/completions/route.js";
 import { copyClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
@@ -13,7 +14,7 @@ export { OPTIONS };
 
 const fields = new Set(["model", "input", "stream", "store", "background", "generation_config"]);
 const models = new Set(geminiInteractions.models.map(({ id }) => id));
-const cors = { "Access-Control-Allow-Origin": "*" };
+const cors = { ...corsHeaders(["POST", "OPTIONS"]) };
 
 function errorResponse(status, message, headers = {}) {
   return Response.json({ error: { code: status, message } }, { status, headers: { ...cors, ...headers } });

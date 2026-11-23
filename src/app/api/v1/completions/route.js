@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getRequestId, withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { randomUUID } from "node:crypto";
@@ -13,9 +14,7 @@ import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS, HEAD",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "HEAD", "OPTIONS"]),
     }
   });
 }
@@ -27,9 +26,7 @@ async function HEADHandler() {
   return new Response(null, {
     status: 200,
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS, HEAD",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "HEAD", "OPTIONS"]),
     }
   });
 }

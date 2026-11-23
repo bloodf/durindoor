@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { generateProviderPluginManifest } from "../../../../../open-sse/config/providerPluginManifestRegistry.js";
 
 const JSON_HEADERS = {
@@ -8,9 +9,7 @@ const JSON_HEADERS = {
 export async function OPTIONS() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
+      ...corsHeaders(["GET", "OPTIONS"]),
     },
   });
 }
@@ -19,7 +18,7 @@ export async function GET() {
   return new Response(JSON.stringify(generateProviderPluginManifest()), {
     headers: {
       ...JSON_HEADERS,
-      "Access-Control-Allow-Origin": "*",
+      ...corsHeaders(["GET", "OPTIONS"]),
     },
   });
 }

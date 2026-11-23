@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { LLM_KIND, buildModelsList } from "./buildModelsList.js";
 import { buildModelsResponse } from "./_shared.js";
 import { headOkResponse } from "open-sse/translator/validate.js";
@@ -10,9 +11,7 @@ import { filterModelsForRequest, getRequestModelDiscoveryOptions } from "@/sse/s
 export async function OPTIONS() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
+      ...corsHeaders(["GET", "HEAD", "OPTIONS"]),
     },
   });
 }

@@ -1,13 +1,5 @@
-export const CORS_ALLOW_HEADERS = [
-  "Authorization",
-  "Content-Type",
-  "x-api-key",
-  "anthropic-version",
-  "anthropic-beta",
-  "x-goog-api-key",
-  "x-connection-id",
-  "x-9r-cli-token",
-].join(", ");
+// Authorization is a CORS non-wildcard request header and must be named explicitly.
+export const CORS_ALLOW_HEADERS = "Authorization, *";
 
 export function corsHeaders(methods) {
   return {

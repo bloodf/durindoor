@@ -111,10 +111,10 @@ export function buildRequestDetail(base, overrides = {}) {
  * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)] · OUT <n>` plus optional telemetry.
  */
 export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
-  const u = canonicalizeUsage(usage) || usage || {};
+  const u = usage || {};
   const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;
   const outTok = u.completion_tokens ?? u.output_tokens ?? 0;
-  const cacheRead = u.cached_tokens ?? u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0;
+  const cacheRead = u.cache_read_input_tokens ?? u.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0;
   const cacheCreate = u.cache_creation_input_tokens ?? 0;
   let inStr = `IN ${inTok}`;
   if (cacheRead || cacheCreate) {

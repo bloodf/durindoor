@@ -119,6 +119,48 @@ function resolveJsonSchemaRefs(schema) {
   delete schema.definitions;
 }
 
+// Structured output schemas must not silently lose references. Bound both depth and
+// expanded nodes so recursive or exponentially expanding input fails locally.
+function resolveStructuredOutputRefs(root) {
+  let nodes = 0;
+  function fail() {
+    const error = new Error("Invalid or too complex structured output schema");
+    error.statusCode = 400;
+    error.localSchemaError = true;
+    throw error;
+  }
+  function visit(value, active, depth, nameMap = false) {
+    if (++nodes > 10000 || depth > 100) fail();
+    if (!value || !isObject(value)) return value;
+    if (Array.isArray(value)) return value.map((item) => visit(item, active, depth + 1));
+    if (!nameMap && Object.hasOwn(value, "$ref")) {
+      const ref = value.$ref;
+      if (!isString(ref) || !ref.startsWith("#/")) fail();
+      let target = root;
+      for (const part of ref.slice(2).split("/")) {
+        if (/~(?![01])/.test(part)) fail();
+        const key = part.replace(/~1/g, "/").replace(/~0/g, "~");
+        if (!target || !isObject(target) || !Object.hasOwn(target, key)) fail();
+        target = target[key];
+      }
+      if (!target || !isObject(target) || Array.isArray(target) || active.has(target)) fail();
+      const next = new Set(active).add(target);
+      const { $ref, ...siblings } = value;
+      return { ...visit(target, next, depth + 1), ...visit(siblings, active, depth + 1) };
+    }
+    const result = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (nameMap || (key !== "$defs" && key !== "definitions")) {
+        const childIsNameMap = !nameMap && ["properties", "patternProperties", "dependentSchemas"].includes(key);
+        Object.defineProperty(result, key, { value: visit(child, active, depth + 1, childIsNameMap), enumerable: true, configurable: true, writable: true });
+      }
+    }
+    return result;
+  }
+  if (!root || !isObject(root) || Array.isArray(root)) fail();
+  return visit(root, new Set([root]), 0);
+}
+
 // Default safety settings
 export const DEFAULT_SAFETY_SETTINGS = [
 { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
@@ -805,17 +847,20 @@ export function buildGeminiToolParameters(raw, name, options) {
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively.
 // `placeholderPaths`, when an array, receives one entry per node that got the placeholder
 // property: a list of `{ property: name }` / `{ items: true }` steps from the schema root.
-export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false, placeholderPaths = null } = {}) {
+export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false, placeholderPaths = null, structuredOutput = false } = {}) {
+  if (structuredOutput && (!schema || !isObject(schema) || Array.isArray(schema))) {
+    return resolveStructuredOutputRefs(schema);
+  }
   if (!schema || !isObject(schema)) return schema;
 
   // Mutate directly (schema is only used once per request)
-  let cleaned = schema;
+  let cleaned = structuredOutput ? resolveStructuredOutputRefs(schema) : schema;
 
   // Phase 0: Resolve $ref pointers BEFORE removing unsupported keywords.
   // This inlines referenced definitions so that the schema is self-contained.
   // Without this, $ref removal leaves empty objects that get placeholder-filled,
   // producing invalid schemas that Google Antigravity rejects (bug #2877/#2884).
-  resolveJsonSchemaRefs(cleaned);
+  if (!structuredOutput) resolveJsonSchemaRefs(cleaned);
 
   convertConstToEnum(cleaned);
   convertEnumValuesToStrings(cleaned);

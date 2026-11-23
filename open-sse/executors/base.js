@@ -40,6 +40,20 @@ function removeBetaFlag(headers, flag) {
   }
 }
 
+/** Collapse case variants before fetch combines duplicate Anthropic headers. */
+export function normalizeAnthropicHeaders(headers) {
+  for (const name of ["anthropic-version", "anthropic-beta"]) {
+    const keys = Object.keys(headers).filter((key) => key.toLowerCase() === name);
+    if (!keys.length) continue;
+    const values = [...new Set(keys.flatMap((key) => String(headers[key] ?? "").split(",")).map((value) => value.trim()).filter(Boolean))];
+    // Keep the first spelling: callers and tests read the canonical key as set.
+    const [kept, ...duplicates] = keys;
+    for (const key of duplicates) delete headers[key];
+    if (values.length) headers[kept] = name === "anthropic-version" ? values[0] : values.join(",");
+    else delete headers[kept];
+  }
+}
+
 function requestAbortError(reason) {
   if (reason instanceof Error && reason.name === "AbortError") return reason;
   return new DOMException("Provider request aborted", "AbortError");
@@ -234,7 +248,7 @@ export class BaseExecutor {
       } else if (credentials.accessToken) {
         headers["Authorization"] = `Bearer ${credentials.accessToken}`;
       }
-      if (!headers["anthropic-version"]) {
+      if (!Object.keys(headers).some((key) => key.toLowerCase() === "anthropic-version")) {
         headers["anthropic-version"] = ANTHROPIC_API_VERSION;
       }
     } else {
@@ -250,6 +264,7 @@ export class BaseExecutor {
       headers["Accept"] = "text/event-stream";
     }
 
+    normalizeAnthropicHeaders(headers);
     return headers;
   }
 

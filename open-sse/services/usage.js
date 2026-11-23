@@ -33,6 +33,7 @@ import {
 "./usage/misc.js";
 import { getGrokCliUsage } from "./usage/grok-cli.js";
 import { getXiaomiMimoUsage } from "./usage/xiaomi-mimo.js";
+import { getSensenovaUsage } from "./usage/sensenova.js";
 
 /**
  * Get usage data for a provider connection
@@ -77,7 +78,8 @@ const USAGE_HANDLERS = {
   "kimi-coding-apikey": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
   "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions),
-  "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.apiKey || c.accessToken, c.providerSpecificData, c.proxyOptions)
+  "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.apiKey || c.accessToken, c.providerSpecificData, c.proxyOptions),
+  sensenova: (c) => getSensenovaUsage(c.connection, c.proxyOptions)
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {

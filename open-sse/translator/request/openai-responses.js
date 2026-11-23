@@ -4,6 +4,7 @@
  * Responses API uses: { input: [...], instructions: "..." }
  * Chat API uses: { messages: [...] }
  */
+import { CLAUDE_THINKING_PREFIX, decodeClaudeThinking } from "../concerns/claudeThinkingEnvelope.js";
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -386,6 +387,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
   let pendingToolResults = [];
   let pendingReasoning = "";
   let pendingClaudeThinking = [];
+  let pendingEnvelope = null;
   let thinkingOrigin = null;
   // True once this pending assistant turn absorbed a Responses `message` item.
   // A tool-only turn (function_call first) followed by a later assistant
@@ -501,11 +503,16 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
       currentAssistantMsg.reasoning_content = pendingReasoning;
       pendingReasoning = "";
     }
-    if (pendingClaudeThinking.length) {
-      currentAssistantMsg._responsesClaudeThinking = pendingClaudeThinking;
-      pendingClaudeThinking = [];
-      thinkingOrigin = null;
+    if (pendingEnvelope && currentAssistantMsg.tool_calls?.length) {
+      currentAssistantMsg._responsesClaudeThinking = pendingEnvelope;
+      delete currentAssistantMsg.reasoning_content;
     }
+    pendingEnvelope = null;
+    if (pendingClaudeThinking.length && !currentAssistantMsg._responsesClaudeThinking) {
+      currentAssistantMsg._responsesClaudeThinking = pendingClaudeThinking;
+    }
+    pendingClaudeThinking = [];
+    thinkingOrigin = null;
     if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
     // A text-only content array (no tool calls survived, or every call was
     // nameless) must ship as a string. filterToOpenAIFormat only collapses
@@ -601,6 +608,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
       }
       pendingReasoning = "";
       pendingClaudeThinking = [];
+      pendingEnvelope = null;
       thinkingOrigin = null;
       result.messages.push({ role: item.role, content });
     } else
@@ -676,9 +684,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
+      const restored = translationContext?.targetFormat === FORMATS.CLAUDE ? decodeClaudeThinking(item.encrypted_content, model) : null;
+      if (restored) pendingEnvelope = restored;
       const txt = extractReasoningText(item);
       if (txt) pendingReasoning = pendingReasoning ? `${pendingReasoning}\n${txt}` : txt;
-      if (translationContext?.targetFormat === FORMATS.CLAUDE && isString(item.encrypted_content) && isValidClaudeSignature(item.encrypted_content)) {
+      if (translationContext?.targetFormat === FORMATS.CLAUDE && isString(item.encrypted_content) && !item.encrypted_content.startsWith(CLAUDE_THINKING_PREFIX) && isValidClaudeSignature(item.encrypted_content)) {
         const match = isString(item.id) ? /^rs_(.+)_(\d+)$/.exec(item.id) : null;
         const origin = match && Number.isSafeInteger(Number(match[2])) ? { id: match[1], index: Number(match[2]) } : null;
         const block = { type: CLAUDE_BLOCK.THINKING, thinking: txt, signature: item.encrypted_content.split("#").at(-1).trim() };
@@ -900,14 +910,16 @@ function chatCustomToolInput(tc) {
 
 /**
  * Normalize Chat Completions output limits at the shared Responses wire seam.
- * Native max_output_tokens wins when both fields are present.
+ * Native max_output_tokens wins, followed by max_completion_tokens and max_tokens.
  */
 function normalizeResponsesOutputLimit(source, target) {
   if (target.max_output_tokens === undefined) {
     if (source.max_output_tokens !== undefined) target.max_output_tokens = source.max_output_tokens;else
+    if (source.max_completion_tokens !== undefined) target.max_output_tokens = source.max_completion_tokens;else
     if (source.max_tokens !== undefined) target.max_output_tokens = source.max_tokens;
   }
   delete target.max_tokens;
+  delete target.max_completion_tokens;
   return target;
 }
 

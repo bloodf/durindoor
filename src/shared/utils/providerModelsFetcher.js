@@ -2,11 +2,11 @@
 // Fetches via backend proxy to avoid CORS issues
 
 export const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const cache = new Map(); // key: fetcher.url → { data, expiresAt }
+const cache = new Map(); // key: serialized [type, url] → { data, expiresAt }
 
 /**
  * Fetch suggested models for a provider using its modelsFetcher config.
- * Results are cached in-memory for CACHE_TTL_MS; force bypasses the cache for
+ * Results are cached by type and URL for CACHE_TTL_MS; force bypasses the cache for
  * the provider page's manual Sync models action.
  * @param {{ url: string, type: string }} fetcher
  * @param {{ force?: boolean }} options
@@ -15,7 +15,8 @@ const cache = new Map(); // key: fetcher.url → { data, expiresAt }
 export async function fetchSuggestedModels(fetcher, { force = false } = {}) {
   if (!fetcher?.url || !fetcher?.type) return [];
 
-  const cached = force ? null : cache.get(fetcher.url);
+  const cacheKey = JSON.stringify([fetcher.type, fetcher.url]);
+  const cached = force ? null : cache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
 
   try {
@@ -24,7 +25,7 @@ export async function fetchSuggestedModels(fetcher, { force = false } = {}) {
     if (!res.ok) return [];
     const json = await res.json();
     const data = json.data ?? [];
-    cache.set(fetcher.url, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+    cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
     return data;
   } catch {
     return [];

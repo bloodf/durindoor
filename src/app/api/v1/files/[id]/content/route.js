@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File content — raw bytes download.
 import path from "node:path";
@@ -8,9 +9,7 @@ import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  ...corsHeaders(["GET", "OPTIONS"]),
 };
 
 async function OPTIONSHandler() {

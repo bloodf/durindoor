@@ -535,7 +535,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
   // Computed from the raw body before the 429 message gets redacted below, so
   // callers can gate provider-specific behavior (e.g. Antigravity's strike
   // breaker) on the real reason code instead of the client-facing message.
-  const antigravityQuotaSignal = effectiveStatus === 429 && hasAntigravityQuotaSignal(bodyText);
+  const antigravityQuotaSignal = (effectiveStatus === 429 || effectiveStatus === 409) && hasAntigravityQuotaSignal(bodyText);
   if (executorParsed) {
     const parsedMessage = executorParsed.message || DEFAULT_ERROR_MESSAGES[effectiveStatus] || `Upstream error: ${effectiveStatus}`;
     // A 429 evidence object is the bounded authority, including an intentional
@@ -553,7 +553,8 @@ export async function parseUpstreamError(response, executor = null, options = {}
       resetsAtMs: normalizedResetAtMs,
       errorBody: effectiveStatus === 429 ? undefined : executorParsed.errorBody,
       rateLimitEvidence,
-      antigravityQuotaSignal
+      antigravityQuotaSignal,
+      noQuotaMetadata: executorParsed.noQuotaMetadata === true && !rateLimitEvidence?.resetAtMs && rateLimitEvidence?.state !== "exhausted" && !executorParsed.resetsAtMs && !antigravityQuotaSignal
     };
   }
 

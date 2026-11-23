@@ -24,6 +24,8 @@ export const SECRET_SETTING_KEYS = Object.freeze([
   // Webhook destinations hold signing secrets; managed only via
   // /api/settings/webhooks (dashboard JWT or CLI token).
   "operatorWebhooks",
+  // Managed by the authenticated OpenRouter policy endpoint.
+  "openrouterRouting",
 ]);
 
 /**
@@ -50,6 +52,7 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "oidcAllowedDomains",
   "tunnelDashboardAccess",
   "enableObservability",
+  "logToolSources",
   "enableSessionCapture",
   "outboundProxyEnabled",
   "outboundProxyUrl",

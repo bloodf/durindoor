@@ -122,3 +122,13 @@ it("characterizes a rejected OAuth refresh through normal credential and chat en
   expect(JSON.stringify(response)).toContain("original upstream rejection");
   expect(mocks.execute).toHaveBeenCalledTimes(1);
 });
+
+it("returns a local schema error before calling the provider", async () => {
+  mocks.execute.mockClear();
+  const body = { model: "antigravity/gemini-3-flash", stream: false, messages: [{ role: "user", content: "hi" }], response_format: { type: "json_schema", json_schema: { schema: { $ref: "#/$defs/missing" } } } };
+  const result = await handleChatCore({ body, modelInfo: { provider: "antigravity", model: "gemini-3-flash" }, credentials: { accessToken: "test", connectionId: "test" }, connectionId: "test", clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} }, log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } });
+  expect(result.status).toBe(400);
+  expect(result.localSchemaError).toBe(true);
+  expect(result.response[Symbol.for("durindoor.localSchemaError")]).toBe(true);
+  expect(mocks.execute).not.toHaveBeenCalled();
+});

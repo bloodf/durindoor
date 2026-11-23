@@ -1486,6 +1486,7 @@ export async function handleComboChat({
   decisionBackend = null,
   comboTimeoutMs = 0,
   quotaRanker = null,
+  lockRanker = null,
   signal = null,
   contextRequirements = null,
   capabilitiesMap = null,
@@ -1620,6 +1621,16 @@ export async function handleComboChat({
       // Quota diagnostics are fail-open for unknown/repository errors; account
       // selection still applies the authoritative atomic capacity gate.
     }}
+  // Stable partition after strategy and quota ordering, including weighted picks.
+  if (isFunction(lockRanker)) {
+    try {
+      const ordered = await lockRanker(rotatedModels);
+      if (Array.isArray(ordered) && ordered.length === rotatedModels.length) rotatedModels = ordered;
+    } catch {
+      // Credential selection remains authoritative if inspection fails.
+    }
+  }
+
   let lastError = null;
   let earliestRetryAfter = null;
   let recoveryBlockedTargets = 0;
@@ -1803,6 +1814,11 @@ export async function handleComboChat({
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
+      }
+
+      if (result[Symbol.for("durindoor.localSchemaError")]) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
       }
 
       if (result.headers?.get?.(ACCEPTED_JOB_HEADER)) {

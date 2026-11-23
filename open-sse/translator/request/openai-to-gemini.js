@@ -411,12 +411,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   if (toolNameMap.size) result._toolNameMap = toolNameMap;
 
   const responseSchema = body.response_format?.json_schema?.schema;
-  if (body.response_format?.type === "json_schema" && isObject(responseSchema) &&
+  if (body.response_format?.type === "json_schema" &&
     (!hasFunctionDeclarations || /^gemini-3(?:[.-]|$)/i.test(model))) {
     result.generationConfig.responseMimeType = "application/json";
     result.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
       structuredClone(responseSchema),
-      { preserveNullable: true }
+      { preserveNullable: true, structuredOutput: true }
     );
   }
 

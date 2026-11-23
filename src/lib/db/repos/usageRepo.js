@@ -1,3 +1,4 @@
+import { decodeUsdReceipt } from "../../usage/receipt.js";
 import { MAX_ATTRIBUTION_VALUES, validAttributionValue } from "../../usageAttribution.js";
 import { EventEmitter } from "events";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -348,9 +349,9 @@ async function calculateCost(provider, model, tokens) {
   for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
     if (tokens[field] == null) continue;
     // Receipts are numeric USD, never JavaScript-coerced booleans/strings/arrays.
-    const cost = tokens[field];
-    if (!isNumber(cost) || !Number.isFinite(cost) || cost < 0) throw new TypeError(`Invalid usage ${field}`);
-    return { cost: field === "cost_in_usd_ticks" ? cost / 1e10 : cost, split: null, costStatus: "known", costSource: "provider" };
+    const cost = decodeUsdReceipt(tokens[field], field);
+    if (cost === null) throw new TypeError(`Invalid usage ${field}`);
+    return { cost, split: null, costStatus: "known", costSource: "provider" };
   }
   const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
   const { resolvePricingForModel } = await import("./pricingRepo.js");
@@ -528,9 +529,10 @@ export async function getActiveRequests() {
   const seen = new Set();
   const recentRequests = [...recentRing.items].
   sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).
-  map((e) => {
+  map((e, index) => {
     const t = e.tokens || {};
     return {
+      eventKey: e.storedEventId ? `event:${e.storedEventId}` : `row:${index}`,
       timestamp: e.timestamp, model: e.model, provider: e.provider || "",
       promptTokens: t.prompt_tokens || t.input_tokens || 0,
       completionTokens: t.completion_tokens || t.output_tokens || 0,
@@ -540,13 +542,12 @@ export async function getActiveRequests() {
   }).
   filter((e) => {
     if (e.promptTokens === 0 && e.completionTokens === 0) return false;
-    const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-    const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
+    const key = e.eventKey;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   }).
-  slice(0, 20);
+  slice(0, 20).map(({ eventKey, ...request }) => request);
 
   const errorProvider = Date.now() - lastErrorProvider.ts < 10000 ? lastErrorProvider.provider : "";
   return { activeRequests, activeSessions: await getActiveSessions(), recentRequests, errorProvider, pending: pendingRequests };
@@ -1082,8 +1083,8 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
   }
 }
 
-// Usage totals for one API key: today and this month (used by per-key limits).
-// Today always falls inside this month, so one scan from monthStart covers both.
+// Usage totals for one API key: today, optionally this week, and this month
+// (used by per-key limits). One scan from the earliest window start covers all.
 // COALESCE preserves historical NULL provider/status rows; only explicit MCP errors are exempt.
 //
 // The window belongs to the key, not to its secret. Rows carrying the stable
@@ -1091,32 +1092,53 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
 // scoped association through the stored secret. The two branches are disjoint,
 // so a row is never counted twice, and a later secret change cannot empty a
 // key's window.
-export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso, apiKeyId = null) {
+export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso, apiKeyId = null, weekStartIso = null) {
   const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
-  if (!apiKey && !apiKeyId) return { day: empty(), month: empty() };
+  const withWeek = Boolean(weekStartIso);
+  if (!apiKey && !apiKeyId) {
+    const none = { day: empty() };
+    if (withWeek) none.week = empty();
+    none.month = empty();
+    return none;
+  }
   const db = await getAdapter();
   const scope = apiKeyUsageScope(db, { apiKeyId, apiKey });
+  // One pass over the widest window; each period is a conditional sum. The
+  // weekly window is optional so callers that never ask for it keep the
+  // original { day, month } shape.
+  const windows = [["day", dayStartIso], ...(withWeek ? [["week", weekStartIso]] : []), ["month", monthStartIso]];
+  const columns = [];
+  const columnParams = [];
+  for (const [name, start] of windows) {
+    const cap = name[0].toUpperCase() + name.slice(1);
+    columns.push(
+      `COALESCE(SUM(CASE WHEN timestamp >= ? THEN promptTokens ELSE 0 END), 0) AS in${cap}`,
+      `COALESCE(SUM(CASE WHEN timestamp >= ? THEN completionTokens ELSE 0 END), 0) AS out${cap}`,
+      `COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS req${cap}`,
+      `COALESCE(SUM(CASE WHEN timestamp >= ? THEN cost ELSE 0 END), 0) AS cost${cap}`,
+      `COALESCE(SUM(CASE WHEN timestamp >= ? AND cost IS NULL THEN 1 ELSE 0 END), 0) AS unk${cap}`
+    );
+    columnParams.push(start, start, start, start, start);
+  }
+  const earliest = windows.map(([, start]) => start).sort()[0];
   const row = db.get(
-    `SELECT
-       COALESCE(SUM(CASE WHEN timestamp >= ? THEN promptTokens ELSE 0 END), 0) AS dayInput,
-       COALESCE(SUM(CASE WHEN timestamp >= ? THEN completionTokens ELSE 0 END), 0) AS dayOutput,
-       COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS dayRequests,
-       COALESCE(SUM(CASE WHEN timestamp >= ? THEN cost ELSE 0 END), 0) AS dayCost,
-       COALESCE(SUM(CASE WHEN timestamp >= ? AND cost IS NULL THEN 1 ELSE 0 END), 0) AS dayUnknown,
-       COALESCE(SUM(promptTokens), 0) AS monthInput,
-       COALESCE(SUM(completionTokens), 0) AS monthOutput,
-       COUNT(*) AS monthRequests,
-       COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS monthUnknown,
-       COALESCE(SUM(cost), 0) AS monthCost
+    `SELECT ${columns.join(",\n       ")}
      FROM usageHistory WHERE ${scope.clause} AND timestamp >= ?
        AND NOT (COALESCE(provider, '') = 'mcp-gateway' AND COALESCE(status, '') = 'error')`,
-    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, ...scope.params, monthStartIso]
+    [...columnParams, ...scope.params, earliest]
   );
   const n = (v) => Number(v) || 0;
-  return {
-    day: { inputTokens: n(row?.dayInput), outputTokens: n(row?.dayOutput), requests: n(row?.dayRequests), cost: n(row?.dayCost), unknownCostRequests: n(row?.dayUnknown) },
-    month: { inputTokens: n(row?.monthInput), outputTokens: n(row?.monthOutput), requests: n(row?.monthRequests), cost: n(row?.monthCost), unknownCostRequests: n(row?.monthUnknown) },
-  };
+  const read = (cap) => ({
+    inputTokens: n(row?.[`in${cap}`]),
+    outputTokens: n(row?.[`out${cap}`]),
+    requests: n(row?.[`req${cap}`]),
+    cost: n(row?.[`cost${cap}`]),
+    unknownCostRequests: n(row?.[`unk${cap}`]),
+  });
+  const totals = { day: read("Day") };
+  if (withWeek) totals.week = read("Week");
+  totals.month = read("Month");
+  return totals;
 }
 
 export async function getUsageHistory(filter = {}) {
@@ -1317,12 +1339,13 @@ export async function getUsageStats(period = "all", opts = {}) {
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT id, usageEventId, timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows.
   map((r) => {
     const t = parseJson(r.tokens, {}) || {};
     return {
+      eventKey: r.usageEventId ? `event:${r.usageEventId}` : `row:${r.id}`,
       timestamp: r.timestamp, model: r.model, provider: r.provider || "",
       promptTokens: t.prompt_tokens || t.input_tokens || 0,
       completionTokens: t.completion_tokens || t.output_tokens || 0,
@@ -1332,15 +1355,15 @@ export async function getUsageStats(period = "all", opts = {}) {
   }).
   filter((e) => {
     if (e.promptTokens === 0 && e.completionTokens === 0) return false;
-    const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-    const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
+    const key = e.eventKey;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   }).
-  slice(0, 20);
+  slice(0, 20).map(({ eventKey, ...request }) => request);
 
   const stats = {
+    totalRequestsLifetime: Number(db.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'")?.value) || 0,
     totalRequests: 0,
     unknownCostRequests: 0,
     totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedTokens: 0,

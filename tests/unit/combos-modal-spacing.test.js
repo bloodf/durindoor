@@ -51,6 +51,20 @@ describe("Create Combo modal spacing", () => {
 
   const flush = async () => { await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
 
+  it.each([[false, true], [true, false]])("saves a logging change from noLog=%s to %s", async (initial, expected) => {
+    const combo = { id: "logging", name: "logging", models: ["openai/model"], noLog: initial };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url, options) => url === "/api/combos" ? json({ combos: [combo] }) : originalFetch(url, options));
+    await act(async () => { root.render(React.createElement(CombosPage)); });
+    await flush();
+    await act(async () => { within(container).getByRole("button", { name: "Edit", exact: true }).click(); });
+    const dialog = document.body.querySelector("dialog");
+    await act(async () => { within(dialog).getByRole("checkbox", { name: "Logging" }).click(); });
+    await act(async () => { within(dialog).getByRole("button", { name: "Save", exact: true }).click(); });
+    const write = globalThis.fetch.mock.calls.find(([, options]) => options?.method === "PUT");
+    expect(JSON.parse(write[1].body).noLog).toBe(expected);
+  });
+
   it.each(["", "0", "-1"])("explains invalid weight %j without losing focus and saves the corrected draft", async (invalid) => {
     const combo = { id: "weighted", name: "weighted", models: ["openai/model"], members: [{ id: "openai/model", weight: 2 }] };
     const originalFetch = globalThis.fetch;

@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // Anthropic Message Batches collection — create + list.
 import { createAnthropicBatch, listBatches } from "open-sse/services/localFilesBatches.js";
@@ -8,9 +9,7 @@ import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  ...corsHeaders(["GET", "POST", "HEAD", "OPTIONS"]),
 };
 
 const json = (body, status = 200) =>

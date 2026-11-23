@@ -184,6 +184,11 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     emitReasoningDelta(state, emit, reasoningText);
   }
 
+  if (isString(delta.reasoning_encrypted_content) && delta.reasoning_encrypted_content) {
+    state.reasoningEncryptedContent = delta.reasoning_encrypted_content;
+    startReasoning(state, emit, idx);
+  }
+
   // Handle text content
   if (delta.content) {
     let content = delta.content;
@@ -284,16 +289,9 @@ function closeReasoning(state, emit) {
       part: { type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }
     });
 
-    emit("response.output_item.done", {
-      type: "response.output_item.done",
-      output_index: state.reasoningIndex,
-      item: {
-        id: state.reasoningId,
-        type: RESPONSES_ITEM.REASONING,
-        summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }],
-        status: "completed"
-      }
-    });
+    const item = { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }], status: "completed" };
+    if (state.reasoningEncryptedContent) item.encrypted_content = state.reasoningEncryptedContent;
+    emit("response.output_item.done", { type: "response.output_item.done", output_index: state.reasoningIndex, item });
   }
 }
 

@@ -437,6 +437,7 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
           // A real billing signature wins above; otherwise a queue signal is retryable.
           const queue = status !== 200 ? parseQoderQueueInfo(body) : null;
           if (queue) return { chunks, done: false, queue };
+          if (status !== 200) return { chunks, done: false, errorStatus: Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502 };
         } catch {
 
           // Malformed frames remain existing stream-transform failures.
@@ -507,8 +508,7 @@ async function wrapQoderSSE(response, model, options = {}) {
   if (peeked.billing) {
     // First-frame billing block detected — return 403 so chatCore fails this
     // connection and triggers combo fallback instead of leaking error text
-    // into chat. Non-billing first-frame errors intentionally fall through
-    // to the sanitized generic-failure path below (no raw upstream text).
+    // into chat.
     await cancelAndReleaseReader(reader, "Qoder billing block");
     return Response.json(
       { error: { message: peeked.billing.body, code: HTTP_STATUS.FORBIDDEN } },
@@ -530,6 +530,15 @@ async function wrapQoderSSE(response, model, options = {}) {
           [QODER_QUEUE_INFO_HEADER]: JSON.stringify(peeked.queue),
         },
       }
+    );
+  }
+  // Promote first-frame errors so account and combo fallback can run. Do not
+  // expose the upstream body, which can contain sensitive provider details.
+  if (peeked.errorStatus) {
+    await cancelAndReleaseReader(reader, "Qoder upstream error");
+    return Response.json(
+      { error: { message: "Qoder upstream request failed", type: "upstream_error" } },
+      { status: peeked.errorStatus }
     );
   }
   const body = replayQoderBody(reader, peeked.chunks, peeked.done);

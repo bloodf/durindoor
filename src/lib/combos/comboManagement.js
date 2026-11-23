@@ -11,6 +11,8 @@ import {
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 
+import { isBoolean } from "@/shared/utils/typeChecks.js";
+
 const MAX_ALLOWLIST_IDS = 500;
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _ and .
@@ -25,6 +27,12 @@ export class ComboManagementError extends Error {
     super(message);
     this.name = "ComboManagementError";
     this.status = status;
+  }
+}
+
+function validateNoLog(body) {
+  if (Object.hasOwn(body, "noLog") && !isBoolean(body.noLog)) {
+    throw new ComboManagementError("noLog must be a boolean");
   }
 }
 
@@ -70,7 +78,8 @@ function normalizeCapabilities(capabilities) {
  */
 export async function createComboManaged(body) {
   try {
-    const { name, models, members, kind, capabilities } = body ?? {};
+    validateNoLog(body ?? {});
+    const { name, models, members, kind, capabilities, noLog } = body ?? {};
     const allowedConnectionIds = await parseAllowedConnectionIds(body ?? {});
 
     if (!name) throw new ComboManagementError("Name is required");
@@ -84,7 +93,8 @@ export async function createComboManaged(body) {
       members,
       kind: kind || null,
       capabilities: normalizedCapabilities,
-      allowedConnectionIds
+      allowedConnectionIds,
+      noLog
     });
   } catch (error) {
     const mapped = asManagementError(error);
@@ -101,6 +111,7 @@ export async function updateComboManaged(id, patch) {
   try {
     // Omitted field preserves the stored policy; explicit [] clears it.
     const body = { ...(patch ?? {}) };
+    validateNoLog(body);
     if (Object.prototype.hasOwnProperty.call(body, "allowedConnectionIds")) {
       body.allowedConnectionIds = await parseAllowedConnectionIds(body);
     }

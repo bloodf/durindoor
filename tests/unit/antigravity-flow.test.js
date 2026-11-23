@@ -118,7 +118,7 @@ describe("Antigravity OAuth lifecycle", () => {
     expect(connection.projectId).toBe("project-a");
     expect(calls.some(({ url }) => url.includes(":onboardUser"))).toBe(true);
     const onboard = calls.find(({ url }) => url.includes(":onboardUser"));
-    expect(JSON.parse(onboard.options.body).tierId).toBe("free-tier");
+    expect(JSON.parse(onboard.options.body).tier_id).toBe("free-tier");
     expect(new Headers(onboard.options.headers).get("authorization")).toBe("Bearer access-a");
   });
 
@@ -180,7 +180,7 @@ describe("Antigravity OAuth lifecycle", () => {
     expect(saved.projectId).toBe("project-polled");
     const onboardCalls = calls.slice(mark).filter(({ url }) => url.includes(":onboardUser"));
     expect(onboardCalls).toHaveLength(3);
-    expect(JSON.parse(onboardCalls.at(-1).options.body).tierId).toBe("free-tier");
+    expect(JSON.parse(onboardCalls.at(-1).options.body).tier_id).toBe("free-tier");
   });
 
   it.each([

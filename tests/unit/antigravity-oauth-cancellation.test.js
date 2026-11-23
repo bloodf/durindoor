@@ -118,9 +118,11 @@ describe("Antigravity onboarding cancellation", () => {
       projectId: "project-polled",
     });
     expect(onboardCalls()).toHaveLength(2);
-    // The signal is handed to every onboarding and project request.
-    for (const { url, options } of calls.filter(({ url }) => /userinfo|:loadCodeAssist|:onboardUser/.test(url))) {
-      expect(options.signal, url).toBe(controller.signal);
+    // Every outbound request combines the callback signal with a deadline.
+    controller.abort();
+    for (const { url, options } of calls) {
+      expect(options.signal.aborted, url).toBe(true);
+      expect(options.signal.reason, url).toBe(controller.signal.reason);
     }
     expect(vi.getTimerCount()).toBe(0);
   });

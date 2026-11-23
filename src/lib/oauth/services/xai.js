@@ -149,7 +149,11 @@ export class XaiService extends OAuthService {
       const err = await res.text();
       throw new Error(`xAI token exchange failed: ${err}`);
     }
-    return await res.json();
+    const tokens = await res.json();
+    if (!isString(tokens.access_token) || !tokens.access_token.trim()) {
+      throw new Error("xAI token response missing access_token");
+    }
+    return tokens;
   }
 
   /**
@@ -174,7 +178,11 @@ export class XaiService extends OAuthService {
       const err = await res.text();
       throw new Error(`xAI token refresh failed: ${err}`);
     }
-    return await res.json();
+    const tokens = await res.json();
+    if (!isString(tokens.access_token) || !tokens.access_token.trim()) {
+      throw new Error("xAI token response missing access_token");
+    }
+    return tokens;
   }
 
   /**

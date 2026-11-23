@@ -57,7 +57,7 @@ describe("KiroExecutor systemPrompt surface compatibility", () => {
 
     expect(mocks.proxyAwareFetch.mock.calls[0][0]).toContain(".kiro.dev");
     expect(JSON.parse(mocks.proxyAwareFetch.mock.calls[0][1].body)).not.toHaveProperty("systemPrompt");
-    expect(mocks.proxyAwareFetch.mock.calls[1][0]).toContain("codewhisperer.us-east-1.amazonaws.com");
+    expect(mocks.proxyAwareFetch.mock.calls[1][0]).toContain("q.us-east-1.amazonaws.com");
     expect(JSON.parse(mocks.proxyAwareFetch.mock.calls[1][1].body).systemPrompt).toBe("Follow the system instructions");
   });
 });

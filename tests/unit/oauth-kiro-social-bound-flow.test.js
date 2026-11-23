@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   buildSocialLoginUrl: vi.fn(),
   exchangeSocialCode: vi.fn(),
+  startSocialDevice: vi.fn(),
+  pollSocialDevice: vi.fn(),
   extractEmailFromJWT: vi.fn(),
   createProviderConnection: vi.fn(),
   ensureOutboundProxyInitialized: vi.fn(),
@@ -35,6 +37,8 @@ vi.mock("@/lib/oauth/utils/pkce", () => ({
 }));
 vi.mock("@/lib/oauth/services/kiro", () => ({
   KiroService: class {
+    startSocialDevice(...args) { return mocks.startSocialDevice(...args); }
+    pollSocialDevice(...args) { return mocks.pollSocialDevice(...args); }
     buildSocialLoginUrl(...args) {
       return mocks.buildSocialLoginUrl(...args);
     }
@@ -129,5 +133,20 @@ describe("Kiro social OAuth bound flow", () => {
     }));
     expect(replay.status).toBe(400);
     expect(mocks.exchangeSocialCode).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the device code server-side and releases pending polls until success", async () => {
+    mocks.startSocialDevice.mockResolvedValue({ deviceCode: "server-code", verificationUriComplete: "https://kiro.test/verify", userCode: "ABCD", expiresInMilliseconds: 300000, intervalInMilliseconds: 5000 });
+    mocks.pollSocialDevice.mockResolvedValueOnce({ pending: true, error: "slow_down" }).mockResolvedValueOnce({ accessToken: "access", refreshToken: "refresh" });
+    const { POST: authorize } = await import("../../src/app/api/oauth/kiro/social-authorize/route.js");
+    const { POST: exchange } = await import("../../src/app/api/oauth/kiro/social-exchange/route.js");
+    const started = await authorize(request({ provider: "github", mode: "device", proxyMode: "direct" }));
+    expect(started.body).toMatchObject({ userCode: "ABCD", interval: 5 });
+    expect(started.body).not.toHaveProperty("deviceCode");
+    const selector = { flowId: started.body.flowId, state: started.body.state, deviceCode: "attacker-code" };
+    expect((await exchange(request(selector))).body).toMatchObject({ pending: true, error: "slow_down" });
+    expect((await exchange(request(selector))).body.success).toBe(true);
+    expect(mocks.pollSocialDevice).toHaveBeenCalledWith("server-code", { disableEnvProxy: true, strictProxy: false });
+    expect((await exchange(request(selector))).status).toBe(400);
   });
 });

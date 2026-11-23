@@ -5,8 +5,9 @@ import { buildKiroOidcEndpoint, KIRO_DEFAULT_REGION } from "../../config/kiroReg
 import { dedupRefresh } from "./dedup.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { getClineAccessToken } from "../../shared/clineAuth.js";
+import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 function safeRefreshError(value) {
   if (isString(value)) return sanitizeErrorMessage(value);
@@ -46,6 +47,9 @@ export async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
 }
 
 export async function refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions = null) {
+  if (provider === "codex") {
+    return refreshCodexToken(refreshToken, log, proxyOptions, credentials?._connection?.id ?? credentials?.id);
+  }
   const config = PROVIDERS[provider];
 
   if (!config || !config.refreshUrl) {
@@ -126,10 +130,18 @@ export async function refreshKimiToken(provider, credentials, log, proxyOptions 
         }),
         redirect: "error"
       }, proxyOptions);
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        if (failure?.error === "invalid_grant" || failure?.error === "invalid_request") {
+          return { error: "unrecoverable_refresh_error", code: failure.error };
+        }
+        return null;
+      }
 
       const tokens = await response.json();
-      if (!tokens?.access_token) return null;
+      if (!isString(tokens?.access_token) || !tokens.access_token.trim() ||
+          (tokens.refresh_token !== undefined &&
+            (!isString(tokens.refresh_token) || !tokens.refresh_token.trim()))) return null;
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || refreshToken,
@@ -199,10 +211,45 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log,
   }, log, proxyOptions);
 }
 
+// OmniRoute's Claude refresher recognizes OAuth errors even through nested or
+// JSON-encoded error envelopes. Keep this specific to Claude's grant handling.
+const claudeRefreshBlocks = new Map();
+function claudeRefreshDelay(headers) {
+  const retryAfter = headers.get("retry-after");
+  const seconds = Number(retryAfter);
+  const date = Date.parse(retryAfter);
+  const milliseconds = Number(headers.get("retry-after-ms"));
+  const delay = retryAfter && Number.isFinite(seconds) ? seconds * 1000 :
+    retryAfter && Number.isFinite(date) ? date - Date.now() :
+    headers.has("retry-after-ms") && Number.isFinite(milliseconds) ? milliseconds : 5000;
+  return Math.max(5000, Math.min(300000, delay));
+}
+
+function claudeRefreshErrorCode(value, depth = 0) {
+  if (depth > 6) return null;
+  if (isString(value)) {
+    const text = value.trim();
+    if (/^[{[\"]/.test(text)) {
+      try {
+        return claudeRefreshErrorCode(JSON.parse(text), depth + 1);
+      } catch { return null; }
+    }
+    return text.match(/\b(invalid_grant|invalid_request)\b/i)?.[1]?.toLowerCase() || null;
+  }
+  if (!isObject(value)) return null;
+  return claudeRefreshErrorCode(value.error, depth + 1) ||
+    claudeRefreshErrorCode(value.code, depth + 1) ||
+    claudeRefreshErrorCode(value.error_code, depth + 1);
+}
+
 export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {
     try {
+      const blockKey = digestMemoryKey("claude-refresh-backoff", refreshToken);
+      const now = Date.now();
+      for (const [key, until] of claudeRefreshBlocks) if (until <= now) claudeRefreshBlocks.delete(key);
+      if (claudeRefreshBlocks.get(blockKey) > now) return null;
       // Anthropic's OAuth control plane answers the grant only when the
       // OAuth-only beta is present, and the grant has to name the scope the
       // authorize step obtained — a refresh that omits it can come back
@@ -229,14 +276,20 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = 
       }, proxyOptions);
 
       if (!response.ok) {
+        if (response.status === 429) {
+          if (claudeRefreshBlocks.size >= 1024) claudeRefreshBlocks.delete(claudeRefreshBlocks.keys().next().value);
+          claudeRefreshBlocks.set(blockKey, Date.now() + claudeRefreshDelay(response.headers));
+          return null;
+        }
         const errorText = await response.text();
         const failure = classifyOAuthRefreshError(errorText, response.status);
-        if (failure.permanent) {
+        const claudeCode = claudeRefreshErrorCode(errorText);
+        if (failure.permanent || claudeCode) {
           log?.error?.("TOKEN_REFRESH", "Claude refresh token already used or invalid. Re-auth required.", {
             status: response.status,
-            code: safeRefreshError(failure.code)
+            code: safeRefreshError(claudeCode || failure.code)
           });
-          return { error: "unrecoverable_refresh_error", code: failure.code };
+          return { error: "unrecoverable_refresh_error", code: claudeCode || failure.code };
         }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", {
           status: response.status,
@@ -385,12 +438,26 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   return { status, code, description, permanent };
 }
 
-export async function refreshCodexToken(refreshToken, log, proxyOptions = null) {
+export async function refreshCodexToken(refreshToken, log, proxyOptions = null, connectionId = null) {
   if (!refreshToken) return null;
-  return dedupRefresh("codex", refreshToken, async () => {
+  try {
+    if (connectionId) {
+      const { claimCodexRefreshAttempt } = await import("../../../src/lib/db/repos/connectionsRepo.js");
+      const fingerprint = digestMemoryKey("codex-refresh-attempt", PROVIDERS.codex.clientId, refreshToken);
+      if (!await claimCodexRefreshAttempt(connectionId, refreshToken, fingerprint)) return null;
+    }
+  } catch {
+    log?.error?.("TOKEN_REFRESH", "Could not record Codex refresh attempt");
+    return null;
+  }
+
+  async function exchange() {
     try {
       const response = await proxyAwareFetch(OAUTH_ENDPOINTS.openai.token, {
         method: "POST",
+        redirect: "error",
+        noTransportReplay: true,
+        signal: AbortSignal.timeout(30_000),
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json"
@@ -405,7 +472,7 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       if (!response.ok) {
         const errorText = await response.text();
         const failure = classifyOAuthRefreshError(errorText, response.status);
-        if (failure.permanent) {
+        if (failure.permanent || failure.code === "invalid_token" || /token_revoked|invalid_client/i.test(errorText)) {
           log?.error?.("TOKEN_REFRESH", "Codex refresh token already used or invalid. Re-auth required.", {
             status: response.status,
             code: safeRefreshError(failure.code)
@@ -423,6 +490,14 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       }
 
       const tokens = await response.json();
+      if (connectionId && (
+        !isString(tokens?.access_token) || !tokens.access_token.trim() ||
+        !isString(tokens.refresh_token) || !tokens.refresh_token.trim() || tokens.refresh_token === refreshToken ||
+        !Number.isSafeInteger(tokens.expires_in) || tokens.expires_in <= 0
+      )) {
+        log?.warn?.("TOKEN_REFRESH", "Codex refresh returned an ambiguous token response");
+        return null;
+      }
 
       log?.info?.("TOKEN_REFRESH", "Successfully refreshed Codex token", {
         hasNewAccessToken: !!tokens.access_token,
@@ -441,7 +516,9 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       log?.error?.("TOKEN_REFRESH", `Network error refreshing Codex token: ${safeRefreshError(error)}`);
       return null;
     }
-  }, log, proxyOptions);
+  }
+  // A persisted grant uses its database claim instead of replaying a cached result.
+  return connectionId ? exchange() : dedupRefresh("codex", refreshToken, exchange, log, proxyOptions);
 }
 
 async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn, proxyOptions) {
@@ -511,9 +588,10 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       };
     }
 
-    if (clientId && clientSecret) {
-      const isIDC = authMethod === "idc";
-      const endpoint = buildKiroOidcEndpoint(isIDC ? region : KIRO_DEFAULT_REGION);
+    // Social imports may carry a separate OIDC registration, which cannot
+    // refresh their social token. OIDC credentials use their registered region.
+    if (clientId && clientSecret && authMethod !== "imported") {
+      const endpoint = buildKiroOidcEndpoint(region || KIRO_DEFAULT_REGION);
 
       const response = await proxyAwareFetch(endpoint, {
         method: "POST",
@@ -548,7 +626,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || refreshToken,
-        expiresIn: tokens.expiresIn,
+        expiresIn: tokens.expiresIn || 3600,
         ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn, proxyOptions))
       };
     }

@@ -1,4 +1,5 @@
 import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
+import { admit } from "../services/admission.js";
 import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
@@ -7,7 +8,6 @@ import {
   getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey, getComboForModel } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getComboCanonicalName } from "../services/model.js";
@@ -20,7 +20,6 @@ import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
@@ -51,16 +50,10 @@ async function handleImageGenerationHandler(request) {
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "imageGeneration" });
   // Capture once for combo retries and delayed stream completion, preserving null.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  if (admissionError) return admissionError;
   const authenticatedKeyRecord = apiKey ? await getApiKeyByKey(apiKey) : null;
   if (authenticatedKeyRecord && authenticatedKeyRecord.policy?.allowAutoCombos === false && (isAutoComboId(modelStr) || (parseAutoModel(modelStr, "image") && !(await getComboForModel(modelStr))))) {
     return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combos are not allowed for this API key");

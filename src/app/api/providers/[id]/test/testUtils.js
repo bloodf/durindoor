@@ -31,6 +31,7 @@ import {
   KIMCHI_CONFIG } from
 "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { providerRefreshContext } from "@/shared/utils/providerCredentialContext";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
@@ -509,7 +510,25 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection, effectiveProxy);
-      if (tokens) {
+      if (tokens?.accessToken) {
+        if (connection.provider === "codex") {
+          // The refresh grant has already rotated even when the follow-up
+          // probe fails. Commit the replacement before attempting that probe.
+          const commit = await updateProviderConnection(connection.id, {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            idToken: tokens.idToken,
+            lastRefreshAt: tokens.lastRefreshAt,
+            expiresIn: tokens.expiresIn,
+            expiresAt: tokens.expiresAt
+          }, {
+            expectedRefreshContext: providerRefreshContext(connection),
+            returnCommitResult: true
+          });
+          if (!commit?.applied) {
+            return { valid: false, unavailable: true, error: "Provider credentials changed during the test" };
+          }
+        }
         const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken, connection) : testUrl;
         const retryHeaders = config.noAuth ?
         { ...config.extraHeaders } :
@@ -521,7 +540,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
         if (config.body) retryOpts.body = config.body;
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);
         const retryAccepted = retryRes.ok || config.acceptStatuses && config.acceptStatuses.includes(retryRes.status);
-        if (retryAccepted) return { valid: true, error: null, refreshed: true, newTokens: tokens };
+        if (retryAccepted) {
+          return { valid: true, error: null, refreshed: true, newTokens: connection.provider === "codex" ? null : tokens };
+        }
         if (retryRes.status === 429 || retryRes.status >= 500) {
           return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false };
         }

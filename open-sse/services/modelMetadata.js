@@ -213,6 +213,7 @@ export function projectDiscoveryMetadata(model) {
     ...(isBoolean(caps.structuredOutput) ? { structured_output: caps.structuredOutput } : null),
     ...(isBoolean(caps.promptCaching) ? { prompt_caching: caps.promptCaching } : null),
     ...(contextWindow !== undefined ? { context_length: contextWindow, max_model_len: contextWindow } : null),
+    ...(maxInput !== undefined ? { max_input_tokens: maxInput } : null),
     ...(maxOutput !== undefined ? { max_output_tokens: maxOutput, max_completion_tokens: maxOutput } : null),
     ...(Object.keys(limits).length ? { limits } : null),
   };

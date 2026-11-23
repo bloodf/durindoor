@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn(), getSettings: vi.fn().mockResolvedValue({}), listProviderQuotaSnapshots: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/oauth/providers", () => ({ backfillCodexEmails: vi.fn(), backfillClaudeProfiles: vi.fn() }));
 vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({ backfillCursorEmails: vi.fn() }));
 import { GET, isUsageEligible } from "@/app/api/providers/client/route.js";
@@ -15,7 +15,7 @@ describe("actual API-key quota inventory", () => {
     expect(isUsageEligible({ ...connection, isActive: false })).toBe(false);
     getProviderConnections.mockResolvedValue([connection]);
     const body = await (await GET(new Request("http://localhost/api/providers/client"))).json();
-    expect(body.connections).toEqual([expect.objectContaining({ id: "fixture", provider })]);
+    expect(body.connections).toEqual([expect.objectContaining({ id: "fixture", provider, quotaWindows: [], quotaPaused: false })]);
     expect(JSON.stringify(body)).not.toContain("private-fixture");
   });
 });

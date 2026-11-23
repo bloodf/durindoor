@@ -427,6 +427,39 @@ function formatTimeRemaining(value) {
   return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 }
 
+function QuotaThresholds({ connection, onSaved }) {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  if (!connection.quotaWindows?.length) return null;
+  async function save(event, key) {
+    event.preventDefault();
+    const value = new FormData(event.currentTarget).get("percent");
+    const percent = value === "" || Number(value) === 0 ? null : Number(value);
+    if (percent !== null && (!Number.isFinite(percent) || percent <= 0 || percent > 100)) {
+      setError("Enter a percentage between 0 and 100.");
+      return;
+    }
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/quota-threshold`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dimensionKey: key, percent }),
+      });
+      if (!response.ok) throw new Error("Could not save quota buffer.");
+      await onSaved();
+    } catch (failure) { setError(failure.message); } finally { setPending(false); }
+  }
+  return <div className="flex flex-col gap-2 border-t border-dd-border-subtle pt-2">
+    <p className="text-xs text-dd-muted">Pause when remaining quota reaches the buffer. Clear or set to 0 to use the inherited setting.</p>
+    {connection.quotaWindows.map((window) => <form key={window.key} onSubmit={(event) => void save(event, window.key)} className="flex flex-wrap items-center gap-2">
+      <label className="min-w-0 flex-1 text-xs text-dd-muted" htmlFor={`quota-${connection.id}-${window.key}`}>{window.key}{window.effectivePercent !== null ? ` (effective ${window.effectivePercent}%)` : ""}</label>
+      <input key={String(window.percent)} id={`quota-${connection.id}-${window.key}`} name="percent" type="number" min="0" max="100" step="any" defaultValue={window.percent ?? ""} className="w-20 rounded border border-dd-border-subtle bg-transparent px-2 py-1 text-sm" />
+      <Button type="submit" variant="secondary" size="sm" disabled={pending}>Save</Button>
+    </form>)}
+    {error ? <p role="alert" className="text-xs text-dd-danger">{error}</p> : null}
+  </div>;
+}
+
 export default function ProviderLimits() {
   const uiV5 = useUiV5();
   const pathname = usePathname();
@@ -1543,6 +1576,7 @@ export default function ProviderLimits() {
                   {secondaryLabel ? <span className="truncate text-xs text-dd-muted">{secondaryLabel}</span> : null}
                 </span>
                 <span className="flex min-w-0 max-w-full w-full flex-wrap items-center gap-1.5 sm:w-auto">
+                  {conn.quotaPaused && !isInactive ? <Badge tone="warning" size="sm">Paused (quota)</Badge> : null}
                   {isCodex && codexPlan ? <Badge tone="accent" size="sm" className="capitalize">{codexPlan}</Badge> : null}
                   {isCodex || claudeReset ? <>
                     <Tooltip content={resetCreditCount > 0 ? claudeReset ? `Use your reset now (${resetCreditCount} left, use by ${formatCreditDate(claudeReset.expiresAt)}) · refills ${formatClaudeResetClears(claudeReset.clears)}` : `Use one ${resetLabel}. Available: ${resetCreditCount}` : `No ${resetLabel}s available`}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount, grantId: claudeReset?.nextGrantId })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one ${resetLabel}. ${resetCreditCount} available.` : `No ${resetLabel}s available`}>{resetCreditCount}</Button></Tooltip>
@@ -1557,6 +1591,7 @@ export default function ProviderLimits() {
                 </span>
               </div>
               {conn.provider === "kiro" ? <div className="flex flex-wrap items-center gap-1"><Badge tone="accent" size="sm">{kiroMethodLabel(conn)}</Badge>{kiroRegion(conn) ? <Badge tone="info" size="sm">{kiroRegion(conn)}</Badge> : null}<Badge tone={testStatusTone} size="sm">{testStatus}</Badge>{conn.providerSpecificData?.profileArn ? <Button variant="ghost" size="sm" icon={copied === conn.id ? "check" : "content_copy"} onClick={() => copy(conn.providerSpecificData.profileArn, conn.id)} title={conn.providerSpecificData.profileArn} className="max-w-full justify-start px-2 font-mono text-[11px]"><span className="truncate">{conn.providerSpecificData.profileArn}</span></Button> : null}</div> : null}
+              <QuotaThresholds connection={conn} onSaved={fetchConnections} />
               {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}{uiV5 ? <Button variant="secondary" size="sm" icon="refresh" className="ms-2" onClick={() => refreshProvider(conn.id, conn.provider)} disabled={rowBusy}>Retry quota</Button> : null}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <>
                 {/* Stale rows still beat no rows, but the reason must be visible
                     so nobody mistakes cached numbers for live ones. */}
@@ -1603,6 +1638,8 @@ export default function ProviderLimits() {
                   const accountLabel = getConnectionLabel(conn);
                   const { hiddenQuotaRows } = connectionQuotaRows[conn.id] || { hiddenQuotaRows: [] };
                   return <div key={conn.id} className="flex flex-col gap-2">
+                    <QuotaThresholds connection={conn} onSaved={fetchConnections} />
+                    {conn.quotaPaused ? <Badge tone="warning" size="sm">Paused (quota)</Badge> : null}
                     {error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger"><span className="font-medium">{accountLabel}:</span> {error}</div> : message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info"><span className="font-medium">{accountLabel}:</span> {message}</div> : null}
                     {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden ({accountLabel}):</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
                   </div>;

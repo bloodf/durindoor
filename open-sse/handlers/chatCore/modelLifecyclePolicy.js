@@ -24,7 +24,7 @@ import { createErrorResult } from "../../utils/error.js";
  * @returns {ReturnType<typeof createErrorResult> | null}
  */
 import { isString } from "../../../src/shared/utils/typeChecks.js";
-export function checkModelLifecycle({ provider, canonicalModel, upstreamModel, log, asOf = Date.now() } = {}) {
+export function checkModelLifecycle({ provider, canonicalModel, upstreamModel, log, sourceFormat, asOf = Date.now() } = {}) {
   const candidates = [];
   if (isString(canonicalModel) && canonicalModel) {
     candidates.push(canonicalModel);
@@ -49,7 +49,7 @@ export function checkModelLifecycle({ provider, canonicalModel, upstreamModel, l
       HTTP_STATUS.GONE,
       message,
       null,
-      { error: { type: "invalid_request_error", code: "model_shutdown", message } }
+      { error: { type: "invalid_request_error", code: "model_shutdown", message } }, null, null, HTTP_STATUS.GONE, sourceFormat
     );
   }
   return null;

@@ -16,7 +16,7 @@ import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLin
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
-import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
+import { createErrorResult as createFormattedErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 import { sseChunk } from "../../utils/sse.js";
@@ -112,6 +112,8 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
 export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, clientRawRequest, reqLogger, toolNameMap, claudeCloaked = false, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null, credentials = null }) {
+  const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
+    createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
   const failTimeline = (status) => {
     if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
   };

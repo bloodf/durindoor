@@ -130,10 +130,18 @@ export async function refreshKimiToken(provider, credentials, log, proxyOptions 
         }),
         redirect: "error"
       }, proxyOptions);
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        if (failure?.error === "invalid_grant" || failure?.error === "invalid_request") {
+          return { error: "unrecoverable_refresh_error", code: failure.error };
+        }
+        return null;
+      }
 
       const tokens = await response.json();
-      if (!tokens?.access_token) return null;
+      if (!isString(tokens?.access_token) || !tokens.access_token.trim() ||
+          (tokens.refresh_token !== undefined &&
+            (!isString(tokens.refresh_token) || !tokens.refresh_token.trim()))) return null;
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || refreshToken,

@@ -15,7 +15,7 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
   const getText = (content) => {
     if (isString(content)) return content;
     if (Array.isArray(content)) {
-      return content.filter((c) => c.type === "text").map((c) => c.text).join(" ");
+      return content.filter((c) => c?.type === "text").map((c) => c.text).join(" ");
     }
     return "";
   };
@@ -60,7 +60,7 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
     const systemMsg = messages.find((m) => m.role === "system");
     const systemFromMessages = getText(systemMsg?.content);
     const systemFromBody = Array.isArray(body.system) ?
-    body.system.filter((s) => s.type === "text").map((s) => s.text).join(" ") :
+    body.system.filter((s) => s?.type === "text").map((s) => s.text).join(" ") :
     isString(body.system) ? body.system : "";
     const systemText = systemFromMessages || systemFromBody;
     if (systemText.includes("isNewTopic")) {

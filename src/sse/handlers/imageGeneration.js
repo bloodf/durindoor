@@ -15,7 +15,7 @@ import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
@@ -60,6 +60,10 @@ async function handleImageGenerationHandler(request) {
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const authenticatedKeyRecord = apiKey ? await getApiKeyByKey(apiKey) : null;
+  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combos are not allowed for this API key");
+  }
 
   // Per-key combo access control
   if (apiKey && modelStr) {
@@ -86,7 +90,7 @@ async function handleImageGenerationHandler(request) {
       apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
       log,
       signal: request.signal,
       ...defaultRouteComboOptions("image")
@@ -114,7 +118,7 @@ async function handleImageGenerationHandler(request) {
       apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting }),
+      handleSingleModel: (b, m, _signal, attemptOptions) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }),
       log,
       signal: request.signal,
       comboName,
@@ -126,7 +130,7 @@ async function handleImageGenerationHandler(request) {
   return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId });
 }
 
-async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting = null } = {}) {
+async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting = null, reportComboPolicyRejections = false } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -137,7 +141,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   }
 
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (resolvedPolicyError) return resolvedPolicyError;
+  if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
   // Shut-down image ids answer 410 with their replacement before any account
   // is selected, so a retired model never marks a healthy connection unavailable.
   const lifecycleError = checkModelLifecycle({ provider, canonicalModel: model, log });

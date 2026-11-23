@@ -39,6 +39,8 @@ The text facade does not support audio. Declaring `audio` in `session.modalities
 
 Send a DurinDoor API key as `Authorization: Bearer <key>`, `x-api-key`, `x-goog-api-key`, `?key=`, or the OpenAI subprotocol `openai-insecure-api-key.<key>`. The selected subprotocol echoed back is only `realtime` or `openai-beta.realtime-v1`. The key-bearing token is never selected.
 
+Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
+
 The server authenticates against the local gateway using the same API-key rules as HTTP chat. A rejected key closes with code 4001. A failed probe (not a bad credential) closes with 1011. `x-9r-cli-token` can be forwarded for local dashboard access. Frames that arrive before auth finishes are queued and drained in order after `session.created`.
 
 ## Send supported text events

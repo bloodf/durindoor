@@ -85,24 +85,24 @@ Source change, exact diff `3d70ad414ef9568c80f59e8f656fc8a0ddaa1459` → first p
 Local findings:
 
 - **The upstream rule is already the local rule.** The fork's compression plan derivation is
-  [open-sse/services/compression/deriveDefaultPlan.js:20](../../../open-sse/services/compression/deriveDefaultPlan.js#L20),
+  [open-sse/services/compression/deriveDefaultPlan.js:20](../../../open-sse/services/compression/deriveDefaultPlan.js),
   and its first rule is `if (!masterEnabled) return { mode: "off", stackedPipeline: [] };`
-  ([deriveDefaultPlan.js:21](../../../open-sse/services/compression/deriveDefaultPlan.js#L21)).
+  ([deriveDefaultPlan.js:21](../../../open-sse/services/compression/deriveDefaultPlan.js)).
   The master flag is evaluated before any per-engine toggle is read, which is exactly the upstream assertion
   "keeps disabled config off despite combo override and auto-trigger".
 - **The seam is operator-gated end to end.** The engine stack runs only inside
   `if (tokenSaverEnabled && compressionEnabled)`
-  ([open-sse/handlers/chatCore.js:961](../../../open-sse/handlers/chatCore.js#L961)),
+  ([open-sse/handlers/chatCore.js:961](../../../open-sse/handlers/chatCore.js)),
   and the flag comes from the settings store at
-  [src/sse/handlers/chat.js:1350](../../../src/sse/handlers/chat.js#L1350)
+  [src/sse/handlers/chat.js:1350](../../../src/sse/handlers/chat.js)
   (`compressionEnabled: !!chatSettings.compressionEnabled`). The seam contract itself documents that a
   disabled request returns before any engine is resolved or applied
-  ([open-sse/handlers/chatCore/compressionHook.js:9](../../../open-sse/handlers/chatCore/compressionHook.js#L9)).
+  ([open-sse/handlers/chatCore/compressionHook.js:9](../../../open-sse/handlers/chatCore/compressionHook.js)).
 - **The upstream dashboard hunk has no local surface.** The fork has no per-combo compression override:
   a whole-tree search for `compressionMode` and `compressionOverride` returns no hit in `src/`, `open-sse/` or
   `tests/`. The only occurrence of the upstream concept is the vestigial `comboOverrides: {}` default on the
   fork's compression config type
-  ([open-sse/services/compression/types.js:30](../../../open-sse/services/compression/types.js#L30)),
+  ([open-sse/services/compression/types.js:30](../../../open-sse/services/compression/types.js)),
   which is never populated or consulted. There is therefore no combo card, no dropdown and no override write
   path to hide.
 - **The upstream test-fixture change has a local analogue.** Local coverage for the seam is
@@ -136,12 +136,12 @@ Local findings:
 - **The streaming-boundary hunk is already implemented, with the same restrictive rule.** The fork's provider
   summary gates assistant text on the Responses output-text event:
   `if (chunk.type === "response.output_text.delta") responseText = append(responseText, chunk.delta, MAX_TEXT);`
-  ([open-sse/utils/stream.js:322](../../../open-sse/utils/stream.js#L322)).
+  ([open-sse/utils/stream.js:322](../../../open-sse/utils/stream.js)).
   Reasoning-summary deltas are not handled in that branch at all, and function-call argument deltas are routed
   into `tool.arguments` rather than into text
-  ([open-sse/utils/stream.js:330](../../../open-sse/utils/stream.js#L330)).
+  ([open-sse/utils/stream.js:330](../../../open-sse/utils/stream.js)).
   The summary is finalized into the provider response at
-  [open-sse/utils/stream.js:411](../../../open-sse/utils/stream.js#L411),
+  [open-sse/utils/stream.js:411](../../../open-sse/utils/stream.js),
   where the assistant message is built from `responseText` only, and only when there are no tool calls — so the
   fork is at least as restrictive as the upstream fix.
   This hunk is security-sensitive: it is the boundary that keeps internal reasoning text and tool-call
@@ -150,18 +150,18 @@ Local findings:
 - **The CLI-fingerprint hunk has no local counterpart.** A whole-tree search for `CLI_FINGERPRINTS` and
   `bodyFieldOrder` returns no hit in `src/`, `open-sse/` or `tests/`. The fork does not reorder request body
   keys by CLI fingerprint. The Codex executor instead strips unsupported fields from the forwarded body
-  ([open-sse/executors/codex.js:1080](../../../open-sse/executors/codex.js#L1080)
+  ([open-sse/executors/codex.js:1080](../../../open-sse/executors/codex.js)
   through
-  [open-sse/executors/codex.js:1098](../../../open-sse/executors/codex.js#L1098)),
+  [open-sse/executors/codex.js:1098](../../../open-sse/executors/codex.js)),
   and the local Responses request translator owns the field set it emits.
 - **The remembered-conversation hunk has no local counterpart.** A whole-tree search for
   `responsesToolCallState`, `rememberResponseFunctionCalls`, `rememberResponseConversationState` and
   `getRememberedResponseConversationItems` returns no hit in `src/`, `open-sse/` or `tests/`. The fork keeps no
   server-side store of remembered Responses conversation items or function calls keyed by response id. The
   Codex executor removes `previous_response_id` before forwarding
-  ([open-sse/executors/codex.js:1098](../../../open-sse/executors/codex.js#L1098)),
+  ([open-sse/executors/codex.js:1098](../../../open-sse/executors/codex.js)),
   so there is no replay path in which a stale internal frame could be re-injected. The closest local surface,
-  [open-sse/translator/response/openai-responses/historyToolIdentity.js:1](../../../open-sse/translator/response/openai-responses/historyToolIdentity.js#L1),
+  [open-sse/translator/response/openai-responses/historyToolIdentity.js:1](../../../open-sse/translator/response/openai-responses/historyToolIdentity.js),
   reads only the client-supplied request `input`, not a server-side remembered store, and its purpose is
   recovering namespaced tool identities.
 
@@ -187,31 +187,31 @@ Local findings:
 
 - **The fork already rotates accounts on 429, and does so for every provider.** The chat entry point owns
   the retry loop: an `excludeConnectionIds` set is created at
-  [src/sse/handlers/chat.js:1065](../../../src/sse/handlers/chat.js#L1065),
+  [src/sse/handlers/chat.js:1065](../../../src/sse/handlers/chat.js),
   and each attempt re-selects credentials through
   `getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, …)`
-  ([src/sse/handlers/chat.js:1102](../../../src/sse/handlers/chat.js#L1102)).
+  ([src/sse/handlers/chat.js:1102](../../../src/sse/handlers/chat.js)).
   A failed attempt is turned into a rotation by `markAccountUnavailable` and its `shouldFallback` verdict
-  ([src/sse/handlers/chat.js:1578](../../../src/sse/handlers/chat.js#L1578)),
+  ([src/sse/handlers/chat.js:1578](../../../src/sse/handlers/chat.js)),
   after which the connection is excluded and the loop continues
-  ([src/sse/handlers/chat.js:1606](../../../src/sse/handlers/chat.js#L1606)).
+  ([src/sse/handlers/chat.js:1606](../../../src/sse/handlers/chat.js)).
 - **429 is a rotation trigger in the fork.** The fallback rule table marks 429 as a backoff-and-rotate status
-  (`{ status: 429, backoff: true }`, [open-sse/config/errorConfig.js:220](../../../open-sse/config/errorConfig.js#L220)),
+  (`{ status: 429, backoff: true }`, [open-sse/config/errorConfig.js:220](../../../open-sse/config/errorConfig.js)),
   and `checkFallbackError` is the single decision point
-  ([open-sse/services/accountFallback.js:53](../../../open-sse/services/accountFallback.js#L53)).
+  ([open-sse/services/accountFallback.js:53](../../../open-sse/services/accountFallback.js)).
 - **The fork's affinity model differs, and the outcome is the same.** Session affinity is an in-memory map
-  ([src/sse/services/auth.js:129](../../../src/sse/services/auth.js#L129)),
+  ([src/sse/services/auth.js:129](../../../src/sse/services/auth.js)),
   consulted only for the round-robin strategy
-  ([src/sse/services/auth.js:1047](../../../src/sse/services/auth.js#L1047)),
+  ([src/sse/services/auth.js:1047](../../../src/sse/services/auth.js)),
   and it is honored only when the remembered connection is still among the eligible connections. A connection
   that has just been benched by the 429 handling is no longer eligible, so the sticky pin does not survive the
   failure and the next attempt lands on a different account without an explicit affinity delete. The fork
   therefore reaches the upstream outcome by a different route: the upstream delete of a database affinity row
   has no local counterpart because the fork has no such table.
 - **The attempt budget is bounded locally, and more generously.** `MAX_ACCOUNT_ATTEMPTS_PER_REQUEST` is 1024
-  ([src/sse/handlers/chat.js:93](../../../src/sse/handlers/chat.js#L93)),
+  ([src/sse/handlers/chat.js:93](../../../src/sse/handlers/chat.js)),
   and the per-connection attempt count is capped by `allowedAttempts`
-  ([src/sse/handlers/chat.js:1199](../../../src/sse/handlers/chat.js#L1199)).
+  ([src/sse/handlers/chat.js:1199](../../../src/sse/handlers/chat.js)).
 - **Existing local coverage.** `tests/unit/account-fallback-request-errors.test.js`,
   `tests/unit/account-fallback-request-scoped-4xx.test.js`,
   `tests/unit/account-fallback-cloudcode.test.js`, `tests/unit/chat-quota-fallback.test.js` and
@@ -237,17 +237,17 @@ Source change, exact diff `37a4a66e9375df74b51915758e757a0fbb8d0f38` → first p
 Local findings:
 
 - **NanoGPT exists here as a chat provider only.** The registry entry
-  ([open-sse/providers/registry/nanogpt.js:19](../../../open-sse/providers/registry/nanogpt.js#L19))
+  ([open-sse/providers/registry/nanogpt.js:19](../../../open-sse/providers/registry/nanogpt.js))
   declares a `transport` with base URL `https://nano-gpt.com/api/v1/chat/completions` and the OpenAI format,
   and carries a chat model list only.
 - **There is no image-provider registry to extend.** The fork's image adapters are a fixed map in
-  [open-sse/handlers/imageProviders/index.js:22](../../../open-sse/handlers/imageProviders/index.js#L22)
+  [open-sse/handlers/imageProviders/index.js:22](../../../open-sse/handlers/imageProviders/index.js)
   through
-  [open-sse/handlers/imageProviders/index.js:50](../../../open-sse/handlers/imageProviders/index.js#L50),
+  [open-sse/handlers/imageProviders/index.js:50](../../../open-sse/handlers/imageProviders/index.js),
   with no `nanogpt` entry and no per-provider size or modality registry. A search for `nanogpt` across
   `open-sse/handlers/imageProviders/` and `open-sse/handlers/imageGenerationCore.js` returns no hit.
 - The fork's provider capability map does know NanoGPT for text
-  ([open-sse/providers/capabilities.js:524](../../../open-sse/providers/capabilities.js#L524)),
+  ([open-sse/providers/capabilities.js:524](../../../open-sse/providers/capabilities.js)),
   which confirms the provider is present but only on the chat surface.
 
 Disposition: excluded. This is a provider addition — a new upstream service, endpoint and model catalog on a
@@ -269,18 +269,18 @@ Local findings:
 - **The fork has no `call_logs` table.** A whole-tree search for `call_logs` under `src/lib/db/` returns no
   hit, and there is no `tokens_compressed` or `tokensCompressed` field anywhere in `src/`, `open-sse/` or
   `tests/`. The fork's request log is the request-detail record built by
-  [open-sse/handlers/chatCore/requestDetail.js:59](../../../open-sse/handlers/chatCore/requestDetail.js#L59),
+  [open-sse/handlers/chatCore/requestDetail.js:59](../../../open-sse/handlers/chatCore/requestDetail.js),
   whose `tokens` field carries prompt, completion, cache-read and cache-creation counts.
 - **Compression savings are surfaced by a different, existing mechanism.** When at least one engine actually
   compressed the body, the fork stamps an `X-DurinDoor-Compression` response header
-  ([open-sse/handlers/chatCore.js:99](../../../open-sse/handlers/chatCore.js#L99),
+  ([open-sse/handlers/chatCore.js:99](../../../open-sse/handlers/chatCore.js),
   applied at
-  [open-sse/handlers/chatCore.js:138](../../../open-sse/handlers/chatCore.js#L138)),
+  [open-sse/handlers/chatCore.js:138](../../../open-sse/handlers/chatCore.js)),
   whose value is `"<engineId>[,<engineId>…]|<overallSavingsPercent>%"`
-  ([open-sse/handlers/chatCore/compressionHook.js:23](../../../open-sse/handlers/chatCore/compressionHook.js#L23)).
+  ([open-sse/handlers/chatCore/compressionHook.js:23](../../../open-sse/handlers/chatCore/compressionHook.js)).
   The percentage is computed from the stack input versus the final output token estimate, and per-engine
   counters are produced by
-  [open-sse/services/compression/stats.js:92](../../../open-sse/services/compression/stats.js#L92).
+  [open-sse/services/compression/stats.js:92](../../../open-sse/services/compression/stats.js).
   The fork therefore reports compression savings as a percentage plus engine list rather than as a persisted
   count of eliminated tokens.
 - Existing local coverage: `tests/unit/compression-chatcore-header.test.js`,
@@ -311,46 +311,46 @@ Source change, exact diff `37058ad3d278ba1e22cd4a82370ab10bd5e261c3` → first p
 Local findings:
 
 - **The streaming extractor already reads the flat field.**
-  [open-sse/utils/usageTracking.js:465](../../../open-sse/utils/usageTracking.js#L465)
+  [open-sse/utils/usageTracking.js:465](../../../open-sse/utils/usageTracking.js)
   resolves `cached_tokens` from `prompt_tokens_details?.cached_tokens` **or** `prompt_cache_hit_tokens`, and
   the comment above it names DeepSeek as the reason.
 - **The non-streaming extractor does not read it, and this is a confirmed divergence.** The non-streaming
   path is `extractUsageFromResponse`
-  ([open-sse/handlers/chatCore/requestDetail.js:26](../../../open-sse/handlers/chatCore/requestDetail.js#L26)),
+  ([open-sse/handlers/chatCore/requestDetail.js:26](../../../open-sse/handlers/chatCore/requestDetail.js)),
   called from
-  [open-sse/handlers/chatCore/nonStreamingHandler.js:668](../../../open-sse/handlers/chatCore/nonStreamingHandler.js#L668),
+  [open-sse/handlers/chatCore/nonStreamingHandler.js:668](../../../open-sse/handlers/chatCore/nonStreamingHandler.js),
   which canonicalizes with `canonicalizeUsage`
-  ([open-sse/handlers/chatCore/requestDetail.js:31](../../../open-sse/handlers/chatCore/requestDetail.js#L31)).
+  ([open-sse/handlers/chatCore/requestDetail.js:31](../../../open-sse/handlers/chatCore/requestDetail.js)).
   The canonicalizer selects its detail object as
   `usage.prompt_tokens_details ?? usage.input_tokens_details`
-  ([open-sse/utils/usageTracking.js:256](../../../open-sse/utils/usageTracking.js#L256))
+  ([open-sse/utils/usageTracking.js:256](../../../open-sse/utils/usageTracking.js))
   and then computes the cache-read count as
   `cached = num(usage.cached_tokens ?? inputDetails?.cached_tokens)`
-  ([open-sse/utils/usageTracking.js:280](../../../open-sse/utils/usageTracking.js#L280)).
+  ([open-sse/utils/usageTracking.js:280](../../../open-sse/utils/usageTracking.js)).
   There is no `prompt_cache_hit_tokens` term. The offline probe above shows the consequence on an identical
   payload: the streaming extractor reports `cached_tokens: 768`, the non-streaming canonicalizer reports
   `cached_tokens: 0`.
 - **The upstream Responses-translator hunk is already covered locally.** The fork's shared usage projection
   reads `raw.input_tokens_details || raw.prompt_tokens_details`
-  ([open-sse/translator/concerns/usage.js:125](../../../open-sse/translator/concerns/usage.js#L125))
+  ([open-sse/translator/concerns/usage.js:125](../../../open-sse/translator/concerns/usage.js))
   and prefers the flat `cache_read_input_tokens` / `cache_creation_input_tokens` when present
-  ([open-sse/translator/concerns/usage.js:132](../../../open-sse/translator/concerns/usage.js#L132)).
+  ([open-sse/translator/concerns/usage.js:132](../../../open-sse/translator/concerns/usage.js)).
   The Responses response translator applies the same cache-read sources, checking
   `cache_read_input_tokens`, `cached_tokens`, `input_tokens_details.cached_tokens` and
   `prompt_tokens_details.cached_tokens`
-  ([open-sse/translator/response/openai-responses.js:946](../../../open-sse/translator/response/openai-responses.js#L946)).
+  ([open-sse/translator/response/openai-responses.js:946](../../../open-sse/translator/response/openai-responses.js)).
 - **The pricing rows are a catalog divergence, not a mechanism gap.** The fork already prices both models:
   `deepseek-v4-pro` is input 0.435, output 0.87, cached 0.003625, reasoning 0.87, cache creation 0.435, and
   `deepseek-v4-flash` is input 0.14, output 0.28, cached 0.0028, reasoning 0.28, cache creation 0.14
-  ([open-sse/providers/pricing.js:300](../../../open-sse/providers/pricing.js#L300),
-  [open-sse/providers/pricing.js:301](../../../open-sse/providers/pricing.js#L301)).
+  ([open-sse/providers/pricing.js:300](../../../open-sse/providers/pricing.js),
+  [open-sse/providers/pricing.js:301](../../../open-sse/providers/pricing.js)).
   The `deepseek-v4-pro` row matches upstream apart from a rounding difference on the cached rate
   (0.003625 against 0.0036). The `deepseek-v4-flash` row differs from upstream's promoted row on input
   (0.14 against 0.07) and cached (0.0028 against 0.014). Upstream's own comment states that its row is a
   promotion expiring on 2026-05-31 with list pricing of $0.145 / $3.48 afterwards, so the two catalogs
   describe different price points for the same model id. The fork's prices are operator-overridable through
   the pricing store
-  ([src/lib/db/repos/pricingRepo.js:99](../../../src/lib/db/repos/pricingRepo.js#L99)),
+  ([src/lib/db/repos/pricingRepo.js:99](../../../src/lib/db/repos/pricingRepo.js)),
   so the catalog is not a fixed upstream copy.
 - **The divergence is untested locally.** A search for `prompt_cache_hit_tokens` across `tests/` returns no
   hit; `tests/unit/cached-token-usage.test.js` exercises `canonicalizeUsage` and `extractUsage` for the
@@ -382,14 +382,14 @@ Local findings:
   inspection that reads a provider's advertised tool limit.
 - **The only tool cap on the request path is provider-specific and fixed.** The Grok CLI executor caps its
   flattened namespace tools at `GROK_CLI_MAX_TOOLS = 200`
-  ([open-sse/executors/grok-cli.js:35](../../../open-sse/executors/grok-cli.js#L35))
+  ([open-sse/executors/grok-cli.js:35](../../../open-sse/executors/grok-cli.js))
   and truncates the body at
-  [open-sse/executors/grok-cli.js:449](../../../open-sse/executors/grok-cli.js#L449).
+  [open-sse/executors/grok-cli.js:449](../../../open-sse/executors/grok-cli.js).
   That is one provider, a static ceiling, and it is not error-driven: nothing in the fork learns a limit from
   a rejection.
 - **The other tool cap in the tree is not a request cap.**
   `const MAX_TOOLS = 64` inside the provider summary
-  ([open-sse/utils/stream.js:247](../../../open-sse/utils/stream.js#L247))
+  ([open-sse/utils/stream.js:247](../../../open-sse/utils/stream.js))
   bounds how many tool calls the summary retains while parsing a stream; it does not alter the outgoing
   request, and it is not derived from any provider limit.
 - **The chat path performs no proactive tool truncation.** The request body is assembled and forwarded
@@ -424,38 +424,38 @@ Local findings:
 
 - **The fork has no audio-provider format declaration.** The `supportedFormats` identifier that exists in
   this tree is unrelated: it names model wire formats such as `openai-responses`
-  ([open-sse/providers/models/schema.js:55](../../../open-sse/providers/models/schema.js#L55)),
+  ([open-sse/providers/models/schema.js:55](../../../open-sse/providers/models/schema.js)),
   not audio output formats. No provider registry entry declares an output format set.
 - **The Inworld adapter hardcodes one format.**
-  [open-sse/handlers/ttsProviders/genericFormats.js:85](../../../open-sse/handlers/ttsProviders/genericFormats.js#L85)
+  [open-sse/handlers/ttsProviders/genericFormats.js:85](../../../open-sse/handlers/ttsProviders/genericFormats.js)
   builds the request with `audioConfig: { audioEncoding: "MP3" }`
-  ([genericFormats.js:93](../../../open-sse/handlers/ttsProviders/genericFormats.js#L93))
+  ([genericFormats.js:93](../../../open-sse/handlers/ttsProviders/genericFormats.js))
   and returns `format: "mp3"`
-  ([genericFormats.js:99](../../../open-sse/handlers/ttsProviders/genericFormats.js#L99)).
+  ([genericFormats.js:99](../../../open-sse/handlers/ttsProviders/genericFormats.js)).
   The core handler does accept a `response_format` and forwards it to the adapter
-  ([open-sse/handlers/ttsCore.js:93](../../../open-sse/handlers/ttsCore.js#L93)),
+  ([open-sse/handlers/ttsCore.js:93](../../../open-sse/handlers/ttsCore.js)),
   but the Inworld adapter ignores it. A request for WAV or Opus is therefore not rejected; it silently returns
   MP3 bytes labeled as MP3. There is no 400 for an unsupported format.
 - **The Inworld model list differs.** The registry entry lists `inworld-tts-1.5-mini` and
   `inworld-tts-1.5-max`
-  ([open-sse/providers/registry/inworld.js:27](../../../open-sse/providers/registry/inworld.js#L27),
-  [open-sse/providers/registry/inworld.js:31](../../../open-sse/providers/registry/inworld.js#L31));
+  ([open-sse/providers/registry/inworld.js:27](../../../open-sse/providers/registry/inworld.js),
+  [open-sse/providers/registry/inworld.js:31](../../../open-sse/providers/registry/inworld.js));
   there is no `inworld-tts-2`.
 - **Voice resolution differs, and the fork's route is not a smaller capability.** The fork has no hardcoded
   voice preset table. Inworld voices are read from the provider's live voices endpoint through
-  [src/app/api/media-providers/tts/inworld/voices/route.js:7](../../../src/app/api/media-providers/tts/inworld/voices/route.js#L7),
+  [src/app/api/media-providers/tts/inworld/voices/route.js:7](../../../src/app/api/media-providers/tts/inworld/voices/route.js),
   with the adapter's default voice being `Alex`
-  ([genericFormats.js:91](../../../open-sse/handlers/ttsProviders/genericFormats.js#L91)).
+  ([genericFormats.js:91](../../../open-sse/handlers/ttsProviders/genericFormats.js)).
   The upstream change adds a large static preset list instead, which is a catalog refresh of a different shape
   rather than a boundary change.
 - **The Runway hunk concerns a surface the fork does not have.** The fork's Runway entry is an image provider
   whose models are `gen4_image`, `gen4_image_turbo`, `gen4_turbo` and `gen3a_turbo`
-  ([open-sse/providers/registry/runwayml.js:31](../../../open-sse/providers/registry/runwayml.js#L31)),
+  ([open-sse/providers/registry/runwayml.js:31](../../../open-sse/providers/registry/runwayml.js)),
   with `serviceKinds: ["image"]`. The upstream file is a video model allowlist with a different membership
   (`gen4_turbo`, `veo3.1`, `veo3.1_fast` after the change) and a companion image-required model set. The fork
   has no equivalent of `RUNWAYML_IMAGE_REQUIRED_MODELS`, and its Runway adapter is an asynchronous image
   submit-and-poll
-  ([open-sse/handlers/imageProviders/runwayml.js:1](../../../open-sse/handlers/imageProviders/runwayml.js#L1)).
+  ([open-sse/handlers/imageProviders/runwayml.js:1](../../../open-sse/handlers/imageProviders/runwayml.js)).
 - **Existing local coverage.** `tests/unit/native-speech-adapters.test.js` and
   `tests/unit/audio-voices-internal-auth.test.js` cover the local speech adapters and the voice routes.
 
@@ -472,9 +472,9 @@ One narrow existing usage-parser repair is confirmed. No implementation is propo
 ### Non-streaming extraction of a provider's flat cache-read field
 
 Confirmed applicable. The streaming extractor reads the flat field
-([open-sse/utils/usageTracking.js:465](../../../open-sse/utils/usageTracking.js#L465));
+([open-sse/utils/usageTracking.js:465](../../../open-sse/utils/usageTracking.js));
 the non-streaming canonicalizer does not
-([open-sse/utils/usageTracking.js:280](../../../open-sse/utils/usageTracking.js#L280)).
+([open-sse/utils/usageTracking.js:280](../../../open-sse/utils/usageTracking.js)).
 The offline probe above shows the same provider payload yielding a cache-read count of 768 on the streaming
 path and 0 on the non-streaming path.
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getSettings, updateSettings } from "@/lib/localDb";
-import { verifyDashboardPassword, isUsingDefaultPassword } from "@/lib/auth/dashboardSession";
+import { getSettings } from "@/lib/localDb";
+import { verifyDashboardPassword, isUsingDefaultPassword, rotateDashboardSessionEpoch } from "@/lib/auth/dashboardSession";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
 import { verifyTotpCode } from "@/lib/auth/totp";
@@ -61,7 +61,7 @@ export async function POST(request) {
     }
 
     const { codes, hashes } = await generateBackupCodes();
-    await updateSettings({ mfaEnabled: true, mfaSecret: secret, mfaBackupCodes: hashes });
+    await rotateDashboardSessionEpoch({ mfaEnabled: true, mfaSecret: secret, mfaBackupCodes: hashes });
     recordSuccess(ip);
 
     return NextResponse.json(

@@ -1422,6 +1422,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         stream,
         credentials,
         connectionId,
+        apiKeyId,
         providerSessionId: sessionSeed,
         clientTool,
         signal: providerSignal,

@@ -85,8 +85,11 @@ export function getChatGptImage(id) {
   return entry;
 }
 
-export function getChatGptImageConversationContext(id) {
-  return getChatGptImage(id)?.context ?? null;
+export function getChatGptImageConversationContext(id, apiKeyId, connectionId) {
+  if (!apiKeyId || !connectionId) return null;
+  const entry = getChatGptImage(id);
+  if (entry?.context?.owner?.apiKeyId !== apiKeyId || entry.context.owner.connectionId !== connectionId) return null;
+  return entry.context;
 }
 
 /**

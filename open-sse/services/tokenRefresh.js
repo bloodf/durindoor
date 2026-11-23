@@ -254,7 +254,8 @@ async function refreshAntigravityProvider(provider, credentials, log, proxyOptio
   const connectionId = credentials?.connectionId || credentials?._connection?.id || credentials?.id;
   const client = PROVIDERS[provider];
   if (!connectionId) {
-    return refreshGoogleToken(credentials.refreshToken, client.clientId, client.clientSecret, log, proxyOptions);
+    // A refresh token without a connection ID cannot be fenced across processes.
+    return null;
   }
   const { exchangeAntigravityRefresh } = await import("../../src/lib/antigravity/refreshProtocol.js");
   const { refreshGoogleTokenDetailed } = await import("./tokenRefresh/providers.js");

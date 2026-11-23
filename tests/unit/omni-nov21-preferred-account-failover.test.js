@@ -34,7 +34,7 @@ describe("OmniRoute #20961: preferred-account response-start failover is not app
   });
 
   it("keeps preferredConnectionId meaning an explicit pin that is terminal on failure", () => {
-    const chat = read("src/sse/handlers/chat.js");
+    const chat = read("src/sse/handlers/chat/singleModel.js");
     expect(chat).toMatch(/let preferredConnectionId = null;/);
     expect(chat).toContain("pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal");
     expect(chat).toContain("refusing rotation");
@@ -42,7 +42,7 @@ describe("OmniRoute #20961: preferred-account response-start failover is not app
   });
 
   it("keeps the retry loop free of a request-scoped response-start timeout branch", () => {
-    const chat = read("src/sse/handlers/chat.js");
+    const chat = read("src/sse/handlers/chat/singleModel.js");
     const loop = chat.slice(chat.indexOf("let accountAttempts = 0;"));
     expect(loop).toContain("while (true) {");
     expect(loop).toContain("excludeConnectionIds.add(credentials.connectionId);");

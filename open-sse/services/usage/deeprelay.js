@@ -122,10 +122,9 @@ export async function getDeepRelayUsage(apiKey, proxyOptions = null) {
     }
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => "");
       return {
         plan: PLAN,
-        message: `DeepRelay balance API error (${response.status})${errText ? `: ${errText.slice(0, 120)}` : ""}`,
+        message: `DeepRelay balance API error (${response.status})`,
       };
     }
 
@@ -169,7 +168,7 @@ export async function getDeepRelayUsage(apiKey, proxyOptions = null) {
     if (spend) quotas["Spend (30d)"] = spend;
 
     return { plan: PLAN, quotas };
-  } catch (error) {
-    return { message: `DeepRelay error: ${error.message}` };
+  } catch {
+    return { message: "DeepRelay request failed." };
   }
 }

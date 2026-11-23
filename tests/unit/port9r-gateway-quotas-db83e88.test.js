@@ -29,3 +29,12 @@ describe("gateway provider quota and routing", () => {
     expect(result.quotas).toBeUndefined();
   });
 });
+
+describe("gateway error handling", () => {
+  it("does not expose a credential echoed in an upstream error", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(new Response("vela_ctrl_test", { status: 500 }));
+    const result = await getUsageForProvider({ provider: "opendesign-go", providerSpecificData: { opendesignControlKey: "vela_ctrl_test" } });
+    expect(result.message).not.toContain("vela_ctrl_test");
+    expect(result.message).toContain("500");
+  });
+});

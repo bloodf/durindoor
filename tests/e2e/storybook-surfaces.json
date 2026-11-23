@@ -39803,7 +39803,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js",
       "symbol": "[module]",
-      "sourceSha256": "6e657837a59e15f0942cbba2d0994bd3f246e661580c4e519d611e06eefeb420",
+      "sourceSha256": "6086ef217cc40843a237af75b439d0fb3116fecad67caaba4018a60e332edb5c",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -103019,7 +103019,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "774ed627ff017f1afe4797aa70b1d9daa8406701e4882b37b77035d7ea6c262e",
+    "sourceCensusSha256": "7a007f244be45d5bc9f38494b39114f5b089eede5aac36d3eb323d0b68628c62",
     "pendingRows": 438,
     "retainedApprovedRows": 202,
     "pendingReferences": 1488,

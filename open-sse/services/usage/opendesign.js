@@ -83,11 +83,10 @@ async function getJson(url, controlKey, workspaceId, proxyOptions) {
     );
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => "");
       return {
         ok: false,
         status: response.status,
-        error: `HTTP ${response.status}${errText ? `: ${errText.slice(0, 120)}` : ""}`,
+        error: `HTTP ${response.status}`,
       };
     }
 
@@ -96,8 +95,8 @@ async function getJson(url, controlKey, workspaceId, proxyOptions) {
       return { ok: false, status: response.status, error: "response was not JSON" };
     }
     return { ok: true, body };
-  } catch (error) {
-    return { ok: false, error: error?.message || "request failed" };
+  } catch {
+    return { ok: false, error: "request failed" };
   }
 }
 

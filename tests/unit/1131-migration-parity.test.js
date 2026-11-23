@@ -39,7 +39,7 @@ const markers = (db) => db.all("SELECT key, value FROM _meta ORDER BY key");
 
 describe("migration 031 parity", () => {
   it("registers migration 031 in both engines", () => {
-    expect(latestVersion()).toBe(33);
+    expect(latestVersion()).toBe(34);
     expect(pgLatestVersion()).toBe(latestVersion());
     expect(MIGRATIONS.find((migration) => migration.version === 31)).toBe(sqliteMigration);
     expect(PG_MIGRATIONS.find((migration) => migration.version === 31)).toBe(pgMigration);

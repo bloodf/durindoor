@@ -84,13 +84,13 @@ describe("Schema migrations", () => {
     expect(db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(before);
     expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
     expect(JSON.parse(db.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28, 30, 31, 32, 33]);
+      .toEqual([...appliedBefore, 28, 30, 31, 32, 33, 34]);
 
     const again = await reopen();
     expect(again.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(before);
     expect(again.get(`SELECT COUNT(*) AS count FROM usageHistory`).count).toBe(0);
     expect(JSON.parse(again.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28, 30, 31, 32, 33]);
+      .toEqual([...appliedBefore, 28, 30, 31, 32, 33, 34]);
   });
 
   it("rolls back real 028 after its first repair write, then retries and reopens", async () => {
@@ -129,14 +129,14 @@ describe("Schema migrations", () => {
     expect(repaired.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
     const appliedBefore = JSON.parse(markersBefore.find((row) => row.key === "appliedMigrations").value);
     expect(JSON.parse(repaired.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28, 30, 31, 32, 33]);
+      .toEqual([...appliedBefore, 28, 30, 31, 32, 33, 34]);
     repaired.exec(`CREATE TRIGGER forbid_repair_repeat BEFORE UPDATE OF unknownCostRequests ON apiKeyUsageTotals
       BEGIN SELECT RAISE(ABORT, 'recorded 028 must not run again'); END`);
 
     const again = await reopen();
     expect(again.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(expected);
     expect(JSON.parse(again.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28, 30, 31, 32, 33]);
+      .toEqual([...appliedBefore, 28, 30, 31, 32, 33, 34]);
   });
 
   it("fresh DB → applies migrations & stamps schemaVersion", async () => {

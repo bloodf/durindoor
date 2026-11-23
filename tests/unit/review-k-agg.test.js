@@ -75,7 +75,7 @@ it.fails("merges usage across rotation while keeping a second key independent", 
   }
 });
 
-it.fails("stores the stable identity and maximum timestamp for same-day rotated writes", async () => {
+it("stores the stable identity and maximum timestamp for same-day rotated writes", async () => {
   insertKey("alpha", "fixture-first", "Alpha");
   await writeUsage(rotated, "fixture-first", "alpha");
   db.run("UPDATE apiKeys SET key = ? WHERE id = ?", ["fixture-rotated", "alpha"]);
@@ -92,4 +92,30 @@ it.fails("stores one daily key bucket without retaining either rotated secret", 
   expect(data).not.toContain("fixture-first");
   expect(data).not.toContain("fixture-rotated");
   expect(Object.values(JSON.parse(data).byApiKey)).toEqual([expect.objectContaining({ requests: 2 })]);
+});
+
+it("migrates legacy last-seen rows across pages and keeps the greatest timestamp on collision", async () => {
+  const { default: migration } = await import("@/lib/db/migrations/034-usage-last-seen-key-identity.js");
+  insertKey("alpha", "fixture-current", "Alpha");
+  db.run("DELETE FROM _meta WHERE key = 'usageLastSeenKeyIdentity'");
+  db.run("INSERT INTO usageHistory(timestamp, provider, model, apiKey, apiKeyId) VALUES (?, 'fixture', 'model', 'fixture-old', 'alpha')", [initial]);
+  const insert = (model, key, timestamp) => db.run(
+    "INSERT INTO usageLastSeen VALUES ('2026-09-19', 'fixture', ?, '', ?, '', ?)",
+    [model, key, timestamp]
+  );
+  insert("model", "fixture-old", initial);
+  const latest = "2026-09-19T17:00:00.000Z";
+  insert("model", "fixture-current", latest);
+  for (let i = 0; i < 101; i++) insert(`extra-${i}`, "fixture-unknown", initial);
+
+  db.transaction(() => migration.up(db));
+  const rows = db.all("SELECT model, apiKey, lastUsed FROM usageLastSeen ORDER BY model");
+  expect(rows).toHaveLength(102);
+  expect(rows.at(-1)).toEqual({ model: "model", apiKey: "alpha", lastUsed: latest });
+  const { createHmac } = await import("node:crypto");
+  const digest = createHmac("sha256", fs.readFileSync(path.join(dir, "master-key")))
+    .update("durindoor:usage-api-key\0").update("fixture-unknown").digest("hex");
+  expect(new Set(rows.slice(0, -1).map((row) => row.apiKey))).toEqual(new Set([`hmac:${digest}`]));
+  db.transaction(() => migration.up(db));
+  expect(db.all("SELECT model, apiKey, lastUsed FROM usageLastSeen ORDER BY model")).toEqual(rows);
 });

@@ -1,5 +1,7 @@
 # Manual two-upstream intake
 
+Canonical intake workflow and current pointers: [upstream sync](./upstream-sync.mdx).
+
 Issue [#1148](https://github.com/bloodf/durindoor/issues/1148) adds a local report builder for `decolua/9router` and `diegosouzapw/OmniRoute`. It makes no network requests, creates no tickets, and changes no workflow or schedule. Existing three-argument `upstream-scan-report.sh` callers retain their existing behavior.
 
 Prepare a JSON array of reviewed candidates. Each record accepts `source`, `number` for a PR or issue, `sha` for a commit pin, `title`, `state`, `finalDiff`, `localEquivalent`, `test`, `disposition`, `ownerIssue`, `why`, `additions`, `deletions`, and `author`. Example:

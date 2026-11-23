@@ -1,5 +1,7 @@
 # Issue #1108 Connection Circuit Acceptance & Evidence Audit
 
+Discovery and regression draft: [connection circuit draft](./connection-circuit-1108-draft.md).
+
 Audit of merged connection circuit, recovery probe, and diagnostics implementation against issue #1108 acceptance criteria.
 
 Date: 2026-11-21  

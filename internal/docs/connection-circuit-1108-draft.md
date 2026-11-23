@@ -1,5 +1,7 @@
 # Connection circuit discovery and regression draft for #1108
 
+Canonical acceptance evidence: [the #1108 connection circuit audit](./circuit-1108-audit.md).
+
 Status: recovery fixes and PR #1665 concurrency-timeout marker integrated in source. Runtime checks and final review pending.
 
 `src/lib/routing/connectionRecovery.js` observes persisted fallback deadlines in

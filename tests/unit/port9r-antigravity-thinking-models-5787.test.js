@@ -11,7 +11,7 @@ describe("Antigravity Hydrogen effort dispatch", () => {
     expect(getDispatchUpstreamModelId(provider, source)).toBe("gemini-4-hydrogen-xhigh");
     expect(getDispatchUpstreamModelId(provider, "gemini-4-hydrogen", { reasoning_effort: "xhigh" })).toBe("gemini-4-hydrogen-xhigh");
     expect(getModelUpstreamThinkingIntent(provider, "gemini-4-hydrogen-xhigh")).toEqual({ mode: "level", level: "xhigh" });
-    expect(getModelUpstreamId(provider, "gemini-4-hydrogen")).toBe("gemini-4-hydrogen-medium");
+    expect(getModelUpstreamId(provider, "gemini-4-hydrogen")).toBe("gemini-4-hydrogen-high");
     expect(getDispatchUpstreamModelId(provider, "gemini-4-carbon(xhigh)")).toBe("gemini-4-carbon-high");
     expect(getThinkingLevels(provider, "gemini-4-hydrogen")).toEqual(["low", "medium", "high", "xhigh"]);
   });

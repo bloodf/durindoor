@@ -415,8 +415,12 @@ const GEMINI_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoIn
 
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
-const AG_HYDROGEN_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high", "xhigh"], contextWindow: 1048576, maxOutput: 65536 };
-const AG_HYDROGEN_ROWS = Object.fromEntries(["gemini-4-hydrogen", "gemini-4-hydrogen-low", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"].map((id) => [id, AG_HYDROGEN_CAPABILITIES]));
+const AG_NEON_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high", "xhigh"], contextWindow: 1048576, maxOutput: 65536 };
+// longDecode: a max_tokens above 64K runs CONTINUATION hops up to 1M (utils/geminiLongDecode.js, upstream 9router 109e4816e3).
+const AG_HYDROGEN_CAPABILITIES = { ...AG_NEON_CAPABILITIES, longDecode: true };
+const AG_HYDROGEN_ROWS = Object.fromEntries([...["gemini-4-hydrogen", "gemini-4-hydrogen-low", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"].map((id) => [id, AG_HYDROGEN_CAPABILITIES]),
+  // Neon also serves xhigh on Antigravity (upstream 9router 767d7aeb0b).
+  ...["gemini-4-neon", "gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-high", "gemini-4-neon-xhigh"].map((id) => [id, AG_NEON_CAPABILITIES])]);
 
 export const PROVIDER_CAPABILITIES = {
   nan: {
@@ -460,7 +464,9 @@ export const PROVIDER_CAPABILITIES = {
     "gemini-3.8-flash": { vision: true, pdf: true, audioInput: true, videoInput: true, tools: true, reasoning: true, structuredOutput: true, promptCaching: true, search: true, imageOutput: false, audioOutput: false, videoOutput: false, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxInput: 1048576, maxOutput: 65536 },
     // Same tiered family, same low|medium|high contract as the 3.8 Flash row above.
     "gemini-3.7-flash": GEMINI_FLASH_TIER_CAPABILITIES,
-    "gemini-3.6-flash": GEMINI_FLASH_TIER_CAPABILITIES
+    "gemini-3.6-flash": GEMINI_FLASH_TIER_CAPABILITIES,
+    // Gemini API Hydrogen: 1M window, 64K per hop, xhigh tier and long decode (upstream 9router 109e4816e3).
+    "gemini-4-hydrogen": { ...AG_HYDROGEN_CAPABILITIES, pdf: true }
   },
   dify: {
     "configured-app": { vision: false, tools: false, reasoning: false, contextWindow: null, maxOutput: null }

@@ -52,6 +52,11 @@ export default {
     { id: "openai/whisper-large-v3-turbo", name: "Whisper Large v3 Turbo (HF)", params: [], kind: "stt" },
   ],
   serviceKinds: ["image", "stt"],
+  // Per-kind Hub discovery. The suggested-models proxy only fetches these registered URLs.
+  modelsFetchers: {
+    image: { url: "https://huggingface.co/api/models?inference_provider=fal-ai&pipeline_tag=text-to-image&limit=30", type: "huggingface-image" },
+    stt: { url: "https://huggingface.co/api/models?inference_provider=hf-inference&pipeline_tag=automatic-speech-recognition&limit=30", type: "huggingface-stt" },
+  },
   // Inference Providers router. The router is addressed as
   // `<baseUrl>/<provider>/<providerModelId>` — see open-sse/handlers/imageProviders/huggingface.js.
   // `modelMap` resolves a Hub model id to the provider-resolved id the router expects.

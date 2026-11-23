@@ -9,7 +9,7 @@ const MEDIA_ENTRY_KEYS = [
 "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
 "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
 "searchViaChat", "searchConfig", "fetchConfig", "systemoneConfig",
-"modelsFetcher", "mediaPriority", "hiddenKinds"];
+"modelsFetcher", "modelsFetchers", "mediaPriority", "hiddenKinds"];
 
 
 // Build provider UI object from registry entry
@@ -78,12 +78,6 @@ export const THINKING_CONFIG = {
 
 export const OAUTH_PROVIDERS = byCategory("oauth");
 export const APIKEY_PROVIDERS = byCategory("apikey");
-
-// Hub discovery is restricted to these registered URLs by the server proxy.
-APIKEY_PROVIDERS.huggingface.modelsFetchers = {
-  image: { url: "https://huggingface.co/api/models?inference_provider=fal-ai&pipeline_tag=text-to-image&limit=30", type: "huggingface-image" },
-  stt: { url: "https://huggingface.co/api/models?inference_provider=hf-inference&pipeline_tag=automatic-speech-recognition&limit=30", type: "huggingface-stt" },
-};
 
 // Web Cookie Providers (use browser session cookie instead of API key)
 export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");

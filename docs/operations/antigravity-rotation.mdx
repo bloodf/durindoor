@@ -1,20 +1,20 @@
 ---
 title: Antigravity rotation
-description: Shared database lease for Antigravity token refresh. Browser recovery and the scheduler stay off.
+description: Antigravity refresh protection is incomplete. Browser recovery and the scheduler stay off.
 ---
 
-`antigravity` and `agy` share one database lease before a provider token refresh. Browser password recovery and the automatic scheduler stay off until an owner demonstrates the gates below.
+Antigravity refresh protection is incomplete. Some stored-credential refresh paths bypass the database lease, so the lease does not yet prevent concurrent refreshes across all routes. Browser password recovery and the automatic scheduler remain disabled.
 
 ## Refresh lease
 
-A production refresh that has a connection id and uses the real connection writer acquires the lease before any provider call. An injected test updater does not. The lease holds a unique owner, a generation, an expiry, and a fencing token. Database time decides expiry. The in-process refresh lock is not cross-process safety.
+The shared credential coordinator and generic provider refresh acquire a lease for a stored connection. Direct executor refreshes used by translator send, image and embeddings handlers, and standalone chat can bypass it. The provider test route and `agy` model discovery also contain direct Google refresh calls. These paths can dispatch while a lease is active or uncertain. Do not rely on the lease as a cross-route safety guarantee until those paths are integrated and tested. The lease holds a unique owner, a generation, an expiry, and a fencing token. Database time decides expiry. The in-process refresh lock is not cross-process safety.
 
-Attempt states are `idle`, `claimed`, `dispatched`, `uncertain`, and `reauth`.
+For leased paths, attempt states are `idle`, `claimed`, `dispatched`, `uncertain`, and `reauth`. The following behavior does not apply to bypassing paths.
 
 - A claimed lease that has expired can be taken again.
-- `dispatched` blocks another dispatch, including from the gateway and from a manual retry. Expiry after dispatch becomes `uncertain` and still blocks. It does not authorize a retry.
+- On leased paths, `dispatched` blocks another dispatch. Expiry after dispatch becomes `uncertain` and still blocks. It does not authorize a retry.
 - `invalid_grant` becomes `reauth`. The refresh path does not launch a browser.
-- HTTP 429 with `Retry-After` and no token is a non-consuming backoff: the attempt returns to `idle` and sets `nextRetryAt`. A later provider trace that shows Google rotating the refresh token on 429 must change this.
+- The current implementation treats HTTP 429 as non-consuming backoff and returns the attempt to `idle`. Google non-consumption has not been established; a forced refresh can skip this backoff. This remains an unresolved replay risk.
 - HTTP 5xx, a timeout, a connection reset, an empty body, or a throw after dispatch becomes `uncertain`.
 - A successful refresh writes the token pair and clears the marker in the same transaction. It does not bump the generation. An omitted replacement refresh token is kept.
 - OAuth replacement and interactive reauth bump the generation, even when the refresh token string is unchanged.
@@ -30,17 +30,17 @@ The previous access token stays usable until it expires. A commit checks generat
 
 The JSON body limit is 8192 bytes. Public errors are allowlisted categories. Status returns `attemptState`, `errorCategory`, `recoveryEnabled`, `retryCount`, `nextRetryAt`, `subjectPresent`, and `schedulerEnabled`. It does not return tokens, the recovery password, ciphertext, email, the owner, the fencing token, or the subject string. `GET` does not start the scheduler.
 
-Enrollment requires `providerSpecificData.antigravitySubject` from userinfo `sub` or `id`. An email match is not enough. A blank password does not delete or replace a stored recovery password. Disable fences the generation and keeps the ciphertext. Delete removes only the recovery row and fences the generation. It does not delete the access or refresh token.
+Enrollment requires `providerSpecificData.antigravitySubject`, but this editable field does not prove verified identity provenance. The stored consent timestamp is not explicit scope-bound consent. Neither enrollment nor enablement authorizes a recovery attempt. A blank password does not delete or replace a stored recovery password. Disable fences the generation and keeps the ciphertext. Delete removes only the recovery row and fences the generation. It does not delete the access or refresh token.
 
-Sign-in still succeeds when Google omits a subject. Recovery enrollment and enablement stay refused until a subject is stored. Dashboard and CLI authorization use PKCE (`code_challenge` and `code_verifier`). A missing verifier or challenge fails closed.
+Sign-in still succeeds when Google omits a subject. Enrollment requires a stored subject; enablement can also reuse the subject in the lease row. Neither proves its origin. Dashboard and CLI authorization use PKCE (`code_challenge` and `code_verifier`). A missing verifier or challenge fails closed.
 
 ## Scheduler
 
-The scheduler is off until `scheduler-enable`. Boot resumes it only when that flag is stored. One account runs per tick, through the same leased refresh. A missing expiry does not trigger an immediate login. An unexpired `dispatched` lease stays `busy`, including after the holder process is killed. Expired dispatched leases become `uncertain` on acquire and are not replayed.
+The scheduler is hard-disabled. An enable request does not start it, and boot does not resume it. An unexpired `dispatched` lease stays `busy` on leased paths, including after the holder process is killed. Expired dispatched leases become `uncertain` on acquire and are not replayed by those paths.
 
 ## Browser recovery
 
-Recovery stays disabled unless both of these are set:
+There is no production stored-password recovery caller. The browser helper requires both of these flags:
 
 - `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY=1`
 - `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED=1`
@@ -63,7 +63,8 @@ Do not enable the scheduler or the browser flags until an owner shows:
 
 - a real Chromium sandbox
 - egress enforcement in the owner container, including child processes, redirects, and DNS rebinding
-- a PostgreSQL multi-process race (`DURINDOOR_TEST_PG_URL` was unset for this port; the SQLite worker race is covered)
+- leased cross-route concurrency and crash tests on SQLite and disposable PostgreSQL
+- verified identity provenance, explicit scope-bound consent, and a reviewed stored-credential recovery caller
 - a disposable Google account, if a live provider check is required
 
 This page does not authorize a production deploy, a Chromium download, or use of real credentials.

@@ -1,7 +1,23 @@
 import { NextResponse } from "next/server";
 import { getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel } from "@/models";
+import { isNumber, isRecord, isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
+
+// Accept upstream token-limit names through the existing validated capability store.
+function tokenCapabilities(body) {
+  const input = body.max_input_tokens ?? body.maxInputTokens ?? body.context_length ?? body.contextLength ?? body.contextWindow;
+  const output = body.max_output_tokens ?? body.maxOutputTokens;
+  const limits = {};
+  const number = (value) => isNumber(value) || isString(value) ? Number(value) : NaN;
+  if (input !== undefined && input !== null && input !== "") {
+    limits.contextWindow = number(input);
+    limits.maxInput = number(input);
+  }
+  if (output !== undefined && output !== null && output !== "") limits.maxOutput = number(output);
+  if (!Object.keys(limits).length || (body.capabilities != null && !isRecord(body.capabilities))) return body.capabilities;
+  return { ...limits, ...body.capabilities };
+}
 
 // GET /api/models/custom - List all custom models
 export async function GET() {
@@ -17,7 +33,9 @@ export async function GET() {
 // POST /api/models/custom - Add custom model
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name, capabilities } = await request.json();
+    const body = await request.json();
+    const { providerAlias, id, type, name } = body;
+    const capabilities = tokenCapabilities(body);
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
@@ -36,7 +54,9 @@ export async function POST(request) {
 // PATCH /api/models/custom - Edit custom model capabilities
 export async function PATCH(request) {
   try {
-    const { providerAlias, id, type, name, capabilities } = await request.json();
+    const body = await request.json();
+    const { providerAlias, id, type, name } = body;
+    const capabilities = tokenCapabilities(body);
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }

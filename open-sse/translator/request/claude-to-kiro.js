@@ -22,6 +22,7 @@
  * the `<thinking_mode>enabled</thinking_mode>` reasoning trigger, matching
  * buildKiroPayload.
  */
+import { createKiroToolNames } from "../../utils/kiroToolNames.js";
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { validateKiroOutputLimit } from "./openai-to-kiro.js";
@@ -50,16 +51,7 @@ function toolUseToText(name, input) {
   return `[Tool call: ${name || "unknown"}(${argStr})]`;
 }
 
-/**
- * Kiro's CodeWhisperer API rejects tool names with characters outside
- * `[a-zA-Z0-9_-]`. Replace only the illegal characters with `_` — consecutive
- * underscores are legal and must survive intact (MCP-style names like
- * `mcp__server__tool` rely on the double underscore as a separator).
- * Mirrors the sanitizer in openai-to-kiro.js so both Kiro routes agree.
- */
-function sanitizeKiroToolName(name) {
-  return isString(name) ? name.replace(/[^a-zA-Z0-9_-]/g, "_") : name;
-}
+
 
 /** Preserve error meaning when Claude tool results must become plain text. */
 function toolResultBlockToText(content, isError = false) {
@@ -127,7 +119,7 @@ function flattenClaudeToolInteractions(messages) {
  * Kiro requires alternating user/assistant turns; consecutive same-role
  * messages are merged.
  */
-function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new Map()) {
+function convertClaudeMessagesToKiro(messages, tools, model, toolName) {
   const history = [];
   let currentMessage = null;
 
@@ -146,8 +138,7 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
     // Kiro rejects illegal characters in a tool name; sanitize and remember
     // the original so the response translators can hand the client back the
     // name it registered.
-    const name = sanitizeKiroToolName(originalName);
-    if (name !== originalName) toolNameMap.set(name, originalName);
+    const name = toolName(originalName);
     const description = t.description || `Tool: ${name}`;
     const schema = t.input_schema || {};
     const normalizedSchema = normalizeKiroToolSchema(schema);
@@ -274,7 +265,7 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
             toolUses.push({
               toolUseId: block.id,
               // Match the sanitized name Kiro was given in the tool spec.
-              name: sanitizeKiroToolName(block.name),
+              name: toolName(block.name),
               input: block.input || {}
             });
           }
@@ -474,11 +465,12 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
   }
 
   const toolNameMap = new Map();
+  const toolName = createKiroToolNames((tools || []).map((t) => t.name), toolNameMap);
   const { history, currentMessage } = convertClaudeMessagesToKiro(
     messages,
     tools,
     kiroModelId,
-    toolNameMap
+    toolName
   );
 
   // Guard 2: tools present → reconcile dangling tool_results.

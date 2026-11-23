@@ -698,11 +698,14 @@ export function mergeUsage(prev, next) {
 
   const merged = { ...prev };
   const prevProvisional = isProvisionalOutput(prev);
+  // Some Anthropic-compatible streams replace the initial total with uncached input when cache counts arrive.
+  const preferNextInput = (next.cache_read_input_tokens != null || next.cache_creation_input_tokens != null)
+    && prev.cache_read_input_tokens == null && prev.cache_creation_input_tokens == null && next.prompt_tokens != null;
   for (const [k, v] of Object.entries(next)) {
     // typeof NaN === "number" — guard with Number.isFinite so one malformed
     // chunk can't poison the whole accumulation (Math.max(x, NaN) is NaN).
     if (isNumber(v) && Number.isFinite(v)) {
-      merged[k] = Math.max(isNumber(merged[k]) ? merged[k] : 0, v);
+      merged[k] = k === "prompt_tokens" && preferNextInput ? v : Math.max(isNumber(merged[k]) ? merged[k] : 0, v);
     } else if (k === "estimated" && isBoolean(v)) {
       // Estimation marker: once estimated, stays estimated (a real value never
       // downgrades an estimate to authoritative).

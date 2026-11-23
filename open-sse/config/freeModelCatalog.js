@@ -4,6 +4,7 @@
 // Contract (matches OmniRoute `shouldHidePaid`):
 //   providerHasFreeModels(p)  — does `p` appear in the curated free-tier catalog?
 //   isFreeModel(provider, model)
+//     - explicit paid flags or positive prices override free evidence.
 //       true when any of:
 //         - model.id ends with `:free` (OpenRouter convention),
 //         - model.pricing has prompt===0 AND completion===0 (zero-price),
@@ -65,8 +66,21 @@ function isZeroPricePricing(pricing) {
   return isZeroPrice(prompt) && isZeroPrice(completion);
 }
 
-/** Whether a single model qualifies as free for the given provider (id or alias). */
+/** Explicit paid flags and positive published rates override free markers. */
+export function hasPaidEvidence(model) {
+  const pricing = model?.pricing;
+  if ([model, pricing].some((value) => value && ["isFree", "is_free", "free"].some((key) => value[key] === false))) return true;
+  if (!pricing || !isObject(pricing) || Array.isArray(pricing)) return false;
+  return Object.values(pricing).some((value) => {
+    if (!(isNumber(value) || (isString(value) && value.trim()))) return false;
+    const price = Number(value);
+    return Number.isFinite(price) && price > 0;
+  });
+}
+
+/** Whether a model qualifies as free for the given provider. */
 export function isFreeModel(provider, model) {
+  if (hasPaidEvidence(model)) return false;
   if (isString(model?.id) && model.id.endsWith(":free")) return true;
   if (isZeroPricePricing(model?.pricing)) return true;
   if (isString(model?.id)) {

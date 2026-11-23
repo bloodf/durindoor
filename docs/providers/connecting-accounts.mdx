@@ -21,6 +21,8 @@ Some providers pin a loopback callback port. If the dashboard is not on a loopba
 
 ### Vertex AI and Vertex Partner
 
+Vertex Gemini 3 and 4 chat requests drop trailing model turns before dispatch because Vertex rejects them. Older Gemini and image models retain those turns.
+
 A Vertex AI or Vertex Partner connection takes one of three Google credentials:
 
 - A **Service Account JSON key** downloaded from the Cloud console. DurinDoor signs a short-lived assertion with the key's RSA private key, exchanges it for a bearer token, and sends the request to your project. The project comes from the key's own `project_id`.

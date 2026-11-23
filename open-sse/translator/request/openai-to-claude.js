@@ -85,12 +85,14 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
       if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-        const text = isString(msg.content) ? msg.content : extractTextContent(wrapBareContentBlock(msg.content), "\n");
-        // Anthropic rejects an empty text block (400), so an empty instruction adds nothing.
-        const kept = msg.role === ROLE.SYSTEM && translationContext?.provider === "claude" ?
-        text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "") :
-        text;
-        if (kept) systemParts.push(kept);
+        const content = wrapBareContentBlock(msg.content);
+        const parts = Array.isArray(content) ? content.map((part) => extractTextContent([part], "\n")) : [isString(content) ? content : ""];
+        for (const text of parts) {
+          // Strip billing metadata per block before joining cacheable instructions.
+          const kept = msg.role === ROLE.SYSTEM && translationContext?.provider === "claude" ?
+          text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "") : text;
+          if (kept) systemParts.push(kept);
+        }
       }
     }
 
@@ -397,6 +399,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       }
     } else if (Array.isArray(userContent)) {
       for (const part of userContent) {
+        if (part == null) continue;
         if (part.type === OPENAI_BLOCK.TEXT && part.text) {
           blocks.push({ type: CLAUDE_BLOCK.TEXT, text: part.text, ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control }) });
         } else if (part.type === CLAUDE_BLOCK.TOOL_RESULT) {
@@ -444,7 +447,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
   } else if (msg.role === ROLE.ASSISTANT) {
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
-    const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some((part) => part.type === CLAUDE_BLOCK.THINKING);
+    const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some((part) => part?.type === CLAUDE_BLOCK.THINKING);
     if (Array.isArray(msg._responsesClaudeThinking) && msg._responsesClaudeThinking.length) {
       blocks.push(...msg._responsesClaudeThinking);
     } else if (isString(msg.reasoning_content) && msg.reasoning_content && !hasThinkingBlock) {
@@ -452,6 +455,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     }
     if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
+        if (part == null) continue;
         if (part.type === OPENAI_BLOCK.TEXT && part.text) {
           blocks.push({ type: CLAUDE_BLOCK.TEXT, text: part.text });
         } else if (part.type === CLAUDE_BLOCK.TOOL_USE) {

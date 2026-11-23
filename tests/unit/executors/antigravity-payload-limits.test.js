@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AntigravityExecutor } from "../../../open-sse/executors/antigravity.js";
 import { BaseExecutor } from "../../../open-sse/executors/base.js";
+import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../../open-sse/config/appConstants.js";
 
 const credentials = { projectId: "synthetic-project", connectionId: "synthetic-connection" };
 
@@ -145,7 +146,8 @@ describe("Antigravity payload limits", () => {
       contents: [{ role: "user", parts: [{ text: "hello" }, { inlineData: { mimeType: "x", data: "y" } }] }],
     });
 
-    expect(request.systemInstruction).toBeUndefined();
+    // The client prompt is folded; the Antigravity identity (9router e37cb78e16) stays in systemInstruction.
+    expect(request.systemInstruction).toEqual({ role: "user", parts: [{ text: ANTIGRAVITY_DEFAULT_SYSTEM }] });
     expect(request.contents[0].parts).toEqual([
       { text: `[System Instructions]\n${systemText}\n\n[User Message]\nhello` },
       { inlineData: { mimeType: "x", data: "y" } },

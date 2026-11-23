@@ -59,7 +59,8 @@ beforeAll(async () => {
   route = await import("@/app/api/providers/[id]/models/route.js");
   db = await import("@/lib/localDb");
   catalog = await import("open-sse/services/antigravityCatalog.js");
-});
+  // The models route pulls in most of the app; a cold import exceeds the 10s default hook timeout under parallel load.
+}, 60_000);
 
 beforeEach(() => {
   providerFetch.mockReset();
@@ -136,7 +137,7 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(firstProbe.body).toEqual({ project: "project-two" });
     expect(firstProbe.headers.get("authorization")).toBe("Bearer token-two");
     // The Hub identity travels with the probe.
-    expect(firstProbe.headers.get("user-agent")).toBe("antigravity/hub/2.24.0 darwin/arm64");
+    expect(firstProbe.headers.get("user-agent")).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(firstProbe.headers.get("x-client-name")).toBe("antigravity");
 
     // Each account reads its own catalog, never the other account's project.

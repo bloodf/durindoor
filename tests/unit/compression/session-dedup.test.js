@@ -45,6 +45,33 @@ describe("session-dedup engine", () => {
     expect(result.stats.compressedTokens).toBeLessThan(result.stats.originalTokens);
   });
 
+  it("replaces the longest shared suffix with the sha of that exact block", async () => {
+    const { createHash } = await import("node:crypto");
+    const body = makeBody([
+      { role: "user", content: `Here is the code:\n${REPEATED_BLOCK}` },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: `Again:\n${REPEATED_BLOCK}` },
+    ]);
+    const out = sessionDedupEngine.apply(body).body.messages[2].content;
+    const sha = createHash("sha256").update(REPEATED_BLOCK).digest("hex").slice(0, 24);
+    expect(out).toBe(`Again:\n[dedup:ref sha=${sha}]`);
+  });
+
+  it("scans a 100 KB multi-line message across turns in linear time", () => {
+    const rows = Array.from({ length: 12_000 }, (_, i) => `row ${i} value=${(i * 7919) % 10007}`);
+    const big = rows.join("\n");
+    const body = makeBody([
+      { role: "user", content: "start" },
+      { role: "tool", tool_call_id: "c", content: big },
+      { role: "user", content: `again\n${rows.slice(-50).join("\n")}` },
+    ]);
+    const started = performance.now();
+    const result = sessionDedupEngine.apply(body);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(result.body.messages[1].content).toBe(big);
+    expect(result.body.messages[2].content).toMatch(/^again\n\[dedup:ref sha=[0-9a-f]{24}\]$/);
+  });
+
   it("does NOT dedup small/unique blocks (no false positives)", () => {
     const body = makeBody([
       { role: "user", content: "hi" },

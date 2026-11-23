@@ -1,6 +1,7 @@
 // Some thinking-mode providers (DeepSeek, Kimi, MiniMax, ...) require reasoning_content
 // to be echoed back on assistant messages. Clients in OpenAI format don't send it,
 // so we inject a non-empty placeholder to satisfy upstream validation.
+import deepseekRegistry from "../providers/registry/deepseek.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -18,17 +19,22 @@ const MODEL_RULES = [
 { match: (m) => /deepseek/i.test(m || ""), scope: "all" }];
 
 
-const DEEPSEEK_V4_PRO = "deepseek-v4-pro";
-const DEEPSEEK_V4_PRO_ALIASES = {
-  [`${DEEPSEEK_V4_PRO}-max`]: {
-    thinkingType: "enabled",
-    reasoningEffort: "max"
-  },
-  [`${DEEPSEEK_V4_PRO}-none`]: {
-    thinkingType: "disabled",
-    reasoningEffort: null
+// Resolve only declared model names and their aliases. A real catalog name always
+// takes precedence over a generated thinking suffix.
+function resolveDeepSeekSuffix(model) {
+  const rows = deepseekRegistry.models;
+  const names = rows.flatMap((row) => [row.id, ...(row.aliases || [])]);
+  // The two historical Pro aliases intentionally remain suffix aliases.
+  if (names.includes(model) && !["deepseek-v4-pro-max", "deepseek-v4-pro-none"].includes(model)) return null;
+  for (const effort of deepseekRegistry.thinkingSuffixes) {
+    const suffix = `-${effort}`;
+    if (!model?.endsWith(suffix)) continue;
+    const base = model.slice(0, -suffix.length);
+    const row = rows.find((entry) => entry.id === base || entry.aliases?.includes(base));
+    if (row) return { model: row.upstreamModelId || row.id, effort };
   }
-};
+  return null;
+}
 
 function shouldInject(message, scope) {
   if (message?.role !== "assistant") return false;
@@ -53,37 +59,42 @@ function applyRule(body, rule) {
 }
 
 export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat = null }) {
-  const alias = DEEPSEEK_V4_PRO_ALIASES[model];
+  const alias = resolveDeepSeekSuffix(model);
   if (provider !== "deepseek" || !alias || !body) return body;
 
   if (transportFormat === "claude") {
     const nextBody = {
       ...body,
-      model: DEEPSEEK_V4_PRO,
+      model: alias.model,
       thinking: {
         ...(body.thinking && isObject(body.thinking) ? body.thinking : null),
-        type: alias.thinkingType
+        type: alias.effort === "none" ? "disabled" : "enabled"
       }
     };
     delete nextBody.extra_body;
     delete nextBody.reasoning_effort;
+    if (alias.effort !== "none") nextBody.output_config = { ...body.output_config, effort: alias.effort };
+    else if (nextBody.output_config) {
+      nextBody.output_config = { ...nextBody.output_config };
+      delete nextBody.output_config.effort;
+    }
     return nextBody;
   }
 
   const nextBody = {
     ...body,
-    model: DEEPSEEK_V4_PRO,
+    model: alias.model,
     extra_body: {
       ...(body.extra_body || {}),
       thinking: {
         ...(body.extra_body?.thinking || {}),
-        type: alias.thinkingType
+        type: alias.effort === "none" ? "disabled" : "enabled"
       }
     }
   };
 
-  if (alias.reasoningEffort) {
-    nextBody.reasoning_effort = alias.reasoningEffort;
+  if (alias.effort !== "none") {
+    nextBody.reasoning_effort = alias.effort;
   } else {
     delete nextBody.reasoning_effort;
   }

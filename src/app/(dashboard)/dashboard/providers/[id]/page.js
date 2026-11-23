@@ -34,6 +34,7 @@ import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import VisibleModelsModal from "./VisibleModelsModal";
 import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
+import SyncProviderModelsModal from "./SyncProviderModelsModal.jsx";
 import { loadLiveAntigravityModels } from "./liveAntigravityModels";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
@@ -158,6 +159,7 @@ function ProviderDetail({ providerId }) {
   const [bulkTestingModels, setBulkTestingModels] = useState(false);
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
+  const [showSyncProviderModels, setShowSyncProviderModels] = useState(false);
   const [editingCustomModel, setEditingCustomModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [connectionFilter, setConnectionFilter] = useState("");
@@ -1882,6 +1884,10 @@ function ProviderDetail({ providerId }) {
           Add Model
         </button>
 
+        <Button size="sm" variant="secondary" icon="sync" onClick={() => setShowSyncProviderModels(true)} disabled={!connections.some((connection) => connection.isActive !== false)}>
+          Sync upstream models
+        </Button>
+
         {/* Import Qoder models button — only show for qoder/qoder-cn provider */}
         {(providerId === "qoder" || providerId === "qoder-cn") && connections.some((conn) => conn.isActive !== false) &&
         <button
@@ -2958,6 +2964,14 @@ function ProviderDetail({ providerId }) {
         }} />
 
       }
+
+      {showSyncProviderModels && !isCompatible && <SyncProviderModelsModal
+        connections={connections.filter((connection) => connection.isActive !== false)}
+        existingIds={[...models.map((model) => model.id), ...customModels.filter((model) => model.providerAlias === providerStorageAlias).map((model) => model.id), ...Object.values(modelAliases).filter((model) => isString(model) && model.startsWith(`${providerStorageAlias}/`)).map((model) => model.slice(providerStorageAlias.length + 1))]}
+        providerAlias={providerStorageAlias}
+        passthrough={!!providerInfo.passthroughModels}
+        onSaved={fetchAliases}
+        onClose={() => setShowSyncProviderModels(false)} />}
 
       {/* AG Risk Confirmation Modal */}
       <ConfirmModal

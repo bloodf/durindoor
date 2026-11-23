@@ -6,7 +6,7 @@ import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 35;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -297,6 +297,7 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_uh_key_project ON usageHistory(apiKeyId, usageProjectId)",
     ],
   },
+  // The apiKey dimension stores an API key ID or a keyed digest of an unknown key.
   usageLastSeen: {
     columns: {
       dateKey: "TEXT NOT NULL",

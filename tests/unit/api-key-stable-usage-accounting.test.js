@@ -53,7 +53,7 @@ it("backfills exact matches atomically and preserves all legacy fields", () => {
     expect(markers()).toEqual(markersBefore);
 
     db.exec(`DROP TRIGGER fail_stamp`);
-    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 4, from: 28, to: 33 });
+    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 6, from: 28, to: 35 });
     const after = before.map((row, index) => ({ ...row, apiKeyId: index === 0 ? "stable-id" : null }));
     expect(db.all(`SELECT * FROM usageHistory ORDER BY id`)).toEqual(after);
     expect(db.all(`SELECT * FROM apiKeys`)).toEqual(keys);

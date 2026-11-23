@@ -639,6 +639,13 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     // key associations belong to the pre-import key set. Clear both so
     // restored keys cannot inherit attribution from retained history.
     db.run(`UPDATE usageHistory SET apiKey = NULL, apiKeyId = NULL WHERE apiKey IS NOT NULL OR apiKeyId IS NOT NULL`);
+    // Preserve per-model/account/endpoint maxima while detaching old key identities.
+    db.run(`INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
+      SELECT dateKey, provider, model, connectionId, '', endpoint, MAX(lastUsed)
+      FROM usageLastSeen WHERE apiKey <> '' GROUP BY dateKey, provider, model, connectionId, endpoint
+      ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
+        lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`);
+    db.run("DELETE FROM usageLastSeen WHERE apiKey <> ''");
     for (const row of db.all(`SELECT dateKey, data FROM usageDaily`)) {
       const day = parseJson(row.data, {});
       if (day?.byApiKey && Object.keys(day.byApiKey).length > 0) {

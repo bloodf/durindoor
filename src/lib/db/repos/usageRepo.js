@@ -4,6 +4,7 @@ import { EventEmitter } from "events";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { addCostSplit, addLatency, addToCounter } from "../helpers/usageCounters.js";
 import { getMetaSync } from "../helpers/metaStore.js";
 import {
   EMPTY_ALL_TIME_CHART_DAYS,
@@ -17,7 +18,10 @@ import {
   VALID_USAGE_STATS_PERIODS } from
 "../../usagePeriods.js";
 import { adjustApiKeyUsageSync, incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
-import { apiKeyUsageScope, hasStableApiKeyIdColumn, resolveUsageApiKeyIdSync } from "../helpers/apiKeyAttribution.js";
+import {
+  apiKeyUsageScope, hasStableApiKeyIdColumn, resolveUsageApiKeyIdSync,
+  upsertUsageLastSeen, usageHistoryKeyColumnsSql, usageKeyIdentity, usageKeyStatsKey,
+} from "../helpers/apiKeyAttribution.js";
 import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
@@ -54,10 +58,7 @@ function fingerprintApiKey(key, salt) {
   return `hmac-sha256:${createHmac("sha256", salt).update(key).digest("hex")}`;
 }
 
-function getApiKeyStatsKey(apiKey, model, provider, salt) {
-  const keyIdentity = fingerprintApiKey(apiKey, salt) || "local-no-key";
-  return `${keyIdentity}|${model}|${provider || "unknown"}`;
-}
+export { addCostSplit, addLatency };
 
 // Project key identities without exposing stored secrets, including deleted keys.
 function createPublicApiKeyIdentity(apiKeyMap, gatewayKeyMap, identitySalt) {
@@ -164,66 +165,8 @@ function scheduleStatsEvent(event, delayMs = 150) {
   statsEmitTimers[key]?.unref?.();
 }
 
-/**
- * Latency is summed everywhere and divided once, at the end. Rows written
- * before timing existed carry tokens but no duration, so counting their tokens
- * against other rows' time would invent throughput that never happened: carry
- * the sample counts so the daily rollup and the live query divide by the same
- * subset they multiplied.
- *
- * @param {object} target - Accumulator that gains the latency sums
- * @param {object} source - Row or bucket contributing latency
- * @param {number} [completionTokens=0] - Output tokens of `source`, used when it carries no `timedCompletionTokens`
- */
-export function addLatency(target, source, completionTokens = 0) {
-  const latencyMs = Number(source.latencyMs) || 0;
-  const ttftMs = Number(source.ttftMs) || 0;
-  // A stored sample count of 0 is a real measurement; only a missing one means
-  // `source` is a single row whose own timing decides.
-  const sampleOr = (value, fallback) => value === undefined || value === null ? fallback : Number(value) || 0;
-  target.latencyMs = (target.latencyMs || 0) + latencyMs;
-  target.ttftMs = (target.ttftMs || 0) + ttftMs;
-  target.latencySamples = (target.latencySamples || 0) + sampleOr(source.latencySamples, latencyMs > 0 ? 1 : 0);
-  target.ttftSamples = (target.ttftSamples || 0) + sampleOr(source.ttftSamples, ttftMs > 0 ? 1 : 0);
-  // Tokens count toward throughput only when the row has decode time to divide
-  // them by; a row whose whole duration is TTFT would otherwise add tokens for free.
-  target.timedCompletionTokens = (target.timedCompletionTokens || 0) +
-  sampleOr(source.timedCompletionTokens, latencyMs > ttftMs ? completionTokens : 0);
-}
-
 // Model label for account days saved before counters were kept per model.
 const LEGACY_ACCOUNT_MODEL = "Earlier usage (models not recorded)";
-
-const UNSPLIT_FIELDS = ["promptTokens", "completionTokens", "cachedTokens", "reasoningTokens", "cacheCreationTokens", "cost"];
-
-/**
- * Carry the per-rate cost split from `source` into `target`. Call it before
- * `source` is added to `target`'s token and cost counters.
- *
- * Usage rows store their split at insert, where each request's own tier is
- * known. Rows written before that, or whose cost the provider reported, have no
- * split; their tokens and cost collect in `target.unsplit` so the read path can
- * price that remainder separately, or decline to split it.
- *
- * @param {object} target - Dimension counter being accumulated
- * @param {object} source - Row, entry or counter with token counters and `cost`
- */
-export function addCostSplit(target, source) {
-  const hasSplit = source.inputCost !== undefined && source.inputCost !== null;
-  // A counter summed before splits were stored holds only unsplit cost.
-  if (hasSplit && target.inputCost === undefined && !target.unsplit && Number(target.cost) > 0) {
-    target.unsplit = {};
-    for (const field of UNSPLIT_FIELDS) target.unsplit[field] = Number(target[field]) || 0;
-  }
-  if (hasSplit) {
-    for (const field of USAGE_COST_FIELDS) target[field] = (target[field] || 0) + (Number(source[field]) || 0);
-  }
-  const rest = hasSplit ? source.unsplit : source;
-  if (!rest || !(Number(rest.cost) > 0)) return;
-  target.unsplit ||= {};
-  for (const field of UNSPLIT_FIELDS) target.unsplit[field] = (target.unsplit[field] || 0) + (Number(rest[field]) || 0);
-  if (rest.mixed) target.unsplit.mixed = true;
-}
 
 // One durable representation: numeric, nonnegative integer components. Fractional
 // estimates round up before pricing and persistence. Conflicting totals cannot
@@ -257,25 +200,7 @@ function normalizeLedgerTokens(tokens = {}) {
   };
 }
 
-function addToCounter(target, key, values) {
-  if (!Object.hasOwn(target, key)) Object.defineProperty(target, key, {
-    value: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 },
-    enumerable: true, configurable: true, writable: true,
-  });
-  addCostSplit(target[key], values);
-  target[key].requests += values.requests ?? 1;
-  target[key].promptTokens += values.promptTokens || 0;
-  target[key].completionTokens += values.completionTokens || 0;
-  target[key].cachedTokens += values.cachedTokens || 0;
-  target[key].reasoningTokens += values.reasoningTokens || 0;
-  target[key].cacheCreationTokens += values.cacheCreationTokens || 0;
-  target[key].cost += values.cost || 0;
-  target[key].unknownCostRequests = (target[key].unknownCostRequests || 0) + (values.unknownCostRequests || 0);
-  addLatency(target[key], values, values.completionTokens || 0);
-  if (values.meta) Object.assign(target[key], values.meta);
-}
-
-export function aggregateEntryToDay(day, entry, identitySalt) {
+export function aggregateEntryToDay(day, entry) {
   const promptTokens = entry.tokens?.prompt_tokens ?? entry.tokens?.input_tokens ?? 0;
   const completionTokens = entry.tokens?.completion_tokens ?? entry.tokens?.output_tokens ?? 0;
   const { cachedTokens, reasoningTokens, cacheCreationTokens } = usageTokenColumns(entry.tokens);
@@ -320,8 +245,9 @@ export function aggregateEntryToDay(day, entry, identitySalt) {
     addToCounter(day.byAccount, accountKey, { ...vals, meta: { connectionId: entry.connectionId, rawModel: entry.model, provider: entry.provider } });
   }
 
-  const akModelKey = getApiKeyStatsKey(entry.apiKey, entry.model, entry.provider, identitySalt);
-  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
+  const keyIdentity = entry.keyIdentity ?? usageKeyIdentity(entry.apiKeyId, entry.apiKey, entry.provider);
+  const akModelKey = usageKeyStatsKey(keyIdentity, entry.model, entry.provider);
+  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: keyIdentity } });
 
   const endpoint = entry.endpoint || "Unknown";
   const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
@@ -652,7 +578,7 @@ function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
 // Rows without a stored split group apart from rows with one, so every
 // group's split sums are either complete or NULL, never a partial total.
 function aggregateUsageWindow(db, start, end) {
-  return db.all(`SELECT provider, model, connectionId, apiKey, endpoint,
+  return db.all(`SELECT provider, model, connectionId, endpoint, ${usageHistoryKeyColumnsSql(db)},
       MAX(timestamp) AS timestamp, COUNT(*) AS requests,
       SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
       SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
@@ -660,9 +586,10 @@ function aggregateUsageWindow(db, start, end) {
       SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unknownCostRequests,
       ${USAGE_COST_FIELDS.map((field) => `SUM(${field}) AS ${field}`).join(", ")},
       ${LATENCY_SUM_SQL}
-    FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?
-    GROUP BY provider, model, connectionId, apiKey, endpoint, (inputCost IS NULL) ORDER BY MIN(id) ASC`, [start, end]).map((row) => ({
-      ...row, ...latencyFromRow(row), requests: Number(row.requests), tokens: {
+    FROM usageHistory h WHERE timestamp >= ? AND timestamp <= ?
+    GROUP BY 1, 2, 3, 4, 5, 6, (inputCost IS NULL) ORDER BY MIN(id) ASC`, [start, end]).map((row) => ({
+      ...row, keyIdentity: usageKeyIdentity(row.usageKeyId, row.legacyKey, row.provider),
+      ...latencyFromRow(row), requests: Number(row.requests), tokens: {
         prompt_tokens: Number(row.promptTokens), completion_tokens: Number(row.completionTokens),
         cached_tokens: Number(row.cachedTokens), reasoning_tokens: Number(row.reasoningTokens),
         cache_creation_input_tokens: Number(row.cacheCreationTokens),
@@ -670,20 +597,28 @@ function aggregateUsageWindow(db, start, end) {
     }));
 }
 
-function aggregateRowsToDay(rows, identitySalt) {
+function aggregateRowsToDay(rows) {
   const day = {};
-  for (const row of rows) aggregateEntryToDay(day, row, identitySalt);
+  for (const row of rows) aggregateEntryToDay(day, row);
   return day;
 }
 
-function upsertLastSeen(db, entry) {
-  db.run(
-    `INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
-       lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`,
-    [entry.timestamp.slice(0, 10), entry.provider || "", entry.model || "", entry.connectionId || "", entry.apiKey || "", entry.endpoint || "", entry.timestamp]
-  );
+function upsertLastSeen(db, entry, apiKeyId = entry.apiKeyId || apiKeyIdForSync(db, entry.apiKey)) {
+  upsertUsageLastSeen(db, [{
+    dateKey: entry.timestamp.slice(0, 10),
+    provider: entry.provider || "", model: entry.model || "", connectionId: entry.connectionId || "",
+    apiKey: usageKeyIdentity(apiKeyId, entry.apiKey, entry.provider),
+    endpoint: entry.endpoint || "", lastUsed: entry.timestamp,
+  }]);
+}
+
+function historyLastSeen(db, where, params) {
+  return db.all(`SELECT NULLIF(provider, '') AS provider, NULLIF(model, '') AS model,
+    NULLIF(connectionId, '') AS connectionId, NULLIF(endpoint, '') AS endpoint,
+    ${usageHistoryKeyColumnsSql(db)}, MAX(timestamp) AS timestamp
+    FROM usageHistory h WHERE ${where} GROUP BY 1, 2, 3, 4, 5, 6`, params).map((row) => ({
+    ...row, apiKey: usageKeyIdentity(row.usageKeyId, row.legacyKey, row.provider),
+  }));
 }
 
 function readLastSeen(db, cutoff, end) {
@@ -691,20 +626,19 @@ function readLastSeen(db, cutoff, end) {
   const endDay = endIso.slice(0, 10);
   const startIso = cutoff?.toISOString();
   const startDay = startIso?.slice(0, 10);
-  const dims = "provider, model, connectionId, apiKey, endpoint";
-  const normalizedDims = ["provider", "model", "connectionId", "apiKey", "endpoint"].map((k) => `COALESCE(${k}, '') AS ${k}`).join(", ");
-  const parts = [`SELECT lastUsed AS timestamp, ${dims} FROM usageLastSeen WHERE dateKey < ?${startDay ? " AND dateKey > ?" : ""}`];
-  const params = [endDay, ...(startDay ? [startDay] : [])];
-  // UTC interior days are summarized; only the partial boundary days touch
-  // raw history. This preserves local-calendar cutoffs and same-day future data.
+  const rows = db.all(`SELECT MAX(lastUsed) AS timestamp,
+    NULLIF(provider, '') AS provider, NULLIF(model, '') AS model,
+    NULLIF(connectionId, '') AS connectionId, apiKey, NULLIF(endpoint, '') AS endpoint
+    FROM usageLastSeen WHERE dateKey < ?${startDay ? " AND dateKey > ?" : ""}
+    GROUP BY provider, model, connectionId, apiKey, endpoint`, [endDay, ...(startDay ? [startDay] : [])]);
+  // UTC interior days are summarized; only partial boundary days touch history.
   if (startDay && startDay < endDay) {
-    parts.push(`SELECT MAX(timestamp) AS timestamp, ${normalizedDims} FROM usageHistory WHERE timestamp >= ? AND timestamp < ? GROUP BY ${dims}`);
-    params.push(startIso, new Date(Date.parse(`${startDay}T00:00:00.000Z`) + 86400000).toISOString());
+    for (const row of historyLastSeen(db, "timestamp >= ? AND timestamp < ?",
+      [startIso, new Date(Date.parse(`${startDay}T00:00:00.000Z`) + 86400000).toISOString()])) rows.push(row);
   }
-  parts.push(`SELECT MAX(timestamp) AS timestamp, ${normalizedDims} FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY ${dims}`);
-  params.push(startDay === endDay ? startIso : `${endDay}T00:00:00.000Z`, endIso);
-  const publicDims = ["provider", "model", "connectionId", "apiKey", "endpoint"].map((k) => `NULLIF(${k}, '') AS ${k}`).join(", ");
-  return db.all(`SELECT MAX(timestamp) AS timestamp, ${publicDims} FROM (${parts.join(" UNION ALL ")}) AS bounded GROUP BY ${dims}`, params);
+  for (const row of historyLastSeen(db, "timestamp >= ? AND timestamp <= ?",
+    [startDay === endDay ? startIso : `${endDay}T00:00:00.000Z`, endIso])) rows.push(row);
+  return rows;
 }
 
 /** Capture before dispatch, never in a completion callback. Null is the pre-cutover
@@ -760,24 +694,30 @@ function acceptedReceiptSync(db, usageEventId) {
 // Re-derive one dimension's last-seen time after a row left it.
 function refreshLastSeenSync(db, row) {
   const day = row.timestamp.slice(0, 10);
-  const dims = [row.provider || "", row.model || "", row.connectionId || "", row.apiKey || "", row.endpoint || ""];
-  db.run(`DELETE FROM usageLastSeen WHERE dateKey = ? AND provider = ? AND model = ? AND connectionId = ? AND apiKey = ? AND endpoint = ?`, [day, ...dims]);
-  const previous = db.get(`SELECT MAX(timestamp) AS timestamp FROM usageHistory
-    WHERE timestamp >= ? AND timestamp < ? AND COALESCE(provider, '') = ? AND COALESCE(model, '') = ?
-    AND COALESCE(connectionId, '') = ? AND COALESCE(apiKey, '') = ? AND COALESCE(endpoint, '') = ?`,
+  const keyId = row.apiKeyId || apiKeyIdForSync(db, row.apiKey);
+  const identity = usageKeyIdentity(keyId, row.apiKey, row.provider);
+  const dims = [row.provider || "", row.model || "", row.connectionId || "", row.endpoint || ""];
+  db.run(`DELETE FROM usageLastSeen WHERE dateKey = ? AND provider = ? AND model = ?
+    AND connectionId = ? AND endpoint = ? AND apiKey = ?`, [day, ...dims, identity]);
+  const groups = historyLastSeen(db, `timestamp >= ? AND timestamp < ? AND COALESCE(provider, '') = ?
+    AND COALESCE(model, '') = ? AND COALESCE(connectionId, '') = ? AND COALESCE(endpoint, '') = ?`,
     [`${day}T00:00:00.000Z`, new Date(Date.parse(`${day}T00:00:00.000Z`) + 86400000).toISOString(), ...dims]);
-  if (previous?.timestamp) upsertLastSeen(db, { ...row, timestamp: previous.timestamp });
+  let previous = null;
+  for (const group of groups) {
+    if (group.apiKey === identity && (!previous || group.timestamp > previous)) previous = group.timestamp;
+  }
+  if (previous) upsertLastSeen(db, { ...row, timestamp: previous }, keyId);
 }
 
 // Apply a counter delta to the day that already holds an accepted row.
-function addDayDeltaSync(db, row, delta, identitySalt) {
+function addDayDeltaSync(db, row, delta) {
   const dateKey = toLocalDateKey(row.timestamp);
   const stored = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
   const day = stored ? parseJson(stored.data, {}) : {};
   aggregateEntryToDay(day, {
     provider: row.provider, model: row.model, connectionId: row.connectionId, apiKey: row.apiKey, endpoint: row.endpoint,
-    latencySamples: 0, ttftSamples: 0, timedCompletionTokens: 0, ...delta,
-  }, identitySalt);
+    apiKeyId: row.apiKeyId || apiKeyIdForSync(db, row.apiKey), latencySamples: 0, ttftSamples: 0, timedCompletionTokens: 0, ...delta,
+  });
   db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 }
 
@@ -789,7 +729,7 @@ const apiKeyIdForSync = (db, apiKey, admittedApiKeyId = null) =>
 
 /* Upgrade an accepted row in place: one request, now with the terminal usage.
  * Accepted rows never carry tokens or cost, so the new values are the delta. */
-function settleAcceptedRowSync(db, row, entry, costSplit, identitySalt) {
+function settleAcceptedRowSync(db, row, entry, costSplit) {
   const tokens = entry.tokens;
   // The row keeps its creation timestamp. Survives a restart for the health check.
   entry.meta = { ...entry.meta, completedAt: entry.timestamp };
@@ -801,7 +741,7 @@ function settleAcceptedRowSync(db, row, entry, costSplit, identitySalt) {
     columns.cachedTokens, columns.reasoningTokens, columns.cacheCreationTokens, ...USAGE_COST_FIELDS.map((field) => costSplit[field]), row.id,
   ]);
   const unknownCostRequests = (entry.cost === null ? 1 : 0) - 1;
-  addDayDeltaSync(db, row, { tokens, cost: entry.cost, requests: 0, unknownCostRequests, ...costSplit }, identitySalt);
+  addDayDeltaSync(db, row, { tokens, cost: entry.cost, requests: 0, unknownCostRequests, ...costSplit });
   // The accepted row keeps its own attribution, so a request that started
   // before a secret change still settles against the same key.
   adjustApiKeyUsageSync(db, apiKeyIdForSync(db, row.apiKey, row.apiKeyId), { tokens: tokens.total_tokens, cost: entry.cost ?? 0, unknownCostRequests });
@@ -979,7 +919,6 @@ export async function saveRequestUsage(entry) {
       // and lifetime counter do not. PostgreSQL holds it until commit/rollback.
       // ponytail: global writer lock; use per-day locks if throughput demands it.
       assertBillingEpochSync(db, entry.billingEpoch);
-      const identitySalt = getOrCreateUsageIdentitySalt(db);
       // Idempotency: only when the caller supplies a real event id.
       if (entry.usageEventId) {
         const claimed = claimUsageEventReceipt(db, usageEventId);
@@ -987,7 +926,7 @@ export async function saveRequestUsage(entry) {
         if (existing) {
           // A terminal event with the job's identity settles its accepted row.
           if (existing.status === "accepted" && !accepted) {
-            settleAcceptedRowSync(db, existing, entry, costSplit, identitySalt);
+            settleAcceptedRowSync(db, existing, entry, costSplit);
             attributedApiKeyId = apiKeyIdForSync(db, existing.apiKey, existing.apiKeyId);
             setUsageEventReceiptSync(db, usageEventId, "1");
             settled = true;
@@ -1056,7 +995,7 @@ export async function saveRequestUsage(entry) {
         historyValues
       );
       if ((insert?.changes ?? 0) === 0) return;
-      upsertLastSeen(db, entry);
+      upsertLastSeen(db, entry, apiKeyId);
 
       const dateKey = toLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
@@ -1064,7 +1003,7 @@ export async function saveRequestUsage(entry) {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
         byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {}
       };
-      aggregateEntryToDay(day, { ...entry, latencyMs, ttftMs, ...costSplit }, identitySalt);
+      aggregateEntryToDay(day, { ...entry, apiKeyId, latencyMs, ttftMs, ...costSplit });
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
       // Atomic counter increment in same transaction
@@ -1162,7 +1101,8 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
     return none;
   }
   const db = await getAdapter();
-  const scope = apiKeyUsageScope(db, { apiKeyId, apiKey });
+  const resolvedId = apiKeyId || apiKeyIdForSync(db, apiKey);
+  const scope = apiKeyUsageScope(db, { apiKeyId: resolvedId, apiKey });
   // One pass over the widest window; each period is a conditional sum. The
   // weekly window is optional so callers that never ask for it keep the
   // original { day, month } shape.
@@ -1283,7 +1223,7 @@ function* readDailyPages(adapter, where, params) {
   }
 }
 
-function* loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
+function* loadDaysInRange(adapter, maxDays, now = new Date()) {
   const todayKey = toLocalDateKey(now);
   const params = [];
   let lowerBound = "";
@@ -1303,7 +1243,7 @@ function* loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
   startOfToday.setHours(0, 0, 0, 0);
   const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
   if (todayRows.length > 0) {
-    const day = aggregateRowsToDay(todayRows, identitySalt);
+    const day = aggregateRowsToDay(todayRows);
     yield { dateKey: todayKey, data: stringifyJson(day) };
   }
 }
@@ -1312,7 +1252,7 @@ function* loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
 // (YYYY-MM-DD) instead of a rolling day count. Used by the usage page's custom
 // calendar range. `endKey` >= today reconstructs the current day from live
 // history (usageDaily has no row for today yet), matching loadDaysInRange.
-function* loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new Date()) {
+function* loadDaysInDateRange(adapter, startKey, endKey, now = new Date()) {
   const todayKey = toLocalDateKey(now);
   yield* readDailyPages(adapter, "dateKey >= ? AND dateKey <= ? AND dateKey < ?", [startKey, endKey, todayKey]);
   if (endKey >= todayKey && startKey <= todayKey) {
@@ -1320,7 +1260,7 @@ function* loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new
     startOfToday.setHours(0, 0, 0, 0);
     const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
     if (todayRows.length > 0) {
-      const day = aggregateRowsToDay(todayRows, identitySalt);
+      const day = aggregateRowsToDay(todayRows);
       yield { dateKey: todayKey, data: stringifyJson(day) };
     }
   }
@@ -1351,25 +1291,48 @@ export async function getUsageStats(period = "all", opts = {}) {
 
   let allApiKeys = [];
   try {allApiKeys = await getApiKeys();} catch {}
-  const apiKeyMap = Object.create(null);
-  for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  const apiKeyBySecret = new Map(allApiKeys.map((key) => [key.key, key]));
+  const apiKeyById = new Map(allApiKeys.map((key) => [key.id, key]));
   let gatewayKeys = [];
   try {gatewayKeys = await getGatewayKeys();} catch {}
-  const gatewayKeyMap = Object.create(null);
-  for (const k of gatewayKeys) gatewayKeyMap[k.key] = { name: k.name, id: k.id };
+  const gatewayKeyByDigest = new Map(gatewayKeys.map((key) => [usageKeyIdentity(null, key.key, "mcp-gateway"), key]));
 
-  const getPublicApiKeyIdentity = createPublicApiKeyIdentity(apiKeyMap, gatewayKeyMap, identitySalt);
+  // Resolve current labels for stable IDs without placing credentials in reports.
+  const unknownApiKeyIds = new Map();
+  function getPublicApiKeyIdentity(identity, provider) {
+    if (!identity || identity === "local-no-key") {
+      return { id: "local-no-key", keyName: "Local (No API Key)", apiKeyMasked: null };
+    }
+    const gatewayKey = provider === "mcp-gateway" ? gatewayKeyByDigest.get(identity) : null;
+    if (gatewayKey) return {
+      id: `mcp-gateway-key:${gatewayKey.id}`, keyName: gatewayKey.name || "MCP Gateway Key", apiKeyMasked: "***",
+    };
+    const keyInfo = provider !== "mcp-gateway" ? apiKeyById.get(identity) : null;
+    if (keyInfo) return { id: `api-key:${keyInfo.id}`, keyName: keyInfo.name || "API Key", apiKeyMasked: "***" };
+    const lookup = identity;
+    if (!unknownApiKeyIds.has(lookup)) unknownApiKeyIds.set(lookup, unknownApiKeyIds.size + 1);
+    return {
+      id: `api-key:${fingerprintApiKey(lookup, identitySalt)}`,
+      keyName: `Deleted API key ${unknownApiKeyIds.get(lookup)}`,
+      apiKeyMasked: "***",
+    };
+  }
+
+  function legacyIdentity(secret, provider) {
+    return usageKeyIdentity(apiKeyBySecret.get(secret)?.id, secret, provider);
+  }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT id, usageEventId, timestamp, provider, model, apiKey, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT h.id, h.usageEventId, h.timestamp, h.provider, h.model, h.tokens, h.status, ${usageHistoryKeyColumnsSql(db)} FROM usageHistory h ORDER BY h.id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows.
   map((r) => {
     const t = parseJson(r.tokens, {}) || {};
+    const identity = getPublicApiKeyIdentity(usageKeyIdentity(r.usageKeyId, r.legacyKey, r.provider), r.provider);
     return {
       eventKey: r.usageEventId ? `event:${r.usageEventId}` : `row:${r.id}`,
-      apiKeyId: getPublicApiKeyIdentity(r.apiKey, undefined, r.provider).id,
-      keyName: getPublicApiKeyIdentity(r.apiKey, undefined, r.provider).keyName,
+      apiKeyId: identity.id,
+      keyName: identity.keyName,
       timestamp: r.timestamp, model: r.model, provider: r.provider || "",
       promptTokens: t.prompt_tokens || t.input_tokens || 0,
       completionTokens: t.completion_tokens || t.output_tokens || 0,
@@ -1463,8 +1426,8 @@ export async function getUsageStats(period = "all", opts = {}) {
   if (useDailySummary) {
     const maxDays = getUsagePeriodDays(period);
     const dayRows = hasCustomRange ?
-    loadDaysInDateRange(db, customStart, customEnd, identitySalt, now) :
-    loadDaysInRange(db, maxDays, identitySalt, now);
+    loadDaysInDateRange(db, customStart, customEnd, now) :
+    loadDaysInRange(db, maxDays, now);
 
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;
@@ -1545,11 +1508,15 @@ export async function getUsageStats(period = "all", opts = {}) {
         const rawModel = ak.rawModel || akKey.split("|")[1] || "";
         const provider = ak.provider || akKey.split("|")[2] || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
-        const apiKeyVal = ak.apiKey;
-        const identity = getPublicApiKeyIdentity(apiKeyVal, akKey, provider);
+        // Old imported blobs may still have the original fingerprint in the
+        // bucket key. New or migrated blobs carry the same identifier in both.
+        const storedIdentity = ak.apiKey ?? akKey.split("|")[0];
+        const keyIdentity = akKey === usageKeyStatsKey(storedIdentity, rawModel, provider)
+          ? storedIdentity : legacyIdentity(ak.apiKey, provider);
+        const identity = getPublicApiKeyIdentity(keyIdentity, provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
-        const statsKey = `${identity.id}|${rawModel}|${provider || "unknown"}`;
+        const statsKey = usageKeyStatsKey(identity.id, rawModel, provider);
         if (!stats.byApiKey[statsKey]) {
           stats.byApiKey[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel, provider: providerDisplayName, rawProvider: provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
@@ -1618,8 +1585,8 @@ export async function getUsageStats(period = "all", opts = {}) {
       if (stats.byAccount[accountKey] && new Date(e.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = e.timestamp;
     }
     for (const e of views[2].values()) {
-      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt), e.provider);
-      const apiKeyKey = `${identity.id}|${e.model}|${e.provider || "unknown"}`;
+      const identity = getPublicApiKeyIdentity(e.apiKey, e.provider);
+      const apiKeyKey = usageKeyStatsKey(identity.id, e.model, e.provider);
       if (stats.byApiKey[apiKeyKey] && new Date(e.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = e.timestamp;
     }
     for (const e of views[3].values()) {
@@ -1708,32 +1675,19 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
       }
 
-      if (r.apiKey && isString(r.apiKey)) {
-        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt), r.provider);
-        const { keyName, apiKeyMasked } = identity;
-        const apiKeyKey = identity.id;
-        const akKey = `${identity.id}|${r.model}|${r.provider || "unknown"}`;
-        if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
-        }
-        const ake = stats.byApiKey[akKey];
-        addCostSplit(ake, r);
-        ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
-        addLatency(ake, r, completionTokens);
-        ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
-        if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
-      } else {
-        const akKey = getApiKeyStatsKey(null, r.model, r.provider, identitySalt);
-        if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
-        }
-        const ake = stats.byApiKey[akKey];
-        addCostSplit(ake, r);
-        ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
-        addLatency(ake, r, completionTokens);
-        ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
-        if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
+      const identity = getPublicApiKeyIdentity(r.keyIdentity, r.provider);
+      const { keyName, apiKeyMasked } = identity;
+      const apiKeyKey = identity.id;
+      const akKey = usageKeyStatsKey(identity.id, r.model, r.provider);
+      if (!stats.byApiKey[akKey]) {
+        stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
       }
+      const ake = stats.byApiKey[akKey];
+      addCostSplit(ake, r);
+      ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
+      addLatency(ake, r, completionTokens);
+      ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
+      if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
 
       const endpoint = r.endpoint || "Unknown";
       const epKey = `${endpoint}|${r.model}|${r.provider || "unknown"}`;
@@ -1910,7 +1864,6 @@ function startOfDayInTz(now, timeZone) {
 
 export async function getChartData(period = "7d", timeZone) {
   const db = await getAdapter();
-  const identitySalt = getOrCreateUsageIdentitySalt(db);
   const nowDate = new Date();
   const now = nowDate.getTime();
   const tz = isValidTimeZone(timeZone) ? timeZone : undefined;
@@ -1984,7 +1937,7 @@ export async function getChartData(period = "7d", timeZone) {
   // Keep only chart scalars after each paged blob is decoded, not every
   // model/account/key dimension retained in the daily JSON.
   const dayRows = [];
-  for (const row of loadDaysInRange(db, fixedDays, identitySalt, nowDate)) {
+  for (const row of loadDaysInRange(db, fixedDays, nowDate)) {
     try { localDateFromKey(row.dateKey); } catch { continue; }
     const day = parseJson(row.data, {});
     dayRows.push({ dateKey: row.dateKey, day: {
@@ -2079,13 +2032,13 @@ const RESET_PERIOD_MS = {
 
 const VALID_RESET_PERIODS = new Set(["5m", "1h", "3h", "6h", "12h", "1d", "7d", "30d", "all"]);
 
-function rebuildDailyKeyInTx(db, dateKey, identitySalt) {
+function rebuildDailyKeyInTx(db, dateKey) {
   const start = localDateFromKey(dateKey);
   const end = addLocalCalendarDays(start, 1);
   const rows = aggregateUsageWindow(db, start.toISOString(), new Date(Math.min(end.getTime() - 1, Date.now())).toISOString());
   db.run(`DELETE FROM usageDaily WHERE dateKey = ?`, [dateKey]);
   if (rows.length === 0) return;
-  const day = aggregateRowsToDay(rows, identitySalt);
+  const day = aggregateRowsToDay(rows);
   db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
 }
 
@@ -2094,7 +2047,7 @@ function rebuildDailyKeyInTx(db, dateKey, identitySalt) {
  * `cutoffMs`, then rebuild the boundary day and the lifetime counter.
  * Returns the number of usageHistory rows removed.
  */
-function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
+function pruneUsageBeforeInTx(db, cutoffMs) {
   const cutoffIso = new Date(cutoffMs).toISOString();
   const cutoffDate = new Date(cutoffMs);
   const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
@@ -2116,7 +2069,7 @@ function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
   backfillTokenSaverDaily(db, "WHERE timestamp >= ? AND timestamp < ?", [
     cutoffIso, new Date(Date.parse(`${utcCutoffDay}T00:00:00.000Z`) + 86400000).toISOString(),
   ]);
-  rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
+  rebuildDailyKeyInTx(db, cutoffKey);
 
   // Recalculate totalRequestsLifetime from remaining history
   const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);
@@ -2129,7 +2082,7 @@ function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
  * `cutoffMs` (the selected recent reset window), then rebuild the boundary day
  * and the lifetime counter from remaining older history.
  */
-function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
+function deleteUsageSinceInTx(db, cutoffMs) {
   const cutoffIso = new Date(cutoffMs).toISOString();
   const cutoffDate = new Date(cutoffMs);
   const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
@@ -2140,15 +2093,12 @@ function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
   const utcCutoffDay = cutoffIso.slice(0, 10);
   const utcCutoffDayStart = `${utcCutoffDay}T00:00:00.000Z`;
   db.run(`DELETE FROM usageLastSeen WHERE lastUsed >= ?`, [cutoffIso]);
-  db.run(`INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
-    SELECT SUBSTR(timestamp, 1, 10), COALESCE(provider, ''), COALESCE(model, ''),
-           COALESCE(connectionId, ''), COALESCE(apiKey, ''), COALESCE(endpoint, ''), MAX(timestamp)
-      FROM usageHistory
-     WHERE timestamp >= ? AND timestamp < ?
-     GROUP BY SUBSTR(timestamp, 1, 10), COALESCE(provider, ''), COALESCE(model, ''),
-              COALESCE(connectionId, ''), COALESCE(apiKey, ''), COALESCE(endpoint, '')
-    ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
-      lastUsed = excluded.lastUsed`, [utcCutoffDayStart, cutoffIso]);
+  // Rebuild the boundary day using the same key identity as normal writes.
+  const remainingLastSeen = historyLastSeen(db, "timestamp >= ? AND timestamp < ?", [utcCutoffDayStart, cutoffIso]);
+  upsertUsageLastSeen(db, remainingLastSeen.map((row) => ({
+    dateKey: row.timestamp.slice(0, 10), provider: row.provider || "", model: row.model || "",
+    connectionId: row.connectionId || "", apiKey: row.apiKey, endpoint: row.endpoint || "", lastUsed: row.timestamp,
+  })));
 
   // Delete usageDaily entries after the cutoff day and rebuild the boundary day
   db.run(`DELETE FROM usageDaily WHERE dateKey > ?`, [cutoffKey]);
@@ -2158,7 +2108,7 @@ function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
   backfillTokenSaverDaily(db, "WHERE timestamp >= ? AND timestamp < ?", [
     utcCutoffDayStart, cutoffIso,
   ]);
-  rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
+  rebuildDailyKeyInTx(db, cutoffKey);
 
   // Recalculate totalRequestsLifetime from remaining history
   const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);
@@ -2168,10 +2118,9 @@ function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
 /** Retention sweep entry point: prune everything recorded before `cutoffMs`. */
 export async function pruneUsageOlderThan(cutoffMs) {
   const db = await getAdapter();
-  const identitySalt = getOrCreateUsageIdentitySalt(db);
   let removed = 0;
   db.transaction(() => {
-    removed = pruneUsageBeforeInTx(db, cutoffMs, identitySalt);
+    removed = pruneUsageBeforeInTx(db, cutoffMs);
   });
   if (removed > 0) {
     recentRing.items = recentRing.items.filter((item) => !item?.timestamp || item.timestamp >= new Date(cutoffMs).toISOString());
@@ -2186,7 +2135,6 @@ export async function resetUsageHistory(period) {
   }
 
   const db = await getAdapter();
-  const identitySalt = getOrCreateUsageIdentitySalt(db);
 
   db.transaction(() => {
     if (period === "all") {
@@ -2200,7 +2148,7 @@ export async function resetUsageHistory(period) {
       db.run("DELETE FROM tokenSaverDailyReasons");
       db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
     } else {
-      deleteUsageSinceInTx(db, Date.now() - RESET_PERIOD_MS[period], identitySalt);
+      deleteUsageSinceInTx(db, Date.now() - RESET_PERIOD_MS[period]);
     }
   });
 

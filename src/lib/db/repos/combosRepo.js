@@ -24,8 +24,17 @@ function normalizeInvariant(data) {
 }
 export class ComboMemberError extends Error {}
 
-// Resolve names as routing does (exact first, then case-insensitive) and reject
-// cycles reachable from the proposed row, including newly resolved references.
+// Serialize graph reads with all combo writers on shared database engines.
+function lockComboGraph(db) {
+  if (db.driver === "pg") {
+    if (!db.get(QUOTA_WRITE_LOCK_SQL_PG)) throw new Error("Combo storage is not initialized");
+  } else if (db.run(QUOTA_WRITE_LOCK_SQL).changes !== 1) {
+    throw new Error("Combo storage is not initialized");
+  }
+}
+
+// Resolve names as routing does (exact first, then case-insensitive). Scan the
+// whole graph because a rename can change resolution in another component.
 function validateComboCycles(db, proposed) {
   const existing = db.all(`SELECT * FROM combos ORDER BY createdAt ASC, id ASC`).map(rowToCombo);
   const next = existing.filter((row) => row.id !== proposed.id).concat(proposed);
@@ -54,12 +63,6 @@ function validateComboCycles(db, proposed) {
   if (after.has(proposed.id) || [...after].some((id) => !before.has(id))) {
     throw new ComboMemberError("Combo cycle detected");
   }
-}
-
-// Serialize graph reads with writes across processes and database engines.
-function lockComboGraph(db) {
-  const locked = db.driver === "pg" ? db.get(QUOTA_WRITE_LOCK_SQL_PG) : db.run(QUOTA_WRITE_LOCK_SQL).changes;
-  if (!locked) throw new Error("Combo graph requires an initialized database");
 }
 
 // Members preserve established string `models` routing while carrying optional
@@ -290,6 +293,7 @@ function persistSteps(db, row, models, members, now) {
   const combo = rowToCombo(row);
   const next = { ...combo, models, members: normalizeComboMembers(models, members), updatedAt: now };
   validateComboInvariant({ ...next, ...(combo.invariant || {}) });
+  validateComboCycles(db, next);
   db.run(`UPDATE combos SET models = ?, members = ?, updatedAt = ? WHERE id = ?`, [stringifyJson(next.models), stringifyJson(next.members), now, row.id]);
   return next;
 }
@@ -305,6 +309,7 @@ export async function pruneComboSteps(id, stale, { reason = "Model no longer in 
   const providerByModel = new Map((Array.isArray(stale) ? stale : []).filter((s) => s && isString(s.model)).map((s) => [s.model, s.provider ?? null]));
   let outcome = { pruned: [], skipped: "not-found" };
   db.transaction(() => {
+    lockComboGraph(db);
     const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
     if (!row) return;
     const combo = rowToCombo(row);
@@ -358,7 +363,6 @@ export async function restorePrunedSteps(id, { models: only = null, now = new Da
       members.splice(at, 0, { id: record.model, weight: record.weight });
       restored.push(record);
     }
-    if (restored.length) validateComboCycles(db, { ...combo, models });
     const next = restored.length ? persistSteps(db, row, models, members, now) : combo;
     writePrunedSteps(db, id, rest);
     result = { combo: { ...next, prunedSteps: rest }, restored };

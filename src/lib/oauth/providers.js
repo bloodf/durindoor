@@ -530,13 +530,32 @@ const PROVIDERS = {
       const profile = await fetchClaudeProfile(tokens.access_token, CLAUDE_CONFIG.profileUrl, proxyOptions);
       return { profile };
     },
-    mapTokens: (tokens, extra) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-      scope: tokens.scope,
-      ...claudeProfileFields(extra?.profile)
-    })
+    mapTokens: (tokens, extra) => {
+      const profileFields = claudeProfileFields(extra?.profile);
+      const profile = extra?.profile;
+      const account = tokens.account || {};
+      const organization = tokens.organization || {};
+      const populated = (value) => value != null && value !== "";
+      const email = populated(profile?.account?.email) ? profile.account.email : account.email_address;
+      const accountUuid = populated(profile?.account?.uuid) ? profile.account.uuid : account.uuid;
+      const orgUuid = populated(profile?.organization?.uuid) ? profile.organization.uuid : organization.uuid;
+      const orgName = populated(profile?.organization?.name) ? profile.organization.name : organization.name;
+      const providerSpecificData = { ...profileFields.providerSpecificData };
+      if (populated(accountUuid)) providerSpecificData.claudeAccountUuid = accountUuid;
+      if (populated(orgUuid)) providerSpecificData.claudeOrgUuid = orgUuid;
+      if (populated(orgName)) providerSpecificData.claudeOrgName = orgName;
+
+      const mapped = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        ...profileFields
+      };
+      if (populated(email)) mapped.email = email;
+      if (Object.keys(providerSpecificData).length) mapped.providerSpecificData = providerSpecificData;
+      return mapped;
+    }
   },
 
   codex: {

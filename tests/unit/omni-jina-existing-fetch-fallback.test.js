@@ -56,7 +56,10 @@ vi.mock("../../src/sse/utils/requestCorrelation.js", () => ({
   getRequestId: () => "request",
   withRequestCorrelation: (handler) => handler,
 }));
-vi.mock("@/shared/utils/ssrfGuard.js", () => ({ assertPublicUrlResolved: vi.fn(async () => {}) }));
+vi.mock("@/shared/utils/ssrfGuard.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  assertPublicUrlResolved: vi.fn(async () => {}),
+}));
 vi.mock("open-sse/services/comboRoutingPolicy.js", () => ({ getComboRoutingPolicy: vi.fn(async () => null) }));
 // The shipped provider adapters stay real; only the pinned network call is replaced.
 vi.mock("open-sse/utils/outboundUrlGuard.js", async (importOriginal) => ({

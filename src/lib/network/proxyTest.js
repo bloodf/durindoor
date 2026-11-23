@@ -1,6 +1,6 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 // Fixed probe target. Previously this endpoint accepted a caller-supplied
 // `testUrl` from the request body, which turned the proxy-test route into
@@ -153,7 +153,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
       // verify the proxy can reach the public internet; if it cannot
       // fetch https, it cannot proxy real traffic.
       try {
-        assertPublicUrl(testUrl);
+        assertOutboundUrlAllowed(testUrl, "public-only");
       } catch (guardErr) {
         return {
           ok: false,
@@ -176,7 +176,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
 
       let res;
       try {
-        res = await undiciFetch(testUrl, {
+        res = await guardedProbeFetch(testUrl, {
           method: "HEAD",
           dispatcher,
           signal: controller.signal,
@@ -184,7 +184,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
           headers: {
             "User-Agent": "9Router",
           },
-        });
+        }, "public-only", (url, options) => undiciFetch(url, { ...options, dispatcher }));
       } catch (err) {
         const message =
           err?.name === "AbortError"

@@ -111,6 +111,17 @@ const ANTIGRAVITY_STRIKE_BLOCK_MS = 15 * 60_000;
 // generic 429 still gets the normal cooldown but never trips the breaker.
 const antigravity429Strikes = new Map();
 
+/**
+ * Per-combo `timeoutMs` wins, including 0 (no combo timer). A nullish value
+ * uses `COMBO_MODEL_TIMEOUT_MS`, which is itself 0 when that default is off.
+ * @param {number|null|undefined} perComboTimeoutMs
+ * @param {number|null|undefined} [envDefaultMs]
+ * @returns {number}
+ */
+export function resolveComboModelTimeoutMs(perComboTimeoutMs, envDefaultMs = COMBO_MODEL_TIMEOUT_MS) {
+  return perComboTimeoutMs ?? envDefaultMs ?? 0;
+}
+
 function antigravityStrikeKey(connectionId, model) {
   return `${connectionId}|${model}`;
 }
@@ -691,13 +702,14 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
 
     const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
+    const comboTimeoutMs = resolveComboModelTimeoutMs(perCombo?.timeoutMs);
     log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
     // #2562: combo fallback must persist ONE token-saver row for the whole
     // logical request, not one per fallback attempt. Collect the latest event
     // across attempts and persist after handleComboChat returns.
     const tokenSaverCollector = { latest: null };
     const comboResult = await handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m, attemptSignal, attemptOptions) => {
@@ -915,7 +927,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
 
       const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
-      const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
+      const comboTimeoutMs = resolveComboModelTimeoutMs(perCombo?.timeoutMs);
       log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
       // Nested combos inherit the parent's collector if present; otherwise own
       // it so nested fallback attempts do not double-count rows.
@@ -923,6 +935,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const nestedCollector = tokenSaverCollector || { latest: null };
       const nestedCapabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       const nestedResult = await handleComboChat({
+        apiKeyId,
         body,
         models: comboModels,
         handleSingleModel: (b, m, attemptSignal, attemptOptions) => {

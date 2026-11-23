@@ -18,11 +18,14 @@ uppercase thinking levels and removes invalid Claude budgets without leaving
 native search envelope; function tools take precedence in mixed requests. The
 reverted `X-Goog-User-Project` header is not added.
 
-DurinDoor has no Antigravity native CountTokens request: its count-token handler
-uses a local estimate for this provider. Consequently the upstream CountTokens
-model, stream, cooldown, 429 and schema changes have no corresponding request
-path to port. Synthetic outbound tests exercise the envelope; they do not prove
-live provider acceptance.
+DurinDoor now sends Antigravity connections to the native `v1internal:countTokens`
+endpoint, using the chat executor's project, credential, user-agent and session
+scoping helpers. The request populates `request.model`, removes streaming-only
+and unsupported fields, and sanitizes tool schemas. Successful counts are
+authoritative; 429s feed the selected connection's cooldown, authentication
+errors remain credential errors, and other unavailable responses use the local
+estimate marked approximate. Closed synthetic outbound tests exercise this
+envelope and connection isolation; they do not prove live provider acceptance.
 
 Compared on 2026-11-20, without provider credentials or account traffic. These are source comparisons, not evidence that Google currently accepts any particular client, model, or account.
 
@@ -189,4 +192,4 @@ Compared `f5c5681a8361c9da53e93c60b6507816eee7468b..6960763455c4ac3d4828fb1736aa
 
 - CLIProxyAPI `6960763..6eb8554` state fixes: Cloud Code JSON error envelopes under HTTP 200 are treated as failures before translation, using their numeric RPC code when it is an HTTP error status and 502 otherwise. HTTP and in-band 401/403 responses retire the actual shared undici dispatcher that served the request; active requests drain, and a late failure cannot retire a replacement. The DNS-bypass path uses no pooled agent. Eager post-refresh project discovery remains opt-in and now skips disabled Antigravity connections. Dashboard sign-in already rejects missing projects, including onboarding failure.
 - CLIProxyAPI's optional credits retry/balance/refresh machinery and its reasoning replay item store are absent here; their parsing, session metadata, key, commit-order and cancellation fixes therefore have no corresponding execution path to port. DurinDoor's separate tool-signature caches are not that replay store. Existing Antigravity wire sessions are scoped by connection and subagent. `antigravity-cpa-credential-state.test.js`, `project-id-proxy-routing.test.js`, and `antigravity-flow.test.js` use synthetic fixtures to exercise the applicable response, transport, discovery, session and sign-in behavior.
-- SSE and signatures: existing terminal tests cover completion without EOF, late usage and bounded draining; `antigravity-thought-signature-family.test.js` covers signature family isolation. Upstream's Gemini native response restoration and multi-candidate defaults (`internal/translator/antigravity/gemini/antigravity_gemini_response.go` at `6960763455c4`) operate on a direct Antigravity→Gemini native chunk path: they restore `cpaUsageMetadata`→`usageMetadata`, rematerialize sanitized tool names on every candidate, and default `finishReason: "STOP"` on each missing candidate. DurinDoor has no matching Antigravity→Gemini translator; Antigravity responses pivot through OpenAI (`gemini-to-openai` / `openai-to-antigravity`), which already unwraps Cloud Code envelopes and maps a single candidate into OpenAI finish reasons. Copying the multi-candidate native defaults would not exercise a local live path without a new translator pair and fixture-backed SSE regression, so they were not ported. The new bounded-read fixture does not establish complete translator parity.
+- SSE and signatures: existing terminal tests cover completion without EOF, late usage and bounded draining; `antigravity-thought-signature-family.test.js` covers signature family isolation. The Gemini-native route returns Antigravity response envelopes directly after restoring `cpaUsageMetadata` to `usageMetadata`, tool names on every candidate, and missing candidate finish reasons. Synthetic JSON and SSE coverage is in `antigravity-gemini-native-response.test.js`; OpenAI and Anthropic routes retain their existing translation. This follows [CLIProxyAPI's Gemini response translator](https://github.com/router-for-me/CLIProxyAPI/blob/6eb8554f0ede/internal/translator/antigravity/gemini/antigravity_gemini_response.go) (MIT).

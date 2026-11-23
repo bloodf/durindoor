@@ -86,6 +86,13 @@ export async function POST(request) {
   try {
     const trimmedName = isString(body.name) ? body.name.trim() : "";
     if (!trimmedName) return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    // Null or an omitted scope creates an unrestricted key; all other values must be string arrays.
+    if (body.allowedCombos != null && (!Array.isArray(body.allowedCombos) || body.allowedCombos.some((value) => !isString(value)))) {
+      return NextResponse.json({ error: "allowedCombos must be an array of strings" }, { status: 400 });
+    }
+    if ("isActive" in body && !isBoolean(body.isActive)) {
+      return NextResponse.json({ error: "isActive must be a boolean" }, { status: 400 });
+    }
     const machineId = await getConsistentMachineId();
     const policyInput = await resolveApiKeyPolicyInput(body, { create: true });
     let providerConnectionIds;

@@ -29,6 +29,14 @@ import { M365ExecutorError, m365ErrorResponse, m365Failure, m365Output } from ".
 import { M365TurnComposer } from "./copilot-m365-composer.js";
 import { M365TurnError, m365FrameError, m365UpgradeThrottle } from "./copilot-m365-turn.js";
 import { resolveM365Profile } from "./copilot-m365-profile.js";
+const M365_MAX_FRAME_BYTES = 1024 * 1024;
+const M365_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const RECORD_SEPARATOR = String.fromCharCode(0x1e);
+const metricsFrame = () => JSON.stringify({
+  arguments: [{ Timestamps: { ConnectionEstablished: "", ConnectionStart: "", UserInputStart: "", UserInputSubmit: "" } }],
+  target: "Metrics",
+  type: 1
+}) + RECORD_SEPARATOR;
 import {
   M365_MAX_TEXT_LENGTH,
   buildM365ToolInstructions,
@@ -109,9 +117,17 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions
     let buffer = "";
     let handshakeComplete = false;
     let completionReceived = false;
+    let receivedBytes = 0;
     let timeout = null;
 
-    const onAbort = () => fail("Request aborted");
+    const onAbort = () => {
+      try {
+        if (ws?.readyState === 1 && handshakeComplete) {
+          ws.send(JSON.stringify({ type: 1, invocationId: "1", target: "stop", arguments: [{}] }) + RECORD_SEPARATOR);
+        }
+      } catch { /* cancellation wins over a failed stop send */ }
+      fail("Request aborted");
+    };
     const cleanup = () => {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", onAbort);
@@ -151,6 +167,7 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions
       if (proxyRoute.strict && !agent) throw new Error("WebSocket proxy required but unavailable");
       if (settled) return;
       ws = new WebSocketCtor(wsUrl, {
+        maxPayload: M365_MAX_RESPONSE_BYTES,
         ...(agent ? { agent } : null),
         headers: {
           Origin: "https://m365.cloud.microsoft",
@@ -169,11 +186,15 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions
       });
       ws.on("message", (data) => {
         if (settled) return;
-        buffer += data.toString();
+        const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data.toString());
+        receivedBytes += bytes.byteLength;
+        if (receivedBytes > M365_MAX_RESPONSE_BYTES) return fail("Microsoft 365 Copilot response exceeded the size limit");
+        buffer += bytes.toString("utf8");
         const split = splitFrames(buffer);
         buffer = split.rest;
         for (const rawFrame of split.frames) {
           if (settled) return;
+          if (Buffer.byteLength(rawFrame) > M365_MAX_FRAME_BYTES) return fail("Microsoft 365 Copilot frame exceeded the size limit");
           const frame = parseFrame(rawFrame);
           if (!handshakeComplete) {
             const error = handshakeError(frame);
@@ -182,6 +203,7 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions
             resetStallTimer();
             ws?.send(keepaliveFrame());
             ws?.send(encodeFrame(invocation));
+            ws?.send(metricsFrame());
             continue;
           }
           if (!frame || frame.type === 6) continue;
@@ -202,6 +224,7 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions
             return done();
           }
         }
+        if (Buffer.byteLength(buffer) > M365_MAX_FRAME_BYTES) return fail("Microsoft 365 Copilot frame exceeded the size limit");
       });
       ws.on("error", (err) => {
         fail(err instanceof Error ? err.message : "Microsoft 365 Copilot WebSocket error", webSocketAuthStatus(err));
@@ -351,13 +374,38 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     const turns = (resume?.turns ?? 0) + 1;
     // A failed turn is never committed, so a broken conversation is not resumed.
     const commit = (reply) => {
-      if (scope) conversations.commit(scope, messages, ids, m365ReplyFingerprint(reply), turns);
+      if (scope) conversations.commit(scope, messages, conversationIds, m365ReplyFingerprint(reply), turns);
     };
-    const composer = new M365TurnComposer();
+    let composer = new M365TurnComposer();
+    let conversationIds = ids;
     let finalResultMessage = "";
     const absorbFinal = (frame) => {
       const message = extractFinalResultMessage(frame);
       if (message) finalResultMessage = message;
+    };
+    const runTurn = async (onFrame, signal = input.signal) => {
+      try {
+        await runM365Socket({ wsUrl, proxyOptions: input.proxyOptions, invocation, signal, onFrame });
+      } catch (error) {
+        if (error?.code !== "M365_INTERNAL_ERROR" || composer.text || finalResultMessage || signal?.aborted) throw error;
+        // InternalError leaves the current conversation unusable. Retry once with entirely new
+        // conversation/session identifiers; a second refusal is returned to the caller.
+        const freshUrl = buildWsUrl(routeParams);
+        const freshParts = new URL(freshUrl);
+        conversationIds = {
+          conversationId: freshParts.searchParams.get("ConversationId"),
+          sessionId: freshParts.searchParams.get("X-SessionId")
+        };
+        const freshInvocation = structuredClone(invocation);
+        const args = freshInvocation.arguments[0];
+        args.conversationId = conversationIds.conversationId;
+        args.sessionId = conversationIds.sessionId;
+        args.isStartOfSession = true;
+        args.message.requestId = freshParts.searchParams.get("chatsessionid");
+        composer = new M365TurnComposer();
+        finalResultMessage = "";
+        await runM365Socket({ wsUrl: freshUrl, proxyOptions: input.proxyOptions, invocation: freshInvocation, signal, onFrame });
+      }
     };
     const output = m365Output(model);
 
@@ -377,32 +425,17 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           const send = (text) => {
             if (!cancelled) sink.enqueue(encoder.encode(text));
           };
-          runM365Socket({
-            wsUrl,
-            proxyOptions: input.proxyOptions,
-            invocation,
-            signal,
-            onFrame(frame) {
+          runTurn(
+            (frame) => {
               absorbFinal(frame);
               const update = composer.push(frame);
-              if (update.streamingDiverged) {
-                throw new M365ExecutorError(
-                  502,
-                  "m365_stream_rewritten",
-                  "Microsoft 365 Copilot rewrote streamed content; retry without streaming."
-                );
-              }
-              // Reasoning first: it describes the work behind the text that follows it.
+              if (update.streamingDiverged) throw new M365ExecutorError(502, "m365_stream_rewritten", "Microsoft 365 Copilot rewrote streamed content; retry without streaming.");
               if (update.reasoningDelta) send(output.chunk({ reasoning_content: update.reasoningDelta }));
-              if (update.delta) {
-                send(output.chunk({
-                  content: update.delta,
-                  ...(update.annotations.length ? { annotations: update.annotations } : null)
-                }));
-              }
+              if (update.delta) send(output.chunk({ content: update.delta, ...(update.annotations.length ? { annotations: update.annotations } : null) }));
               if (update.delta || update.reasoningDelta) ready();
-            }
-          }).then(
+            },
+            signal,
+          ).then(
             () => {
               const answer = composer.text || finalResultMessage;
               if (!composer.text && finalResultMessage) send(output.chunk({ content: finalResultMessage }));
@@ -434,16 +467,10 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     }
 
     try {
-      await runM365Socket({
-        wsUrl,
-        proxyOptions: input.proxyOptions,
-        invocation,
-        signal: input.signal,
-        onFrame(frame) {
+      await runTurn((frame) => {
           absorbFinal(frame);
           composer.push(frame);
-        }
-      });
+        });
     } catch (error) {
       return wrap(failureResponse(error, model), redactedUrl, logged);
     }

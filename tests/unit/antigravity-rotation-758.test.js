@@ -255,6 +255,83 @@ describe("antigravity browser boundary", () => {
     expect(unavailable).toEqual({ ok: false, category: "browser_unavailable" });
   });
 
+  it("enters a synthetic password only on the recognized password screen and captures the callback", async () => {
+    const redirect = "http://127.0.0.1:20127/callback";
+    const typed = [];
+    let handler;
+    vi.resetModules();
+    vi.doMock("puppeteer-extra", () => ({ default: {
+      use() {},
+      async launch() { return {
+        async newPage() { return {
+          async setRequestInterception() {},
+          mainFrame: () => null,
+          on(_event, fn) { handler = fn; },
+          async goto() {},
+          url: () => "https://accounts.google.com/signin/v2/challenge/pwd",
+          async $(selector) {
+            if (selector === 'input[type="password"][name="Passwd"]') return { type: async (value) => typed.push(value) };
+            if (selector === "#passwordNext") return { click: async () => {
+              await handler({ url: () => `${redirect}?code=synthetic-code&state=expected`, isNavigationRequest: () => true, frame: () => null, abort: async () => {}, continue: async () => {} });
+            } };
+            return null;
+          },
+          async waitForNavigation() { throw new Error("aborted navigation"); },
+        }; },
+        async close() {},
+      }; },
+    } }));
+    vi.doMock("puppeteer-extra-plugin-stealth", () => ({ default: () => ({}) }));
+    const { runBrowserRecovery } = await import("../../src/lib/antigravity/browserRecovery.js");
+    const result = await runBrowserRecovery({
+      env: { DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY: "1", DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED: "1" },
+      redirectUri: redirect, authorizeUrl: "https://accounts.google.com/", state: "expected", password: "synthetic-password",
+    });
+    expect(typed).toEqual(["synthetic-password"]);
+    expect(result).toEqual({ ok: true, code: "synthetic-code", state: "expected" });
+    vi.doUnmock("puppeteer-extra");
+    vi.doUnmock("puppeteer-extra-plugin-stealth");
+  });
+
+  it.each([
+    ["https://accounts.google.com/signin/oauth/consent", "consent"],
+    ["https://accounts.google.com/signin/v2/challenge/otp", "challenge"],
+    ["http://127.0.0.1:20127/callback?code=synthetic-code&state=wrong", "pre_dispatch_failure"],
+  ])("stops without entering credentials on %s", async (target, category) => {
+    let handler;
+    const type = vi.fn();
+    vi.resetModules();
+    vi.doMock("puppeteer-extra", () => ({ default: {
+      use() {},
+      async launch() { return {
+        async newPage() {
+          const frame = {};
+          return {
+            async setRequestInterception() {}, on(_event, fn) { handler = fn; },
+            mainFrame: () => frame,
+            async goto() {
+              await handler({ url: () => target, isNavigationRequest: () => true, frame: () => frame, abort: async () => {}, continue: async () => {} });
+              throw new Error("aborted");
+            },
+            url: () => target,
+            async $() { return { type }; },
+          };
+        },
+        async close() {},
+      }; },
+    } }));
+    vi.doMock("puppeteer-extra-plugin-stealth", () => ({ default: () => ({}) }));
+    const { runBrowserRecovery } = await import("../../src/lib/antigravity/browserRecovery.js");
+    const result = await runBrowserRecovery({
+      env: { DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY: "1", DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED: "1" },
+      redirectUri: "http://127.0.0.1:20127/callback", authorizeUrl: target, state: "expected", password: "synthetic-password",
+    });
+    expect(result).toEqual({ ok: false, category });
+    expect(type).not.toHaveBeenCalled();
+    vi.doUnmock("puppeteer-extra");
+    vi.doUnmock("puppeteer-extra-plugin-stealth");
+  });
+
   it("returns an intercepted callback when the navigation aborts", async () => {
     const redirect = "http://127.0.0.1:20127/callback";
     const target = `${redirect}?code=one&state=two`;
@@ -268,10 +345,12 @@ describe("antigravity browser boundary", () => {
               let handler;
               return {
                 async setRequestInterception() {},
+                mainFrame: () => null,
                 on(_event, next) { handler = next; },
                 async goto() {
                   await handler({
                     url: () => target,
+                    isNavigationRequest: () => true, frame: () => null,
                     abort: async () => {},
                     continue: async () => {},
                   });

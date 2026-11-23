@@ -62,7 +62,8 @@ function exactCallback(url, redirectUri) {
   } catch {
     return false;
   }
-  return url.protocol === expected.protocol
+  return !url.username && !url.password && !url.hash
+    && url.protocol === expected.protocol
     && url.hostname === expected.hostname
     && url.port === expected.port
     && url.pathname === expected.pathname;
@@ -85,7 +86,7 @@ export function classifyBrowserUrl(urlString, redirectUri) {
     return { action: "block", category: "network" };
   }
   if (!ALLOWED_HOSTS.has(url.hostname)) return { action: "block", category: "network" };
-  if (url.pathname.includes("/challenge") || url.pathname.includes("/signin/challenge")) {
+  if (url.pathname.includes("/challenge") && !(url.hostname === "accounts.google.com" && /^\/signin\/(?:v2\/)?challenge\/pwd\/?$/.test(url.pathname))) {
     return { action: "block", category: "challenge" };
   }
   if (url.pathname.includes("/consent") || url.pathname.includes("/signin/oauth/consent")) {
@@ -157,6 +158,9 @@ export async function runBrowserRecovery(job) {
     if (testMode) {
       const result = await job.browser({ profileDir, onRequest, evaluateBrowserRequest });
       if (!result?.ok) return redactResult(result);
+      if (!isString(result.code) || !result.code || !isString(job.state) || !job.state || result.state !== job.state) {
+        return { ok: false, category: "pre_dispatch_failure" };
+      }
       return { ok: true, code: result.code, state: result.state };
     }
     return await runRealBrowser(job, profileDir);
@@ -169,6 +173,7 @@ export async function runBrowserRecovery(job) {
 }
 
 async function runRealBrowser(job, profileDir) {
+  if (!isString(job.state) || !job.state) return { ok: false, category: "pre_dispatch_failure" };
   let puppeteer;
   try {
     puppeteer = (await import("puppeteer-extra")).default;
@@ -193,44 +198,71 @@ async function runRealBrowser(job, profileDir) {
     return { ok: false, category: "browser_unavailable" };
   }
   let captured = null;
+  let blocked = null;
+  const pending = new Set();
   try {
     const page = await browser.newPage();
     await page.setRequestInterception(true);
-    page.on("request", async (request) => {
-      let decision;
-      try {
-        decision = classifyBrowserUrl(request.url(), job.redirectUri);
-        if (decision.action === "resolve") {
-          const addresses = await lookupAddresses(decision.hostname, lookup);
-          decision = evaluateBrowserRequest(request.url(), job.redirectUri, addresses);
+    page.on("request", (request) => {
+      const task = (async () => {
+        let decision;
+        try {
+          decision = classifyBrowserUrl(request.url(), job.redirectUri);
+          if (decision.action === "resolve") {
+            const addresses = await lookupAddresses(decision.hostname, lookup);
+            decision = evaluateBrowserRequest(request.url(), job.redirectUri, addresses);
+          }
+        } catch {
+          decision = { action: "block", category: "network" };
         }
-      } catch {
-        decision = { action: "block", category: "network" };
-      }
-      try {
-        if (decision.action === "intercept") {
-          captured = { code: decision.code, state: decision.state };
-          await request.abort("blockedbyclient");
-          return;
+        try {
+          const mainNavigation = request.isNavigationRequest() && request.frame() === page.mainFrame();
+          if (decision.action === "intercept") {
+            if (mainNavigation && decision.state === job.state && !captured) captured = { code: decision.code, state: decision.state };
+            else if (mainNavigation && decision.state !== job.state) blocked = "pre_dispatch_failure";
+            await request.abort("blockedbyclient");
+            return;
+          }
+          if (decision.action !== "allow") {
+            if (mainNavigation) blocked = decision.category;
+            await request.abort("blockedbyclient");
+            return;
+          }
+          await request.continue();
+        } catch {
+          // The page can close while the paused request is still settling.
         }
-        if (decision.action !== "allow") {
-          await request.abort("blockedbyclient");
-          return;
-        }
-        await request.continue();
-      } catch {
-        // The page can close while the paused request is still settling.
-      }
+      })();
+      pending.add(task);
+      task.finally(() => pending.delete(task));
     });
     try {
       await page.goto(job.authorizeUrl, { timeout: job.deadlineMs || 60_000, waitUntil: "domcontentloaded" });
     } catch {
       // Aborting the callback rejects navigation. A captured code is still the result.
     }
-    if (captured?.code && captured.state === job.state) {
+    await Promise.allSettled([...pending]);
+    if (!captured && !blocked && isString(job.password) && job.password) {
+      const current = new URL(page.url());
+      if (current.protocol === "https:" && current.hostname === "accounts.google.com"
+          && (!current.port || current.port === "443")
+          && /^\/signin\/(?:v2\/)?challenge\/pwd\/?$/.test(current.pathname)) {
+        const input = await page.$('input[type="password"][name="Passwd"]');
+        const next = await page.$("#passwordNext");
+        if (input && next) {
+          await input.type(job.password);
+          await Promise.allSettled([
+            page.waitForNavigation({ timeout: job.deadlineMs || 60_000, waitUntil: "domcontentloaded" }),
+            next.click(),
+          ]);
+          await Promise.allSettled([...pending]);
+        }
+      }
+    }
+    if (captured?.code && captured.state === job.state && !blocked) {
       return { ok: true, code: captured.code, state: captured.state };
     }
-    return { ok: false, category: "challenge" };
+    return { ok: false, category: blocked || "challenge" };
   } catch {
     return { ok: false, category: "browser_unavailable" };
   } finally {

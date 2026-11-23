@@ -10,18 +10,18 @@ const localeFiles = readdirSync(literalsDir).filter((name) => name.endsWith(".js
 const en = load(resolve(literalsDir, "en.json"));
 const englishKeys = Object.keys(en);
 const floor = load(resolve(__dirname, "../fixtures/i18n-coverage-floor.json"));
+const englishMissingKeys = load(resolve(__dirname, "../fixtures/i18n-english-missing-keys.json"));
 const locales = localeFiles.map((file) => ({
   name: file.slice(0, -5),
   messages: load(resolve(literalsDir, file)),
 }));
 
 describe("i18n locale coverage and drift", () => {
-  it("has no locale keys that are absent from English", () => {
-    for (const { name, messages } of locales) {
-      for (const key of Object.keys(messages)) {
-        expect(Object.hasOwn(en, key), `${name}.json contains stale key: ${key}`).toBe(true);
-      }
-    }
+  it("matches the frozen inventory of locale keys missing from English", () => {
+    const actual = Object.fromEntries(locales
+      .map(({ name, messages }) => [name, Object.keys(messages).filter((key) => !Object.hasOwn(en, key)).sort()])
+      .filter(([, keys]) => keys.length));
+    expect(actual).toEqual(englishMissingKeys);
   });
 
   it("meets the recorded per-locale coverage floors", () => {

@@ -1493,7 +1493,7 @@ const PROVIDERS = {
       });
 
       let data;
-      if (typeof response.text === "function") {
+      if (isFunction(response.text)) {
         const text = await response.text();
         try {
           data = JSON.parse(text);

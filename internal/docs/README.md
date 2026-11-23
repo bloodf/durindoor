@@ -6,6 +6,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 
 - [Full product implementation references](./product/README.md)
 - [Revision-bound verification](./documentation-verification.md)
+- [Owner validation report](./validation-report.md)
 - [Rewrite coverage and source review](./project-review.md), [usage](./usage-review.md), [runtime](./runtime-review.md), and [reference](./reference-review.md)
 - [AI implementation and porting workflow](./agent-workflow.md)
 - [Development and verification](./index.mdx)

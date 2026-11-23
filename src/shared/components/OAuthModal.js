@@ -14,6 +14,7 @@ import {
   createOAuthFlowLifecycle,
   oauthProxySelection
 } from "@/shared/utils/oauthFlowLifecycle";
+import { parseOAuthResponse, oauthResponseError } from "@/shared/utils/oauthResponse";
 import { buildOAuthRedirectUri } from "@/lib/oauth/redirectUri";
 
 const DEVICE_CODE_PROVIDERS = new Set([
@@ -46,8 +47,8 @@ function errorMessage(error, fallback = "Authentication failed") {
 }
 
 async function readJson(response) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Authentication failed (${response.status})`);
+  const data = await parseOAuthResponse(response);
+  if (!response.ok) throw new Error(oauthResponseError(response, data));
   return data;
 }
 
@@ -217,7 +218,7 @@ export default function OAuthModal({
           body: JSON.stringify({ flowId: flow.flowId }),
           signal: flow.controller.signal
         });
-        const data = await response.json().catch(() => ({}));
+        const data = await parseOAuthResponse(response);
         if (!lifecycle.isActive(flow)) return;
         if (data.success) {
           finishSuccess(flow);
@@ -228,7 +229,7 @@ export default function OAuthModal({
           continue;
         }
         if (data.error === "authorization_pending" || !data.error && response.ok) continue;
-        throw new Error(data.errorDescription || data.error || `Authentication failed (${response.status})`);
+        throw new Error(oauthResponseError(response, data));
       } catch (pollError) {
         if (lifecycle.isActive(flow)) finishError(flow, errorMessage(pollError));
         return;
@@ -251,8 +252,12 @@ export default function OAuthModal({
           }),
           signal: flow.controller.signal
         });
-        const data = await response.json().catch(() => ({}));
+        const data = await parseOAuthResponse(response);
         if (!lifecycle.isActive(flow)) return;
+        if (!response.ok) {
+          finishError(flow, oauthResponseError(response, data));
+          return;
+        }
         if (data.status === "done") {
           finishSuccess(flow);
           return;
@@ -355,11 +360,12 @@ export default function OAuthModal({
           body: JSON.stringify({ flowId: flow.flowId, appPort }),
           signal: flow.controller.signal
         });
-        const proxyData = await proxyResponse.json().catch(() => ({}));
+        const proxyData = await parseOAuthResponse(proxyResponse);
         if (!lifecycle.isActive(flow)) {
           await stopFixedProxy(flow);
           return;
         }
+        if (!proxyResponse.ok) throw new Error(oauthResponseError(proxyResponse, proxyData));
         if (proxyData.success !== true || proxyData.serverSide !== true) {
           const port = flow.provider === "xai" ? "56121" : "1455";
           const reason = proxyData.reason === "port_busy" ?

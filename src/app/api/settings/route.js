@@ -119,6 +119,10 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
+    if (Object.hasOwn(body, "quotaProviderOrder")) {
+      return NextResponse.json({ error: "Provider order must be updated through its dedicated endpoint" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+
     if (SCOPED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
       return NextResponse.json({
         error: "Auto-ping must be updated through the connection-scoped endpoint"

@@ -577,6 +577,27 @@ describe("Cursor long-session empty-turn recovery", () => {
     expect(events.filter((e) => e.error)).toHaveLength(0);
   });
 
+  it("reports a stream reset after partial output without a successful finish", async () => {
+    const executor = new CursorExecutor();
+    let reads = 0;
+    executor.openAgentHttp2Stream = () => ({
+      responseHeaders: Promise.resolve({ ":status": 200 }),
+      write() {}, end() {}, close() {},
+      async read() {
+        if (reads++ === 0) return { value: textFrame("partial"), done: false };
+        throw new Error("stream reset");
+      },
+    });
+    const result = await executor.executeAgent({
+      model: "gpt-5.2", body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true, credentials, proxyOptions: { disableEnvProxy: true },
+    });
+    const events = parseSSE(await result.response.text());
+    expect(events.some((event) => event.choices?.[0]?.delta?.content === "partial")).toBe(true);
+    expect(events.some((event) => event.error?.message === "stream reset")).toBe(true);
+    expect(events.some((event) => event.choices?.[0]?.finish_reason === "stop")).toBe(false);
+  });
+
   it("tailOnlyCursorMessages keeps system, drops bulk history, keeps the live turn", async () => {
     const { tailOnlyCursorMessages } = await import("../../open-sse/executors/cursor.js");
     const messages = [

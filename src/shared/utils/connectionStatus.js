@@ -13,6 +13,9 @@ export function getConnectionErrorDisplay(connection) {
   if (connection?.isActive !== false) {
     return connection?.lastError ? { reason: connection.lastError, time: null } : null;
   }
+  if (connection.lastError && connection.lastErrorAt && connection.disabledErrorAt === connection.lastErrorAt) {
+    return { reason: connection.lastError, time: null };
+  }
 
   if (!connection?.autoDisabledReason || !connection?.autoDisabledAt) return null;
   const disabledAt = new Date(connection.autoDisabledAt);

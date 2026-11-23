@@ -187,6 +187,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [ai-tooling-plan.md](./ai-tooling-plan.md)
 - [ai-tooling.md](./ai-tooling.md)
 - [connecting-accounts-2034.md](./connecting-accounts-2034.md)
+- [db-api-key-backup-roundtrip-investigation.md](./db-api-key-backup-roundtrip-investigation.md)
 - [deploy-gates.md](./deploy-gates.md)
 - [deployment-mode.md](./deployment-mode.md)
 - [documentation-plan.md](./documentation-plan.md)

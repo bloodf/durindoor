@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect } from "react";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId } from "@/shared/constants/models";
@@ -59,7 +61,7 @@ export default function MitmPageClient() {
 
   const fetchCloudSettings = async () => {
     try {
-      const res = await fetch("/api/settings");
+      const res = await requestSettings();
       if (res.ok) {
         const data = await res.json();
         setCloudEnabled(data.cloudEnabled || false);

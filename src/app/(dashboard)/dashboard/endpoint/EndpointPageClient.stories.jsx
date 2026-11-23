@@ -160,7 +160,7 @@ export const EnabledEndpointsPolicy = {
             tailscale: { enabled: false, tunnelUrl: "" },
           },
         },
-        "PATCH /api/settings": { body: { success: true } },
+        "PATCH /api/settings": async (request) => ({ body: { ...safeSettings, tunnelDashboardAccess: false, ...await request.json() } }),
       },
     },
   },

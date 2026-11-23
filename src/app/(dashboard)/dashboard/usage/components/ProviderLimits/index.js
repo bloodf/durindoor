@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
@@ -309,7 +311,7 @@ function readQuotaFilterState(searchParams, fallbackState = DEFAULT_QUOTA_FILTER
 
 async function writeQuotaFilterState(state) {
   try {
-    await fetch("/api/settings", {
+    await requestSettings({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -646,7 +648,7 @@ export default function ProviderLimits() {
     if (hasHydratedSavedState) return;
 
     let cancelled = false;
-    fetch("/api/settings", { cache: "no-store" }).
+    requestSettings({ cache: "no-store" }).
     then((res) => res.ok ? res.json() : null).
     then((settings) => {
       if (cancelled) return;
@@ -1246,7 +1248,7 @@ export default function ProviderLimits() {
 
   // Load auto-ping per-connection maps
   useEffect(() => {
-    fetch("/api/settings", { cache: "no-store" }).
+    requestSettings({ cache: "no-store" }).
     then((r) => r.ok ? r.json() : {}).
     then((s) => {
       const maps = {
@@ -1286,7 +1288,7 @@ export default function ProviderLimits() {
         setQuotaVisibility(nextState);
         quotaVisibilityRef.current = nextState;
         try {
-          const response = await fetch("/api/settings", {
+          const response = await requestSettings({
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ quotaVisibility: nextState })

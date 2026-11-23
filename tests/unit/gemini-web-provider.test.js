@@ -478,17 +478,19 @@ describe("Gemini Web connection isolation", () => {
     expect(firstPayload.choices[0].message.content).toBe("reply for psid-alpha");
     expect(secondPayload.choices[0].message.content).toBe("reply for psid-beta");
 
-    expect(world.contexts).toHaveLength(2);
-    const seen = world.contexts.map((context) => context.cookies.map((cookie) => cookie.value).sort());
-    expect(seen).toContainEqual(["psid-alpha", "ts-alpha"]);
-    expect(seen).toContainEqual(["psid-beta", "ts-beta"]);
-    for (const context of world.contexts) {
-      const values = context.cookies.map((cookie) => cookie.value).join(",");
-      expect(values.includes("alpha") && values.includes("beta")).toBe(false);
-      expect(context.closed).toBe(true);
-    }
-    // One warm Chromium serves both, a fresh context per request.
-    expect(world.launches).toBe(1);
+    await vi.waitFor(() => {
+      expect(world.contexts).toHaveLength(2);
+      const seen = world.contexts.map((context) => context.cookies.map((cookie) => cookie.value).sort());
+      expect(seen).toContainEqual(["psid-alpha", "ts-alpha"]);
+      expect(seen).toContainEqual(["psid-beta", "ts-beta"]);
+      for (const context of world.contexts) {
+        const values = context.cookies.map((cookie) => cookie.value).join(",");
+        expect(values.includes("alpha") && values.includes("beta")).toBe(false);
+        expect(context.closed).toBe(true);
+      }
+      // One warm Chromium serves both, a fresh context per request.
+      expect(world.launches).toBe(1);
+    }, { timeout: 10000 });
   });
 
   it("never reuses a context across sequential requests", async () => {

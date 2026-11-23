@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,6 +70,14 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
     db = await driver.getAdapter();
     settings = await import("@/lib/db/repos/settingsRepo.js");
     capture = await import("@/lib/db/repos/sessionCaptureRepo.js");
+  });
+
+  // Reuse the migrated schema while keeping opt-in, credentials, and captures
+  // independent of which cases run and in what order.
+  beforeEach(() => {
+    db.run('DELETE FROM "sessionCaptureTurns"');
+    db.run("DELETE FROM apiKeys");
+    db.run("DELETE FROM settings WHERE id = 1");
     for (const [id, key] of [["owner", "secret-owner"], ["other", "secret-other"]]) {
       db.run('INSERT INTO apiKeys (id, name, key, machineId, isActive, createdAt) VALUES (?, ?, ?, ?, ?, ?)', [id, id, key, "machine", 1, new Date().toISOString()]);
     }
@@ -83,10 +91,12 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
   it("registers capture migration 032 in SQLite and PostgreSQL", async () => {
     const { MIGRATIONS, latestVersion } = await import("@/lib/db/migrations/index.js");
     const { PG_MIGRATIONS, pgLatestVersion } = await import("@/lib/db/migrations/postgres/index.js");
-    expect(latestVersion()).toBe(33);
-    expect(pgLatestVersion()).toBe(33);
+    expect(latestVersion()).toBe(35);
+    expect(pgLatestVersion()).toBe(35);
     expect(PG_MIGRATIONS.at(-1)).toBe(MIGRATIONS.at(-1));
-    expect(MIGRATIONS.at(-1)).toMatchObject({ version: 33, name: "usage-history-api-key-id-backfill" });
+    const captureMigration = MIGRATIONS.find(({ version }) => version === 32);
+    expect(captureMigration).toMatchObject({ version: 32, name: "session-capture" });
+    expect(PG_MIGRATIONS.find(({ version }) => version === 32)).toBe(captureMigration);
   });
 
   it("requires operator opt-in and explicit request consent", async () => {
@@ -98,6 +108,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
     await expect(capture.captureSessionTurn({ ...args, session: "secret-owner" })).rejects.toThrow("Invalid session");
   });
   it("redacts credentials and isolates reads and deletion", async () => {
+    await settings.updateSettings({ enableSessionCapture: true });
     const args = { credential: "secret-owner", session, consent: true, turn: {
       authorization: "fixture-auth", text: "secret-owner Bearer abc sk-foobar",
       nested: { apiKey: "fixture-key", cookie: "fixture-cookie", password: "fixture-password",
@@ -113,6 +124,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
     expect(await capture.readSessionTurns(args)).toEqual([]);
   });
   it("keeps capture scoped to the stable key when its credential rotates", async () => {
+    await settings.updateSettings({ enableSessionCapture: true });
     const args = { credential: "secret-owner", session, consent: true, turn: "saved" };
     expect(await capture.captureSessionTurn(args)).toBe(true);
     db.run('UPDATE apiKeys SET key = ? WHERE id = ?', ["rotated-owner", "owner"]);
@@ -129,6 +141,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
   });
 
   it("enforces bytes, retention, quota and pruning", async () => {
+    await settings.updateSettings({ enableSessionCapture: true });
     const args = { credential: "secret-owner", session, consent: true };
     await expect(capture.captureSessionTurn({ ...args, turn: "é".repeat(8192) })).rejects.toThrow("exceeds limit");
     await expect(capture.captureSessionTurn({ ...args, turn: "x", retentionMs: capture.CAPTURE_MAX_AGE_MS + 1 })).rejects.toThrow("retention");
@@ -142,6 +155,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
   });
 
   it("physically removes expired rows on read", async () => {
+    await settings.updateSettings({ enableSessionCapture: true });
     const args = { credential: "secret-owner", session, consent: true };
     expect(await capture.captureSessionTurn({ ...args, turn: "kept" })).toBe(true);
     insertTurn("expired-owner", "owner", session, "gone", expiredAt(), expiredAt());
@@ -180,6 +194,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
   });
 
   it("prunes expired rows on read after capture writes are disabled", async () => {
+    await settings.updateSettings({ enableSessionCapture: true });
     const args = { credential: "secret-owner", session, consent: true };
     insertTurn("expired-disabled", "owner", session, "gone", expiredAt(), expiredAt());
     await settings.updateSettings({ enableSessionCapture: false });
@@ -211,6 +226,7 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
     await capture.deleteSessionTurns(args);
   });
   it("clears capture on key-set restore and rejects a completion admitted before restore", async () => {
+    await settings.updateSettings({ enableSessionCapture: true });
     const { importDb } = await import("@/lib/db/index.js");
     const { getBillingEpoch } = await import("@/lib/db/repos/usageRepo.js");
     const admitted = { keyId: "owner", session, content: '{"assistant":["old turn"]}', billingEpoch: await getBillingEpoch() };

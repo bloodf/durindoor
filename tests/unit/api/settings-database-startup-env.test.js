@@ -52,12 +52,14 @@ describe("startup database credentials", () => {
     expect(JSON.stringify(body)).not.toContain("postgresql://");
   });
 
-  it("keeps stored password when omitted and supports explicit empty password", async () => {
+  it("keeps a password only for the same target and supports an explicit empty password", async () => {
     await route.POST(request(candidate));
     const { password: _password, ...draft } = candidate;
     void _password;
-    await route.POST(request({ ...draft, host: "another.example.com" }));
+    await route.POST(request(draft));
     expect(decodeURIComponent(new URL(env.readDatabaseEnvFile().DURINDOOR_PG_URL).password)).toBe(candidate.password);
+    await route.POST(request({ ...draft, host: "another.example.com" }));
+    expect(new URL(env.readDatabaseEnvFile().DURINDOOR_PG_URL).password).toBe("");
     await route.POST(request({ ...draft, password: "" }));
     expect(new URL(env.readDatabaseEnvFile().DURINDOOR_PG_URL).password).toBe("");
   });

@@ -129,9 +129,14 @@ function encryptPsdValue(value, aad) {
  * @returns {unknown}
  */
 function decryptPsdValue(value, aad) {
-  if (isEncryptedBlob(value)) return decryptField(value, aad);
+  if (isEncryptedBlob(value)) {
+    try { return decryptField(value, aad); } catch {
+      console.warn("Unable to decrypt provider-specific credential");
+      return null;
+    }
+  }
   if (Array.isArray(value)) {
-    return value.map((item) => isEncryptedBlob(item) ? decryptField(item, aad) : item);
+    return value.map((item) => decryptPsdValue(item, aad));
   }
   return value;
 }

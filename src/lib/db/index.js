@@ -18,7 +18,8 @@ import {
 import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
-import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
+import { isEncryptedBlob } from "../crypto/columnCrypto.js";
+import { encryptConnectionSecret, decryptConnectionSecret } from "./helpers/connectionSecrets.js";
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
 import {
@@ -423,7 +424,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
           // into a different DATA_DIR (which has a different master key).
           for (const field of SENSITIVE_CONNECTION_FIELDS) {
             const value = conn[field];
-            if (isEncryptedBlob(value)) conn[field] = decryptField(value, r.id);
+            if (isEncryptedBlob(value)) conn[field] = decryptConnectionSecret(value, r.id, field);
           }
           if (conn.providerSpecificData) {
             conn.providerSpecificData = decryptProviderSpecificData(conn.providerSpecificData, r.id);
@@ -694,8 +695,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
       for (const field of SENSITIVE_CONNECTION_FIELDS) {
         const value = rest[field];
+        if (isEncryptedBlob(value)) throw new Error(`Import field "${field}" must not contain an encrypted credential blob`);
         if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
-          rest[field] = encryptField(value, id);
+          rest[field] = encryptConnectionSecret(value, id, field);
         }
       }
       if (rest.providerSpecificData) {
@@ -958,7 +960,7 @@ export async function exportSelectiveDb(selection, { includeSecrets = false } = 
     version: 1,
     providerConnections: providers.length ? db.all(`SELECT * FROM providerConnections WHERE id IN (${providers.map(() => "?").join(",")})`, providers).map((row) => {
       const c = { ...parseJson(row.data, {}), id: row.id, provider: row.provider, authType: row.authType, name: row.name, email: row.email, priority: row.priority, isActive: row.isActive === 1, createdAt: row.createdAt, updatedAt: row.updatedAt };
-      if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
+      if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptConnectionSecret(c[field], row.id, field);
       return transferPublic(c, { includeSecrets });
     }) : [],
     combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ ...transferCombo(row), noLog: !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", row.id, "true"]) })).map((combo) => {
@@ -1090,7 +1092,7 @@ export async function importSelectiveDb(bundle, selection) {
       // ciphertext whose AAD (source row id) no longer matches, so it must
       // be rejected rather than persisted as unreadable garbage.
       if (isEncryptedBlob(value)) throw new Error(`Transfer field "${field}" must not contain an encrypted credential blob`);
-      if (isString(value) && value) data[field] = encryptField(value, id);
+      if (isString(value) && value) data[field] = encryptConnectionSecret(value, id, field);
       else delete data[field];
     }
     return {

@@ -54,7 +54,7 @@ describe("SQLite PostgreSQL cutover target", () => {
     expect(url.searchParams.get("sslmode")).toBe("disable");
     const row = await adapter.get("SELECT data FROM settings WHERE id = 1");
     const stored = JSON.parse(row.data);
-    expect(stored.postgresUrl.v).toBe(1);
+    expect(stored.postgresUrl.v).toBe(2);
     expect(JSON.stringify(stored)).not.toContain(target.password);
     expect(stored.databaseEngine).not.toBe("postgres");
     expect(fs.existsSync(path.join(dir, "durindoor-database.env"))).toBe(false);

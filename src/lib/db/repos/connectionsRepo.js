@@ -1,3 +1,4 @@
+import { encryptConnectionSecret, decryptConnectionSecret } from "../helpers/connectionSecrets.js";
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
@@ -11,8 +12,6 @@ import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { ORCAROUTER_ID, credentialHint } from "open-sse/providers/orcarouterCatalog.js";
 import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 import {
-  encryptField,
-  decryptField,
   isEncryptedBlob } from
 "@/lib/crypto/columnCrypto.js";
 import {
@@ -121,13 +120,16 @@ function updateAutoPingEntryInTx(db, provider, connectionId, enabled, schedule =
 function rowToConn(row) {
   if (!row) return null;
   const extra = parseJson(row.data, {});
-  // Decrypt the four sensitive fields. AAD is the row id so a ciphertext
-  // cannot be replayed into a different row. Plaintext values (pre-migration
-  // rows) pass through unchanged so a half-migrated DB still reads cleanly.
+  // Version 2 binds each secret to its connection and field. Legacy blobs
+  // and pre-migration plaintext remain readable.
   for (const field of SENSITIVE_CONNECTION_FIELDS) {
     const value = extra[field];
     if (isEncryptedBlob(value)) {
-      extra[field] = decryptField(value, row.id);
+      try { extra[field] = decryptConnectionSecret(value, row.id, field); } catch {
+        console.warn(`Unable to decrypt connection credential ${field} for ${row.id}`);
+        extra[field] = null;
+        extra.testStatus = "error";
+      }
     }
   }
   if (extra.providerSpecificData) {
@@ -173,7 +175,7 @@ function connToRow(c) {
   for (const field of SENSITIVE_CONNECTION_FIELDS) {
     const value = rest[field];
     if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
-      rest[field] = encryptField(value, id);
+      rest[field] = encryptConnectionSecret(value, id, field);
     }
   }
   if (rest.providerSpecificData) {

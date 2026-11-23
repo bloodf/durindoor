@@ -1,6 +1,6 @@
 // /api/models catalog endpoints, /api/pricing and /api/health/providers.
 import { reply, notFound, badRequest, textStream } from "../../http.js";
-import { isObject } from "@/shared/utils/typeChecks";
+import { isObject, isString } from "@/shared/utils/typeChecks";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
@@ -48,6 +48,30 @@ function healthRow(connection) {
 }
 
 export default function registerModels(router, { store }) {
+  store.define("providers.enabledModels", {});
+  router.get("/api/models/enabled", ({ query }) => {
+    const enabled = store.get("providers.enabledModels");
+    if (query.providerAlias !== undefined) return query.providerAlias.trim() ? { ids: enabled[query.providerAlias.trim()] || [] } : badRequest("providerAlias required");
+    return { enabled };
+  });
+  router.put("/api/models/enabled", ({ body = {} }) => {
+    const alias = isString(body.providerAlias) ? body.providerAlias.trim() : "";
+    if (!alias || !Array.isArray(body.ids)) return badRequest("providerAlias and ids[] required");
+    const ids = body.ids.filter((id) => isString(id) && id.trim()).map((id) => id.trim());
+    store.update("providers.enabledModels", (enabled) => ({ ...enabled, [alias]: ids }));
+    return { success: true, ids };
+  });
+  router.delete("/api/models/enabled", ({ query }) => {
+    if (!query.providerAlias?.trim()) return badRequest("providerAlias required");
+    store.update("providers.enabledModels", (enabled) => ({ ...enabled, [query.providerAlias.trim()]: [] }));
+    return { success: true };
+  });
+  router.get("/api/providers/:id/readiness", ({ params }) => ({
+    provider: params.id, catalog: "LISTED", chatDispatch: "CONFIGURED", nativeKinds: [],
+    authentication: { status: "UNKNOWN", evidence: "No timestamped authentication evidence available" },
+    inference: { status: "UNKNOWN", evidence: "No account, model and operation-bound inference evidence available" },
+  }));
+
   router.get("/api/models", () => {
     const disabled = store.get(DISABLED_MODELS) || {};
     const models = AI_MODELS

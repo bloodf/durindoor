@@ -189,10 +189,10 @@ describe("CursorExecutor Composer thinking-field responses", () => {
     const body = { messages: [{ role: "user", content: "hi" }] };
 
     const json = await executor.transformProtobufToJSON(buffer, "composer-2.5", body).json();
-    const events = parseSSE(await executor.transformProtobufToSSE(buffer, "composer-2.5", body).text());
+    const events = await executor.transformProtobufToSSE(buffer, "composer-2.5", body).json();
 
-    expect(json.choices[0].message.content).toBeNull();
-    expect(events.map((event) => event.choices?.[0]?.delta?.content || "").join("")).toBe("");
+    expect(json.error.code).toBe("empty_completion");
+    expect(events.error.code).toBe("empty_completion");
     expect(JSON.stringify(json)).not.toContain("private reasoning");
     expect(JSON.stringify(events)).not.toContain("private reasoning");
   });
@@ -259,7 +259,7 @@ describe("CursorExecutor Composer thinking-field responses", () => {
     });
     const payload = await response.json();
 
-    expect(payload.choices[0].message.content).toBeNull();
+    expect(payload.error.code).toBe("empty_completion");
     expect(JSON.stringify(payload)).not.toContain("SHOULD_NOT_APPEAR");
   });
 });

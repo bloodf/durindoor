@@ -36,6 +36,7 @@ describe("copyRequiredStandaloneSidecars", () => {
     cliAppDir = path.join(tmpRoot, "cli-app");
     fs.mkdirSync(appDir, { recursive: true });
     fs.writeFileSync(path.join(appDir, "custom-server.js"), "// custom server\n");
+    fs.writeFileSync(path.join(appDir, "realtime-upgrade.cjs"), "// realtime upgrade\n");
     fs.writeFileSync(path.join(appDir, "head-response-guard.cjs"), "// head guard\n");
     fs.writeFileSync(path.join(appDir, "web-login-host-boundary.cjs"), "// login host boundary\n");
   });

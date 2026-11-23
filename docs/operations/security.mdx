@@ -90,7 +90,7 @@ Before anything other than loopback can reach `/dashboard`:
 7. Leave `ENABLE_REQUEST_LOGS=false` except for a short debug window.
 8. Back up `DATA_DIR` and the protected environment. For PostgreSQL, also back up the database.
 
-`AUTH_COOKIE_SECURE=true` forces the `Secure` flag. Run the reverse proxy on the same host (loopback peer) and make it append the real client IP to `X-Forwarded-For`; traffic must go through `custom-server.js`. Cross-origin login is rejected (`hasExactRequestOrigin`). Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
+`AUTH_COOKIE_SECURE=true` forces the `Secure` flag. Run the reverse proxy on the same host (loopback peer) and make it append the real client IP to `X-Forwarded-For`; traffic must go through `custom-server.js`. Login routes use `originAbsentOrSame`; dashboard local-control gates use `originPresentAndSame`, which also rejects the configured `DURINDOOR_WEB_LOGIN_ORIGIN`. Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
 
 An authenticated dashboard session can enable or disable the tunnel from the same origin. Other local-only controls still require local access or the CLI token.
 

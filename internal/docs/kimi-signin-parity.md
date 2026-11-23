@@ -21,3 +21,19 @@ Work order #2034, based on DurinDoor `d8e716371de104c63ce7a873860b62f59397261d`.
 The pre-change focused test failed all four assertions. The international start returned HTTP 400 for an unsupported provider, `kimi.ai` had no registered alias or request route, and the existing Coding start lacked the device identity used in the upstream lifecycle. The closed mock suite exercises the real OAuth handlers and chat core, substituting the storage write and outbound transport. It checks expiry, cross-provider rejection, replay, credential rotation and Anthropic request/response handling for both hosts.
 
 Live account eligibility, provider acceptance of DurinDoor's client identity, direct Anthropic wire requests with a `.ai` OAuth token, regional quota/model discovery and the installed EasyCLIProxyAPI core build remain unverified.
+
+## Pinned behavior pass
+
+The following is a partial comparison against CLIProxyAPI `6eb8554f0ede` and OmniRoute `5ffa68e83544`; it does not certify complete executor parity.
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Device authorization and token URLs, public client and form grant | CLIProxyAPI `internal/auth/kimi/kimi.go`; OmniRoute `src/lib/oauth/providers/kimi-coding.ts` | Already matched for both regional hosts. |
+| PKCE and scopes | Same device-flow sources | Already matched: neither sends PKCE or a scope in the device request. |
+| Device identity | Same device-flow sources | Intentionally different: a random identity is bound to each flow and persisted for refresh; machine identity and identity cloaking are out of scope. |
+| Pending and slow-down polling | CLIProxyAPI `internal/auth/kimi/kimi.go` | Already matched by the shared OAuth flow. |
+| Permanent refresh errors | OmniRoute `open-sse/services/tokenRefresh/providers/kimiCoding.ts` | Ported here: `invalid_grant` and `invalid_request` are permanent; other failures remain transient. |
+| Refresh response credentials | CLIProxyAPI `internal/auth/kimi/kimi.go` | Ported here: reject malformed access or supplied refresh tokens; preserve the existing refresh token when omitted. |
+| Device authorization response | OmniRoute `src/lib/oauth/providers/kimi-coding.ts` | Remaining: require a nonempty `device_code` in `src/lib/oauth/providers.js`; that file is excluded from this work order. |
+
+Request normalization, model catalogs, quota, rate limits, retries, account information and response classification require a complete function-by-function comparison before this pass can be considered complete.

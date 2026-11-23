@@ -1,3 +1,4 @@
+import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
 import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
@@ -61,7 +62,7 @@ async function handleImageGenerationHandler(request) {
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
   const authenticatedKeyRecord = apiKey ? await getApiKeyByKey(apiKey) : null;
-  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+  if (authenticatedKeyRecord && authenticatedKeyRecord.policy?.allowAutoCombos === false && (isAutoComboId(modelStr) || (parseAutoModel(modelStr, "image") && !(await getComboForModel(modelStr))))) {
     return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combos are not allowed for this API key");
   }
 
@@ -69,7 +70,7 @@ async function handleImageGenerationHandler(request) {
   if (apiKey && modelStr) {
     const keyData = await getApiKeyByKey(apiKey);
     if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
-      const comboName = await getComboCanonicalName(modelStr);
+      const comboName = await getComboCanonicalName(modelStr) || parseAutoModel(modelStr, "image")?.name;
       if (comboName && !keyData.allowedCombos.includes(comboName)) {
         log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${comboName}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${comboName}" is not allowed for this API key`);
@@ -101,7 +102,9 @@ async function handleImageGenerationHandler(request) {
   // #6495 / F-4: filter paid members when the toggle is on. Auth ACL check
   // above calls getComboModels without the flag so combo existence/ACL stay
   // against the real member list.
-  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
+  const savedComboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
+  const selector = savedComboModels ? null : await getAutoModelCandidates(modelStr, "image", request, apiKeyAuth.apiKeyId);
+  const comboModels = savedComboModels || selector?.models;
   if (comboModels) {
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const combo = isAutoComboId(modelStr) ? null : await getComboForModel(comboName);
@@ -110,7 +113,7 @@ async function handleImageGenerationHandler(request) {
     const comboSpecificStrategy = isAutoComboId(modelStr)
       ? (perCombo.strategy ?? perCombo.fallbackStrategy)
       : perCombo.fallbackStrategy;
-    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = selector ? "fallback" : comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("IMAGE", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);

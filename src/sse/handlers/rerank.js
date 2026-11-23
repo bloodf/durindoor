@@ -1,23 +1,19 @@
-import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
-import { modelKindError } from "./modelKind.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
-  getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
-  markAccountUnavailable,
   clearAccountError,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo } from "../services/model.js";
 import { handleRerankCore } from "open-sse/handlers/rerankCore.js";
 import { runWithModelFallback } from "open-sse/services/modelFallback.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { checkAndRefreshToken, updateProviderCredentials } from "../services/tokenRefresh.js";
+import { resolveTypedMediaModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 
 /**
  * Handle rerank request — Cohere/Jina/Voyage-style /v1/rerank passthrough.
@@ -38,8 +34,14 @@ async function handleRerankHandler(request) {
   const modelStr = body.model;
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "rerank" });
-  if (admissionError) return admissionError;
+  return runMediaEndpoint(request, {
+    kind: "rerank",
+    pinConnection: true,
+    route: (admission, pinOptions) => routeRerank(request, body, modelStr, url, admission, pinOptions),
+  });
+}
+
+async function routeRerank(request, body, modelStr, url, { settings, apiKey, auth: apiKeyAuth }, pinOptions) {
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (body.query === undefined || body.query === null) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
@@ -50,17 +52,14 @@ async function handleRerankHandler(request) {
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext),
+    (m) => handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext, pinOptions),
     log
   );
 }
 
-async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId, usageContext) {
-  const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) {
-    log.warn("RERANK", "Invalid model format", { model: modelStr });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
-  }
+async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId, usageContext, pinOptions) {
+  const modelInfo = await resolveTypedMediaModel(request, modelStr, body, apiKey, "rerank");
+  if (modelInfo.error) return modelInfo.error;
 
   const { provider, model } = modelInfo;
   // OpenRouter's dedicated rerank endpoint has no verified routing controls.
@@ -70,13 +69,6 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
       return errorResponse(HTTP_STATUS.BAD_REQUEST, "OpenRouter rerank cannot enforce the configured routing restrictions");
     }
   }
-
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (resolvedPolicyError) return resolvedPolicyError;
-  const kindError = await modelKindError(provider, model, await getSettings(), "rerank");
-  if (kindError) return kindError;
-  const connectionId = request.headers.get("x-connection-id") || null;
-  const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
 
   /** Record the core receipt without consuming the response or guessing document charges. */
   const recordSuccess = (result, credentials) => recordApiKeyUsageForResponse(apiKey, result.response, {
@@ -113,14 +105,9 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Rerank failed");
   }
 
-  const excludeConnectionIds = new Set();
-  let lastError = null;
-  let lastStatus = null;
-
-  while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId });
-
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+  return runMediaAccounts({
+    provider, model, selectionOptions: { ...pinOptions, apiKeyId },
+    buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("RERANK", `[${provider}/${model}] free no-auth provider disabled by settings`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -131,13 +118,13 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
         log.warn("RERANK", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) {
+      if (attempted === 0) {
         log.error("AUTH", `No credentials for provider: ${provider}`);
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       }
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
-
+    },
+    async runAttempt(credentials) {
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, { ...credentials });
@@ -160,21 +147,12 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
       }
     }
 
-    if (result.success) return recordSuccess(result, credentials);
-
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
-      // The credential this attempt actually presented, so a durable-key
-      // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null,
-      ...dispatch
-    });
-    if (shouldFallback) {
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
-    }
-    return result.response;
-  }
+    if (result.success) return { response: await recordSuccess(result, credentials) };
+    return { result, dispatch };
+    },
+    onFallback(result, credentials) {
+      log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
+    },
+  });
 }
 export const handleRerank = withRequestCorrelation(handleRerankHandler);

@@ -42,7 +42,10 @@ describe("quota preflight route coverage (OmniRoute #6742)", () => {
 
   for (const file of QUOTA_PREFLIGHT_ROUTES) {
     it(`${file} selects credentials through getProviderCredentialsWithQuotaPreflight only`, () => {
-      const source = readFileSync(join(handlersDir, file), "utf8");
+      const source = readFileSync(
+        join(handlersDir, file === "embeddings.js" || file === "moderations.js" || file === "rerank.js" ? "media/pipeline.js" : file),
+        "utf8",
+      );
       expect(source, `${file} must call the quota-preflight wrapper`).toMatch(
         /getProviderCredentialsWithQuotaPreflight\s*\(/
       );

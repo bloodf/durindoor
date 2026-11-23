@@ -1632,6 +1632,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
 
       if (result.success) {
+        if (result.claudeFast) {
+          const response = withRouteResponseHeaders(result.response, { provider, model, attempts: Math.max(1, accountAttempts) });
+          response.claudeFast = true;
+          return response;
+        }
         if (earlyEofOriginal || preferredConnectionId) return withRouteResponseHeaders(result.response, { provider, model, attempts: Math.max(1, accountAttempts) });
         const held = await holdForEarlyEof(result.response);
         if (!held.failed || requestAborted(request, requestSignal)) return withRouteResponseHeaders(held.response, { provider, model, attempts: Math.max(1, accountAttempts) });
@@ -1639,6 +1644,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         earlyEofOriginal = held.response;
         excludeConnectionIds.add(credentials.connectionId);
         continue;
+      }
+      if (result.claudeRequestScoped) {
+        result.response.claudeRequestScoped = true;
+        return result.response;
       }
       if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       // Process-local admission pressure is terminal for this request. Retrying a

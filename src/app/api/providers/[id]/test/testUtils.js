@@ -990,6 +990,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
         }
+      case "huggingface":{
+          // Keep transient whoami failures from overwriting the saved connection status.
+          const res = await fetchWithConnectionProxy("https://huggingface.co/api/whoami-v2", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy).catch(() => null);
+          if (!res) return { valid: false, unavailable: true, error: "HuggingFace token check unavailable" };
+          if (res.ok) return { valid: true, error: null };
+          if (res.status === 401 || res.status === 403) return { valid: false, error: "Invalid API key" };
+          return { valid: false, unavailable: true, error: "HuggingFace token check unavailable" };
+        }
       case "chutes":{
           const res = await fetchWithConnectionProxy("https://llm.chutes.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };

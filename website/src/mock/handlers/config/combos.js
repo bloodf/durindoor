@@ -31,6 +31,25 @@ export default function register(router, { store }) {
   store.define(COMBOS, seedCombos);
   store.define(ALIASES, seedAliases);
 
+  // Representative presets are kept in demo storage when created.
+  const presetItems = (source) => {
+    const models = source === "cursor" ? ["gpt-4o", "claude-3.5-sonnet"] : ["sonnet", "opus"];
+    const alias = source === "cursor" ? "cu" : "cc";
+    return models.map((name) => ({ name, models: [`${alias}/${name}`], exists: store.list(COMBOS).some((combo) => combo.name === name) }));
+  };
+  router.get("/api/combos/presets", ({ query }) => {
+    if (!["cursor", "claude"].includes(query.source)) return badRequest("source must be 'cursor' or 'claude'");
+    const items = presetItems(query.source);
+    return { source: query.source, items, toCreate: items.filter((item) => !item.exists).length, toSkip: items.filter((item) => item.exists).length };
+  });
+  router.post("/api/combos/presets", ({ body = {} }) => {
+    if (!["cursor", "claude"].includes(body.source)) return badRequest("source must be 'cursor' or 'claude'");
+    const items = presetItems(body.source);
+    const skipped = items.filter((item) => item.exists).map((item) => item.name);
+    const created = items.filter((item) => !item.exists).map(({ name, models }) => store.insert(COMBOS, { id: store.newId("combo"), name, models, members: membersFor(models) }));
+    return { source: body.source, created, skipped, createdCount: created.length, skippedCount: skipped.length };
+  });
+
   router.get("/api/combos", () => ({ combos: store.list(COMBOS) }));
 
   router.post("/api/combos", ({ body = {} }) => {

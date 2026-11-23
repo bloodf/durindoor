@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useId, useMemo, useRef } from "react"
 import PropTypes from "prop-types";
 import { Card, Button, Modal, ConfirmModal } from "@/shared/components";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { getProviderAlias, getProviderModelsFetcher } from "@/shared/constants/providers";
+import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
@@ -153,6 +154,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     return () => { abortControllerRef.current?.abort(); };
   }, []);
 
+  const [suggestedModels, setSuggestedModels] = useState([]);
+
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
 
@@ -173,6 +176,14 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   }, [providerId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSuggestedModels([]);
+    const fetcher = getProviderModelsFetcher(providerId, effectiveType);
+    if (fetcher) fetchSuggestedModels(fetcher).then((models) => { if (!cancelled) setSuggestedModels(models); });
+    return () => { cancelled = true; };
+  }, [providerId, effectiveType]);
 
   const activeConnectionId = connections.find((connection) => connection.isActive !== false)?.id;
 
@@ -276,6 +287,9 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   );
 
   const displayModels = builtInModels;
+  const suggestedNotAdded = suggestedModels.filter((model) =>
+    !builtInModels.some((item) => item.id === model.id) && !myCustomModels.some((item) => item.id === model.id)
+  );
 
   const keyedCustomModels = useMemo(() =>
     myCustomModels.map(m => ({ ...m, _key: `${m.providerAlias}:${m.id}:${m.type}` })),
@@ -564,6 +578,18 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             Add Model
           </button>
         </div>
+        {suggestedNotAdded.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs text-dd-muted">Suggested models from provider:</p>
+            <div className="flex flex-wrap gap-2">
+              {suggestedNotAdded.map((model) => (
+                <button key={model.id} type="button" onClick={() => handleAddCustomModel(model.id)}
+                  className="rounded-lg border border-dd-border px-3 py-2 text-xs text-dd-muted hover:border-dd-accent hover:text-dd-accent"
+                  title={model.name}>{model.id}</button>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       <AddCustomModelModal

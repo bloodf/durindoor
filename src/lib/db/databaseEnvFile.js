@@ -127,7 +127,14 @@ export function composeDatabaseStartup(body) {
   if (password === undefined) {
     const stored = readDatabaseEnvFile().DURINDOOR_PG_URL;
     const inherited = processSources().DURINDOOR_PG_URL?.processValue;
-    try { password = decodeURIComponent(new URL(stored ?? inherited).password); } catch { password = ""; }
+    password = "";
+    try {
+      const previous = new URL(stored ?? inherited);
+      const target = new URL(`postgresql://${body.host.trim().includes(":") && !body.host.trim().startsWith("[") ? `[${body.host.trim()}]` : body.host.trim()}:${port}/`);
+      if (previous.hostname === target.hostname && (previous.port || "5432") === port && decodeURIComponent(previous.username) === body.user) {
+        password = decodeURIComponent(previous.password);
+      }
+    } catch { /* No valid previous target: require a new password. */ }
   }
   if (!isString(password) || /[\r\n\0]/.test(password)) throw new Error("Invalid password");
   const host = body.host.trim();

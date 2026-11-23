@@ -350,11 +350,13 @@ export class AntigravityExecutor extends BaseExecutor {
   // sessionId comes from transformRequest output; base.execute runs transformRequest before
   // buildHeaders, so we read it from instance state cached there (fallback: explicit arg).
   buildHeaders(credentials, stream = true, sessionId = null) {
-    return {
+    const headers = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
       "User-Agent": antigravityCatalogUserAgent(credentials, this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"])
     };
+    if (stream) headers.Accept = "text/event-stream";
+    return headers;
   }
 
   transformRequest(model, body, stream, credentials) {

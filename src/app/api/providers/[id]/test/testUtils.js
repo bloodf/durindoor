@@ -1,3 +1,4 @@
+import { buildKiroIdentityHeaders } from "../../../../../../open-sse/shared/kiroHeaders.js";
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
@@ -335,7 +336,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       }
       const response = await fetchWithConnectionProxy(KIRO_CONFIG.socialRefreshUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "User-Agent": "kiro-cli/1.0.0" },
+        headers: { "Content-Type": "application/json", ...buildKiroIdentityHeaders({ refreshToken }) },
         body: JSON.stringify({ refreshToken })
       }, effectiveProxy);
       if (!response.ok) return null;

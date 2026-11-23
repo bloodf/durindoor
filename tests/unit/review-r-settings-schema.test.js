@@ -73,6 +73,7 @@ describe("settings schema regression (#2306)", () => {
       comboStrategies: { alpha: { timeoutMs: 1500, fallbackStrategy: "fallback" }, gamma: { timeoutMs: 3000 } },
       retryDelayByProvider: { claude: 30, codex: 15 },
     });
+    expect(mergeSettingsPatch(current, { comboStrategies: {} }).comboStrategies).toEqual({});
   });
 
   it("keeps the server error body in the settings store", async () => {

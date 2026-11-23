@@ -65,6 +65,9 @@ export function mergeCompressionEngines(stored, incoming) {
  */
 function mergeObjectPatch(stored, incoming) {
   if (!isRecord(incoming)) return incoming;
+  // An explicit empty map remains the established "clear all" operation used
+  // by settings forms and repository callers; non-empty maps are partial patches.
+  if (Object.keys(incoming).length === 0) return {};
   const merged = isRecord(stored) ? { ...stored } : {};
   for (const [key, value] of Object.entries(incoming)) {
     if (value === null) {

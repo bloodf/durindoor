@@ -72,6 +72,16 @@ function resetHealthStateOnActivation(existing, patch) {
 function mergeProviderConnectionWithHealthReset(existing, patch) {
   const normalized = resetHealthStateOnActivation(existing, patch);
   const merged = mergeProviderConnection(existing, normalized);
+  if (existing.provider === "codex" && merged.providerSpecificData &&
+      Object.hasOwn(merged.providerSpecificData, "codexRefreshAttempt")) {
+    merged.providerSpecificData = { ...merged.providerSpecificData };
+    const attempt = existing.providerSpecificData?.codexRefreshAttempt;
+    if (merged.refreshToken === existing.refreshToken && attempt) {
+      merged.providerSpecificData.codexRefreshAttempt = attempt;
+    } else {
+      delete merged.providerSpecificData.codexRefreshAttempt;
+    }
+  }
   if (normalized?.testStatus === "active") {
     merged.testStatus = "active";
     merged.lastError = normalized.lastError;
@@ -321,6 +331,28 @@ export async function getProviderConnectionById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
   return rowToConn(row);
+}
+
+/**
+ * Claim a Codex grant before dispatch. The claim survives response loss and
+ * process exit, and credential persistence clears it when the grant changes.
+ */
+export async function claimCodexRefreshAttempt(id, refreshToken, fingerprint) {
+  const db = await getAdapter();
+  let claimed = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Codex refresh claim requires an initialized schema");
+    const existing = rowToConn(db.get("SELECT * FROM providerConnections WHERE id = ?", [id]));
+    if (existing?.provider !== "codex" || existing.refreshToken !== refreshToken ||
+        existing.providerSpecificData?.codexRefreshAttempt === fingerprint) return;
+    upsert(db, {
+      ...existing,
+      providerSpecificData: { ...existing.providerSpecificData, codexRefreshAttempt: fingerprint }
+    });
+    claimed = true;
+  });
+  return claimed;
 }
 
 // Internal sync reorder — must be called INSIDE a transaction

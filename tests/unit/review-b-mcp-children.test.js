@@ -339,7 +339,7 @@ describe("#2288 initializeApp shutdown cleans stdio + headroom", () => {
       loadEncryptedPassword: () => null, initDbHooks: () => {},
       restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
     }));
-    vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {} }));
+    vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {}, stopQuotaAutoPing: () => {} }));
     vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
     vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));
     vi.doMock("@/lib/mcp/gateway/stdioClient", () => ({ killAllStdioEntries: killAllStdioEntriesFn }));

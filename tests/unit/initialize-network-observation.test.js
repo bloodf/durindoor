@@ -29,8 +29,10 @@ vi.mock("@/mitm/manager", () => ({
   loadEncryptedPassword: async () => null, initDbHooks: () => {},
   restoreToolDNS: async () => {}, isSudoPasswordRequired: () => false,
 }));
-vi.mock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: mocks.startQuotaAutoPing, stopQuotaAutoPing: () => {} }));
-vi.mock("@/sse/services/backgroundTokenRefresh.js", () => ({ startBackgroundTokenRefresh: mocks.startBackgroundTokenRefresh, stopBackgroundTokenRefresh: () => {} }));
+vi.mock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: mocks.startQuotaAutoPing }));
+vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: mocks.startQuotaAutoPing, stopQuotaAutoPing: () => {} }));
+vi.mock("@/sse/services/backgroundTokenRefresh.js", () => ({ startBackgroundTokenRefresh: mocks.startBackgroundTokenRefresh }));
+vi.doMock("@/sse/services/backgroundTokenRefresh.js", () => ({ startBackgroundTokenRefresh: mocks.startBackgroundTokenRefresh, stopBackgroundTokenRefresh: () => {} }));
 vi.mock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
 vi.mock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges: () => {} }));
 

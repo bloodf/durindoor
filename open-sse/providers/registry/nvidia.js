@@ -106,10 +106,15 @@ export default {
     { id: "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1", name: "Llama 3.2 Nemoretriever 1B VLM Embed v1", dimensions: 2048, params: ["input_type"], kind: "embedding" },
     { id: "nvidia/llama-3.2-nv-embedqa-1b-v1", name: "Llama 3.2 NV EmbedQA 1B v1", dimensions: 2048, params: ["input_type"], kind: "embedding" },
     { id: "nvidia/nvclip", name: "NVCLIP", dimensions: 1024, kind: "embedding" },
+    { id: "black-forest-labs/flux.2-klein-4b", name: "FLUX.2 Klein 4B", kind: "image", params: ["width", "height", "seed", "steps"], capabilities: ["text2img", "edit"] },
+    { id: "black-forest-labs/flux.1-dev", name: "FLUX.1 Dev", kind: "image", params: ["width", "height", "mode", "cfg_scale", "seed", "steps"], capabilities: ["text2img", "edit"] },
+    { id: "black-forest-labs/flux.1-schnell", name: "FLUX.1 Schnell", kind: "image", params: ["width", "height", "seed", "steps"] },
+    { id: "black-forest-labs/flux.1-kontext-dev", name: "FLUX.1 Kontext Dev", kind: "image", params: ["aspect_ratio", "cfg_scale", "seed", "steps"], capabilities: ["edit"] },
     { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B ASR", kind: "stt" },
     { id: "nvidia/magpie-tts-multilingual", name: "Magpie TTS Multilingual", kind: "tts" },
   ],
-  serviceKinds: ["llm", "embedding", "stt", "tts"],
+  serviceKinds: ["llm", "embedding", "stt", "tts", "image"],
+  imageConfig: { baseUrl: "https://ai.api.nvidia.com/v1/genai" },
   embeddingConfig: { baseUrl: "https://integrate.api.nvidia.com/v1/embeddings", authType: "apikey", authHeader: "bearer" },
   // Hosted HTTP endpoints published by each model's NVIDIA API reference.
   sttConfig: {

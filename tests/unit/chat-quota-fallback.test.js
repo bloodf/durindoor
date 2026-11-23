@@ -73,7 +73,7 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
 }));
 
 
-const { handleChat, rankComboModelsByQuota, __resetAntigravity429StrikesForTests } = await import("../../src/sse/handlers/chat.js");
+const { handleChat, rankComboModelsByQuota, rankComboModelsByLocks, __resetAntigravity429StrikesForTests } = await import("../../src/sse/handlers/chat.js");
 
 function request(model = "codex/gpt-5.4", signal = null) {
   return new Request("http://localhost/v1/chat/completions", {
@@ -1352,5 +1352,29 @@ describe("chat quota fallback orchestration", () => {
     expect(response.status).toBe(429);
     expect(payload.error.retry_after).toBe(second);
     expect(Number(response.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+});
+
+
+describe("account-aware combo lock ordering", () => {
+  it("uses eligible credentials and live expiry without sharing state across requests", async () => {
+    const rows = { a: [{ id: "one", until: 200 }, { id: "two", until: 0 }], b: [{ id: "three", until: 0 }] };
+    const deps = {
+      getModelInfo: async (name) => { const [provider, model] = name.split("/"); return { provider, model }; },
+      getProviderConnections: async ({ provider }) => rows[provider],
+      isProviderConnectionModelLocked: (row, provider, model, now) => model === "locked" && row.until > now,
+      providerAllowsPublicNoAuthFallback: () => false,
+    };
+    const models = ["a/locked", "b/locked", "a/other"];
+    expect(await rankComboModelsByLocks(models, 100, deps)).toEqual(models);
+    rows.a[1].until = 200;
+    const [locked, expired] = await Promise.all([rankComboModelsByLocks(models, 100, deps), rankComboModelsByLocks(models, 201, deps)]);
+    expect(locked).toEqual(["b/locked", "a/other", "a/locked"]);
+    expect(expired).toEqual(models);
+    rows.a[1].until = 0;
+    expect(await rankComboModelsByLocks(models, 100, deps, { restrictionApplied: true, allowedConnectionIds: ["one", "three"] })).toEqual(["b/locked", "a/other", "a/locked"]);
+    deps.providerAllowsPublicNoAuthFallback = () => true;
+    rows.a[1].until = 200;
+    expect(await rankComboModelsByLocks(models, 100, deps)).toEqual(models);
   });
 });

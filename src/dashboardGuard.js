@@ -1,3 +1,4 @@
+import { isHosted } from "@/shared/utils/deploymentMode";
 import { NextResponse } from "next/server";
 import { getApiKeyByKey, getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
@@ -46,6 +47,7 @@ const PUBLIC_API_EXACT_PATHS = [
   // Orchestrator probes (Kubernetes liveness/readiness). All answer only
   // {"ok":true}; exact match so nothing can be nested under them (for example,
   // /api/health/providers stays behind the management gate).
+  "/api/deployment-mode",
   "/api/health",
   // Version probe (GET only). Exact match: its children (`/update`,
   // `/shutdown`) are operator actions and must get the Origin gate.
@@ -232,7 +234,7 @@ function hasLoopbackHostAndOrigin(request) {
 // Wrapper proof plus the wrapper-stamped loopback identity distinguish local peers.
 // Browser-origin checks belong at each mutation boundary, not this transport classifier.
 export function isLocalRequest(request) {
-  return isLoopbackPeer(request);
+  return !isHosted() && isLoopbackPeer(request);
 }
 
 function isPublicLlmApi(pathname) {
@@ -346,7 +348,7 @@ async function canAccessPublicLlmApi(request) {
  * @returns {Promise<boolean>}
  */
 export async function canAccessLocalOnlyRoute(request, routePath = decodePathname(request.nextUrl.pathname)) {
-  if (routePath === null) return false;
+  if (routePath === null || isHosted()) return false;
   if (await hasValidCliToken(request)) return true;
   // Tunnel controls accept an authenticated dashboard session on its own origin.
   if (["/api/tunnel/enable", "/api/tunnel/disable"].includes(request.nextUrl.pathname) &&

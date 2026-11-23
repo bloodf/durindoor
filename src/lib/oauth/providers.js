@@ -333,6 +333,16 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
       // carries the project, so keep polling instead of reading a missing
       // project as "this account owns no project".
       if (result.done === true) {
+        const operationError = result.error;
+        if (operationError != null && operationError !== "" &&
+            (!isObject(operationError) || Object.keys(operationError).length > 0)) {
+          const code = operationError?.code;
+          const status = operationError?.status || ({ 3: "INVALID_ARGUMENT", 7: "PERMISSION_DENIED", 8: "RESOURCE_EXHAUSTED", 16: "UNAUTHENTICATED" })[code];
+          const details = isObject(operationError) ?
+            [code != null ? `code ${code}` : "", status, operationError.message].filter(Boolean).join(": ") || JSON.stringify(operationError) :
+            String(operationError);
+          throw new Error(`Antigravity onboarding operation error: ${details}`);
+        }
         const project = result.response?.cloudaicompanionProject;
         projectId = isString(project) ? project.trim() :
         isString(project?.id) ? project.id.trim() : "";

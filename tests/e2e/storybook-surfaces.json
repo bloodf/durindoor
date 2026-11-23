@@ -39355,7 +39355,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#ProviderLimits",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "ProviderLimits",
-      "sourceSha256": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+      "sourceSha256": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -39386,7 +39386,7 @@
           ],
           "proposedSourceEvidence": "GroupedAccounts renders ProviderLimits with two Codex connections and activates the real merged-account switch. Static binding approved by UiStandardsReview; runtime proof pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39399,7 +39399,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Default",
@@ -39418,7 +39418,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Loading",
@@ -39436,7 +39436,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Error",
@@ -39460,7 +39460,7 @@
           ],
           "proposedSourceEvidence": "Play opens reset dialog.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39475,7 +39475,7 @@
           ],
           "proposedSourceEvidence": "Play filters groups.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39490,7 +39490,7 @@
           ],
           "proposedSourceEvidence": "Credit fixture.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39505,7 +39505,7 @@
           ],
           "proposedSourceEvidence": "Play opens delete confirmation.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39519,7 +39519,7 @@
           ],
           "proposedSourceEvidence": "ClaudeModelWeeklyNotReported play proves two actual weekly fable (7d) rows and their not-reported state.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "expectedVisibleText": "weekly fable (7d)"
@@ -39717,7 +39717,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#QuotaThresholds",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "QuotaThresholds",
-      "sourceSha256": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+      "sourceSha256": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -39737,7 +39737,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#renderAccountSection",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "renderAccountSection",
-      "sourceSha256": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+      "sourceSha256": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -39760,7 +39760,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "Default loads concrete codex and kiro accounts; the unmerged group branch calls renderAccountSection for each connection. Static source binding approved by UiStandardsReview; runtime proof pending."
@@ -39775,7 +39775,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "e0baccbe0f05b6fb34c7ca5cd473060890933494b4ff2f00a0d278ad53f9239f",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "a0a82aa7331aa179f7f03ad17a7bcd6bde5285ee1001ab951560534c8dd46a93",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "Private account section rendered by GroupedAccounts",
@@ -103145,7 +103145,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "afe6225ad6cdc4e5c5c47c8180730f822d5a151e4927e1b8d514f5a42ba74d33",
+    "sourceCensusSha256": "c7eafae08b3963ed911c3fa5c8480c14bf826b365ba2b9ed3769ac5c03e0ca8d",
     "pendingRows": 441,
     "retainedApprovedRows": 200,
     "pendingReferences": 1488,

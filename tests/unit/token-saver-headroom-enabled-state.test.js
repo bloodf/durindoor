@@ -47,7 +47,7 @@ async function drainEffects() {
   while (state.effects.length) {
     const effects = state.effects.splice(0);
     for (const effect of effects) effect();
-    for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
 async function renderWithProxyDown(enabled) {

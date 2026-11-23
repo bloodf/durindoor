@@ -49,6 +49,25 @@ function isEmptyCompletion(content, usage, summary) {
     !content?.thinking?.trim?.() && !hasOutputTokens(usage);
 }
 
+// Missing usage stays null. A measured 0 is the empty-stream path, not this warning.
+function measuredOutputTokens(usage) {
+  if (!isRecord(usage)) return null;
+  const raw = usage.completion_tokens ?? usage.output_tokens ?? usage.candidatesTokenCount;
+  if (raw == null) return null;
+  const count = Number(raw);
+  return Number.isFinite(count) ? count : null;
+}
+
+const LOW_OUTPUT_TOKEN_LIMIT = 50;
+const LOW_OUTPUT_TOOL_FLOOR = 5;
+
+function warnMeasuredLowToolOutput({ provider, model, usage, tools }) {
+  const outTokens = measuredOutputTokens(usage);
+  if (outTokens == null || outTokens <= 0 || outTokens >= LOW_OUTPUT_TOKEN_LIMIT) return;
+  if (!Array.isArray(tools) || tools.length < LOW_OUTPUT_TOOL_FLOOR) return;
+  console.warn(`[WARN] [EMPTY-RESPONSE] ${provider} | ${model} | out=${outTokens} tok but ${tools.length} tools sent — provider may not handle large tool lists. Remove this provider from tool-heavy combos.`);
+}
+
 /** Frame a complete OpenAI response for the normal streaming pipeline. */
 export function completionToStream(completion) {
   if (completion?.error || !Array.isArray(completion?.choices) || !completion.choices.length ||
@@ -390,6 +409,10 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       try {Promise.resolve(onEmptyStream()).catch(() => console.error("[Stream] empty-stream cooldown failed"));}
       catch {console.error("[Stream] empty-stream cooldown failed");}
     }
+
+    // Completion only. Cancellation has no measured final output to judge,
+    // and a missing usage object is not a low-output measurement.
+    warnMeasuredLowToolOutput({ provider, model, usage, tools: body?.tools });
   };
 
   // Finalize the placeholder row when the stream ends without onStreamComplete

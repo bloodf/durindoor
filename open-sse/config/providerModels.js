@@ -1,3 +1,4 @@
+import { stripRecognizedContextSuffix } from "../services/contextSuffix.js";
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
@@ -242,7 +243,8 @@ export function getModelUpstreamId(aliasOrId, modelId, tier = null) {
   // while thinking intent travels in request-scoped translation context.
   // Catalog upstreamModelId presets such as "gemini-3.8-flash-high(high)" are
   // stripped here too; getModelUpstreamThinkingIntent exposes the preset level.
-  const { baseId, found } = findUpstreamModel(aliasOrId, modelId, tier);
+  const exact = findUpstreamModel(aliasOrId, modelId, tier);
+  const { baseId, found } = exact.found ? exact : findUpstreamModel(aliasOrId, stripRecognizedContextSuffix(modelId), tier);
   if (found?.upstreamModelId) return parseSuffix(found.upstreamModelId).cleanModel;
   if (found?.id) return found.id;
   if (aliasOrId === "cx" && isString(baseId) && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {

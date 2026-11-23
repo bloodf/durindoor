@@ -1,5 +1,7 @@
 export default {
   id: "mimo-free",
+  // Xiaomi ended the free MiMo API service; retain existing routes but hide setup.
+  hidden: true,
   priority: 50,
   hasFree: true,
   alias: "mmf",

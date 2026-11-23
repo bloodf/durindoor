@@ -1,13 +1,11 @@
+import { createSocksDispatcher, isSocksDispatcherUrl } from "../../../open-sse/utils/socksDispatcher.js";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
-import { assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
+import { assertOutboundUrlAllowed, assertResolvedAddressAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
-// Fixed probe target. Previously this endpoint accepted a caller-supplied
-// `testUrl` from the request body, which turned the proxy-test route into
-// an SSRF amplifier (the user-controlled `dispatcher` was a red herring —
-// the URL itself was the weapon). The test exists to verify that a
-// configured proxy can reach the public internet; the destination does
-// not need to vary per-call.
+// Empty custom destinations retain the existing public probe target.
 export const DEFAULT_TEST_URL = "https://google.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -35,7 +33,7 @@ function parseProxyUrl(proxyUrl) {
   if (normalizedInput.includes("://")) {
     try {
       const parsed = new URL(normalizedInput);
-      if (!["http:", "https:", "socks:", "socks4:", "socks5:"].includes(parsed.protocol)) return null;
+      if (!["http:", "https:", "socks:", "socks4:", "socks4a:", "socks5:", "socks5h:"].includes(parsed.protocol)) return null;
       if (!parsed.hostname) return null;
       return parsed.toString();
     } catch {
@@ -113,7 +111,7 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
+export async function testProxyUrl({ proxyUrl, testUrl: requestedTestUrl, timeoutMs } = {}) {
   const normalizedProxyUrl = normalizeString(proxyUrl);
   if (!normalizedProxyUrl) {
     return { ok: false, status: 400, error: "proxyUrl is required" };
@@ -135,7 +133,9 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
 
   try {
     try {
-      dispatcher = new ProxyAgent({ uri: parsedProxyUrl });
+      dispatcher = isSocksDispatcherUrl(parsedProxyUrl)
+        ? createSocksDispatcher(parsedProxyUrl, { connectTimeout: normalizedTimeoutMs })
+        : new ProxyAgent({ uri: parsedProxyUrl });
     } catch (err) {
       return {
         ok: false,
@@ -144,7 +144,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
       };
     }
 
-    let testUrl = DEFAULT_TEST_URL;
+    let testUrl = normalizeString(requestedTestUrl) || DEFAULT_TEST_URL;
     const startedAt = Date.now();
 
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
@@ -171,18 +171,40 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
         return { ok: false, status: 400, error: "URL must use https:" };
       }
 
+      // Resolve locally and send the checked address to the proxy, so the proxy
+      // cannot perform a second DNS lookup after validation. Preserve the TLS
+      // server name and HTTP Host header for the original destination.
+      let requestUrl;
+      try {
+        const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+        const addresses = isIP(hostname)
+          ? [{ address: hostname }]
+          : await lookup(hostname, { all: true, verbatim: true });
+        if (!addresses.length) throw new Error("Empty DNS result");
+        for (const record of addresses) assertResolvedAddressAllowed(record.address, "public-only");
+        requestUrl = new URL(parsed);
+        requestUrl.hostname = isIP(addresses[0].address) === 6 ? `[${addresses[0].address}]` : addresses[0].address;
+        await dispatcher.close();
+        dispatcher = isSocksDispatcherUrl(parsedProxyUrl)
+          ? createSocksDispatcher(parsedProxyUrl, { connectTimeout: normalizedTimeoutMs, targetServername: hostname })
+          : new ProxyAgent({ uri: parsedProxyUrl, requestTls: { servername: hostname } });
+      } catch (err) {
+        return { ok: false, status: 400, error: `URL not allowed: ${sanitizeErrorMessage(err?.message || "blocked")}` };
+      }
+
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
 
       let res;
       try {
-        res = await guardedProbeFetch(testUrl, {
+        res = await guardedProbeFetch(requestUrl, {
           method: "HEAD",
           dispatcher,
           signal: controller.signal,
           redirect: "manual",
           headers: {
-            "User-Agent": "9Router",
+            "User-Agent": "DurinDoor",
+            Host: parsed.host,
           },
         }, "public-only", (url, options) => undiciFetch(url, { ...options, dispatcher }));
       } catch (err) {

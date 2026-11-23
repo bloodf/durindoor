@@ -2,7 +2,7 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
-import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { getProviderConnectionById, updateProviderConnection, getSettings } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
@@ -1011,6 +1011,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
         }
+      case "huggingface":{
+          // Keep transient whoami failures from overwriting the saved connection status.
+          const res = await fetchWithConnectionProxy("https://huggingface.co/api/whoami-v2", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy).catch(() => null);
+          if (!res) return { valid: false, unavailable: true, error: "HuggingFace token check unavailable" };
+          if (res.ok) return { valid: true, error: null };
+          if (res.status === 401 || res.status === 403) return { valid: false, error: "Invalid API key" };
+          return { valid: false, unavailable: true, error: "HuggingFace token check unavailable" };
+        }
       case "chutes":{
           const res = await fetchWithConnectionProxy("https://llm.chutes.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
@@ -1251,7 +1259,7 @@ export async function testSingleConnection(id) {
   const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
   if (effectiveProxy.connectionProxyEnabled && effectiveProxy.connectionProxyUrl && !effectiveProxy.vercelRelayUrl) {
-    const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl });
+    const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl, testUrl: (await getSettings()).proxyTestUrl });
     if (!proxyResult.ok) {
       const proxyError = sanitizeErrorMessage(
         proxyResult.error || `Proxy test failed with status ${proxyResult.status}`

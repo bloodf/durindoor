@@ -110,9 +110,9 @@ describe("Claude Code CLI context → OpenAI", () => {
     });
   });
 
-  // Nested tool-result images must not become data URIs in a later user turn.
-  it("tool_result image block becomes a placeholder, not raw base64", () => {
-    const payload = "IMG".repeat(1000);
+  // Oversized nested tool-result images must not become data URIs in a later user turn.
+  it("oversized tool_result image becomes a placeholder, not raw base64", () => {
+    const payload = "A".repeat(1048580);
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "screenshot", input: {} }] },
@@ -131,8 +131,8 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(json, "base64 payload is absent from converted request").not.toContain(payload);
   });
 
-  it("image-only tool_result remains a media placeholder", () => {
-    const payload = "ONLY_IMAGE".repeat(1000);
+  it("oversized image-only tool_result remains a media placeholder", () => {
+    const payload = "A".repeat(1048580);
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "screenshot", input: {} }] },

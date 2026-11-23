@@ -87,6 +87,8 @@ export default function ProfilePage() {
   // Keep OIDC disclosure unavailable until saved settings settle its layout and draft.
   const [loading, setLoading] = useState(true);
   const [settingsError, setSettingsError] = useState("");
+  const [toolSourcesSaving, setToolSourcesSaving] = useState(false);
+  const [toolSourcesError, setToolSourcesError] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [notificationError, setNotificationError] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
@@ -119,7 +121,8 @@ export default function ProfilePage() {
   const [proxyForm, setProxyForm] = useState({
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
-    outboundNoProxy: ""
+    outboundNoProxy: "",
+    proxyTestUrl: ""
   });
   const [firecrawlUrl, setFirecrawlUrl] = useState("");
   const [firecrawlUrlStatus, setFirecrawlUrlStatus] = useState({ type: "", message: "" });
@@ -169,7 +172,8 @@ export default function ProfilePage() {
       setProxyForm({
         outboundProxyEnabled: data?.outboundProxyEnabled === true,
         outboundProxyUrl: data?.outboundProxyUrl || "",
-        outboundNoProxy: data?.outboundNoProxy || ""
+        outboundNoProxy: data?.outboundNoProxy || "",
+        proxyTestUrl: data?.proxyTestUrl || ""
       });
       setFirecrawlUrl(data?.firecrawlBaseUrl || "");
       setSettingsReady(true);
@@ -186,7 +190,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (isBrowser()) {
-      setOidcRedirectUri(`${window.location.origin}/api/auth/oidc/callback`);
+      setOidcRedirectUri(`${window.location.origin}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth/oidc/callback`);
     }
   }, []);
 
@@ -236,7 +240,8 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           outboundProxyUrl: proxyForm.outboundProxyUrl,
-          outboundNoProxy: proxyForm.outboundNoProxy
+          outboundNoProxy: proxyForm.outboundNoProxy,
+          proxyTestUrl: proxyForm.proxyTestUrl
         })
       });
 
@@ -249,6 +254,27 @@ export default function ProfilePage() {
       }
     } catch (err) {
       setProxyStatus({ type: "error", message: "An error occurred" });
+    } finally {
+      setProxyLoading(false);
+    }
+  };
+
+  const saveProxyTestUrl = async (event) => {
+    event.preventDefault();
+    setProxyLoading(true);
+    setProxyStatus({ type: "", message: "" });
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyTestUrl: proxyForm.proxyTestUrl.trim() })
+      });
+      const data = await response.json();
+      setProxyStatus(response.ok
+        ? { type: "success", message: "Test URL saved" }
+        : { type: "error", message: data.error || "Failed to save test URL" });
+    } catch {
+      setProxyStatus({ type: "error", message: "Failed to save test URL" });
     } finally {
       setProxyLoading(false);
     }
@@ -270,7 +296,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/proxy-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxyUrl })
+        body: JSON.stringify({ proxyUrl, testUrl: proxyForm.proxyTestUrl })
       });
 
       const data = await res.json();
@@ -344,7 +370,7 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (res.ok && data?.reauthenticate) {
-        window.location.assign("/login");
+        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
         return;
       }
       if (res.ok) {
@@ -675,6 +701,24 @@ export default function ProfilePage() {
     }
   };
 
+  const updateLogToolSources = async (enabled) => {
+    setToolSourcesSaving(true);
+    setToolSourcesError("");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logToolSources: enabled }),
+      });
+      if (!res.ok) throw new Error("Settings update failed");
+      setSettings((prev) => ({ ...prev, logToolSources: enabled }));
+    } catch {
+      setToolSourcesError("Could not save tool source diagnostics. Try again.");
+    } finally {
+      setToolSourcesSaving(false);
+    }
+  };
+
   const updateObservabilityEnabled = async (enabled) => {
     try {
       const res = await fetch("/api/settings", {
@@ -918,7 +962,7 @@ export default function ProfilePage() {
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
       if (res.ok) {
-        window.location.assign("/login");
+        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
       }
     } catch (err) {
       console.error("Failed to logout:", err);
@@ -1009,7 +1053,7 @@ export default function ProfilePage() {
 
       <section role="tabpanel" aria-label="Network settings" hidden={activeTab !== "network"} className="flex flex-col gap-5">
 
-      <Card padding={false}><CardHeader icon="lan" title="Network" subtitle="Outbound services and proxy behavior" /><CardContent className="flex flex-col gap-5"><Toggle label="Outbound Proxy" description="Enable proxy for OAuth and provider outbound requests." checked={settings.outboundProxyEnabled === true} onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))} disabled={loading || proxyLoading} />{settings.outboundProxyEnabled === true ? <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><Input label="Proxy URL" hint="Leave empty to inherit existing environment proxy." placeholder="http://127.0.0.1:7897" value={proxyForm.outboundProxyUrl} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))} disabled={loading || proxyLoading} /><Input label="No Proxy" hint="Comma-separated hostnames or domains to bypass proxy." placeholder="localhost,127.0.0.1" value={proxyForm.outboundNoProxy} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))} disabled={loading || proxyLoading} /><div className="flex flex-wrap gap-2"><Button variant="secondary" loading={proxyTestLoading} disabled={loading || proxyLoading} onClick={testOutboundProxy}>Test proxy URL</Button><Button type="submit" variant="primary" loading={proxyLoading}>Apply</Button></div></form> : null}{proxyStatus.message ? <p role="status" className={`text-xs ${statusClass(proxyStatus)}`}>{proxyStatus.message}</p> : null}<form onSubmit={updateFirecrawlUrl} className="flex flex-col gap-3 border-t border-dd-border-subtle pt-5"><Input label="Firecrawl URL" hint="Custom Firecrawl or self-hosted endpoint. Falls back to FIRECRAWL_BASE_URL." placeholder="https://api.firecrawl.dev" value={firecrawlUrl} onChange={(e) => setFirecrawlUrl(e.target.value)} disabled={loading || firecrawlUrlLoading} /><div><Button type="submit" variant="primary" loading={firecrawlUrlLoading}>Save</Button></div>{firecrawlUrlStatus.message ? <p role="status" className={`text-xs ${statusClass(firecrawlUrlStatus)}`}>{firecrawlUrlStatus.message}</p> : null}</form></CardContent></Card>
+      <Card padding={false}><CardHeader icon="lan" title="Network" subtitle="Outbound services and proxy behavior" /><CardContent className="flex flex-col gap-5"><Toggle label="Outbound Proxy" description="Enable proxy for OAuth and provider outbound requests." checked={settings.outboundProxyEnabled === true} onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))} disabled={loading || proxyLoading} />{settings.outboundProxyEnabled === true ? <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><Input label="Proxy URL" hint="Leave empty to inherit existing environment proxy." placeholder="http://127.0.0.1:7897" value={proxyForm.outboundProxyUrl} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))} disabled={loading || proxyLoading} /><Input label="No Proxy" hint="Comma-separated hostnames or domains to bypass proxy." placeholder="localhost,127.0.0.1" value={proxyForm.outboundNoProxy} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))} disabled={loading || proxyLoading} /><div className="flex flex-wrap gap-2"><Button variant="secondary" loading={proxyTestLoading} disabled={loading || proxyLoading} onClick={testOutboundProxy}>Test proxy URL</Button><Button type="submit" variant="primary" loading={proxyLoading}>Apply</Button></div></form> : null}<form onSubmit={saveProxyTestUrl} className="flex flex-col gap-3 border-t border-dd-border-subtle pt-5"><Input label="Test URL" hint="HTTPS destination for proxy tests. Leave empty for the default." placeholder="https://google.com/" value={proxyForm.proxyTestUrl} onChange={(e) => setProxyForm((prev) => ({ ...prev, proxyTestUrl: e.target.value }))} disabled={loading || proxyLoading} /><div><Button type="submit" variant="primary" loading={proxyLoading}>Save test URL</Button></div></form>{proxyStatus.message ? <p role="status" className={`text-xs ${statusClass(proxyStatus)}`}>{proxyStatus.message}</p> : null}<form onSubmit={updateFirecrawlUrl} className="flex flex-col gap-3 border-t border-dd-border-subtle pt-5"><Input label="Firecrawl URL" hint="Custom Firecrawl or self-hosted endpoint. Falls back to FIRECRAWL_BASE_URL." placeholder="https://api.firecrawl.dev" value={firecrawlUrl} onChange={(e) => setFirecrawlUrl(e.target.value)} disabled={loading || firecrawlUrlLoading} /><div><Button type="submit" variant="primary" loading={firecrawlUrlLoading}>Save</Button></div>{firecrawlUrlStatus.message ? <p role="status" className={`text-xs ${statusClass(firecrawlUrlStatus)}`}>{firecrawlUrlStatus.message}</p> : null}</form></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="System and data settings" hidden={activeTab !== "system"} className="flex flex-col gap-5">
@@ -1018,7 +1062,7 @@ export default function ProfilePage() {
         {dbStatus.message ? <p role="status" className={`text-xs ${statusClass(dbStatus)}`}>{dbStatus.message}</p> : null}<SelectiveTransferPanel />
       </CardContent></Card>
 
-      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
+      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Log tool sources" description="Log tool names and source counts for authenticated requests when LOG_LEVEL=DEBUG. Tool names may disclose identifiers." checked={settings.logToolSources === true} onChange={updateLogToolSources} disabled={loading || toolSourcesSaving} />{toolSourcesError ? <p role="alert" className="text-xs text-dd-danger">{toolSourcesError}</p> : null}<Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
         <div className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5">
           <Toggle label="Auto-clean old data" description="Every hour, delete usage history, request details, timeline traces and quota snapshots older than the window below." checked={dataRetentionEnabled} onChange={(value) => updateDataRetention({ dataRetentionEnabled: value === true })} disabled={loading} />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

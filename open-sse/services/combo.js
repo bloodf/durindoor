@@ -1,3 +1,4 @@
+import { stripRecognizedContextSuffix } from "./contextSuffix.js";
 import { hasResponsesContentItem, isResponsesEnvelope, isResponsesReceipt } from "../utils/responsesContent.js";
 import { withRouteResponseHeaders } from "../utils/routeResponseHeaders.js";
 import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
@@ -1322,7 +1323,7 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
   // happened to share the basename. Saved combos referenced as
   // `provider/name` must be stored under that full form, and a request
   // shaped like `provider/model` is then treated as provider routing.
-  const combo = combos.find((c) => c.name === modelStr);
+  const combo = combos.find((c) => c.name === modelStr) || combos.find((c) => c.name === stripRecognizedContextSuffix(modelStr));
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }

@@ -1,3 +1,4 @@
+import { invalidClassifierVerdict } from "./classifierVerdict.js";
 import { collectAntigravityGeminiSSE } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
@@ -515,6 +516,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         if (!claudeCompat && provider === "codex" && sourceFormat === FORMATS.CLAUDE && hasClaudeSearch(body)) {
           finalResp = responsesSearchToClaudeMessage(jsonResponse, finalResp, true);
         }
+        if (invalidClassifierVerdict(sourceFormat, body, finalResp)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
         if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
@@ -691,6 +693,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const projected = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
       const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
       const finalResp = nativeGemini ? collectAntigravityGeminiSSE(sseText, toolNameMap) : claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
+      if (invalidClassifierVerdict(sourceFormat, body, finalResp)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
       if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);

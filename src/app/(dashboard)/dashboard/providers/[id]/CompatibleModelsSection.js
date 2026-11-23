@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { filterModelsForImport } from "@/shared/utils/modelImportFilter";
+import { importCompatibleModels } from "@/shared/utils/compatibleModelImport";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 import InferenceStatus from "./InferenceStatus.jsx";
@@ -358,17 +359,10 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
           : "No models match the selected price filter. Try All models if pricing is unavailable.");
         return;
       }
-      let importedCount = 0;
-      const existingIds = new Set(allModels.map((model) => model.id));
-      for (const model of models) {
-        const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        if (existingIds.has(modelId)) continue;
-        existingIds.add(modelId);
-        await onAddCustomModel(modelId);
-        importedCount += 1;
-      }
-      if (importedCount === 0) {
+      const { imported, failed, skipped } = await importCompatibleModels(models, allModels, onAddCustomModel);
+      if (failed > 0) {
+        alert(`Imported ${imported} models; ${failed} failed; ${skipped} skipped. Retry to import failed models.`);
+      } else if (imported === 0) {
         alert("No new models were added.");
       }
     } catch (error) {

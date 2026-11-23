@@ -1,0 +1,5 @@
+# Capability catalog and automatic model selection
+
+`GET /v1/models/capabilities` lists configured models and combos by kind. Use `?kind=image` to filter the catalog or `?available=true` to show models with a connection marked active. The catalog follows the requesting key's model and connection scope, disabled models, and model exposure settings. An untested connection is not reported as available.
+
+Chat, image generation, and synchronous video generation accept `auto`, `best`, `fast`, and `cheap`. A selector may include a kind, for example `fast:image` or `best:video`. Candidates are ordered by connection status, connection priority, and then model-name hints for the selected strategy. These hints are not measured speed, quality, or price. When the first candidate fails, the gateway tries the next one using its normal fallback rules. Existing `auto/<family>` combos and saved combo names keep their existing behavior. The key's auto-combo permission, allowed combo list, per-model access rules, and paid-model visibility still apply.

@@ -50,6 +50,13 @@ export async function ensureHeadroomProxy() {
  * Only ever called from the guarded block in instrumentation.js.
  */
 export function bootstrapNodejsRuntime() {
+  if (["phase-production-build", "phase-export", "phase-static"].includes(process.env.NEXT_PHASE) ||
+      process.env.DURINDOOR_BUILD === "1" || process.env.npm_lifecycle_event === "build") return;
+
+  void import("./shared/services/bootstrap.js")
+    .then(({ bootstrapRuntime }) => bootstrapRuntime())
+    .catch((error) => console.error("[Bootstrap] init failed:", error.message));
+
   // Rename process to distinguish 9router from generic next-server
   if (process.title.startsWith("next-server")) {
     process.title = process.title.replace("next-server", "9router");

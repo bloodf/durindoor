@@ -33,6 +33,7 @@ vi.mock("../../src/sse/utils/logger.js", () => ({ request: vi.fn(), debug: vi.fn
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: async (_p, c) => c, updateProviderCredentials: vi.fn() }));
 vi.mock("../../src/sse/services/model.js", () => ({
   getModelInfo: async (id) => { const [provider, model] = id.split("/"); return { provider, model }; },
+  filterDisabledComboModels: async (models) => models,
   getAutoComboCatalog: vi.fn()
 }));
 vi.mock("open-sse/executors/index.js", () => ({ getExecutor: mocks.executor }));

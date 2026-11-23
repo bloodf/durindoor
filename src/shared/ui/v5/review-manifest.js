@@ -1235,7 +1235,8 @@ export const REVIEW_SURFACES = [
       "DatabaseExportPrompt",
       "SelectiveTransferPreview",
       "SettingsUnavailable",
-      "SettingsLoading"
+      "SettingsLoading",
+      "ToolSourceDiagnostics"
     ],
     "storyIds": [
       "v5-review-pages-profile-profilepage--default",
@@ -1244,7 +1245,8 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-profile-profilepage--database-export-prompt",
       "v5-review-pages-profile-profilepage--selective-transfer-preview",
       "v5-review-pages-profile-profilepage--settings-unavailable",
-      "v5-review-pages-profile-profilepage--settings-loading"
+      "v5-review-pages-profile-profilepage--settings-loading",
+      "v5-review-pages-profile-profilepage--tool-source-diagnostics"
     ],
     "pathname": "/dashboard/profile",
     "routePattern": "/dashboard/profile",

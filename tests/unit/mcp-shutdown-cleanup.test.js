@@ -70,6 +70,8 @@ function wireAppMocks({ killAllBridges, getSettings, startQuotaAutoPing }) {
     restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
   }));
   vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: startQuotaAutoPing || (() => {}) }));
+  vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: startQuotaAutoPing || (() => {}), stopQuotaAutoPing: () => {} }));
+  vi.doMock("@/sse/services/backgroundTokenRefresh.js", () => ({ startBackgroundTokenRefresh: () => {}, stopBackgroundTokenRefresh: () => {} }));
   vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
   vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));
 }

@@ -221,7 +221,9 @@ describe("fusion media at the real executor HTTP boundary", () => {
     expect(wire).toHaveLength(0);
   });
 
-  it("retains the documented Claude base64 tool-image conversion limitation", async () => {
+  // 9router #2123: valid base64 tool images are forwarded after the tool turn,
+  // bounded by a 1 MiB request-wide encoded budget; excess becomes a placeholder.
+  it("forwards bounded Claude base64 tool images and omits images past the budget", async () => {
     const response = await invoke({ model: "wire-panel", stream: false, max_tokens: 128, messages: [
       { role: "user", content: "inspect" },
       { role: "assistant", content: [{ type: "tool_use", id: "wire-shot", name: "shot", input: {} }] },
@@ -233,8 +235,31 @@ describe("fusion media at the real executor HTTP boundary", () => {
     await response.text();
     expect(wire).toHaveLength(3);
     for (const sent of wire) {
-      expect(JSON.stringify(sent.body)).toContain("[tool result omitted image: image/png]");
-      expect(JSON.stringify(sent.body)).not.toContain(PNG_BYTES);
+      expect(sent.body.messages.slice(2, 4)).toEqual([
+        { role: "tool", tool_call_id: "wire-shot", content: "[tool returned an image; see attached]" },
+        { role: "user", content: [
+          { type: "text", text: "[Image from tool result wire-shot]" },
+          { type: "image_url", image_url: { url: `data:image/png;base64,${PNG_BYTES}` } },
+        ] },
+      ]);
+    }
+  });
+
+  it("omits Claude base64 tool images beyond the 1 MiB request budget (#2123)", async () => {
+    const large = "A".repeat(700000);
+    const image = { type: "image", source: { type: "base64", media_type: "image/png", data: large } };
+    const response = await invoke({ model: "wire-panel", stream: false, max_tokens: 128, messages: [
+      { role: "user", content: "inspect" },
+      { role: "assistant", content: [{ type: "tool_use", id: "wire-shot", name: "shot", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "wire-shot", content: [image, image] }] },
+    ] }, "/v1/messages");
+    expect(response.status, await response.clone().text()).toBe(200);
+    await response.text();
+    expect(wire).toHaveLength(3);
+    for (const sent of wire) {
+      const json = JSON.stringify(sent.body);
+      expect(json).toContain("[tool result omitted image: image/png]");
+      expect(json.split(large)).toHaveLength(2);
     }
   });
 

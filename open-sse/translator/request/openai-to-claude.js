@@ -85,12 +85,14 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
       if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-        const text = isString(msg.content) ? msg.content : extractTextContent(wrapBareContentBlock(msg.content), "\n");
-        // Anthropic rejects an empty text block (400), so an empty instruction adds nothing.
-        const kept = msg.role === ROLE.SYSTEM && translationContext?.provider === "claude" ?
-        text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "") :
-        text;
-        if (kept) systemParts.push(kept);
+        const content = wrapBareContentBlock(msg.content);
+        const parts = Array.isArray(content) ? content.map((part) => extractTextContent([part], "\n")) : [isString(content) ? content : ""];
+        for (const text of parts) {
+          // Strip billing metadata per block before joining cacheable instructions.
+          const kept = msg.role === ROLE.SYSTEM && translationContext?.provider === "claude" ?
+          text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "") : text;
+          if (kept) systemParts.push(kept);
+        }
       }
     }
 

@@ -932,7 +932,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         selectModels: isOpenCodeFree ? (body) => {
           const entries = Array.isArray(body) ? body : body?.data ?? body?.models;
           return Array.isArray(entries) ? entries.filter((entry) =>
-            isString(entry?.id) && (entry.id.endsWith("-free") || entry.id === "big-pickle")
+            isString(entry?.id) && entry.id !== "deepseek-v4-flash-free" && (entry.id.endsWith("-free") || entry.id === "big-pickle")
           ) : [];
         } : undefined,
       });

@@ -100,6 +100,11 @@ function lastCacheableToolIndex(tools) {
 }
 
 const HOISTABLE_SYSTEM_BLOCKS = new Set([CLAUDE_BLOCK.TEXT]);
+// OpenAI "developer" is an instruction turn. Anthropic rejects it in messages[]
+// the same way it rejects role "system", so both share this fold/hoist policy.
+function isInstructionRole(role) {
+  return role === ROLE.SYSTEM || role === ROLE.DEVELOPER;
+}
 const USER_SYSTEM_FOLDABLE_BLOCKS = new Set([
 CLAUDE_BLOCK.TEXT,
 CLAUDE_BLOCK.IMAGE,
@@ -665,7 +670,7 @@ export function dropClaudeCodeIdentitySystem(body) {
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
 // 1. thinking.type "adaptive" → unsupported on older/unversioned Haiku
 // 2. output_config.effort → unsupported on older/unversioned Haiku
-// 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
+// 3. role "system" and "developer" messages → only top-level system is allowed
 // 4. server_tool_use blocks carrying foreign IDs → rejected outright
 // 5. forced tool_choice while thinking is on → rejected by every thinking model
 export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null, options = null) {
@@ -702,7 +707,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     const buffered = [];
     const foldSystemTurns = options?.foldSystemTurns === true;
     for (const msg of body.messages) {
-      if (msg.role === ROLE.SYSTEM) {
+      if (isInstructionRole(msg.role)) {
         const blocks = Array.isArray(msg.content) ?
         msg.content :
         isString(msg.content) && msg.content ?
@@ -728,14 +733,14 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     }
     if (!foldSystemTurns) {
       const hoisted = messages.
-      filter((m) => m.role === ROLE.SYSTEM).
+      filter((m) => isInstructionRole(m.role)).
       flatMap((m) => Array.isArray(m.content) ?
       m.content :
       isString(m.content) && m.content ?
       [{ type: CLAUDE_BLOCK.TEXT, text: m.content }] :
       []).
       filter((block) => HOISTABLE_SYSTEM_BLOCKS.has(block?.type));
-      body.messages = messages.filter((m) => m.role !== ROLE.SYSTEM);
+      body.messages = messages.filter((m) => !isInstructionRole(m.role));
       if (hoisted.length) {
         const existing = Array.isArray(body.system) ?
         body.system :

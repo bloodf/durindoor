@@ -558,6 +558,19 @@ export async function POST(request) {
         });
       }
 
+      // whoami checks the token without running a potentially paid inference task.
+      if (provider === "huggingface") {
+        const res = await fetchValidationProbe("https://huggingface.co/api/whoami-v2", {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        }).catch(() => null);
+        if (!res) return NextResponse.json({ valid: false, unavailable: true, error: "HuggingFace token check unavailable" });
+        if (res.ok) return NextResponse.json({ valid: true, error: null });
+        if (res.status === 401 || res.status === 403) {
+          return NextResponse.json({ valid: false, error: "Invalid API key" });
+        }
+        return NextResponse.json({ valid: false, unavailable: true, error: "HuggingFace token check unavailable" });
+      }
+
       // Generic probe for tts/embedding providers (config-driven)
       const mediaResult = await probeMediaProvider(provider, apiKey);
       if (mediaResult !== null) {

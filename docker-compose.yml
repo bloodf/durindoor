@@ -1,13 +1,18 @@
 services:
   durindoor:
-    # Bump this tag to the current verified DurinDoor release.
-    image: ghcr.io/bloodf/durindoor:4.11.0
+    # Bump this tag to the current published DurinDoor release.
+    image: ghcr.io/bloodf/durindoor:4.9.2
     container_name: durindoor
     restart: always
-    user: "1000:1000"
     read_only: true
     cap_drop:
       - ALL
+    # The root entrypoint needs these capabilities before it drops to node.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     ports:

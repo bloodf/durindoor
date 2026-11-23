@@ -200,6 +200,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepai` |  | apikey | `` |
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
+| `deeprelay` |  | apikey | `https://api.deeprelay.ai/v1/chat/completions` |
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
 | `deepseek-web` | openai | apikey | `https://chat.deepseek.com/api/v0/chat/completion` |
 | `demonroute` | openai | apikey | `https://api.demonroute.com/v1/chat/completions` |
@@ -378,6 +379,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode-go` |  | apikey | `https://opencode.ai/inference/go/openai/v1/chat/completions` |
 | `opencode-server` | openai | apikey | `` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
+| `opendesign-go` |  | apikey | `https://amr-link.open-design.ai/v1/chat/completions` |
 | `openference` | openai | oauth | `https://api.openference.com/v1/chat/completions` |
 | `openference-api` |  | apikey | `https://api.openference.com/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
@@ -408,6 +410,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qwen` |  | oauth | `https://portal.qwen.ai/v1/chat/completions` |
 | `qwen-cloud` | openai | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `qwen-cloud-token-plan` | openai | apikey | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| `qwencloud` |  | apikey | `https://token-plan.maas.qwencloudapi.com/compatible-mode/v1/chat/completions` |
 | `recraft` |  | apikey | `` |
 | `regolo` |  | apikey | `https://api.regolo.ai/v1/chat/completions` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |

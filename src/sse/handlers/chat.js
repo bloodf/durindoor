@@ -1,3 +1,4 @@
+import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { summarizeToolSources } from "../utils/toolSources.js";
 import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
@@ -17,7 +18,6 @@ import {
   projectProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
   isProviderConnectionModelLocked,
   providerAllowsPublicNoAuthFallback } from
 "../services/auth.js";
@@ -492,22 +492,15 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "chat", respond: (_status, message) => authErrorResponse(clientRawRequest.endpoint, message) });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (!apiKeyAuth.ok) {
-    if (apiKeyAuth.reason === "missing") {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Missing API key"), "auth_missing");
-    }
-    log.warn("AUTH", "Invalid API key");
-    return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
+  if (admissionError) {
+    log.warn("AUTH", apiKeyAuth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
+    return admissionError;
   }
   const toolSummary = summarizeToolSources(body.tools, settings.logToolSources);
   if (toolSummary) log.debug("TOOLS", toolSummary);

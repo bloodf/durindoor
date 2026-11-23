@@ -19888,7 +19888,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js#GenericExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js",
       "symbol": "GenericExampleCard",
-      "sourceSha256": "d7d8806a956423ef721df8069b1b940b449f45a3f312e2ddf6d8539ff4dce102",
+      "sourceSha256": "b0633358957d820e0cdf36928b0327bd0f99065595f4b82db6c2b3c90ec0d8da",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -19910,7 +19910,7 @@
             "JSON result"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "d7d8806a956423ef721df8069b1b940b449f45a3f312e2ddf6d8539ff4dce102",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "b0633358957d820e0cdf36928b0327bd0f99065595f4b82db6c2b3c90ec0d8da",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx": "436a795778b73951c603addac594ec394724b30e3b9b1f5ab98e6e0d32d7af0f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -19931,7 +19931,7 @@
             "image output"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "d7d8806a956423ef721df8069b1b940b449f45a3f312e2ddf6d8539ff4dce102",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "b0633358957d820e0cdf36928b0327bd0f99065595f4b82db6c2b3c90ec0d8da",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx": "436a795778b73951c603addac594ec394724b30e3b9b1f5ab98e6e0d32d7af0f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -19952,7 +19952,7 @@
             "generated image"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "d7d8806a956423ef721df8069b1b940b449f45a3f312e2ddf6d8539ff4dce102",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "b0633358957d820e0cdf36928b0327bd0f99065595f4b82db6c2b3c90ec0d8da",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx": "436a795778b73951c603addac594ec394724b30e3b9b1f5ab98e6e0d32d7af0f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -19979,7 +19979,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "d7d8806a956423ef721df8069b1b940b449f45a3f312e2ddf6d8539ff4dce102",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "b0633358957d820e0cdf36928b0327bd0f99065595f4b82db6c2b3c90ec0d8da",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx": "436a795778b73951c603addac594ec394724b30e3b9b1f5ab98e6e0d32d7af0f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -20001,7 +20001,7 @@
             "web-search"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "d7d8806a956423ef721df8069b1b940b449f45a3f312e2ddf6d8539ff4dce102",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "b0633358957d820e0cdf36928b0327bd0f99065595f4b82db6c2b3c90ec0d8da",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx": "436a795778b73951c603addac594ec394724b30e3b9b1f5ab98e6e0d32d7af0f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -20638,18 +20638,16 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/exampleShared.js#Row",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/exampleShared.js",
       "symbol": "Row",
-      "sourceSha256": "eeb2c4d77ec3db04f0ce34726bdcf75cc5c9e2875eaba938e375b03fc14ade1a",
+      "sourceSha256": "9a99b164de09b3807c02aa3c854207bc4545da8cc3170d4896853c696266a0fe",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Private layout fragment, visibly covered through actual parent card.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-media-embeddingexamplecard--default"
       ],
-      "approvedScenarioIds": [
-        "production-media-embeddingexamplecard--default"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-media-embeddingexamplecard--default",
@@ -20659,7 +20657,7 @@
             "form layout"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/exampleShared.js": "eeb2c4d77ec3db04f0ce34726bdcf75cc5c9e2875eaba938e375b03fc14ade1a",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/exampleShared.js": "9a99b164de09b3807c02aa3c854207bc4545da8cc3170d4896853c696266a0fe",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.stories.jsx": "b26ace068a6159e25a3ee455e41d26b76ef243bb60288114ba6ed75bba0998a0"
           },
           "proposedSourceEvidence": "Row renders each example-card label/control pair",
@@ -20672,19 +20670,55 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private layout fragment, visibly covered through actual parent card.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "historicalSourceReviewFindings": [
         "No assigned parent scenario establishes which example card invokes private Row at final state."
       ],
       "proposedSourceReviewNotes": "Private layout fragment, visibly covered through actual parent card.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "eeb2c4d77ec3db04f0ce34726bdcf75cc5c9e2875eaba938e375b03fc14ade1a",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-media-embeddingexamplecard--default"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-media-embeddingexamplecard--default",
+              "storyId": "production-media-embeddingexamplecard--default",
+              "runtimeArtifactId": "production-media-embeddingexamplecard--default",
+              "axes": [
+                "form layout"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/exampleShared.js": "eeb2c4d77ec3db04f0ce34726bdcf75cc5c9e2875eaba938e375b03fc14ade1a",
+                "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.stories.jsx": "b26ace068a6159e25a3ee455e41d26b76ef243bb60288114ba6ed75bba0998a0"
+              },
+              "proposedSourceEvidence": "Row renders each example-card label/control pair",
+              "expectedVisibleText": "Model",
+              "proposedVisibleTexts": [
+                "Model",
+                "Endpoint",
+                "Input"
+              ]
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private layout fragment, visibly covered through actual parent card.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js#MediaProviderDetailPage",
@@ -103111,9 +103145,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "2c0f51a44237b1693028e708620fc43f5a68c7cc1a27a4f38a464b89cde64092",
-    "pendingRows": 440,
-    "retainedApprovedRows": 201,
+    "sourceCensusSha256": "5306d35b136c9594b897a33ebedeef4208965247e7bfead9ad30867fdb9d8590",
+    "pendingRows": 441,
+    "retainedApprovedRows": 200,
     "pendingReferences": 1488,
     "runtimeStatus": "pending"
   }

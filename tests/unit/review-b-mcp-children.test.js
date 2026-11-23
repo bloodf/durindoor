@@ -281,7 +281,6 @@ describe("#2288 headroom process — attached child + handle stop", () => {
 // initializeApp shutdown includes stdio + headroom cleanup
 // ---------------------------------------------------------------------------
 describe("#2288 initializeApp shutdown cleans stdio + headroom", () => {
-  const flush = () => new Promise((r) => setTimeout(r, 0));
   let exitSpy;
   let preSig;
 
@@ -344,23 +343,25 @@ describe("#2288 initializeApp shutdown cleans stdio + headroom", () => {
       loadEncryptedPassword: () => null, initDbHooks: () => {},
       restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
     }));
-    vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {} }));
     vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {}, stopQuotaAutoPing: () => {} }));
     vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
     vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));
     vi.doMock("@/lib/mcp/gateway/stdioClient", () => ({ killAllStdioEntries: killAllStdioEntriesFn }));
     vi.doMock("@/lib/headroom/process", () => ({ stopHeadroomProxy }));
+    vi.doMock("open-sse/config/providerErrorRules.js", () => ({ setOperatorProviderErrorRules: () => {} }));
+    vi.doMock("@/sse/services/backgroundTokenRefresh.js", () => ({
+      startBackgroundTokenRefresh: () => {}, stopBackgroundTokenRefresh: () => {},
+    }));
 
     const { initializeApp } = await import("@/shared/services/initializeApp.js");
     await initializeApp();
 
     process.emit("SIGTERM");
-    await flush();
-    await flush();
-
-    expect(killAllBridges).toHaveBeenCalledTimes(1);
-    expect(killAllStdioEntriesFn).toHaveBeenCalledTimes(1);
-    expect(stopHeadroomProxy).toHaveBeenCalledTimes(1);
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    await vi.waitFor(() => {
+      expect(killAllBridges).toHaveBeenCalledTimes(1);
+      expect(killAllStdioEntriesFn).toHaveBeenCalledTimes(1);
+      expect(stopHeadroomProxy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    }, { timeout: 10000 });
   }, 15000);
 });

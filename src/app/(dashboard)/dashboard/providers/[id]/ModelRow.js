@@ -27,6 +27,8 @@ const STATUS_TOKENS = {
 // custom model entry.
 export default function ModelRow({
   model,
+  selected,
+  onSelect,
   fullModel,
   alias,
   copied,
@@ -54,6 +56,7 @@ export default function ModelRow({
       ].join(" ")}
     >
       <div className="flex min-w-0 items-start gap-2 sm:items-center">
+        {onSelect && <input type="checkbox" aria-label={`Select ${fullModel}`} checked={selected} onChange={onSelect} />}
         <span
           aria-hidden="true"
           className={`material-symbols-outlined shrink-0 text-[18px] leading-none ${token.iconClass}`}
@@ -150,6 +153,8 @@ export default function ModelRow({
 }
 
 ModelRow.propTypes = {
+  selected: PropTypes.bool,
+  onSelect: PropTypes.func,
   model: PropTypes['shape']({ id: PropTypes.string.isRequired }).isRequired,
   fullModel: PropTypes.string.isRequired,
   alias: PropTypes.string,

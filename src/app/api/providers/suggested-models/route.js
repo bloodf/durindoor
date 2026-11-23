@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // unregistered target here would turn this route into an SSRF primitive.
 const ALLOWED_FETCHERS = new Set(
   Object.values(AI_PROVIDERS).
-  map((provider) => provider?.modelsFetcher).
+  flatMap((provider) => [provider?.modelsFetcher, ...Object.values(provider?.modelsFetchers || {})]).
   filter((fetcher) => fetcher && isString(fetcher.url) && isString(fetcher.type)).
   map((fetcher) => `${fetcher.type}\n${fetcher.url}`)
 );

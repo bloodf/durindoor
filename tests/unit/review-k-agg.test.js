@@ -258,3 +258,31 @@ it.skipIf(!process.env.DURINDOOR_TEST_PG_URL)("rewrites populated last-seen and 
     await client.end();
   }
 });
+
+it("preserves model last-seen data and detaches key attribution on backup restore", async () => {
+  insertKey("alpha", "fixture-old", "Alpha");
+  await writeUsage(initial, "fixture-old", "alpha");
+  await writeUsage("2026-09-19T17:00:00.000Z", null, null);
+  const { exportDb, importDb } = await import("@/lib/db/index.js");
+  await importDb(await exportDb());
+
+  expect(db.all("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual([
+    { apiKey: "", lastUsed: "2026-09-19T17:00:00.000Z" },
+  ]);
+  expect(JSON.parse(db.get("SELECT data FROM usageDaily").data).byApiKey).toEqual({});
+});
+
+it("keeps last-seen dimensions consistent when a deleted key's event gains an endpoint", async () => {
+  insertKey("alpha", "fixture-old", "Alpha");
+  const entry = {
+    timestamp: initial, apiKey: "fixture-old", apiKeyId: "alpha", usageEventId: "fixture-event",
+    provider: "fixture", model: "model", cost: 0, tokens: { prompt_tokens: 2 }, strict: true,
+  };
+  await repo.saveRequestUsage(entry);
+  db.run("DELETE FROM apiKeys WHERE id = ?", ["alpha"]);
+  await repo.saveRequestUsage({ ...entry, endpoint: "/chat" });
+
+  expect(db.all("SELECT apiKey, endpoint, lastUsed FROM usageLastSeen")).toEqual([
+    { apiKey: "alpha", endpoint: "/chat", lastUsed: initial },
+  ]);
+});

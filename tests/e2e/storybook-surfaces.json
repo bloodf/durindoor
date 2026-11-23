@@ -48152,7 +48152,7 @@
       "id": "src/shared/components/CursorAuthModal.js#CursorAuthModal",
       "sourcePath": "src/shared/components/CursorAuthModal.js",
       "symbol": "CursorAuthModal",
-      "sourceSha256": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+      "sourceSha256": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48177,7 +48177,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Found-token fixture completes auto detection; CursorAuthModal final branch renders success Notice and enabled Import Token.",
@@ -48192,7 +48192,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Pending auto-import leaves CursorAuthModal in its autoDetecting LoadingState.",
@@ -48207,7 +48207,7 @@
             "windows-manual"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "windowsManual fixture selects manual-warning branch, rendering retry control and warning Notice.",
@@ -48222,7 +48222,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Story stays in windows-manual branch after filling both credentials; final enabled Import Token control is owned by CursorAuthModal. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -48241,7 +48241,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "POST import returns Cursor token rejected; final CursorAuthModal error alert renders that server message.",
@@ -48257,7 +48257,7 @@
             "busy-control"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Pending actual import request keeps the production Import Token control busy; absence of distinct body text is not a coverage waiver. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -48405,7 +48405,7 @@
       "id": "src/shared/components/CursorAuthModal.js#LoadingState",
       "sourcePath": "src/shared/components/CursorAuthModal.js",
       "symbol": "LoadingState",
-      "sourceSha256": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+      "sourceSha256": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48425,7 +48425,7 @@
             "auto-detect"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "CursorAuthModal renders LoadingState only while autoDetecting; pending fixture preserves its status region.",
@@ -48480,7 +48480,7 @@
       "id": "src/shared/components/CursorAuthModal.js#Notice",
       "sourcePath": "src/shared/components/CursorAuthModal.js",
       "symbol": "Notice",
-      "sourceSha256": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+      "sourceSha256": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48501,7 +48501,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "Found-token auto detection renders CursorAuthModal Notice with success message.",
@@ -48516,7 +48516,7 @@
             "warning"
           ],
           "sourceHashes": {
-            "src/shared/components/CursorAuthModal.js": "3b008ea6c43f14ed4e9a909b5ad7b798861cb18dbcea74fc469a050dc992bce7",
+            "src/shared/components/CursorAuthModal.js": "9b381df0c0865afb3ae31a436e0ec7da1526ece768e6622f4cadb707de913a46",
             "src/shared/components/CursorAuthModal.stories.jsx": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739"
           },
           "proposedSourceEvidence": "windowsManual response renders CursorAuthModal warning Notice.",
@@ -49293,9 +49293,9 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "4c827cdfbcd8450c81ee4e1074fbb3a1a30b4b6cfd96499351184d43977ec29b"
+            "src/app/api/oauth/[provider]/[action]/route.js": "ee2337bcc2d284a1017b9dc5d1104c557fd840bbd00c166593d717a6cb0e8427"
           },
           "expectedVisibleText": "Enter an https URL, for example https://ghe.company.com",
           "id": "production-shared-auth-ghecopilotauthmodal--invalid-origin",
@@ -49317,9 +49317,9 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
-            "src/app/api/oauth/[provider]/[action]/route.js": "4c827cdfbcd8450c81ee4e1074fbb3a1a30b4b6cfd96499351184d43977ec29b"
+            "src/app/api/oauth/[provider]/[action]/route.js": "ee2337bcc2d284a1017b9dc5d1104c557fd840bbd00c166593d717a6cb0e8427"
           },
           "expectedVisibleText": "GHE-1234",
           "id": "production-shared-auth-ghecopilotauthmodal--device-code-handoff",
@@ -53110,7 +53110,7 @@
       "id": "src/shared/components/OAuthModal.js#OAuthModal",
       "sourcePath": "src/shared/components/OAuthModal.js",
       "symbol": "OAuthModal",
-      "sourceSha256": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+      "sourceSha256": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -53135,7 +53135,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
@@ -53151,7 +53151,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
@@ -53167,7 +53167,7 @@
             "fingerprint"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53184,7 +53184,7 @@
             "device-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
@@ -53199,7 +53199,7 @@
             "manual-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
@@ -53214,7 +53214,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "9311de9db95b690756f4476024d237e01b852a32622c5edb0c60947fb860c916",
+            "src/shared/components/OAuthModal.js": "b7f414d3d8a01e8823ca1cba0ba89a81caeb5ba42bbe3580bc953542ee6efe82",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
@@ -102695,7 +102695,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "b430a5c01511d3c7b5c19217ca869033d19ea4de587bc795727dce1c88b332d5",
-    "sourceCensusSha256": "defe9afc619681addfdfce6d2e42e44ce01de349c2f1c48949f55f7d08bd31f7",
+    "sourceCensusSha256": "b38b3fb35219aa4ba75e2b8b97ef67d11a6b72aae1768cd0713dce6df411e8d2",
     "pendingRows": 432,
     "retainedApprovedRows": 207,
     "pendingReferences": 1486,

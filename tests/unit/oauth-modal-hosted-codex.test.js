@@ -66,6 +66,7 @@ describe("OAuthModal hosted Codex flow", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     fetchMock = vi.fn(async (url) => {
+      if (url === "/api/deployment-mode") return response({ hosted: window.location.hostname !== "localhost" });
       if (url === "/api/oauth/codex/authorize") {
         return response({ authUrl, flowId: "flow-1", state });
       }
@@ -103,7 +104,7 @@ describe("OAuthModal hosted Codex flow", () => {
       body: expect.any(String),
     }));
     const authorizeRequest = fetchMock.mock.calls.find(([url]) => url === "/api/oauth/codex/authorize")[1];
-    expect(JSON.parse(authorizeRequest.body)).toEqual(expect.objectContaining({ redirectUri }));
+    expect(JSON.parse(authorizeRequest.body)).toEqual(expect.objectContaining({ redirectUri: "https://dashboard.example/callback" }));
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/oauth/codex/start-proxy")).toBe(false);
     expect(openMock).toHaveBeenCalledWith(authUrl, "_blank", "noopener,noreferrer");
     expect(new URL(openMock.mock.calls[0][0]).searchParams.get("redirect_uri")).toBe(redirectUri);

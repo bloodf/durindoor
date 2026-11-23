@@ -761,14 +761,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
       // tool whose single parameter is the raw `input` string. The response
       // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
+        const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: withBooleanStrict({
             name: tool.name,
-            description: String(tool.description || ""),
+            description: [String(tool.description || ""), formatHint].filter(Boolean).join("\n\n"),
             parameters: sanitizeToolSchemaParameters({
               type: "object",
-              properties: { input: { type: "string" } },
+              properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
               required: ["input"],
               additionalProperties: false
             }, tool.name)

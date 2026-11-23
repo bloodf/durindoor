@@ -1,17 +1,8 @@
 import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
-import { initTranslators } from "open-sse/translator/index.js";
 import { withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
 
-let initialized = false;
-
-async function ensureInitialized() {
-  if (!initialized) {
-    await initTranslators();
-    initialized = true;
-  }
-}
 
 async function OPTIONSHandler() {
   return new Response(null, {
@@ -25,7 +16,6 @@ async function OPTIONSHandler() {
  * omit the Accept header, keeping slow provider setup alive until data arrives.
  */
 async function POSTHandler(request) {
-  await ensureInitialized();
   const body = await request.clone().json().catch(() => null);
 
   // Codex CLI and other Responses API consumers may drop the connection if no

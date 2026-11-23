@@ -1,17 +1,8 @@
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
-import { initTranslators } from "open-sse/translator/index.js";
 import { transformToOllama } from "open-sse/utils/ollamaTransform.js";
 import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
-let initialized = false;
-
-async function ensureInitialized() {
-  if (!initialized) {
-    await initTranslators();
-    initialized = true;
-  }
-}
 
 async function OPTIONSHandler() {
   return new Response(null, {
@@ -24,7 +15,6 @@ async function OPTIONSHandler() {
 }
 
 async function POSTHandler(request) {
-  await ensureInitialized();
   
   const clonedReq = request.clone();
   let modelName = "llama3.2";

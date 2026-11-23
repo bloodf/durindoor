@@ -1,12 +1,12 @@
+import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleModerationsCore } from "open-sse/handlers/moderationsCore.js";
 import { runWithModelFallback } from "open-sse/services/modelFallback.js";
@@ -16,11 +16,11 @@ import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 /**
  * Handle moderations request — OpenAI-compatible /v1/moderations passthrough.
- * Follows the same auth + fallback pattern as handleChat/handleEmbeddings.
+ * Follows the same auth + fallback pattern as handleChat/handleEmbeddings and
+ * forwards request.signal without cooling down accounts on client abort.
  *
  * @param {Request} request
  * @returns {Promise<Response>}
@@ -38,19 +38,13 @@ async function handleModerationsHandler(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "moderations" });
   if (apiKey) {
     log.debug("AUTH", "API key provided");
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  if (admissionError) return admissionError;
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
@@ -66,6 +60,9 @@ async function handleModerationsHandler(request) {
 }
 
 async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId, usageContext) {
+  if (request.signal?.aborted) {
+    return errorResponse(499, "Moderation request aborted");
+  }
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("MODERATION", "Invalid model format", { model: modelStr });
@@ -107,8 +104,11 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log });
+    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log, signal: request.signal });
     if (result.success) return recordSuccess(result, credentials);
+    if (request.signal?.aborted || result.status === 499) {
+      return result.response || errorResponse(499, result.error || "Moderation request aborted");
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Moderation failed");
   }
 
@@ -142,19 +142,26 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
 
     const refreshedCredentials = await checkAndRefreshToken(provider, { ...credentials });
 
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
     const result = await handleModerationsCore({
       body,
       modelInfo: { provider, model },
       credentials: toExecutorCredentials(refreshedCredentials),
       log,
+      signal: request.signal,
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       },
     });
 
     if (result.success) return recordSuccess(result, credentials);
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
+    // Client abort: return 499 without cooling down the account or trying fallbacks.
+    if (request.signal?.aborted || result.status === 499) {
+      return result.response || errorResponse(499, result.error || "Moderation request aborted");
+    }
+
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

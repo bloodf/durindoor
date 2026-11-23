@@ -1,0 +1,113 @@
+---
+title: "Microsoft 365 Copilot Web"
+description: Route chat through a signed-in Microsoft 365 Copilot session.
+---
+
+`copilot-m365-web` (alias `m365copilot`, models under `m365/`) sends chat requests through a signed-in Microsoft 365 Copilot session at [m365.cloud.microsoft/chat](https://m365.cloud.microsoft/chat) over the Substrate Chathub WebSocket. It is an unofficial integration of a private endpoint and can break when Microsoft changes it. It is a different provider from Copilot Web (`copilot-web`, the personal service at `copilot.microsoft.com`); their credentials and accounts never mix.
+
+A connection is one of two kinds:
+
+| Kind | Stored as | Renews itself |
+| --- | --- | --- |
+| Pasted session | `cookie` row: the `access_token` and `chathubPath` you copied | No. Paste a new one when it expires (about 75 minutes). |
+| Native sign-in | `oauth` row: access token, refresh token and expiry | Yes, per connection. |
+
+Both kinds work side by side and serve the same models.
+
+## Native sign-in (work or school accounts)
+
+Native sign-in is an authorization-code flow with PKCE against the Microsoft identity platform. DurinDoor never sees your password or MFA code.
+
+From the dashboard: open **Providers → Microsoft 365 Copilot Web**, choose **Microsoft sign-in**, then **Start sign-in**. The dialog shows the Microsoft sign-in link and the steps below, and has a field for the callback URL. **Connect** saves the connection.
+
+The same flow is available as an OAuth service under `/api/oauth/copilot-m365-web/`, called with your dashboard session:
+
+1. `POST /api/oauth/copilot-m365-web/authorize` with `{}` (or `{"connectionId": "<id>"}` to sign an existing native connection in again). The response has `authUrl`, `state`, `flowId` and `expiresAt`. The PKCE verifier stays on the server.
+2. Open a blank browser tab, open **DevTools → Network** and enable **Preserve log**, then open `authUrl` in that tab and finish Microsoft's account selection or MFA.
+3. In the Network log, find the request to `https://login.microsoftonline.com/common/oauth2/nativeclient` and copy its full **Request URL**. Microsoft serves nothing at that address, so the final address-bar URL is not usable.
+4. `POST /api/oauth/copilot-m365-web/exchange` with `{"code": "<that full URL>", "state": "<state>", "flowId": "<flowId>"}`. The connection is saved and the response lists its id, email and display name.
+
+An attempt is single-use and expires. DurinDoor checks the callback against the state it issued, accepts only the exact Microsoft native-client URL (no other host, port, credentials, fragment or `error` answer), and exchanges the code with the stored verifier. Nothing is sent to any other origin: the token requests never follow a redirect off `login.microsoftonline.com`. Treat the pasted URL as a one-time credential; do not post it in screenshots, logs or support messages.
+
+The sign-in uses the public client id that `m365.cloud.microsoft` itself uses; set `M365_OAUTH_CLIENT_ID` to a GUID to use a public client registered in your own tenant instead. Only work or school accounts are accepted. A personal Microsoft account (the consumer tenant) is refused. The account identity is the tenant and object id from the token, so two tenants that share an email stay separate connections, signing in again with the same identity updates the same row, and reconnecting a row with a different identity is refused.
+
+## Tier
+
+The tier picks the scenario, licence and agent Copilot is called with.
+
+| Connection | Tier used |
+| --- | --- |
+| `providerSpecificData.tier` set | That tier: `work` (alias `enterprise`), `edu` (alias `included`), or `individual` (alias `personal`) for the individual defaults. |
+| Native sign-in, no `tier`, `scenario`, `licenseType`, `agent` or `isEdu` | `work`, chosen automatically: native sign-in only accepts work or school accounts. |
+| Pasted session, no `tier` | Individual defaults, as before. |
+
+An education account is not detected automatically; set `tier` to `edu`. Explicit `scenario`, `licenseType` and `agent` fields still override the tier.
+
+## Refresh
+
+A native connection renews its access token before a request when it is close to expiry, and once more after an upstream 401. Each connection redeems its own refresh token at its own tenant's token endpoint, in the same pass that serves the request, so connections never share or overwrite each other's tokens. Microsoft rotates the refresh token on use; the rotated token and the new expiry are saved together. A rejected grant (`invalid_grant` and similar) marks the connection as needing sign-in again; a temporary failure keeps the current token and tries again on a later request. A pasted session has no refresh token and is never refreshed.
+
+## Conversation continuation
+
+Copilot keeps each conversation on its side and throttles accounts that open threads quickly, so DurinDoor continues one instead of re-sending the whole history. A request continues a conversation only when:
+
+- it comes through the same connection, with the same model, tier profile and tool set;
+- its messages up to the previous reply are exactly the history that conversation was sent;
+- the next message is the reply DurinDoor returned (the same tool-call ids, or the same text up to whitespace) and something follows it;
+- the conversation has been idle less than 30 minutes and is not near Copilot's 600-message cap.
+
+A continued turn sends only the messages after the reply. Anything else (an edited history, another session with the same opener, a different reply, an expired conversation, a connection without an id, a failed earlier turn) starts a fresh conversation with the whole history. Continuations are kept in process memory, so a restart starts fresh conversations, and two connections never share one. This also covers individual (personal) tier connections. The separate personal service, Copilot Web, still opens a new conversation per request; the pinned OmniRoute source has no reuse for it either.
+
+## Images and tools
+
+- **Images.** A request may carry `image_url` parts (a data URL or a public HTTPS URL) or Responses `input_image` parts. Each image is uploaded to Copilot's `UploadFile` endpoint inside the turn's conversation, and the text marks where it sat (`[image 1]`). A fresh conversation uploads every image in the history; a continued one uploads only the new messages' images. Limits: 10 PNG, JPEG, GIF or WebP images, 10 MiB each and 40 MiB per request, with the format read from the bytes. HTTPS URLs are fetched through the public-address-only guard. A failed upload fails the request (502 `m365_image_upload_failed`, 400 `m365_image_rejected` or `m365_image_invalid`); a turn never goes ahead without an image it was given. Audio and file parts are rejected with 400.
+- **Tools.** Tools are prompt-emulated, not Microsoft function calls. A request with `tools` is one buffered turn; the model answers with a fenced block named for a declared tool and a JSON object of arguments, and only declared tools with schema-valid arguments come back as `tool_calls`. `tool_choice` and `parallel_tool_calls` are honoured. A malformed call, a missing required call or a long document with a single trailing example is reported or kept as text rather than guessed. Your application must still enforce its own tool permissions.
+
+Both work through the OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) routes, as JSON or as a stream.
+
+## Citations and reasoning
+
+- **Citations.** When Copilot cites a web source, the reply text carries a numbered Markdown link (`[1](https://…)`) where Copilot placed the citation. The OpenAI route also returns `url_citation` entries in `message.annotations` (and on the streamed chunk that carries the link); their `start_index` and `end_index` cover the link in `content`. The Anthropic route keeps the links in the text. A citation whose source never arrives is dropped. Annotations are left out when the reply is a tool call.
+- **Reasoning summary.** When Copilot sends a summary of its reasoning, the OpenAI route returns it as `reasoning_content` (streamed before the answer), and the Anthropic route returns it as a `thinking` block. It is never mixed into the answer text.
+
+## Temporary chats
+
+Every turn is sent as a Copilot temporary chat (`disableMemory=1`): the conversation keeps its context while DurinDoor continues it, but it does not appear in the account's chat history or memory. Set `providerSpecificData.temporaryChat` to `false` to keep conversations in the history. Image generation turns are always temporary.
+
+## Models and tone
+
+`copilot-m365` uses Copilot's default routing for the tier. You can also request one of the model ids Copilot documents, as `m365/<id>`: `auto`, `quick`, `think-deeper`, `claude`, `claude-sonnet`, `claude-sonnet-4.5`, `claude-sonnet-4.6`, `claude-sonnet-5`, `claude-sonnet-5.5`, `claude-sonnet-think-deeper`, `claude-opus`, `claude-opus-4.5`, `claude-opus-4.8`, `claude-opus-5`, `claude-opus-5.5`, `gpt-5.2`, `gpt-5.3`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6` (each also with `-quick` and `-think-deeper`), `gpt-6-think-deeper`, `gpt-6-sol`, `gpt-6.1-sol` and `m365-copilot`. Each id selects Copilot's tone for that model and, for some, the scenario and licence it needs. These ids are not in the model list and are not a promise that your tenant has the model: a tenant without the licence gets a licence error (below). `providerSpecificData.tone`, `scenario`, `licenseType` and `agent` override the profile.
+
+## Errors
+
+Copilot's refusals come back with their own status and a stable `error.code`:
+
+| Status | `error.code` | Meaning |
+| --- | --- | --- |
+| 403 | `m365_model_not_licensed` | The account has Copilot but not this model. `m365_error_code` is Copilot's code (for example `ClaudeUnavailableForLicense`) and `param` is the model. |
+| 403 | `m365_account_not_licensed` | The account has no Copilot licence (`InvalidCopilotLicense`). |
+| 429 | `m365_throttled` | Copilot throttled the account, or refused the connection with 429. |
+| 429 | `priority_access_exhausted` | The account used up its priority access; `param` is `day` or `week` when Copilot said which. |
+| 429 | `reasoning_turns_exhausted` | The account used up its reasoning ("Think deeper") turns; quick models may still work. |
+| 400 | `provider_safety_rejection` | Copilot's safety filter declined the request. |
+| 502 | `m365_internal_error` | Copilot dropped the turn without content. |
+
+A 429 always has a `Retry-After` header: Copilot's own value when it sent one, the time to the next UTC day or week for priority access, and 60 seconds otherwise. A streamed request that is refused before any text answers with the same status and JSON body instead of a stream. Only the codes above cross into the response; Copilot's own messages do not. The gateway treats a licence or throttling refusal as an account failure and tries the next connection.
+
+## Image generation
+
+`POST /v1/images/generations` with `"model": "m365/copilot-m365-image"` draws images with Copilot. It needs a **native sign-in** connection: the images are stored on Microsoft's Designer service, and DurinDoor downloads them with a Designer token it mints from that connection's refresh token. A pasted session is refused with 400 `m365_image_requires_sign_in` before anything is sent, so it does not spend the account's image budget.
+
+- One request is one Copilot temporary chat turn. `size` (`WIDTHxHEIGHT`) is passed as an orientation instruction (landscape, portrait or square); Copilot picks the actual size. `n` caps how many images are returned; Copilot decides how many it draws. Images are returned as `b64_json`.
+- The Designer token is requested from the connection's own tenant and only sent to `https://designerapp.officeapps.live.com`. Neither the token request nor a download follows a redirect to another origin. A rotated refresh token is saved on the connection.
+- When Copilot answers without an image: 429 `m365_image_quota_exceeded` (the account's daily image budget), 503 `m365_image_capacity`, 400 `m365_image_refused`, or 502 `m365_image_not_generated`. These are read from Copilot's wording and fall back to the last one. A download that fails is 502 `m365_image_download_failed`; a refused Designer token is 401 `m365_image_token_failed` (sign in again).
+
+## Not included
+
+DurinDoor refuses frames over 1 MiB and responses over 16 MiB, sends a stop frame when a request is cancelled, and handles the Metrics follow-up frame. If Copilot returns an empty `InternalError`, DurinDoor retries once in a fresh conversation. After three consecutive `unauthorized_client` refresh failures, a per-connection breaker pauses refresh attempts for 30 minutes; signing in again resets it. Token counts are gateway estimates.
+
+## Source
+
+See also the [web-cookie guide](./web-cookie.mdx) for pasting a session.
+
+Chat and image-generation WebSocket turns use the connection proxy. With strict proxy enabled, a missing usable route fails the request before connecting.

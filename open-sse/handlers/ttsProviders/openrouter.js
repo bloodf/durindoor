@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "../../services/openrouterRouting.js";
 // OpenRouter TTS — chat completions with the audio modality (SSE stream).
 // The stream carries the provider receipt (tokens + cost) the audio budget
 // gate needs, so it stays the primary transport. A model OpenRouter refuses
@@ -54,23 +55,26 @@ export default {
     if (!credentials?.apiKey) throw new Error("No OpenRouter API key configured");
 
     const { ttsModel, voice } = splitModelVoice(model, TTS_CFG.defaultModel);
+    const routed = applyOpenRouterRouting({ model: ttsModel, provider: opts.requestProvider }, opts.routingPolicy, "completion");
     const headers = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.apiKey}`,
       ...(TTS_CFG.headers || {}),
     };
 
+    const requestBody = {
+      model: ttsModel,
+      modalities: ["text", "audio"],
+      audio: { voice: voice || "alloy", format: "wav" },
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: text }],
+    };
+    if (routed.provider) requestBody.provider = routed.provider;
     const res = await fetch(TTS_CFG.baseUrl || `${BASE}/chat/completions`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        model: ttsModel,
-        modalities: ["text", "audio"],
-        audio: { voice: voice || "alloy", format: "wav" },
-        stream: true,
-        stream_options: { include_usage: true },
-        messages: [{ role: "user", content: text }],
-      }),
+      body: JSON.stringify(requestBody),
       signal: opts.signal,
     });
 
@@ -80,6 +84,7 @@ export default {
       // A pure text-to-speech model is refused here and is only served by the
       // dedicated speech endpoint.
       if (res.status === 400 && TTS_ONLY_MODEL_RE.test(message)) {
+        if (routed.provider?.zdr || routed.provider?.quantizations) throw Object.assign(new Error("OpenRouter speech endpoint cannot enforce the routing policy"), { status: 400 });
         return synthesizeViaSpeechEndpoint(text, ttsModel, voice, headers, opts);
       }
       throw new Error(message);

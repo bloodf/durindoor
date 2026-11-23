@@ -11,6 +11,10 @@ npm install --global durindoor
 durindoor --host 127.0.0.1
 ```
 
+Launcher options include `--host <host>` (`-H`) and `--port <port>` (`-p`). Both
+require a value; the port must be an integer from 1 through 65535. Use
+`--headless` to run without a browser, tray or interactive menu.
+
 Replace the password before running the command. Keep the signing secret stable across restarts. Open `http://localhost:20128/dashboard`, sign in, connect a provider, and create a gateway key.
 
 For unattended startup, use `durindoor --headless --skip-update --host 127.0.0.1`.

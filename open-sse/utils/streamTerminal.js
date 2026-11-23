@@ -1,4 +1,4 @@
-import { FORMATS } from "../translator/formats.js";
+import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { CLAUDE_STOP, GEMINI_ERROR_FINISH_REASONS, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
 import { buildAbortedResponsesTerminalBytes } from "./responsesStreamHelpers.js";
 import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -339,6 +339,104 @@ export function isCoherentNonStreamingResponse(chunk, format = FORMATS.OPENAI) {
   return isCoherentOpenAICompletion(chunk);
 }
 
+const RESPONSES_SUCCESS_TERMINALS = new Set(["response.completed", "response.done"]);
+const RESPONSES_CLOSED_TERMINALS = new Set([
+  "response.failed",
+  "response.incomplete",
+  "response.cancelled",
+  "response.canceled",
+  "error",
+]);
+
+function frameData(frame) {
+  const match = frame.match(/^data:\s*(.*)$/m);
+  return match ? match[1].replace(/\r$/, "").trim() : null;
+}
+
+function frameEvent(frame, payload) {
+  const eventLine = frame.match(/^event:\s*(\S+)/m)?.[1] || null;
+  return eventLine || (isString(payload?.type) ? payload.type : null);
+}
+
+function parseFramePayload(data) {
+  if (!isString(data) || data.length === 0 || data === "[DONE]") return null;
+  try {
+    const parsed = JSON.parse(data);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** OpenAI finish_reason is progress, not the client end. A later usage frame can still follow. */
+function openAIFinishReasonSeen(format, frame) {
+  if (format !== FORMATS.OPENAI || !isString(frame)) return false;
+  for (const line of frame.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = parseFramePayload(trimmed.slice(5).trim());
+    if (!isRecord(payload) || !Array.isArray(payload.choices)) continue;
+    for (const choice of payload.choices) {
+      if (isString(choice?.finish_reason) && choice.finish_reason.length > 0) return true;
+    }
+  }
+  return false;
+}
+
+/** Gemini's real end is a candidate that already carries its finish reason. */
+function geminiClientTerminalKind(payload) {
+  if (!isRecord(payload)) return null;
+  if (geminiPromptFeedbackError(payload)) return "failure";
+  const promptBlock = payload.promptFeedback?.blockReason || payload.response?.promptFeedback?.blockReason;
+  if (isString(promptBlock) && promptBlock.length > 0) return "success";
+  const candidates = geminiCandidates(payload);
+  if (candidates.length === 0) return null;
+  let failure = false;
+  for (const candidate of candidates) {
+    const reason = candidate?.finishReason || candidate?.finish_reason;
+    if (!isString(reason) || reason.length === 0) return null;
+    if (GEMINI_ERROR_FINISH_REASONS.has(reason)) failure = true;
+  }
+  return failure ? "failure" : "success";
+}
+
+/**
+ * Real end of one emitted client frame.
+ *
+ * OpenAI ends on `[DONE]` or an in-band error object, never on `finish_reason`
+ * (a usage trailer can still follow that frame). Claude ends on `message_stop`.
+ * Responses ends on `response.completed` / `response.failed` and the other
+ * Responses terminal events. Gemini ends when the candidate is final.
+ *
+ * `success` and `done` are empty-completion candidates. `failure` has ended
+ * the stream and must be forwarded unchanged.
+ *
+ * @returns {"success"|"done"|"failure"|null}
+ */
+export function emittedFormatTerminalKind(format, frame) {
+  if (!isString(frame) || frame.length === 0) return null;
+  const data = frameData(frame);
+  if (data === "[DONE]" || /^data: \[DONE\]/m.test(frame)) return "done";
+  const payload = parseFramePayload(data);
+  const event = frameEvent(frame, payload);
+
+  if (format === FORMATS.OPENAI) {
+    return isRecord(payload?.error) || /"error"\s*:\s*\{/.test(frame) ? "failure" : null;
+  }
+  if (format === FORMATS.CLAUDE) {
+    if (event === "message_stop" || frame.includes('"type":"message_stop"')) return "success";
+    if (event === "error" || frame.includes('"type":"error"') || /^event: error/m.test(frame)) return "failure";
+    return null;
+  }
+  if (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX) {
+    if (RESPONSES_SUCCESS_TERMINALS.has(event)) return "success";
+    if (RESPONSES_CLOSED_TERMINALS.has(event) || frame.includes('"type":"error"')) return "failure";
+    return null;
+  }
+  if (GEMINI_FAMILY_FORMATS.has(format)) return geminiClientTerminalKind(payload);
+  return null;
+}
+
 /**
  * Track terminal events emitted to the client. This intentionally stays
  * separate from createUpstreamTerminalTracker, which observes raw provider
@@ -349,26 +447,30 @@ const clientTerminalEncoder = new TextEncoder();
 export function createTerminalTracker(format) {
   if (![FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(format)) return null;
   let terminated = false;
+  let sawOpenAIFinish = false;
 
   return {
     observeClientFrame(frame) {
       if (terminated || !frame) return;
-      if (format === FORMATS.OPENAI) {
-        terminated = /^data: \[DONE\]/m.test(frame) ||
-        /"finish_reason"\s*:\s*"[^"\n]+"/.test(frame) ||
-        /"error"\s*:\s*\{/.test(frame);
-      } else if (format === FORMATS.CLAUDE) {
-        terminated = /^event: (message_stop|error)/m.test(frame) ||
-        frame.includes('"type":"message_stop"') ||
-        frame.includes('"type":"error"');
-      } else {
-        terminated = /^event: (response\.(completed|done|incomplete|failed|cancelled|canceled)|error)/m.test(frame) ||
-        /^data: \[DONE\]/m.test(frame) ||
-        frame.includes('"type":"error"');
+      if (emittedFormatTerminalKind(format, frame) !== null) {
+        terminated = true;
+        return;
       }
+      if (openAIFinishReasonSeen(format, frame)) sawOpenAIFinish = true;
     },
-    buildRecoveryBytes() {
+    /**
+     * @param {{drop?: boolean}} [options] `drop` is a network or abort close.
+     * A clean EOF after an OpenAI finish_reason is a finished translation
+     * (that format does not always emit `[DONE]`). A drop after the same
+     * frame is still incomplete: usage and `[DONE]` never arrived.
+     */
+    buildRecoveryBytes(options) {
       if (terminated) return null;
+      const drop = isRecord(options) && options.drop === true;
+      if (sawOpenAIFinish && !drop) {
+        terminated = true;
+        return null;
+      }
       terminated = true;
       if (format === FORMATS.OPENAI) {
         return clientTerminalEncoder.encode('data: {"error":{"type":"stream_error","message":"upstream_stream_incomplete","code":"stream_disconnected"}}\n\ndata: [DONE]\n\n');

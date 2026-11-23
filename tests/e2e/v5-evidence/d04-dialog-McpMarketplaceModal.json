@@ -1,0 +1,9 @@
+{
+  "route": "dialog/McpMarketplaceModal",
+  "stories": [
+    "production-shared-domain-mcpmarketplacemodal--browse",
+    "production-shared-domain-mcpmarketplacemodal--registry-error",
+    "production-shared-domain-mcpmarketplacemodal--probe-error-branch",
+    "production-shared-domain-mcpmarketplacemodal--requires-auth-branch"
+  ]
+}

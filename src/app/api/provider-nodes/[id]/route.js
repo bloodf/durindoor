@@ -4,6 +4,17 @@ import { deleteCustomModel, deleteProviderConnectionsByProvider, deleteProviderN
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
 import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { assertOutboundUrlAllowed } from "open-sse/utils/outboundUrlGuard.js";
+import { isString } from "@/shared/utils/typeChecks.js";
+
+function isAllowedNodeBaseUrl(value) {
+  try {
+    assertOutboundUrlAllowed(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 
 // PUT /api/provider-nodes/[id] - Update provider node
@@ -46,8 +57,11 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
     }
 
-    if (!baseUrl?.trim()) {
+    if (!isString(baseUrl) || !baseUrl.trim()) {
       return NextResponse.json({ error: "Base URL is required" }, { status: 400 });
+    }
+    if (!isAllowedNodeBaseUrl(baseUrl.trim())) {
+      return NextResponse.json({ error: "Invalid or blocked base URL" }, { status: 400 });
     }
 
     let sanitizedBaseUrl = baseUrl.trim();

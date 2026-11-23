@@ -6,7 +6,9 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import Select from "@/shared/ui/components/Select.jsx";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Field from "@/shared/ui/components/Field.jsx";
 import WebLoginModal from "@/shared/components/WebLoginModal";
 
@@ -56,6 +58,7 @@ function ChatgptWebCookieSteps() {
 }
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, credentialOptional = false, authType, authHint, authSnippet, website, webLogin, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
+  const v5 = useUiV5();
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
@@ -69,13 +72,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const hostFieldPlaceholder = isCerebrium ? "https://api.cortex.cerebrium.ai/v4/project/app/run" : isOpenCodeServer ? "http://127.0.0.1:4096" : isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
   const isDevinAgentic = provider === "devin-cli-agentic";
   const isCookie = authType === "cookie";
+  const isAuthToken = authType === "auth_token";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
   // Compatible nodes are often keyless LAN endpoints, so their key is optional.
   const keyOptional = credentialOptional || isCompatible;
-  const credentialLabel = isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : keyOptional ? "API key (optional)" : "API Key";
+  const credentialLabel = isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : isAuthToken ? "Auth Token" : keyOptional ? "API key (optional)" : "API Key";
   const credentialPlaceholder = isCookie ?
   provider === "grok-web" ? "sso=xxxxx... or just the raw value" : "eyJhbGciOi..." :
+  isAuthToken ? "eyJhbGciOi..." :
   isXaiApiKey ? "xai-..." : "";
 
   const isAzure = provider === "azure";
@@ -255,6 +260,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       await onSave({
         name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : isLaya ? "Laya" : ""),
         apiKey: formData.apiKey,
+        ...(isAuthToken ? { authType: "auth_token" } : null),
         sessionToken,
         defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
         priority: formData.priority,
@@ -286,8 +292,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       // Malformed payload (non-array connections) must abort, not plan from an
       // empty list — planning blind could overwrite an existing key.
       if (!data || !Array.isArray(data.connections)) throw new Error("preflight malformed");
+      const targetAuthType = isAuthToken ? "auth_token" : "apikey";
       const existingNames = data.connections.
-      filter((c) => c && c.provider === provider && c.authType === "apikey").
+      filter((c) => c && c.provider === provider && c.authType === targetAuthType).
       map((c) => c.name);
       usedNames = bulkUsedNameSet(existingNames);
     } catch {
@@ -329,6 +336,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           body: JSON.stringify({
             provider,
             apiKey: entry.apiKey,
+            ...(isAuthToken ? { authType: "auth_token" } : null),
             name: entry.name,
             priority: 1,
             testStatus: "unknown",
@@ -351,7 +359,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   return (
     <>
-    <Modal open={isOpen && !showWebLogin} title={`Add ${providerName || provider} ${isDevinAgentic ? "Connection" : credentialLabel}`} onClose={onClose}>
+    <Modal surfaceClassName={v5 ? "max-[480px]:max-h-[calc(100dvh-2rem)] max-[480px]:w-full max-[480px]:max-w-none" : ""} open={isOpen && !showWebLogin} title={`Add ${providerName || provider} ${isDevinAgentic ? "Connection" : credentialLabel}`} onClose={onClose}>
       <div className="flex flex-col gap-4">
         {webLogin ? (
           <section className="flex flex-col gap-2 rounded-dd-lg border border-dd-border p-3">
@@ -421,7 +429,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           <div className="flex gap-2">
             <Input
               label={credentialLabel}
-              type={isCookie ? "text" : "password"}
+              type={isCookie && !v5 ? "text" : "password"}
               value={formData.apiKey}
               onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
               placeholder={credentialPlaceholder}
@@ -463,11 +471,11 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         ) : null}
         {providerRegions ? (
           <Field label="Region">
-            <Select
+            {v5 ? <V5NativeSelect aria-label="Region" value={region} onChange={(event) => setRegion(event.target.value)}>{providerRegions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</V5NativeSelect> : <Select
               aria-label="Region"
               value={region}
               onChange={(value) => setRegion(value)}
-              options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} />
+              options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} />}
           </Field>
         ) : null}
         {isCompatible &&
@@ -591,12 +599,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
         {!isOpenCodeServer && !isDevinAgentic && <>
         <Field label="Proxy Pool">
-          <Select
+          {v5 ? <V5NativeSelect aria-label="Proxy Pool" value={formData.proxyPoolId} onChange={(event) => setFormData({ ...formData, proxyPoolId: event.target.value })}><option value={NONE_PROXY_POOL_VALUE}>None</option>{(proxyPools || []).map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</V5NativeSelect> : <Select
             aria-label="Proxy Pool"
             value={formData.proxyPoolId}
             onChange={(value) => setFormData({ ...formData, proxyPoolId: value })}
             options={[{ value: NONE_PROXY_POOL_VALUE, label: "None" }, ...(proxyPools || []).map((pool) => ({ value: pool.id, label: pool.name }))]}
-            placeholder="None" />
+            placeholder="None" />}
         </Field>
           
 

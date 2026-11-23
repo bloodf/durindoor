@@ -7,6 +7,10 @@ ZCode (`zcode`, alias `zc`) runs one text-only turn per request against a `zcode
 
 This provider is **staged and unverified**. Tests use an in-memory fake process that speaks the documented V4 NDJSON frames. No live ZCode runtime, profile, account or model list has been run against it. Treat every statement here as the documented contract, not tested behavior.
 
+## Account and isolation
+
+ZCode runs the operator's locally signed-in ZCode CLI on the gateway host. Every opted-in ZCode connection, and every API key routed through one, uses that same local login and its quota; connections do not carry separate ZCode credentials. Enable ZCode only on a gateway you operate for yourself. Tools stay disabled regardless of connection or API key.
+
 ## Read this first
 
 - **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request fail with HTTP 403 `zcode_dispatch_disabled` before any process starts. Each connection opts in on its own.
@@ -65,10 +69,8 @@ See `internal/docs/zcode-v4-compatibility-1252.md` in the repository for the pin
 
 - [ZCode V4 protocol guide](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/docs/zcode-protocol.md)
 - [ZCode V4 command schema](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/shared/src/zcode-protocol-v4/command.ts)
-- [OmniRoute ZCode registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/zcode/index.ts)
-- [OmniRoute ZCode executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/zcode.ts)
 
-<!-- Registration steps (for the registration batch; this unit edits none of these files):
+{/* Registration steps (for the registration batch; this unit edits none of these files):
 1. Registry promotion: move open-sse/providers/private/zcode.js to open-sse/providers/registry/zcode.js (default export unchanged), then run pnpm run gen:registry-index and pnpm run gen:agent-index. Do not hand-edit registry/index.js or open-sse/AGENT-INDEX.md.
 2. open-sse/executors/index.js: import ZcodeExecutor from ./zcode.js and map both "zcode" and "zc" to one shared instance (the concurrent-session counter lives on the instance). Add hasSpecializedExecutor coverage.
 3. extension providers.js and manifest host permissions: none. zcodeCookieProfile is notApplicable (local profile, no cookies); do not add ZCode to the cookie capture extension or its manifest.
@@ -79,4 +81,4 @@ See `internal/docs/zcode-v4-compatibility-1252.md` in the repository for the pin
 8. Stories: add the provider to the provider detail page stories and tests/e2e/storybook-surfaces.json if the surface list requires it.
 9. Tests: after registration, tests/unit/zcode-unregistered-guard.test.js (unqualified zcode/zc must not route) becomes false by design and must be replaced; tests/unit/zcode-provider.test.js then drops its registry/executor vi.mock composition and imports the real modules.
 10. Revisit internal/docs/zcode-v4-compatibility-1252.md once a live V4 runtime confirms enforcement of the denylist.
--->
+*/}

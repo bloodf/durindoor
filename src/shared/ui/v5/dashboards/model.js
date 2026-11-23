@@ -3,6 +3,8 @@ import { isBoolean, isString } from "../../../utils/typeChecks.js";
 /** Review-only preferences never write gateway settings, usage records or credentials. */
 export const WORKSPACES_KEY = "durindoor:v5-review:workspaces:v1";
 export const SAVER_LAYOUT_KEY = "durindoor:v5-review:token-saver-layout:v1";
+/** Production layout key; production never reads the review key above. */
+export const TOKEN_SAVER_LAYOUT_KEY = "durindoor:token-saver-layout:v1";
 export const SAVER_WIDGETS = [
   { id: "saver-summary", title: "Compression overview", span: 12, visible: true, source: "Token Saver · actual bytes and token delta" },
   { id: "saver-bytes", title: "Actual bytes saved", span: 8, visible: true, source: "Token Saver · aggregate stream" },

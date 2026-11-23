@@ -23,8 +23,35 @@ export const COLORS = {
   cyan: "\x1b[36m"
 };
 
-// Buffer tokens to prevent context errors
-const BUFFER_TOKENS = 2000;
+// Default buffer tokens reported to clients to prevent context-window overflows
+export const DEFAULT_BUFFER_TOKENS = 2000;
+
+const warnedInvalidUsageBuffers = new Set();
+
+/**
+ * Resolve the client-facing usage buffer from USAGE_BUFFER_TOKENS.
+ * Accepts non-negative decimal integers (including 0 to disable).
+ * Unset/blank or invalid values fall back to DEFAULT_BUFFER_TOKENS.
+ */
+export function getBufferTokens() {
+  const raw = process.env.USAGE_BUFFER_TOKENS;
+  if (raw === undefined || raw === null) return DEFAULT_BUFFER_TOKENS;
+  const trimmed = String(raw).trim();
+  if (trimmed === "") return DEFAULT_BUFFER_TOKENS;
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    if (Number.isSafeInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  if (!warnedInvalidUsageBuffers.has(trimmed)) {
+    warnedInvalidUsageBuffers.add(trimmed);
+    console.warn(
+      `[usage] Invalid USAGE_BUFFER_TOKENS="${trimmed}"; expected a non-negative integer, falling back to ${DEFAULT_BUFFER_TOKENS}`,
+    );
+  }
+  return DEFAULT_BUFFER_TOKENS;
+}
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -34,6 +61,7 @@ function getTimeString() {
 /**
  * Add buffer tokens to usage to prevent context errors
  * @param {object} usage - Usage object (any format)
+ * @param {string} [provider] - Upstream provider id
  * @returns {object} Usage with buffer added
  */
 export function addBufferToUsage(usage, provider) {
@@ -41,21 +69,22 @@ export function addBufferToUsage(usage, provider) {
   if (provider === GEMINI_INTERACTIONS_ID) return usage;
   if (!usage || !isObject(usage)) return usage;
 
+  const buffer = getBufferTokens();
   const result = { ...usage };
 
-  // Claude format
-  if (result.input_tokens !== undefined) {
-    result.input_tokens += BUFFER_TOKENS;
+  // Claude / OpenAI Responses format
+  if (buffer > 0 && result.input_tokens !== undefined) {
+    result.input_tokens += buffer;
   }
 
-  // OpenAI format
-  if (result.prompt_tokens !== undefined) {
-    result.prompt_tokens += BUFFER_TOKENS;
+  // OpenAI Chat Completions format
+  if (buffer > 0 && result.prompt_tokens !== undefined) {
+    result.prompt_tokens += buffer;
   }
 
   // Calculate or update total_tokens
   if (result.total_tokens !== undefined) {
-    result.total_tokens += BUFFER_TOKENS;
+    if (buffer > 0) result.total_tokens += buffer;
   } else if (result.prompt_tokens !== undefined && result.completion_tokens !== undefined) {
     // Calculate total_tokens if not exists
     result.total_tokens = result.prompt_tokens + result.completion_tokens;
@@ -91,7 +120,7 @@ export function filterUsageForFormat(usage, targetFormat) {
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.OPENAI_RESPONSES]: [
-    'input_tokens', 'output_tokens',
+    'input_tokens', 'output_tokens', 'total_tokens',
     'input_tokens_details', 'output_tokens_details',
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
@@ -252,10 +281,16 @@ export function canonicalizeUsage(usage) {
   if (!usage || !isObject(usage) || Array.isArray(usage)) return null;
 
   const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
-  const completion = num(usage.completion_tokens ?? usage.output_tokens);
   const inputDetails = usage.prompt_tokens_details ?? usage.input_tokens_details;
   const outputDetails = usage.completion_tokens_details ?? usage.output_tokens_details;
   const reasoning = num(usage.reasoning_tokens ?? outputDetails?.reasoning_tokens);
+  const reportedCompletion = num(usage.completion_tokens ?? usage.output_tokens);
+  // 9router #3945: when reasoning sits inside the output count, an upstream
+  // that reports completion 0 (or below its own reasoning slice) undercounts.
+  // Additive families (reasoning_included_in_output === 0) bill it on top.
+  const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
+    reasoningIsSubsetOfOutput(usage);
+  const completion = foldReasoning ? reasoning : reportedCompletion;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
   usage.cache_creation_input_tokens !== undefined &&
@@ -288,7 +323,7 @@ export function canonicalizeUsage(usage) {
     completion_tokens: completion,
     // Exclusive cache normalization changes the component sum, so its incoming
     // total becomes stale. Inclusive providers' explicit totals stay authoritative.
-    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? explicitTotal : componentTotal,
+    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? Math.max(explicitTotal, foldReasoning ? componentTotal : 0) : componentTotal,
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation
   };
@@ -435,8 +470,13 @@ export function extractUsage(chunk) {
 
   // OpenAI Responses API terminal usage, including reported incomplete responses.
   // Cache fields already follow the inclusive Responses contract here.
-  if ((chunk.type === "response.completed" || chunk.type === "response.done" || chunk.type === "response.incomplete") && chunk.response?.usage && isObject(chunk.response.usage)) {
-    const usage = chunk.response.usage;
+  // A bare Responses-shaped `usage` (input_tokens/output_tokens, no prompt_tokens) can also
+  // arrive directly on a translated stream chunk; read it the same way.
+  const isTerminalResponsesEvent = chunk.type === "response.completed" || chunk.type === "response.done" || chunk.type === "response.incomplete";
+  const responsesUsage = isTerminalResponsesEvent ? chunk.response?.usage :
+    chunk.usage?.input_tokens !== undefined && chunk.usage?.prompt_tokens === undefined ? chunk.usage : null;
+  if (responsesUsage && isObject(responsesUsage)) {
+    const usage = responsesUsage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
     const cacheCreationTokens = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
@@ -458,11 +498,19 @@ export function extractUsage(chunk) {
   if (chunk.usage && isObject(chunk.usage) && (
   chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
+    const reasoningTokens = Number(chunk.usage.completion_tokens_details?.reasoning_tokens) || 0;
+    // 9router #3945: fold reasoning into a zero/undercounted completion only when
+    // it is a subset of the output count; additive upstreams are marked below.
+    const foldReasoning = reasoningTokens > (Number(chunk.usage.completion_tokens) || 0) &&
+      reasoningIsSubsetOfOutput(chunk.usage);
     const normalized = normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
-      completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
+      completion_tokens: foldReasoning ? reasoningTokens :
+        hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
-      cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
+      cached_tokens: [chunk.usage.prompt_tokens_details?.cached_tokens, chunk.usage.input_tokens_details?.cached_tokens,
+        chunk.usage.cache_read_input_tokens, chunk.usage.prompt_cache_hit_tokens, chunk.usage.cached_tokens]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
       // OpenRouter reports cost as a bare USD number on usage; same unit as cost_usd.
       cost_usd: isUsdReceipt(chunk.usage.cost) ? chunk.usage.cost : chunk.usage.cost_usd,
@@ -496,7 +544,7 @@ export function extractUsage(chunk) {
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
-      cached_tokens: usageMeta.cachedContentTokenCount,
+      cached_tokens: usageMeta.cachedContentTokenCount ?? usageMeta.cached_content_token_count,
       reasoning_tokens: usageMeta.thoughtsTokenCount
     }));
   }

@@ -1,4 +1,7 @@
-# ChatGPT Web Codex
+---
+title: "ChatGPT Web Codex"
+description: Use a signed-in ChatGPT web session for the Codex web provider's performance lanes.
+---
 
 ChatGPT Web Codex uses your signed-in ChatGPT web session to access the performance lanes exposed by the Codex web provider. It is a browser-session integration: create a ChatGPT Web connection and supply your own session cookies. DurinDoor encrypts stored connection credentials using its normal provider connection storage.
 
@@ -19,9 +22,5 @@ The Codex lanes are mapped to DurinDoor's supported ChatGPT Web model performanc
 
 ## Sources
 
-- [OmniRoute ChatGPT Web Codex registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/chatgpt-web-codex/index.ts)
-- [OmniRoute ChatGPT Web Codex executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/chatgpt-web-codex.ts)
 - [DurinDoor ChatGPT Web provider](../../open-sse/providers/registry/chatgpt-web.js)
 - [DurinDoor ChatGPT Web HTTP executor](../../open-sse/executors/chatgpt-web-http.js)
-
-<!-- Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories -->

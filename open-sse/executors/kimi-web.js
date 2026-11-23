@@ -427,6 +427,19 @@ export class KimiWebExecutor extends BaseExecutor {
       };
     }
 
+    // The web protocol has no function-call channel; never silently discard tools.
+    for (const [field, label] of [["tools", "OpenAI"], ["functions", "legacy"]]) {
+      const value = bodyObj[field];
+      if (value != null && (!Array.isArray(value) || value.length > 0)) {
+        return {
+          response: errorResponse(400, `Kimi Web does not support ${label} function tools`),
+          url: chatUrl,
+          headers: {},
+          transformedBody: bodyObj
+        };
+      }
+    }
+
     const messages = bodyObj.messages || [];
     // Strip the repo-wide thinking suffix (e.g. `k2d6-thinking(high)`) that
     // getModelUpstreamId preserves, so resolveModelConfig resolves the correct

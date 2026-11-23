@@ -496,7 +496,7 @@ describe("wrapQoderSSE", () => {
     const validInner = JSON.stringify({ choices: [{ delta: { content: "leak" } }] });
     const validEnv = JSON.stringify({ statusCodeValue: 200, body: validInner });
     const wrapped = await wrapQoderSSE(
-      makeResponse([`data: ${errorEnv}\n\ndata: ${validEnv}\n\n`]),
+      makeResponse([`data: ${JSON.stringify({ statusCodeValue: 200, body: JSON.stringify({ choices: [{ delta: { content: "initial" } }] }) })}\n\ndata: ${errorEnv}\n\ndata: ${validEnv}\n\n`]),
       "qoder/auto",
     );
     const out = await drain(wrapped);
@@ -525,7 +525,8 @@ describe("wrapQoderSSE", () => {
     const env = JSON.stringify({ statusCodeValue: 503, body: "service unavailable" });
     const wrapped = await wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
     const out = await drain(wrapped);
-    expect(out).toContain("Qoder upstream stream failed");
+    expect(wrapped.status).toBe(503);
+    expect(out).toContain("Qoder upstream request failed");
     expect(out).not.toContain("service unavailable");
     expect(out).not.toContain("data: [DONE]");
   });

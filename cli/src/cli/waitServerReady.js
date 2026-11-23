@@ -1,5 +1,6 @@
 "use strict";
 const net = require("net");
+const { getProbeHost } = require("./host");
 
 /**
  * CLI readiness probe (port of OmniRoute #6892 / upstream #6800 + #2460).
@@ -56,12 +57,14 @@ const ROUTE_MISSING_ERROR_CODES = new Set([
  *   hanging peer can never overshoot the overall timeoutMs budget.
  * @returns {Promise<"ready"|"fast-reject"|"hanging"|"unhealthy"|"not-listening">}
  */
-async function pollHealthOnce(port, requestTimeoutMs = PER_REQUEST_TIMEOUT_MS) {
+async function pollHealthOnce(port, requestTimeoutMs = PER_REQUEST_TIMEOUT_MS, host = "127.0.0.1") {
   if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) return "hanging";
   const deadline = Date.now() + requestTimeoutMs;
   let res;
   try {
-    res = await fetch(`http://127.0.0.1:${port}${HEALTH_PATH}`, {
+    const probeHost = getProbeHost(host);
+    const urlHost = probeHost.includes(":") ? `[${probeHost}]` : probeHost;
+    res = await fetch(`http://${urlHost}:${port}${HEALTH_PATH}`, {
       // Single per-call deadline shared by fetch and the TCP fallback below,
       // so fetch+TCP can never exceed requestTimeoutMs in aggregate.
       signal: AbortSignal.timeout(Math.min(requestTimeoutMs, PER_REQUEST_TIMEOUT_MS)),
@@ -74,7 +77,7 @@ async function pollHealthOnce(port, requestTimeoutMs = PER_REQUEST_TIMEOUT_MS) {
     // listening" from "alive but route not mounted yet" with one TCP probe,
     // itself capped at the REMAINING budget so it cannot overshoot.
     const remaining = Math.max(1, deadline - Date.now());
-    const listening = await isPortListening(port, remaining).catch(() => false);
+    const listening = await isPortListening(port, remaining, getProbeHost(host)).catch(() => false);
     if (!listening) return "not-listening";
     // Only proven route-missing signals (reset/early-close + 404) earn the
     // fast-reject grace. Malformed HTTP responses or explicit 5xx/401/403/429
@@ -97,7 +100,7 @@ async function pollHealthOnce(port, requestTimeoutMs = PER_REQUEST_TIMEOUT_MS) {
  * @param {{timeoutMs?: number, intervalMs?: number}} [opts]
  * @returns {Promise<boolean>} true if the server became ready within the deadline.
  */
-function waitServerReady(port, { timeoutMs = DEFAULT_TIMEOUT_MS, intervalMs = DEFAULT_INTERVAL_MS } = {}) {
+function waitServerReady(port, { timeoutMs = DEFAULT_TIMEOUT_MS, intervalMs = DEFAULT_INTERVAL_MS, host = "127.0.0.1" } = {}) {
   // Defensive: callers probe an externally-sourced port; never hang or throw.
   if (!Number.isInteger(port) || port < 1 || port > 65535) return Promise.resolve(false);
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0) return Promise.resolve(false);
@@ -122,7 +125,7 @@ function waitServerReady(port, { timeoutMs = DEFAULT_TIMEOUT_MS, intervalMs = DE
       try {
         // Cap this request at the remaining deadline so a hanging peer
         // cannot stretch the overall timeoutMs budget.
-        outcome = await pollHealthOnce(port, deadline - Date.now());
+        outcome = await pollHealthOnce(port, deadline - Date.now(), host);
       } catch {
         outcome = "not-listening"; // never throw out of the poll loop
       }
@@ -154,9 +157,9 @@ function waitServerReady(port, { timeoutMs = DEFAULT_TIMEOUT_MS, intervalMs = DE
  * @param {number} port
  * @returns {Promise<boolean>}
  */
-function isPortListening(port, timeoutMs = 1000) {
+function isPortListening(port, timeoutMs = 1000, host = "127.0.0.1") {
   return new Promise((resolve) => {
-    const socket = net.connect({ host: "127.0.0.1", port, timeout: Math.min(timeoutMs, 1000) });
+    const socket = net.connect({ host, port, timeout: Math.min(timeoutMs, 1000) });
     let settled = false;
     const finish = (ok) => {
       if (settled) return;

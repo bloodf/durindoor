@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -350,6 +350,17 @@ function convertToolResultContent(content) {
         parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { type: "url", url }, ...cache });
       }
     } else if (part?.type === CLAUDE_BLOCK.IMAGE) {
+      if (isString(part.image)) {
+        const parsed = parseDataUri(part.image);
+        if (parsed?.mimeType.startsWith("image/")) {
+          parts.push({
+            type: CLAUDE_BLOCK.IMAGE,
+            source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) },
+            ...cache
+          });
+        }
+        continue;
+      }
       const source = part.source;
       if (!source || !isObject(source) || Array.isArray(source)) continue;
       if (source.type === "url" && isToolResultImageUrl(source.url)) {
@@ -374,6 +385,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: msg.tool_call_id,
       content: convertToolResultContent(msg.content),
+      ...(msg.cache_control?.type === "ephemeral" && { cache_control: msg.cache_control }),
       // Reverse of claude-to-openai: restore the Claude-native error flag carried on the tool message.
       ...(msg.is_error === true && { is_error: true })
     });
@@ -386,7 +398,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     } else if (Array.isArray(userContent)) {
       for (const part of userContent) {
         if (part.type === OPENAI_BLOCK.TEXT && part.text) {
-          blocks.push({ type: CLAUDE_BLOCK.TEXT, text: part.text });
+          blocks.push({ type: CLAUDE_BLOCK.TEXT, text: part.text, ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control }) });
         } else if (part.type === CLAUDE_BLOCK.TOOL_RESULT) {
           blocks.push({
             type: CLAUDE_BLOCK.TOOL_RESULT,
@@ -395,24 +407,37 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
             ...(part.is_error && { is_error: part.is_error })
           });
         } else if (part.type === OPENAI_BLOCK.IMAGE_URL) {
-          const url = part.image_url.url;
+          // Skip malformed image_url parts missing a usable string url (#2186).
+          const url = part.image_url?.url;
+          if (!isString(url) || !url) continue;
           const parsed = parseDataUri(url);
           if (parsed) {
             blocks.push({
               type: CLAUDE_BLOCK.IMAGE,
-              source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) }
+              source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) },
+              ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control })
             });
           } else if (url.startsWith("http://") || url.startsWith("https://")) {
             blocks.push({
               type: CLAUDE_BLOCK.IMAGE,
-              source: { type: "url", url }
+              source: { type: "url", url },
+              ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control })
             });
           }
         } else if (part.type === OPENAI_BLOCK.IMAGE && part.source) {
-          blocks.push({ type: CLAUDE_BLOCK.IMAGE, source: part.source });
+          blocks.push({ type: CLAUDE_BLOCK.IMAGE, source: part.source, ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control }) });
+        } else if (part.type === OPENAI_BLOCK.IMAGE && part.image) {
+          const parsed = parseDataUri(part.image);
+          if (parsed) {
+            blocks.push({
+              type: CLAUDE_BLOCK.IMAGE,
+              source: { type: "base64", media_type: parsed.mimeType, data: compactBase64(parsed.base64) },
+              ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control })
+            });
+          }
         } else if (part.type === OPENAI_BLOCK.FILE || part.type === CLAUDE_BLOCK.DOCUMENT) {
           const source = claudePdfDocumentSource(part);
-          if (source) blocks.push({ type: CLAUDE_BLOCK.DOCUMENT, source });
+          if (source) blocks.push({ type: CLAUDE_BLOCK.DOCUMENT, source, ...(part.cache_control?.type === "ephemeral" && { cache_control: part.cache_control }) });
         }
       }
     }
@@ -420,7 +445,9 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
     const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some((part) => part.type === CLAUDE_BLOCK.THINKING);
-    if (isString(msg.reasoning_content) && msg.reasoning_content && !hasThinkingBlock) {
+    if (Array.isArray(msg._responsesClaudeThinking) && msg._responsesClaudeThinking.length) {
+      blocks.push(...msg._responsesClaudeThinking);
+    } else if (isString(msg.reasoning_content) && msg.reasoning_content && !hasThinkingBlock) {
       blocks.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
     }
     if (Array.isArray(msg.content)) {

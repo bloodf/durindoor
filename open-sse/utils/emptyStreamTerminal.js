@@ -3,6 +3,7 @@ import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
 import { hasResponsesContentItem } from "./responsesContent.js";
 import { isSafetyStopPayload } from "./safetyStopFrame.js";
+import { emittedFormatTerminalKind } from "./streamTerminal.js";
 
 const encoder = new TextEncoder();
 const GRACE_MS = 1000;
@@ -68,10 +69,14 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
       sawOutput = true;
     }
     const reason = payload?.choices?.find((choice) => choice.finish_reason)?.finish_reason;
-    const terminal = data === "[DONE]" || (format === FORMATS.OPENAI && reason === "stop") ||
-      (format === FORMATS.CLAUDE && event === "message_stop") ||
-      (format === FORMATS.OPENAI_RESPONSES && ["response.completed", "response.done"].includes(event));
-    if (terminal && !released && !sawError && !hasOutput()) {
+    const kind = emittedFormatTerminalKind(format, frame);
+    // Same end as the client tracker: [DONE], message_stop, response.completed
+    // / failed, or a final Gemini candidate. finish_reason is not that end.
+    const terminal = kind === "success" || kind === "done";
+    // Hold an empty OpenAI stop until the real end so it can still be replaced
+    // together with [DONE]. The stop frame itself does not terminate the stream.
+    const pendingOpenAIStop = format === FORMATS.OPENAI && reason === "stop";
+    if ((terminal || pendingOpenAIStop) && !released && !sawError && !hasOutput()) {
       held += frame;
       if (!timer) {
         timer = setTimeout(() => { try { release(controller); } catch { clear(); } }, GRACE_MS);

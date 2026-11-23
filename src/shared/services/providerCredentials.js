@@ -29,6 +29,8 @@ const MAX_REFRESH_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_REFRESH_CALLER_TIMEOUT_MS = 15_000;
 
 const credentialRefreshInflight = new Map();
+// Antigravity must reload under the same flight that owns the eventual write.
+const antigravityRefreshInflight = new Map();
 // Lane-acquisition signal per in-flight refresh operation, so callers that
 // join an existing refresh inherit its deferred timeout start.
 const laneSignals = new WeakMap();
@@ -292,10 +294,38 @@ proxyOptions = null,
   shouldCommit = null,
   reconcileDelays = [0, 10, 25, 50, 100],
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  callerTimeoutMs = DEFAULT_REFRESH_CALLER_TIMEOUT_MS
+  callerTimeoutMs = DEFAULT_REFRESH_CALLER_TIMEOUT_MS,
+  antigravityReloaded = false
 } = {})
 {
   assertRefreshActive(signal, shouldCommit);
+  if ((connection.provider === "antigravity" || connection.provider === "agy") && !antigravityReloaded) {
+    const key = refreshKey(connection);
+    let operation = antigravityRefreshInflight.get(key);
+    if (!operation) {
+      operation = (async () => {
+        const latest = await getProviderConnectionByIdImpl(connection.id);
+        if (!latest || latest.provider !== connection.provider) {
+          const error = new Error("Provider connection no longer exists");
+          error.code = "PROVIDER_CONNECTION_NOT_FOUND";
+          throw error;
+        }
+        // A newer credential already supersedes the token rejected by this request.
+        if (!providerRefreshContextMatches(latest, providerRefreshContext(connection))) {
+          return { connection: latest, refreshed: false };
+        }
+        return refreshAndUpdateCredentials(latest, force, proxyOptions, {
+          getExecutorImpl, getProviderConnectionByIdImpl, updateProviderConnectionImpl,
+          now, log, reconcileDelays, wait, callerTimeoutMs, antigravityReloaded: true
+        });
+      })();
+      antigravityRefreshInflight.set(key, operation);
+      operation.catch(() => {}).finally(() => {
+        if (antigravityRefreshInflight.get(key) === operation) antigravityRefreshInflight.delete(key);
+      });
+    }
+    return callerWait(operation, signal, shouldCommit, callerTimeoutMs);
+  }
   // Capture the exact issuer and credential context before invoking provider
   // code. Executors receive an isolated clone and cannot rewrite the CAS input.
   const expectedRefreshContext = providerRefreshContext(connection);
@@ -311,6 +341,7 @@ proxyOptions = null,
   structuredClone(connection.providerSpecificData) :
   connection.providerSpecificData;
   const credentials = {
+    id: connection.provider === "codex" ? connection.id : undefined,
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
     idToken: connection.idToken,

@@ -7,6 +7,7 @@ import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
 import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
 import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 function serializeRequestBody(requestBody) {
@@ -49,7 +50,7 @@ function binaryImageResponse(base64, outputFormat) {
  * @param {object} options.credentials - Provider credentials
  * @param {object} [options.log] - Logger
  * @param {boolean} [options.streamToClient] - Pipe SSE to client (codex)
- * @param {boolean} [options.binaryOutput] - Return raw image bytes
+ * @param {boolean} [options.binaryOutput] - Return raw image bytes (rejects n > 1 with 400 before dispatch)
  * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
@@ -90,6 +91,20 @@ export async function handleImageGenerationCore({
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
   }
 
+  // Binary output carries a single image response; reject n > 1 before billing upstream.
+  if (binaryOutput && Number(body.n) > 1) {
+    return createErrorResult(
+      HTTP_STATUS.BAD_REQUEST,
+      "Binary image output (response_format=binary) supports at most n=1"
+    );
+  }
+
+  // OpenAI GIF output cannot be combined with output compression.
+  if (provider === "openai" && isString(body.output_format) &&
+      body.output_format.trim().toLowerCase() === "gif" && body.output_compression != null) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "GIF output does not support output_compression");
+  }
+
   const adapter = getImageAdapter(provider);
   if (!adapter) {
     return createErrorResult(
@@ -108,7 +123,8 @@ export async function handleImageGenerationCore({
         credentials,
         log,
         proxyOptions,
-        signal
+        signal,
+        onCredentialsRefreshed
       );
       if (onRequestSuccess) await onRequestSuccess();
       const accounting = mediaAccounting(responseBody, provider, "image");
@@ -335,7 +351,9 @@ export async function handleImageGenerationCore({
   const normalized = adapter.normalize(parsed, body.prompt);
 
   // Already in OpenAI shape? skip re-normalize
-  const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
+  const providerBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
+  // Report the container the bytes really have, whatever the upstream declared.
+  const finalBody = adapter.reportOutputFormat ? normalizeImageOutput(providerBody, body.output_format, log?.warn?.bind(log)) : providerBody;
   // Runway's adapter also accepts video models; those outputs are not images.
   if (provider !== "runwayml" || model.includes("image")) returnedImageUnits(accounting, finalBody);
 

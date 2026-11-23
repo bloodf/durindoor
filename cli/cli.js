@@ -10,8 +10,9 @@ const os = require("os");
 const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
 const { waitServerReady } = require("./src/cli/waitServerReady");
+const { getProbeHost, getDisplayHost } = require("./src/cli/host");
 const { canBindLauncherPort } = require("./src/cli/utils/launcherProcess");
-const { collectAppPids, killAppPids, readCommand, portOccupantToKill } = require("./src/lib/processScan");
+const { collectAppPids, killAppPids, portOccupantToKill } = require("./src/lib/processScan");
 
 // Resolve once before any worker changes cwd. Every CLI helper and the Next
 // worker inherit the same absolute path, so database, PID, CA, and auth-token
@@ -63,6 +64,22 @@ const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
+
+for (let i = 0; i < args.length; i++) {
+  if (["--port", "-p", "--host", "-H"].includes(args[i])) {
+    const flag = args[i];
+    const value = args[i + 1];
+    if (!value || value.startsWith("--")) {
+      console.error(`Error: ${flag} requires a value.`);
+      process.exit(2);
+    }
+    if ((flag === "--port" || flag === "-p") && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535)) {
+      console.error(`Error: ${flag} must be an integer from 1 to 65535.`);
+      process.exit(2);
+    }
+    i++;
+  }
+}
 
 function hasFlag(flag, shortFlag) {
   for (let i = 0; i < args.length; i++) {
@@ -135,14 +152,7 @@ function getLanIp() {
 }
 
 // Local URL stays "localhost"; warn separately when bound to all interfaces (network-exposed).
-function getDisplayHost() {
-  return host === DEFAULT_HOST ? "localhost" : host;
-}
 const MAX_PORT_ATTEMPTS = 10;
-// Identifiers for killAllAppProcesses - only kill 9router specifically
-const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
-];
 
 // Parse arguments
 let port = DEFAULT_PORT;
@@ -155,7 +165,7 @@ let headless = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--port" || args[i] === "-p") {
-    port = parseInt(args[i + 1], 10) || DEFAULT_PORT;
+    port = Number(args[i + 1]);
     i++;
   } else if (args[i] === "--host" || args[i] === "-H") {
     host = args[i + 1] || DEFAULT_HOST;
@@ -208,28 +218,13 @@ function killTunnelByPidFile() {
   killByPidFile(path.join(tunnelDir, "tailscale.pid"));
 }
 
-// Kill cloudflared whose --url targets this app's port (covers stale PID file case)
-function killCloudflaredByAppPort(appPort) {
-  if (!appPort) return [];
-  const portMatchers = [`localhost:${appPort}`, `127.0.0.1:${appPort}`];
-  let pids = [];
-  try {
-    // Shares the safe scan (pid column, verified candidates, ancestors excluded)
-    // and only keeps the tunnels pointed at this app's port.
-    pids = collectAppPids({ appDir: path.join(__dirname, "app") }).filter((pid) => {
-      const cmd = readCommand(pid) || "";
-      return cmd.includes("cloudflared") && portMatchers.some((m) => cmd.includes(m));
-    });
-  } catch {}
-  return pids;
-}
-
-// Kill all 9router processes
+// Kill DurinDoor / legacy 9router processes that belong to this installation (#2204, #2205)
 function killAllAppProcesses(appPort, scanProcesses = true) {
   return new Promise((resolve, reject) => {
     try {
-      const mitmPidFile = path.join(getAppDataDir(), "mitm", ".mitm.pid");
-      const managerStopped = stopMitmViaManagerSync(appPort);
+      const dataDir = getAppDataDir();
+      const mitmPidFile = path.join(dataDir, "mitm", ".mitm.pid");
+      const managerStopped = stopMitmViaManagerSync(appPort, { host });
       if (!managerStopped && fs.existsSync(mitmPidFile)) {
         reject(new Error("MITM manager cleanup could not be confirmed; refusing to orphan system redirect state"));
         return;
@@ -245,15 +240,18 @@ function killAllAppProcesses(appPort, scanProcesses = true) {
         return;
       }
 
-      // Catch stale PID files: kill cloudflared bound to this app's port
-      try { killAppPids(killCloudflaredByAppPort(appPort)); } catch {}
-
       // Pids come from the pid column and every candidate is verified (alive, still
-      // ours) before the kill; our own process and its ancestors are never targets.
-      // See src/lib/processScan.js for why that matters.
+      // ours, and owned by this installation/port) before the kill; our own process
+      // and its ancestors are never targets. See src/lib/processScan.js.
       let pids = [];
       try {
-        pids = collectAppPids({ appDir: path.join(__dirname, "app") });
+        pids = collectAppPids({
+          appDir: path.join(__dirname, "app"),
+          installDir: __dirname,
+          dataDir,
+          appPort,
+          cloudflaredPidFile: path.join(dataDir, "tunnel", "cloudflared.pid"),
+        });
       } catch {
         // No processes found or error - continue
       }
@@ -455,7 +453,7 @@ function waitForWorkerIdentity(child, expectedNonce, timeoutMs = 30000) {
     const attempt = () => {
       if (settled) return;
       const req = http.request({
-        hostname: "127.0.0.1",
+        hostname: getProbeHost(host),
         port,
         path: "/api/health",
         method: "GET",
@@ -484,7 +482,7 @@ function waitForWorkerIdentity(child, expectedNonce, timeoutMs = 30000) {
 
 async function recoverStaleMitmOwnershipBeforeStartup() {
   if (!hasStaleMitmOwnership()) return;
-  if (stopMitmViaManagerSync(port, { preserveDesiredState: true })) return;
+  if (stopMitmViaManagerSync(port, { preserveDesiredState: true, host })) return;
 
   const nonce = crypto.randomBytes(24).toString("hex");
   const child = spawn(RUNTIME, buildNodeArgs(serverPath, process.env), {
@@ -504,7 +502,7 @@ async function recoverStaleMitmOwnershipBeforeStartup() {
   });
   try {
     await waitForWorkerIdentity(child, nonce);
-    if (!stopMitmViaManagerSync(port, { preserveDesiredState: true })) {
+    if (!stopMitmViaManagerSync(port, { preserveDesiredState: true, host })) {
       throw new Error("Recovery worker could not clean stale MITM ownership");
     }
     try { process.kill(child.pid, "SIGTERM"); } catch { /* already stopped */ }
@@ -544,7 +542,7 @@ async function showInterfaceMenu(latestVersion) {
 
   clearScreen();
 
-  const displayHost = getDisplayHost();
+  const displayHost = getDisplayHost(host);
 
   // Detect tunnel/local mode for server URL display
   let serverUrl;
@@ -589,7 +587,8 @@ function startServer(updatePromise) {
   // Swallow update-check failures: a network blip must never crash startup or
   // surface an unhandled rejection; the existing update menu simply sees null.
   const latestVersionPromise = Promise.resolve(updatePromise).catch(() => null);
-  const displayHost = getDisplayHost();
+  const displayHost = getDisplayHost(host);
+  // getDisplayHost formats wildcard and IPv6 addresses for URLs.
   const url = `http://${displayHost}:${port}/dashboard`;
   // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
   if (host === DEFAULT_HOST) {
@@ -638,7 +637,7 @@ function startServer(updatePromise) {
     if (isCleaningUp) return false;
     isCleaningUp = true;
     try {
-      const mitmStopped = stopMitmViaManagerSync(port);
+      const mitmStopped = stopMitmViaManagerSync(port, { host });
       if (!mitmStopped) {
         console.error("MITM manager cleanup could not be confirmed; leaving the app worker alive to preserve system redirect ownership.");
         isCleaningUp = false;
@@ -738,8 +737,10 @@ function startServer(updatePromise) {
     return;
   }
 
-  // Tray-only mode: no TUI, just tray icon
+  // Tray-only mode: no TUI, just tray icon. Attach the same worker restart/exit
+  // lifecycle handlers as headless and TUI modes before returning (#2205).
   if (trayMode) {
+    attachServerEvents();
     // Ignore SIGHUP so macOS terminal close doesn't kill the background tray process
     process.removeAllListeners("SIGHUP");
     process.on("SIGHUP", () => {});
@@ -747,7 +748,8 @@ function startServer(updatePromise) {
     console.log(`\n🚀 ${DISPLAY_NAME} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
-    waitServerReady(port).then((ready) => {
+    waitServerReady(port, { host }).then((ready) => {
+      if (recoveryInProgress || isShuttingDown) return;
       if (!ready) console.log("Server readiness could not be confirmed.");
       initTrayIcon({
         onReady: () => console.log("DurinDoor tray is available. Right-click the icon to open the dashboard or quit."),
@@ -759,7 +761,7 @@ function startServer(updatePromise) {
   }
 
   // Wait for server to be ready, then show interface menu loop + tray
-  waitServerReady(port).then(async (ready) => {
+  waitServerReady(port, { host }).then(async (ready) => {
     if (recoveryInProgress) return;
     if (!ready) {
       // Readiness failed after the deadline: the backend may have crashed and
@@ -812,7 +814,7 @@ function startServer(updatePromise) {
           // Enable auto startup once, without overriding later user choices.
           try {
             const { ensureAutoStart } = require("./src/cli/tray/autostart");
-            ensureAutoStart(__filename);
+            ensureAutoStart(__filename, { host, port });
           } catch (e) { }
 
           if (process.platform === "darwin") {
@@ -842,7 +844,7 @@ function startServer(updatePromise) {
           console.log(`\n⏳ Starting background process...`);
 
           /** Keep the detached tray CLI on IPv4-first DNS ordering (upstream #2699). */
-          const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "-p", port.toString()], {
+          const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "--host", host, "--port", port.toString()], {
             detached: true,
             stdio: "ignore",
             windowsHide: true,
@@ -933,7 +935,9 @@ function startServer(updatePromise) {
       server = spawnServer({ DURINDOOR_WORKER_NONCE: nonce });
       attachServerEvents();
       await waitForWorkerIdentity(server, nonce);
-      if (!stopMitmViaManagerSync(port, { preserveDesiredState: false })) {
+      const cleanupOptions = { preserveDesiredState: false };
+      if (host !== "127.0.0.1") cleanupOptions.host = host;
+      if (!stopMitmViaManagerSync(port, cleanupOptions)) {
         throw new Error("MITM manager cleanup could not be confirmed on the recovery worker");
       }
       console.error("MITM system state was cleaned and disabled; exiting instead of continuing the crash loop.");

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { getSettings } from "@/lib/localDb";
-import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { verifyDashboardPassword, isUsingDefaultPassword } from "@/lib/auth/dashboardSession";
+import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
 import { generateTotpSecret, buildOtpAuthUri } from "@/lib/auth/totp";
 
@@ -21,6 +22,9 @@ export async function POST(request) {
     }
 
     const settings = await getSettings();
+    const ip = getClientIp(request);
+    const lock = checkLock(ip);
+    if (lock.locked) return NextResponse.json({ error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter }, { status: 429, headers: { "Retry-After": String(lock.retryAfter), ...NO_STORE_HEADERS } });
     if (settings.mfaEnabled === true) {
       return NextResponse.json(
         { error: "MFA is already enabled. Disable it first to re-enroll." },
@@ -30,12 +34,14 @@ export async function POST(request) {
 
     // Re-auth: an unattended session must not be able to bind a new factor.
     const { password } = await request.json();
-    if (!(await verifyDashboardPassword(password))) {
+    if (await isUsingDefaultPassword(settings) || !(await verifyDashboardPassword(password))) {
+      recordFail(ip);
       return NextResponse.json(
         { error: "Invalid password" },
         { status: 401, headers: NO_STORE_HEADERS },
       );
     }
+    recordSuccess(ip);
 
     const secret = generateTotpSecret();
     const otpauthUri = buildOtpAuthUri({ secret, account: "admin" });

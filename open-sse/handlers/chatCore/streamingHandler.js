@@ -78,7 +78,7 @@ export function completionToStream(completion) {
  *
  * @returns {{stream: TransformStream, emittedFormat: string}}
  */
-export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials }) {
+export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials, nativeGemini = false }) {
   // `\bdroid\b`: a bare substring test also matched "Android" (Dalvik, mobile browsers).
   const isDroidCLI = /\bdroid\b/i.test(userAgent ?? "") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
@@ -95,8 +95,8 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 
   if (needsTranslation(targetFormat, sourceFormat) || targetFormat === FORMATS.OPENAI && isDeepSeekFamilyModel(providerBody?.model || model, provider)) {
     return {
-      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked),
-      emittedFormat: sourceFormat
+      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked, nativeGemini),
+      emittedFormat: nativeGemini ? FORMATS.GEMINI : sourceFormat
     };
   }
 
@@ -111,7 +111,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, reqLogger, toolNameMap, claudeCloaked = false, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null, credentials = null }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, clientRawRequest, reqLogger, toolNameMap, claudeCloaked = false, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null, credentials = null }) {
   const failTimeline = (status) => {
     if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
   };
@@ -188,12 +188,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
+  const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
   let emptyVerdict = null;
   const observeCompletion = (...args) => {
     emptyVerdict = isEmptyCompletion(args[0], args[1], args[3]);
     onStreamComplete?.(...args);
   };
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials, nativeGemini });
   const emptyTerminalGuard = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(emittedFormat)
     ? createEmptyTerminalGuard(emittedFormat, () => emptyVerdict, () => transformStream.getEmptyStreamSnapshot?.())
     : null;
@@ -246,6 +247,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   trackStreamTokenLimit(transformedBody, transformStream.hasTokenLimitTerminal);
 
   saveRequestDetail(buildRequestDetail({
+    comboNoLog,
     provider, model, connectionId,
     latency: { ttft: 0, total: Date.now() - requestStartTime },
     tokens: { prompt_tokens: 0, completion_tokens: 0 },
@@ -259,10 +261,12 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
 
+  const responseHeaders = { ...SSE_HEADERS, ...resolvedModelHeaders(provider, model) };
+  if (nativeGemini) responseHeaders["x-durindoor-internal-gemini-native"] = "1";
   return {
     success: true,
     response: new Response(transformedBody, {
-      headers: { ...SSE_HEADERS, ...resolvedModelHeaders(provider, model) }
+      headers: responseHeaders
     })
   };
 }
@@ -282,7 +286,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.credentials] - selected credentials redacted from the persisted stream error.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -329,8 +333,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : null)
       || (streamError ? `[Streaming failed: ${streamError.message || "unknown error"}]` : "[Empty streaming response]");
     const safeThinking = contentObj?.thinking || null;
+    // An empty stream is not a success: the client gets the in-band error frame
+    // from createEmptyTerminalGuard, so the request detail must say the same
+    // instead of recording a green turn (upstream 9router #5092).
+    const producedNothing = !streamError && isEmptyCompletion(contentObj, usage, summary);
 
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
@@ -339,7 +348,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       providerResponse: summary?.providerResponse ?? safeContent,
       response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming", ...(streamError ? { error: streamError } : null) },
       pxpipe,
-      status: streamError ? "error" : "success"
+      status: streamError || producedNothing ? "error" : "success"
     }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
@@ -399,6 +408,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       total: Date.now() - requestStartTime
     };
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },

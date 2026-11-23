@@ -7,6 +7,7 @@ import { FORMATS } from "../translator/formats.js";
 import { MAX_RESPONSES_OUTPUT_ITEMS } from "../config/runtimeConfig.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
+import { responsesIncompleteDetailsOrOmit } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import { isProviderKeepaliveEvent } from "../utils/providerKeepalive.js";
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -38,12 +39,16 @@ function processSSEMessage(msg, state) {
     state.terminal.observe({ rawDone: true, eventName: eventMatch?.[1]?.trim() || null });
     return;
   }
-  if (!eventMatch) {state.terminal.fail();return;}
-  const eventType = eventMatch[1].trim();
 
   let parsed;
   try {parsed = JSON.parse(dataStr);}
   catch {state.terminal.fail();return;}
+
+  // Some providers omit `event:` lines and send data-only SSE. The Responses API
+  // always sets `type` in the payload, so fall back to it (#5607); a frame with
+  // neither is still unusable.
+  const eventType = eventMatch?.[1]?.trim() || (isString(parsed?.type) && parsed.type ? parsed.type : null);
+  if (!eventType) {state.terminal.fail();return;}
 
   state.terminal.observe({ chunk: parsed, eventName: eventType });
 
@@ -69,6 +74,11 @@ function processSSEMessage(msg, state) {
   } else if (["response.completed", "response.done", "response.incomplete"].includes(eventType)) {
     if (state.terminal.outcome === "success") {
       state.status = eventType === "response.incomplete" ? "incomplete" : "completed";
+      // Keep the cap reason (max_output_tokens / content_filter) the client would
+      // have received on the streaming path.
+      if (eventType === "response.incomplete") {
+        state.incompleteDetails = responsesIncompleteDetailsOrOmit(parsed.response?.incomplete_details);
+      }
       // Terminal snapshots can contain items that never had an item.done frame.
       // Keep observed items authoritative and apply the same bounds and shape checks.
       const output = parsed.response?.output;
@@ -138,6 +148,7 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
     object: "response",
     created_at: state.created ?? state.fallbackCreated,
     status: state.status,
+    ...(state.status === "incomplete" && state.incompleteDetails ? { incomplete_details: state.incompleteDetails } : null),
     output,
     usage: state.usage
   };

@@ -1,0 +1,9 @@
+{
+  "route": "/dashboard/media-providers/[kind]",
+  "stories": [
+    "production-media-kindlisting--default",
+    "production-media-kindlisting--load-failure-and-retry",
+    "production-media-kindlisting--malformed-response-and-retry",
+    "production-media-kindlisting--network-failure-and-retry"
+  ]
+}

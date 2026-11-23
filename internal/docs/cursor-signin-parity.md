@@ -16,3 +16,15 @@ At the pinned OmniRoute revision, `cursorLogin.ts` creates a PKCE challenge and 
 Cursor's public [CLI authentication](https://cursor.com/docs/cli/reference/authentication) and [ACP](https://cursor.com/docs/cli/acp) documentation describes authentication of Cursor's CLI and custom clients communicating with that CLI. Its [Origin API](https://cursor.com/docs/api/origin) describes a separate repository API and app registration. None supplies a third-party client registration, permitted callback or authorization, polling and refresh contract for DurinDoor's Cursor native chat transport. The MCP OAuth callback in Cursor's documentation is for Cursor acting as a client of an external MCP server, not a registration for signing in to Cursor.
 
 Until Cursor provides an applicable contract and a DurinDoor client registration and callback (or explicit authorization for an equivalent public client), do not port the CLI-targeted flow. Keep the existing user-supplied import path; it does not acquire a refresh token. The public documentation examined is current as of the date above and may change. No live provider request was made for this assessment.
+
+## Pinned behavior pass (2026-11-23)
+
+CLIProxyAPI `6eb8554f0ede` has no Cursor-named implementation in its recursive tree. OmniRoute `5ffa68e83544` retains Cursor support. This pass is incomplete; the table records inspected behavior, not a claim of full parity.
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Login URL, PKCE and polling | `src/lib/oauth/services/cursorLogin.ts` | Intentionally different: import-only, as described in the authorization decision above; the upstream CLI-targeted flow has not been ported. |
+| Token refresh and retry | `open-sse/services/tokenRefresh/providers/cursor.ts` | Not ported; imported tokens have no refresh token. |
+| Account identity | `src/lib/oauth/services/cursorLogin.ts` | Partially matched: JWT identity is extracted for imports; login credential construction remains unimplemented. |
+| Connect error classification | `open-sse/executors/cursor/cursorErrors.ts` | Ported here for JSON error frames: distinguish oversized requests, quota, model entitlement, missing models and authentication. Other upstream error paths remain to compare. |
+| Request envelope, headers, retries, quotas, model catalog, streaming and remaining error branches | `open-sse/executors/cursor.ts`, `open-sse/executors/cursor/`, model and usage services | Comparison incomplete; no parity claim. Identity cloaking and detection evasion are out of scope. |

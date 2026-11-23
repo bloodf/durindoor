@@ -1,3 +1,5 @@
+import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -5,7 +7,6 @@ import {
   getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -16,7 +17,6 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 /**
  * Handle rerank request — Cohere/Jina/Voyage-style /v1/rerank passthrough.
@@ -37,14 +37,8 @@ async function handleRerankHandler(request) {
   const modelStr = body.model;
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "rerank" });
+  if (admissionError) return admissionError;
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (body.query === undefined || body.query === null) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
@@ -68,6 +62,14 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   }
 
   const { provider, model } = modelInfo;
+  // OpenRouter's dedicated rerank endpoint has no verified routing controls.
+  if (provider === "openrouter") {
+    const policy = (await getSettings()).openrouterRouting;
+    if (policy?.zdr || policy?.quantizations?.length || body.provider?.zdr || body.provider?.quantizations) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "OpenRouter rerank cannot enforce the configured routing restrictions");
+    }
+  }
+
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const kindError = await modelKindError(provider, model, await getSettings(), "rerank");
@@ -137,13 +139,14 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
+    const dispatch = credentialDispatchSnapshot(credentials);
     const result = await handleRerankCore({
       body,
       modelInfo: { provider, model },
       credentials: toExecutorCredentials({ ...credentials }),
       log,
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       },
     });
 
@@ -152,7 +155,8 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);

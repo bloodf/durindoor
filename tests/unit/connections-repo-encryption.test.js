@@ -61,7 +61,7 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
     for (const field of repo.SENSITIVE_CONNECTION_FIELDS) {
       const value = parsed[field];
       expect(typeof value).toBe("object");
-      expect(value).toHaveProperty("v", 1);
+      expect(value).toHaveProperty("v", 2);
       expect(value).toHaveProperty("iv");
       expect(value).toHaveProperty("ct");
     }
@@ -154,7 +154,10 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
       `UPDATE providerConnections SET data = ? WHERE id = ?`,
       [JSON.stringify(parsedA), b.id],
     );
-    await expect(repo.getProviderConnectionById(b.id)).rejects.toThrow();
+    const unreadable = await repo.getProviderConnectionById(b.id);
+    expect(unreadable.accessToken).toBeNull();
+    expect(unreadable.testStatus).toBe("error");
+    expect((await repo.getProviderConnectionById(a.id)).accessToken).toBe("AT-A");
   });
 
   it("reads legacy plaintext rows (pre-migration compat)", async () => {
@@ -206,7 +209,7 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
     const row = db.get(`SELECT data FROM providerConnections WHERE id = 'm1'`);
     const parsed = JSON.parse(row.data);
     expect(typeof parsed.accessToken).toBe("object");
-    expect(parsed.accessToken).toHaveProperty("v", 1);
+    expect(parsed.accessToken).toHaveProperty("v", 2);
     expect(parsed.accessToken).toHaveProperty("iv");
     expect(parsed.accessToken).toHaveProperty("ct");
 

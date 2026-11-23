@@ -16,11 +16,20 @@ describe("Zed identity and current hosted support", () => {
     expect(resolveProviderAlias("zed-hosted")).toBe("zed-hosted");
   });
 
-  it("rejects the currently unsupported hosted sign-in without outbound traffic", async () => {
+  it("starts the hosted native-app sign-in without outbound traffic, and keeps the IDE entry out of OAuth", async () => {
     const fetch = vi.fn(() => { throw new Error("Unexpected outbound request"); });
     vi.stubGlobal("fetch", fetch);
-    await expect(generateAuthData("zed-hosted", "http://127.0.0.1:3000/callback"))
-      .rejects.toThrow("Unknown provider: zed-hosted");
+    const auth = await generateAuthData("zed-hosted", "http://127.0.0.1:3000/callback");
+    // Zed's native-app flow: the public half of a fresh RSA key goes out, the private half stays
+    // server-side where PKCE would keep its verifier, and the redirect is the loopback it reports.
+    expect(new URL(auth.authUrl).origin + new URL(auth.authUrl).pathname).toBe("https://zed.dev/native_app_signin");
+    expect(auth.codeVerifier).toMatch(/^zed-rsa-pkcs1:[A-Za-z0-9_-]{100,}/);
+    expect(auth.redirectUri).toBe("http://127.0.0.1:3000/");
+    expect(auth.meta).toEqual({ systemId: expect.any(String) });
+    expect(auth.authUrl).not.toContain(auth.codeVerifier);
+    expect(fetch).not.toHaveBeenCalled();
+    // The Zed IDE key-import entry has no sign-in of its own.
+    await expect(generateAuthData("zed", "http://127.0.0.1:3000/callback")).rejects.toThrow("Unknown provider: zed");
     expect(fetch).not.toHaveBeenCalled();
   });
 

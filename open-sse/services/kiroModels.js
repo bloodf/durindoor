@@ -302,6 +302,19 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
 }
 
 /**
+ * Kiro answers an expired bearer token on ListAvailableModels with either 401
+ * or 403 "The bearer token included in the request is invalid" (9router PR
+ * #1823). Both mean "refresh and retry"; any other 403 is a real denial.
+ */
+export function isRefreshableKiroAuthError(err) {
+  if (!err) return false;
+  if (err.status === 401) return true;
+  if (err.status !== 403) return false;
+  const body = String(err.body || err.message || "").toLowerCase();
+  return body.includes("bearer token") && body.includes("invalid");
+}
+
+/**
  * Fetch the raw model catalog from Kiro. API-key credentials include Kiro's
  * required `TokenType: API_KEY` discriminator; OAuth credentials omit it.
  * Returns the array under `.models` from the API response, or throws on
@@ -413,8 +426,8 @@ export async function resolveKiroModels(credentials, options = {}) {
   try {
     raw = await fetchKiroCatalogRaw(credentials, options.signal, options.proxyOptions);
   } catch (err) {
-    if (err && err.status === 401 && credentials.refreshToken) {
-      options.log?.info?.("KIRO_MODELS", "Got 401 from Kiro; refreshing token");
+    if (isRefreshableKiroAuthError(err) && credentials.refreshToken) {
+      options.log?.info?.("KIRO_MODELS", `Got ${err.status} auth failure from Kiro; refreshing token`);
       // Re-associate the stored refresh token with its SSO cache entry so an
       // imported external_idp/IDC connection missing clientId/clientSecret/
       // tokenEndpoint can still refresh (9router PR #2615).

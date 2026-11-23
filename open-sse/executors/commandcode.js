@@ -72,6 +72,10 @@ export class CommandCodeExecutor extends BaseExecutor {
     const token = credentials?.apiKey || credentials?.accessToken;
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
+    // Per-connection Zero Data Retention: an explicit privacy opt-in, sent only
+    // when the connection stored `zdrEnabled: true`.
+    if (credentials?.providerSpecificData?.zdrEnabled === true) headers["x-cmd-zdr"] = "1";
+
     if (stream) headers["Accept"] = "text/event-stream";
     return headers;
   }

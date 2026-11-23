@@ -333,7 +333,9 @@ async function pingModelByKindImpl(model, kind, baseUrl, connectionId) {
     return { ok: true, latencyMs, error: null, status: res.status, note: "reasoning-only response (length-limited)" };
   }
 
-  if (contentEmpty) {
+  // A tool call is a valid completion even when there is no assistant text.
+  const hasToolCalls = Array.isArray(firstChoice.message?.tool_calls) && firstChoice.message.tool_calls.length > 0;
+  if (contentEmpty && !hasToolCalls) {
     return {
       ok: false,
       latencyMs,

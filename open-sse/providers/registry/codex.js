@@ -66,12 +66,23 @@ export default {
     { id: "gpt-6-astra", name: "GPT 6 Astra" },
     { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },
     { id: "gpt-6.1-terra", name: "GPT 6.1 Terra" },
+    { id: "gpt-6.1-terra-ultra", name: "GPT 6.1 Terra (Ultra)" },
+    { id: "gpt-6.1-terra-max", name: "GPT 6.1 Terra (Max)" },
+    { id: "gpt-6.1-terra-xhigh", name: "GPT 6.1 Terra (xHigh)", timeoutMs: 1_200_000 },
+    { id: "gpt-6.1-terra-high", name: "GPT 6.1 Terra (High)", timeoutMs: 1_200_000 },
+    { id: "gpt-6.1-terra-medium", name: "GPT 6.1 Terra (Medium)" },
+    { id: "gpt-6.1-terra-low", name: "GPT 6.1 Terra (Low)" },
     { id: "gpt-6-sol", name: "GPT 6 Sol" },
     { id: "gpt-6-luna", name: "GPT 6 Luna" },
     // gpt-5.5 / gpt-5.5-review / gpt-5.5-image removed: retired for Codex with ChatGPT sign-in on
     // 2026-10-14 (HTTP 400). Saved configs get a 410 with a replacement from modelLifecycle.js.
     { id: "gpt-5.4", name: "GPT 5.4" },
     { id: "gpt-5.4-review", name: "GPT 5.4 Review", upstreamModelId: "gpt-5.4", quotaFamily: "review" },
+    // Upstream #865: named effort choices and their review quota aliases.
+    ...["xhigh", "high", "medium", "low"].flatMap((effort) => [
+      { id: `gpt-5.4-${effort}`, name: `GPT 5.4 (${effort})` },
+      { id: `gpt-5.4-${effort}-review`, name: `GPT 5.4 (${effort}) Review`, upstreamModelId: `gpt-5.4-${effort}`, quotaFamily: "review" },
+    ]),
     { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
     /** Live Codex catalog 2026-08-13 exposes this dedicated automatic-review base model. */
     { id: "codex-auto-review", name: "Codex Auto Review", quotaFamily: "review" },

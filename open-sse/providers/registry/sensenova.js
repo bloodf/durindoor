@@ -114,5 +114,10 @@ export default {
     interleavedField: "reasoning_content"
   }],
 
-  passthroughModels: true
+  passthroughModels: true,
+  // Token Plan balance via the console session (OmniRoute #20403).
+  features: {
+    usage: true,
+    usageApikey: true
+  }
 };

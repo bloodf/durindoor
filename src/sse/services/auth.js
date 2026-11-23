@@ -1,8 +1,10 @@
+import { antigravityHealth, healthEnabled } from "open-sse/services/antigravityHealth.js";
 import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
+import { connectionHasCredential, credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
 import {
-  getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
+  getProviderConnections, getProviderConnectionById, getApiKeyByKey, getApiKeyById, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
   getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
 "@/lib/localDb";
@@ -11,7 +13,7 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields, isRelayGatewayFailure, countEligibleAccounts } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields, isRelayGatewayFailure, countEligibleAccounts, detectQuotaExhaustion, isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
@@ -33,7 +35,7 @@ import {
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
-import { rankQuotaConnections, pickQuotaWeightedConnection } from "@/shared/services/quotaSelection";
+import { rankQuotaConnections, pickQuotaWeightedConnection, pickEarliestResetConnection } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
@@ -43,9 +45,20 @@ import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
 import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
+import { getBatchRequestKeyId, rememberAdmittedRequestKey } from "./batchKeyIdentity.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
+// OmniRoute's Antigravity defaults when the upstream supplies no reset.
+function antigravity429Fallback(errorText, errorBody) {
+  const text = `${isString(errorText) ? errorText : ""} ${JSON.stringify(errorBody || {})}`.toLowerCase();
+  const credits = /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
+  const exhausted = /quota[_ ]exhausted|quota reached|individual quota|enable overages|free tier|daily limit|google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
+  if (exhausted && !/reset\s+(?:after|in)\s+0s/.test(text)) return { delay: 24 * 60 * 60 * 1000, exhausted: true, credits };
+  if (/per minute|\brpm\b|rate[_ ]limit|too many requests/.test(text)) return { delay: 60_000, exhausted: false };
+  if (/try again|temporarily/.test(text)) return { delay: 2_000, exhausted: false };
+  return { delay: 5_000, exhausted: false };
+}
 const CODEX_PERMANENT_OAUTH_ERRORS = [
 "invalidated oauth token",
 "authentication token has been invalidated",
@@ -480,7 +493,7 @@ function requestedModelLockActive(connection, rawModel, boundedModel, now) {
 /** Shared read-only eligibility predicate used by combo preview and auth. */
 export function isProviderConnectionModelLocked(connection, provider, model, now = Date.now()) {
   const boundedModel = resolveFallbackModelScope(resolveProviderId(provider), model);
-  return requestedModelLockActive(connection, model, boundedModel, now);
+  return isQuotaLockoutActive(connection, now) || requestedModelLockActive(connection, model, boundedModel, now);
 }
 
 function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
@@ -494,6 +507,9 @@ function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
 function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
   const deadlines = [];
   let unknown = false;
+  if (isQuotaLockoutActive(connection, now)) {
+    if (connection.quotaLockout.reactivateAt) deadlines.push(connection.quotaLockout.reactivateAt); else unknown = true;
+  }
   if (requestedModelLockActive(connection, rawModel, boundedModel, now)) {
     const deadline = requestedModelLockUntil(connection, rawModel, boundedModel, now);
     if (deadline) deadlines.push(deadline);else
@@ -509,7 +525,7 @@ function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
 
 function summarizeBlockedConnections(connections, decisions, rawModel, boundedModel, now) {
   const blocked = connections.filter((connection) =>
-  requestedModelLockActive(connection, rawModel, boundedModel, now) || decisions.get(connection.id)?.skip
+  requestedModelLockActive(connection, rawModel, boundedModel, now) || isQuotaLockoutActive(connection, now) || decisions.get(connection.id)?.skip
   );
   // Search locks have their own status; the row-wide errorCode describes chat.
   // An account-wide lock still uses the shared status. Older search locks with
@@ -554,8 +570,8 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
     boundedModel,
     now
   ));
-  const earliest = retries.length > 0 && retries.every(Boolean) ?
-  retries.sort((left, right) => Date.parse(left) - Date.parse(right))[0] : null;
+  const knownRetries = retries.filter(Boolean).sort((left, right) => Date.parse(left) - Date.parse(right));
+  const earliest = retries.every(Boolean) || blocked.some((connection) => isQuotaLockoutActive(connection, now)) ? knownRetries[0] || null : null;
   return {
     status: 429,
     message: "Rate limited",
@@ -570,7 +586,7 @@ function includeExcludedModelRetry(summary, blocked, connections, exclusions, de
   if (!rawModel || summary.status !== 429 || !summary.retryAfter ||
       !blocked.every((connection) => decisions.get(connection.id)?.skip)) return summary;
   const deadlines = connections.filter((connection) =>
-    exclusions.has(connection.id) && ![401, 403].includes(Number(connection.errorCode)) &&
+    exclusions.has(connection.id) && !isQuotaLockoutActive(connection, now) && ![401, 403].includes(Number(connection.errorCode)) &&
     !decisions.get(connection.id)?.skip &&
     !getActiveModelLockUntil(connection, null, now) &&
     !(new Date(connection.rateLimitedUntil || "").getTime() > now) &&
@@ -820,6 +836,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         const storedEligibleBeforeRpm = connections.filter(
           (c) => !excludeSet.has(c.id) &&
           !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
+          !isQuotaLockoutActive(c, selectionNow) &&
           !quotaDecisions.get(c.id)?.skip &&
           !isConnectionGated(c, selectionNow)
         );
@@ -845,7 +862,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         if (rpmSummary) return rpmSummary;
         // If all stored connections are model-locked, surface the earliest retry time so callers can back off.
         const blockedConnections = connections.filter(
-          (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
+          (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || isQuotaLockoutActive(c, selectionNow) || quotaDecisions.get(c.id)?.skip)
         );
         if (blockedConnections.length > 0) {
           const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConnections, quotaDecisions, model, boundedModel, selectionNow), blockedConnections, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
@@ -885,6 +902,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // decolua/9router#3203: evaluate RPM without spending budget; record only final selection.
     const eligibleBeforeRpm = connections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
+      if (isQuotaLockoutActive(c, selectionNow)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
       if (options?.connectionRecovery && !canSelectConnection(c, model, boundedModel, selectionNow)) return false;
@@ -909,7 +927,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     const recoveryBlocked = options?.connectionRecovery ? connections.filter((c) =>
       !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
-      !quotaDecisions.get(c.id)?.skip && !isConnectionGated(c, selectionNow) &&
+      !isQuotaLockoutActive(c, selectionNow) && !quotaDecisions.get(c.id)?.skip && !isConnectionGated(c, selectionNow) &&
       !isOverLimit(c.id, rpmLimit, selectionNow) &&
       !canSelectConnection(c, model, boundedModel, selectionNow)) : [];
     if (recoveryBlocked.some((c) => c.id === preferredConnectionId) ||
@@ -942,7 +960,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
       // Find earliest lock expiry across all connections for retry timing
       const blockedConns = connections.filter(
-        (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
+        (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || isQuotaLockoutActive(c, selectionNow) || quotaDecisions.get(c.id)?.skip)
       );
       if (blockedConns.length > 0) {
         const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow), blockedConns, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
@@ -1041,6 +1059,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       });
     }
 
+    if (model && healthEnabled(providerId, selectionSettings) && !preferredConnectionId && !strictConnectionId) {
+      availableConnections = antigravityHealth.candidates(availableConnections, options?.healthModel || model);
+      if (!availableConnections.length) return { connectionRecoveryBusy: true };
+      if (quotaRankedEligible) quotaRankedEligible = quotaRankedEligible.filter((candidate) => availableConnections.includes(candidate.value));
+    }
+
     let connection;
     // For round-robin, honor existing session affinity before quota ranking so
     // a session that already picked an account stays on it when it remains eligible.
@@ -1080,6 +1104,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       connection = (await updateProviderConnection(connection.id, {
         lastUsedAt: new Date().toISOString()
       })) || connection;
+    } else if (strategy === "earliest-reset") {
+      connection = pickEarliestResetConnection(availableConnections, quotaDecisions, selectionNow);
     } else if (quotaRanked) {
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
@@ -1392,13 +1418,18 @@ async function applyEgressBucketCooldown(connections, connectionId, provider, co
   }
 }
 
+/** Attempt-start watermark: explicit attempt stamp, then dispatch snapshot. */
+function dispatchStamp(context) {
+  if (Number.isSafeInteger(context?.attemptStartedAt)) return context.attemptStartedAt;
+  if (Number.isSafeInteger(context?.dispatchedAt) && context.dispatchedAt > 0) return context.dispatchedAt;
+  return Date.now();
+}
+
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
   throwIfAborted(signal);
-  const observedAt = Number.isSafeInteger(context?.attemptStartedAt) ?
-  context.attemptStartedAt :
-  Date.now();
+  const observedAt = dispatchStamp(context);
   const connections = await getProviderConnections({ provider });
 
   throwIfAborted(signal);
@@ -1523,6 +1554,17 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
 
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
+  // The transactional predicate protects a manual schedule or newer credential
+  // from a late response. Model locks and quota evidence are left intact.
+  const quota = detectQuotaExhaustion(context?.errorBody ?? errorText);
+  if (quota.exhausted && (Number(status) === 200 || Number(status) >= 400 && Number(status) <= 599)) {
+    const reset = quota.resetAtMs || (Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null);
+    const fingerprint = context?.credentialFingerprint || null;
+    await updateProviderConnection(connectionId, {
+      quotaLockout: { status: "quota_exhausted", source: "auto", message: "Provider quota exhausted", detectedAt: new Date(observedAt).toISOString(), reactivateAt: reset ? new Date(reset).toISOString() : null }
+    }, { signal, shouldCommitConnection: (current) => (current.quotaLockout?.source !== "manual" || !isQuotaLockoutActive(current)) && (!current.updatedAt || Date.parse(current.updatedAt) <= observedAt) && connectionHasCredential(current, fingerprint) });
+    return { shouldFallback: true, cooldownMs: reset ? Math.max(0, reset - Date.now()) : 0 };
+  }
   let shouldFallback, cooldownMs, newBackoffLevel;
   const now = Date.now();
   // OmniRoute #6731: classify first so an explicit quota-exhausted body on an
@@ -1547,7 +1589,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return { shouldFallback: false, cooldownMs: 0 };
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
-  const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
+  const ag429 = (provider === "antigravity" || provider === "agy") && Number(status) === 429 ?
+  antigravity429Fallback(errorText, context?.errorBody) : null;
+  const evidenceState = effectiveEvidence?.state === "exhausted" || ag429?.exhausted ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its
   // null reset is a deliberate rejection of any legacy reset; (2) a reset parsed
   // from the body by checkFallbackError wins; (3) otherwise the caller's legacy
@@ -1566,7 +1610,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const cooldownCapMs = RESET_COOLDOWN_CAP_MS[provider] ?? MAX_RATE_LIMIT_COOLDOWN_MS;
   const normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
   Math.min(providerReset, now + cooldownCapMs) :
-  null);
+  ag429 ? now + ag429.delay : null);
   if (normalizedReset !== null) {
     shouldFallback = true;
     cooldownMs = Math.ceil(normalizedReset - now);
@@ -1625,8 +1669,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
     status
   );
-  const providerRuleConnectionWide = fallbackResult.scope === "connection";
-  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide);
+  const providerRuleConnectionWide = fallbackResult.scope === "connection" || (provider === "claude" && callerEvidence?.scope === "connection");
+  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
   const isolatedSearch = context?.webSearch === true && !accountWide;
   const fallbackModel = resolveFallbackModelScope(provider, model, {
     accountWide,
@@ -1646,6 +1690,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         cooldownMs: legacyCooldownMs,
         backoffLevel: newBackoffLevel ?? backoffLevel,
         observedAt,
+        credentialFingerprint: context?.credentialFingerprint || null,
         webFetch: context?.webFetch === true,
         webSearch: isolatedSearch,
         videoPoll: context?.videoPoll === true
@@ -1653,6 +1698,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       // The atomic path ran; never fall through to the compatibility writer,
       // even when applied is false (stale watermark or reauth guard).
       atomicApplied = true;
+      const fingerprint = context?.credentialFingerprint || null;
+      if (recorded?.applied === false && fingerprint && !connectionHasCredential(recorded.connection, fingerprint)) {
+        return { shouldFallback: true, cooldownMs: 0 };
+      }
       // A transactional reauth conflict refused the ordinary cooldown write.
       // Match the pre-write reauth early-return: fallback without a cooldown.
       if (recorded?.applied === false &&
@@ -1713,7 +1762,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     // same proxy pool for operator-opted-in egress-bucketed providers. Skips
     // a request-shaped/terminal failure (fallbackResult.terminal) since those
     // say nothing about the shared IP's quota.
-    if (provider && !fallbackResult.terminal) {
+    if (provider && !ag429 && !fallbackResult.terminal) {
       try {
         const currentSettings = await getSettings();
         const egressBucketed = Array.isArray(currentSettings?.egressBucketedProviders) &&
@@ -1764,22 +1813,26 @@ export async function clearAccountError(connectionId, currentConnection, model =
   const conn = currentConnection._connection || currentConnection;
   const signal = context?.signal || null;
   throwIfAborted(signal);
-  const now = Number.isSafeInteger(context?.attemptStartedAt) ?
-  context.attemptStartedAt :
-  Date.now();
+  const now = dispatchStamp(context);
   const provider = context?.provider || conn?.provider;
+  // An explicit dispatch snapshot wins, even a null one (derived/refreshed token).
+  const fingerprint = context && Object.hasOwn(context, "credentialFingerprint") ?
+  context.credentialFingerprint || null :
+  credentialDispatchSnapshot(currentConnection).credentialFingerprint;
   const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true, webSearch: context?.webSearch === true, videoPoll: context?.videoPoll === true });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");
     if (isFunction(db.clearProviderConnectionFallbackState)) {
-      await db.clearProviderConnectionFallbackState(connectionId, {
+      const cleared = await db.clearProviderConnectionFallbackState(connectionId, {
         model: fallbackModel,
         observedAt: now,
+        credentialFingerprint: fingerprint,
         webFetch: context?.webFetch === true,
         webSearch: context?.webSearch === true
       }, { signal });
       atomicApplied = true;
+      if (cleared?.applied === false && !connectionHasCredential(cleared.connection, fingerprint)) return;
     }
   } catch (error) {
     if (error?.name === "AbortError") throw error;
@@ -1877,13 +1930,22 @@ export function extractApiKeyCandidates(request) {
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
   const billingEpoch = await captureRequestBillingEpoch(request);
+  const batchKeyId = getBatchRequestKeyId(request);
+  if (batchKeyId) {
+    const record = await getApiKeyById(batchKeyId);
+    const valid = record?.isActive === true && !isApiKeyExpired(record.expiresAt, now);
+    return { apiKey: valid ? record.key : null, auth: { ok: valid, reason: valid ? null : "invalid", stored: true, apiKeyId: valid ? batchKeyId : undefined, billingEpoch } };
+  }
   const candidates = extractApiKeyCandidates(request);
   if (await hasValidCliToken(request)) {
     return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true, billingEpoch } };
   }
   for (const apiKey of candidates) {
     const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
-    if (auth.ok) return { apiKey, auth: { ...auth, billingEpoch } };
+    if (auth.ok) {
+      if (auth.apiKeyId) rememberAdmittedRequestKey(request, auth.apiKeyId);
+      return { apiKey, auth: { ...auth, billingEpoch } };
+    }
   }
   const apiKey = candidates[0] || null;
   return { apiKey, auth: { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch } };

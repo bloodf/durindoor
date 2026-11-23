@@ -45,7 +45,8 @@ export function defaultOAuthRedirectUri(provider) {
  * @param {string} provider provider id
  * @returns {string} absolute redirect_uri
  */
-export function buildOAuthRedirectUri(location, provider) {
+export function buildOAuthRedirectUri(location, provider, hosted = false) {
+  if (hosted && provider !== "claude") return `${publicBaseUrl(location)}/callback`;
   // Fixed-port loopback flows: the CLI these providers pair with listens on a
   // known port, so the redirect is not ours to choose.
   if (provider === "codex") return CODEX_LOOPBACK_REDIRECT_URI;

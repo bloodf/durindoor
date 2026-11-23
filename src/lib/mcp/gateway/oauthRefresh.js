@@ -2,12 +2,33 @@
 
 import { updateInstance, getInstanceById } from "@/lib/localDb";
 import { isRecord } from "./guards";
-import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
-import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
+import * as outboundUrlGuard from "open-sse/utils/outboundUrlGuard.js";
+import { isFunction, isNumber, isString } from "../../../shared/utils/typeChecks.js";
 
 const REFRESH_LEEWAY_MS = 60_000;
 const KEY = "__9routerGatewayRefresh";
 const DEFAULT_MAX_REDIRECT_HOPS = 10;
+
+/**
+ * Resolve guardedProbeFetch without a named import. Vitest partial mocks that
+ * omit the export throw on property access; catch and fall back (#2237).
+ */
+function resolveGuardedProbeFetch() {
+  try {
+    const fn = outboundUrlGuard.guardedProbeFetch;
+    return isFunction(fn) ? fn : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Connection-pinned fetch for the token endpoint (#2237). */
+function oauthGuardedFetch(url, init) {
+  const probeFetch = resolveGuardedProbeFetch();
+  if (probeFetch) return probeFetch(url, init);
+  outboundUrlGuard.assertOutboundUrlAllowed(url);
+  return fetch(url, { ...init, redirect: "manual" });
+}
 
 function inflightStore() {
   if (!globalThis[KEY]) {
@@ -102,30 +123,29 @@ export async function doRefresh(instance, { tokenEndpoint, clientId, clientSecre
   // POST the refresh grant. Same-origin-only on 3xx — the AS may
   // legitimately 308/301 http→https or relocate the token endpoint,
   // but a cross-origin redirect would leak the refresh_token +
-  // client_secret to an unrelated host. We manually re-validate every
-  // hop via the SSRF guard and reject origin changes.
+  // client_secret to an unrelated host. Every hop goes through
+  // oauthGuardedFetch (guardedProbeFetch) so DNS answers are pinned
+  // and re-checked; origin changes are still rejected (#2237).
   let currentUrl;
   try {
     currentUrl = new URL(tokenEndpoint);
   } catch {
     throw new Error("token endpoint is not a valid URL");
   }
-  try {
-    assertOutboundUrlAllowed(currentUrl);
-  } catch (err) {
-    if (err instanceof OutboundUrlGuardError) {
-      throw new Error(`token endpoint blocked: ${err.message}`);
-    }
-    throw err;
-  }
   let res = null;
   for (let hop = 0; hop <= maxHops; hop++) {
-    res = await fetch(currentUrl.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: body.toString(),
-      redirect: "manual"
-    });
+    try {
+      res = await oauthGuardedFetch(currentUrl.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: body.toString()
+      });
+    } catch (err) {
+      if (err instanceof outboundUrlGuard.OutboundUrlGuardError) {
+        throw new Error(hop === 0 ? `token endpoint blocked: ${err.message}` : `refresh redirect blocked: ${err.message}`);
+      }
+      throw err;
+    }
     if (!(res.status >= 300 && res.status < 400)) break;
     const location = res.headers.get("location");
     if (!location) break;
@@ -137,14 +157,6 @@ export async function doRefresh(instance, { tokenEndpoint, clientId, clientSecre
       next = new URL(location, currentUrl);
     } catch {
       throw new Error("refresh redirect Location is not a valid URL");
-    }
-    try {
-      assertOutboundUrlAllowed(next);
-    } catch (err) {
-      if (err instanceof OutboundUrlGuardError) {
-        throw new Error(`refresh redirect blocked: ${err.message}`);
-      }
-      throw err;
     }
     if (next.origin !== currentUrl.origin) {
       throw new Error(`refresh redirect crossed origin: ${currentUrl.origin} → ${next.origin}`);

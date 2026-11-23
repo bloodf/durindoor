@@ -8,14 +8,14 @@
 //   row per request with its cost, so it doubles as the per-request cost
 //   ledger. It is written after a response completes, so requests already in
 //   flight can overshoot these limits and TPM.
-// - Day and month follow server local time, like usageDaily and the
+// - Day, week (Monday start) and month follow server local time, like usageDaily and the
 //   existing daily token limit.
 //
 // Every window belongs to the key's stable id, not to the secret it stores.
 // A secret is a credential that can change; the id is the account. Keying the
 // windows by the id keeps a key's budget intact across a secret change, and
 // keeps two keys that once shared a secret apart.
-import { getApiKeyByKey, getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
+import { getApiKeyByKey, getApiKeyUsageLimitStatus, getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
 import { getAdapterSync } from "@/lib/db/driver.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -35,13 +35,20 @@ const METRICS = {
   cost: { label: "budget", read: (u) => u.cost, money: true },
 };
 
-// `enforce: false` rows are shown on the dashboard only. The daily total is
-// the older `dailyLimitTokens` column, which the chat handler enforces with
-// committed-token accounting.
+// `enforce: false` rows are skipped by checkApiKeyLimits and shown on the
+// dashboard. The daily total is the older `dailyLimitTokens` column, which is
+// enforced with committed-token accounting by the chat/native admission and by
+// enforceApiKeyLimits (shared admission), so every billable route returns the
+// same 429 once the cap is reached.
 export const USAGE_LIMITS = [
   { field: "dailyLimitTokens", period: "day", metric: "tokens", label: "Tokens today", always: true, enforce: false },
   { field: "dailyInputTokenLimit", period: "day", metric: "inputTokens", label: "Input tokens today" },
   { field: "dailyOutputTokenLimit", period: "day", metric: "outputTokens", label: "Output tokens today" },
+  { field: "dailyBudget", period: "day", metric: "cost", label: "Cost today", always: true },
+  { field: "weeklyTokenLimit", period: "week", metric: "tokens", label: "Tokens this week" },
+  { field: "weeklyInputTokenLimit", period: "week", metric: "inputTokens", label: "Input tokens this week" },
+  { field: "weeklyOutputTokenLimit", period: "week", metric: "outputTokens", label: "Output tokens this week" },
+  { field: "weeklyBudget", period: "week", metric: "cost", label: "Cost this week", always: true },
   { field: "monthlyTokenLimit", period: "month", metric: "tokens", label: "Tokens this month" },
   { field: "monthlyInputTokenLimit", period: "month", metric: "inputTokens", label: "Input tokens this month" },
   { field: "monthlyOutputTokenLimit", period: "month", metric: "outputTokens", label: "Output tokens this month" },
@@ -49,8 +56,12 @@ export const USAGE_LIMITS = [
   { field: "monthlyBudget", period: "month", metric: "cost", label: "Cost this month", always: true },
 ];
 
-const PERIOD_TEXT = { day: "daily", month: "monthly" };
-const RESET_TEXT = { day: "Resets at local midnight.", month: "Resets on the 1st of next month." };
+const PERIOD_TEXT = { day: "daily", week: "weekly", month: "monthly" };
+const RESET_TEXT = {
+  day: "Resets at local midnight.",
+  week: "Resets at local midnight on Monday.",
+  month: "Resets on the 1st of next month.",
+};
 
 // Shared across Next.js module instances, like usageRepo's emitter.
 if (!global._apiKeyLimitState) {
@@ -141,22 +152,26 @@ function limitOf(record, field) {
 }
 
 function periodBounds(now = new Date()) {
+  // The week starts on Monday (ISO-8601): Sunday is 6 days in, Monday is 0.
+  const daysIntoWeek = (now.getDay() + 6) % 7;
   return {
     day: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
     nextDay: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
+    week: new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysIntoWeek),
+    nextWeek: new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysIntoWeek + 7),
     month: new Date(now.getFullYear(), now.getMonth(), 1),
     nextMonth: new Date(now.getFullYear(), now.getMonth() + 1, 1),
   };
 }
 
-const resetOf = (period, bounds) => (period === "day" ? bounds.nextDay : bounds.nextMonth);
+const resetOf = (period, bounds) => (period === "day" ? bounds.nextDay : period === "week" ? bounds.nextWeek : bounds.nextMonth);
 
 async function getUsage(record, scope, apiKeyId, bounds, { fresh = false } = {}) {
   const dayKey = bounds.day.toISOString();
   const cached = state.usage.get(scope);
-  if (!fresh && cached && cached.dayKey === dayKey && Date.now() - cached.ts < USAGE_CACHE_TTL_MS) return cached.totals;
-  const totals = await getApiKeyWindowUsageTotals(record.key, dayKey, bounds.month.toISOString(), apiKeyId);
-  state.usage.set(scope, { totals, dayKey, ts: Date.now() });
+  if (!fresh && cached && cached.dayKey === dayKey && cached.week && Date.now() - cached.ts < USAGE_CACHE_TTL_MS) return cached.totals;
+  const totals = await getApiKeyWindowUsageTotals(record.key, dayKey, bounds.month.toISOString(), apiKeyId, bounds.week.toISOString());
+  state.usage.set(scope, { totals, dayKey, week: true, ts: Date.now() });
   return totals;
 }
 
@@ -232,6 +247,22 @@ export async function checkApiKeyLimits(record, now = new Date()) {
 }
 
 /**
+ * The daily `dailyLimitTokens` cap, measured like the chat/native admission
+ * (committed tokens since local midnight). Reads only; it never counts a hit.
+ */
+async function checkDailyTokenCap(record) {
+  if (record.dailyLimitTokens == null) return null;
+  const status = await getApiKeyUsageLimitStatus(record.key, new Date(), record.id || null);
+  if (!status.exceeded) return null;
+  const used = Math.round(status.usedTokens);
+  const limit = Math.round(status.limitTokens);
+  return {
+    message: `API key daily token limit exceeded (${used}/${limit} tokens)`,
+    retryAfter: Math.max(1, Math.ceil((new Date(status.resetAt).getTime() - Date.now()) / 1000)),
+  };
+}
+
+/**
  * Return a 429 with Retry-After when a limit is hit, otherwise null.
  *
  * A request is checked and counted once: chat checks at the top of the
@@ -246,11 +277,10 @@ export async function enforceApiKeyLimits(request, record) {
   }
   let limited;
   try {
-    limited = await checkApiKeyLimits(record);
+    limited = await checkDailyTokenCap(record) || await checkApiKeyLimits(record);
   } catch (error) {
-    // Fail open: a broken usage query must not take the gateway down.
     console.warn("[apiKeyLimits] check failed:", error?.message);
-    return null;
+    return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "API key usage temporarily unavailable");
   }
   if (!limited) return null;
   return annotateClientAdmissionFailure(
@@ -275,6 +305,7 @@ export async function getApiKeyLimitStatus(record, now = new Date()) {
       resetAt: resetOf(def.period, bounds).toISOString(),
     })),
     today: usage.day,
+    week: usage.week,
     month: usage.month,
   };
 }

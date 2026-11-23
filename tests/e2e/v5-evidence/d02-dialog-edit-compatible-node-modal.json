@@ -1,0 +1,4 @@
+{
+  "route": "dialog/EditCompatibleNodeModal",
+  "stories": ["production-providers-editcompatiblenodemodal--open", "production-providers-editcompatiblenodemodal--pending", "production-providers-editcompatiblenodemodal--save-error"]
+}

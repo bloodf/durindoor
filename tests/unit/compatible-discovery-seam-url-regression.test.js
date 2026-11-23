@@ -56,9 +56,10 @@ describe.each(families)("compatible discovery API base: $provider", (family) => 
     expect(await result.json()).toEqual({ models });
     expect(mocks.get).toHaveBeenCalledExactlyOnceWith(stored.id);
     expect(mocks.proxy).toHaveBeenCalledExactlyOnceWith(stored.providerSpecificData);
-    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${base}/models`, {
-      method: "GET", headers: headers(family, stored.apiKey), cache: "no-store",
-    }, proxy);
+    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${base}/models`, expect.objectContaining({
+      method: "GET", headers: headers(family, stored.apiKey), cache: "no-store", redirect: "manual",
+      dispatcher: expect.anything(),
+    }), proxy);
     expect(new DefaultExecutor(family.provider).buildUrl("offline-model", false, 0, stored))
       .toBe(`${base}${family.endpoint}`);
   });
@@ -70,9 +71,10 @@ describe.each(families)("compatible discovery API base: $provider", (family) => 
     mocks.fetch.mockResolvedValue(response(models));
     expect(await fetchConnectionModels(connection(family, `${origin}/v1`, { accessToken, apiKey })))
       .toEqual({ models });
-    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${origin}/v1/models`, {
-      method: "GET", headers: headers(family, token), cache: "no-store",
-    }, proxy);
+    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${origin}/v1/models`, expect.objectContaining({
+      method: "GET", headers: headers(family, token), cache: "no-store", redirect: "manual",
+      dispatcher: expect.anything(),
+    }), proxy);
   });
 
   // #2023: keyless LAN nodes discover models; the request carries no auth header.
@@ -81,12 +83,12 @@ describe.each(families)("compatible discovery API base: $provider", (family) => 
     const result = await discover(connection(family, `${origin}/v1`, { apiKey: "" }));
     expect(result.status).toBe(200);
     expect(await result.json()).toEqual({ models });
-    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${origin}/v1/models`, {
+    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${origin}/v1/models`, expect.objectContaining({
       method: "GET", headers: family.provider.startsWith("anthropic-") ?
         { "anthropic-version": "2023-06-01", "Content-Type": "application/json" } :
         { "Content-Type": "application/json" },
-      cache: "no-store",
-    }, proxy);
+      cache: "no-store", redirect: "manual", dispatcher: expect.anything(),
+    }), proxy);
     const sent = mocks.fetch.mock.calls[0][1].headers;
     expect(sent).not.toHaveProperty("Authorization");
     expect(sent).not.toHaveProperty("x-api-key");
@@ -130,7 +132,7 @@ it("keeps each selected account's base, key and proxy isolated", async () => {
   await fetchConnectionModels(first);
   await fetchConnectionModels(second);
   expect(mocks.fetch.mock.calls).toEqual([
-    [`${origin}/v1/models`, { method: "GET", headers: headers(families[0], first.apiKey), cache: "no-store" }, proxy],
-    ["https://second.example.invalid/api/models", { method: "GET", headers: headers(families[0], second.apiKey), cache: "no-store" }, secondProxy],
+    [`${origin}/v1/models`, expect.objectContaining({ method: "GET", headers: headers(families[0], first.apiKey), cache: "no-store", redirect: "manual", dispatcher: expect.anything() }), proxy],
+    ["https://second.example.invalid/api/models", expect.objectContaining({ method: "GET", headers: headers(families[0], second.apiKey), cache: "no-store", redirect: "manual", dispatcher: expect.anything() }), secondProxy],
   ]);
 });

@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleStt } from "@/sse/handlers/stt.js";
 
@@ -7,9 +8,7 @@ export const maxDuration = 300;
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
+      ...corsHeaders(["POST", "OPTIONS"]),
     },
   });
 }

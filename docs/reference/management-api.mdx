@@ -19,6 +19,8 @@ Authentication applies to the decoded route path. Individual handlers can requir
 | gw | MCP gateway key, not a DurinDoor API key |
 | local | Local-only gate first. Remote callers without CLI get HTTP 403 `Local only: CLI token required` |
 
+Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
+
 Loopback identity comes from wrapper-stamped peer headers, not from `Host` alone. A request through `x-9r-via-proxy` is never loopback. Management routes accept session, CLI, key, or loop. Reveal paths reject a key. Always-protected paths (`/api/shutdown`, `/api/settings/database`, `/api/version/shutdown`, `/api/version/update`, OAuth auto-import) accept session or CLI only. Other protected routes fall through to session, CLI, or loop. `POST /api/mcp/control` is a separate branch: session, CLI, or key, plus loopback with no credential when `requireApiKey` is off and `Origin` is absent or same-origin. Gateway protocol surfaces (`/api/mcp-gateway`, `/sse`, `/message`) take a gateway key, CLI, or loopback, not a DurinDoor API key. Details: [MCP control](../features/mcp-control.mdx).
 
 <Callout type="warn">
@@ -28,6 +30,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 ## Route families
 
 ### Providers
+
+`GET /api/providers` accepts `provider` and `q` filters. Optional `page` and `pageSize` return a page and `total`, `page`, and `pageSize` metadata; page sizes are capped at 200. Without these parameters the original connection-list response is unchanged. Search matches names, email addresses, and IDs without exposing credentials.
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
@@ -90,6 +94,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, POST | `/api/combos/presets` | GET query `source=cursor` or `claude` previews missing presets; POST JSON `{ source }` creates only missing names and returns created/skipped counts | session, CLI, key, loop |
 | GET, POST | `/api/combos` | List combos (GET) or create one (POST, 201) | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/combos/{id}` | Read, update, or delete a combo | session, CLI, key, loop |
+| GET | `/api/combos/{id}/stale-steps` | Steps missing from the provider's live catalog (`staleSteps`) and auto-pruned steps (`prunedSteps`) | session, CLI, key, loop |
+| POST | `/api/combos/{id}/restore` | Restore auto-pruned steps; optional JSON `{ models: [...] }` limits the restore | session, CLI, key, loop |
 
 ### Connection groups
 
@@ -212,11 +218,11 @@ Database routes require a dashboard session or CLI token plus the dashboard pass
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, POST | `/api/proxy-pools` | List or create proxy pools | session, CLI, key, loop |
+| GET, POST | `/api/proxy-pools` | List or create proxy pools (relay pools require a public HTTPS URL) | session, CLI, key, loop |
 | POST | `/api/proxy-pools/cloudflare-deploy` | Deploy a Cloudflare relay worker | session, CLI, key, loop |
 | POST | `/api/proxy-pools/vercel-deploy` | Deploy a Vercel relay function | session, CLI, key, loop |
-| GET, PUT, DELETE | `/api/proxy-pools/{id}` | Read, update, or delete a pool | session, CLI, key, loop |
-| POST | `/api/proxy-pools/{id}/test` | Test one pool entry | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/proxy-pools/{id}` | Read, update, or delete a pool (relay URLs require public HTTPS) | session, CLI, key, loop |
+| POST | `/api/proxy-pools/{id}/test` | Test one pool entry (SSRF-guarded; redirects not followed for relays) | session, CLI, key, loop |
 
 ### Tunnel
 
@@ -337,10 +343,10 @@ includes [proxy response handling](../../tests/unit/headroom-proxy-route.test.js
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, HEAD, OPTIONS | `/api/livez` | Process-alive response; protected by the generic dashboard gate | session, CLI, loop |
-| GET, OPTIONS | `/api/readyz` | Alias of health response; protected by the generic dashboard gate | session, CLI, loop |
-| GET, OPTIONS | `/api/health` | Liveness `{ ok: true }` with CORS | none |
-| GET, DELETE, OPTIONS | `/api/health/providers` | Cached provider health; DELETE invalidates; ?force=1 | none |
+| GET, HEAD, OPTIONS | `/api/livez` | Process-alive `{ ok: true }` probe (exact path) | none |
+| GET, OPTIONS | `/api/readyz` | Readiness alias of `/api/health` (exact path) | none |
+| GET, OPTIONS | `/api/health` | Liveness `{ ok: true }` with CORS (exact path) | none |
+| GET, DELETE, OPTIONS | `/api/health/providers` | Cached provider health; DELETE invalidates; ?force=1 | session, CLI, key, loop |
 
 ### Version
 

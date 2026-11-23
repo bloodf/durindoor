@@ -50,7 +50,7 @@ export function normalizeApiKeyPolicy(value) {
     const raw = value[field];
     if (raw == null || raw === "" || Number(raw) === 0) continue;
     const number = Number(raw);
-    const integer = field !== "monthlyBudget";
+    const integer = !MONEY_LIMIT_FIELDS.has(field);
     if (!Number.isFinite(number) || number < 0 || integer && !Number.isSafeInteger(number)) {
       throw new TypeError(`API-key policy ${field} must be a non-negative ${integer ? "integer" : "number"}`);
     }
@@ -61,8 +61,8 @@ export function normalizeApiKeyPolicy(value) {
 }
 
 /**
- * Per-key limits over a rolling minute, the local calendar day and the local
- * calendar month. Enforced by src/lib/apiKeyLimits.js. The daily total-token
+ * Per-key limits over a rolling minute, the local calendar day, the local
+ * calendar week (Monday start) and the local calendar month. Enforced by src/lib/apiKeyLimits.js. The daily total-token
  * limit is the older `dailyLimitTokens` column, so it is not repeated here.
  */
 export const API_KEY_LIMIT_FIELDS = Object.freeze([
@@ -70,12 +70,19 @@ export const API_KEY_LIMIT_FIELDS = Object.freeze([
   "tpmLimit",
   "dailyInputTokenLimit",
   "dailyOutputTokenLimit",
+  "dailyBudget",
+  "weeklyTokenLimit",
+  "weeklyInputTokenLimit",
+  "weeklyOutputTokenLimit",
+  "weeklyBudget",
   "monthlyTokenLimit",
   "monthlyInputTokenLimit",
   "monthlyOutputTokenLimit",
   "monthlyRequestLimit",
   "monthlyBudget",
 ]);
+
+const MONEY_LIMIT_FIELDS = new Set(["dailyBudget", "weeklyBudget", "monthlyBudget"]);
 
 const MODEL_ACCESS_MODES = new Set(["all", "allow", "deny"]);
 const MAX_MODEL_ACCESS_PATTERNS = 200;

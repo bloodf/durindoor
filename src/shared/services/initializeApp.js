@@ -17,6 +17,8 @@ import { getMitmStatus, startMitm, stopMitm, loadEncryptedPassword, initDbHooks,
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 import { killAllBridges } from "@/lib/mcp/stdioSseBridge";
+import { killAllStdioEntries } from "@/lib/mcp/gateway/stdioClient";
+import { stopHeadroomProxy } from "@/lib/headroom/process";
 import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
@@ -79,6 +81,8 @@ export async function initializeApp() {
           // operations, and a late success must still reach the exit path.
           await stopMitm(undefined, { preserveDesiredState: true });
           try { killAllBridges(); } catch { /* best effort */ }
+          try { killAllStdioEntries(); } catch { /* best effort */ }
+          try { await stopHeadroomProxy(); } catch { /* best effort */ }
           killCloudflared();
           process.exit(0);
         } catch (error) {

@@ -24,6 +24,7 @@ import { resolveCopilotEndpointRoute, computeCopilotRouteGeneration } from "../s
 import { CopilotLearnedRoutes } from "../services/copilotLearnedRoutes.js";
 import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { containsMediaKind } from "../utils/mediaParts.js";
 
 export class GithubExecutor extends BaseExecutor {
   constructor(provider = "github", config = PROVIDERS[provider]) {
@@ -73,9 +74,11 @@ export class GithubExecutor extends BaseExecutor {
     return this.endpointUrl("baseUrl", credentials);
   }
 
-  buildHeaders(credentials, stream = true) {
-    const token = credentials.copilotToken || credentials.accessToken;
-    return {
+  buildHeaders(credentials, stream = true, requestContext = null) {
+    const token = credentials.copilotToken || credentials.providerSpecificData?.copilotToken || credentials.accessToken;
+    // The latest turn identifies a continuation; earlier assistant turns do not.
+    const lastRole = requestContext?.copilotMessages?.at(-1)?.role;
+    const headers = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
       "copilot-integration-id": "vscode-chat",
@@ -86,11 +89,15 @@ export class GithubExecutor extends BaseExecutor {
       "x-github-api-version": GITHUB_COPILOT.API_VERSION,
       "x-request-id": crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       "x-vscode-user-agent-library-version": "electron-fetch",
-      "X-Initiator": "user",
+      "X-Initiator": lastRole === "assistant" || lastRole === "tool" ? "agent" : "user",
       // Harmless no-op on /chat/completions and /responses; required by /v1/messages.
       "anthropic-version": ANTHROPIC_API_VERSION,
       "Accept": stream ? "text/event-stream" : "application/json"
     };
+    if (containsMediaKind([{ content: [requestContext?.copilotMessages, requestContext?.copilotInput] }], "image")) {
+      headers["copilot-vision-request"] = "true";
+    }
+    return headers;
   }
 
   /**
@@ -144,13 +151,14 @@ export class GithubExecutor extends BaseExecutor {
       if (Array.isArray(msg.content)) {
         const cleanContent = msg.content.
         map((part) => {
+          if (!part || !isObject(part)) return part;
           if (part.type === "text") return part;
           if (part.type === "image_url") return part;
           // Serialize tool_use, tool_result, thinking, etc. as text
-          const text = part.text || part.content || JSON.stringify(part);
+          const text = part.text || part.thinking || part.content || JSON.stringify(part);
           return { type: "text", text: isString(text) ? text : JSON.stringify(text) };
         }).
-        filter((part) => part.text !== ""); // remove empty text parts
+        filter((part) => !(part?.type === "text" && part.text === ""));
 
         // If all content was stripped (e.g. only tool_result with no text), drop content
         return { ...msg, content: cleanContent.length > 0 ? cleanContent : null };
@@ -243,6 +251,10 @@ export class GithubExecutor extends BaseExecutor {
 
   async execute(options) {
     const { model, log } = options;
+    const body = Array.isArray(options.body?.tools) && options.body.tools.length > 128
+      ? { ...options.body, tools: options.body.tools.slice(0, 128) }
+      : options.body;
+    options = { ...options, body, requestContext: { ...options.requestContext, copilotMessages: body?.messages, copilotInput: body?.input } };
 
     // Local AI Credits cutoff runs before any route selection so every GitHub
     // path (messages shim, /responses, /chat/completions) is gated identically.
@@ -347,7 +359,7 @@ export class GithubExecutor extends BaseExecutor {
     // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
     // already knows how to buffer an SSE response into a single JSON reply when the
     // client asked for stream:false.
-    const headers = this.buildHeaders(credentials, true);
+    const headers = this.buildHeaders(credentials, true, requestContext);
 
     // Strip params GitHub's Claude route rejects (temperature, and thinking/
     // reasoning_effort for non-4.6 Claude) BEFORE translating — the normal
@@ -445,7 +457,7 @@ export class GithubExecutor extends BaseExecutor {
         const countSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
         const countResponse = await proxyAwareFetch(this.config.countTokensUrl, {
           method: "POST",
-          headers: this.buildHeaders(credentials, false),
+          headers: this.buildHeaders(credentials, false, requestContext),
           body: JSON.stringify(transformedBody),
           signal: countSignal
         }, proxyOptions);
@@ -773,7 +785,7 @@ export class GithubExecutor extends BaseExecutor {
     // below. Keep the upstream Responses request streaming even when the
     // original Chat Completions client requested a non-streaming response.
     const responsesStream = true;
-    const headers = this.buildHeaders(credentials, responsesStream);
+    const headers = this.buildHeaders(credentials, responsesStream, requestContext);
 
     const transformedBody = openaiToOpenAIResponsesRequest(model, body, responsesStream, credentials);
     // This route bypasses transformRequest(), so the unsupported-parameter filter
@@ -932,6 +944,10 @@ export class GithubExecutor extends BaseExecutor {
         return null;
       }
       const data = await response.json();
+      if (!isString(data.token) || !data.token || !Number.isFinite(data.expires_at) || data.expires_at <= Date.now() / 1000) {
+        log?.error?.("TOKEN", "Copilot token refresh returned an invalid or expired token");
+        return null;
+      }
       log?.info?.("TOKEN", "Copilot token refreshed");
       return { token: data.token, expiresAt: data.expires_at };
     } catch {
@@ -977,14 +993,14 @@ export class GithubExecutor extends BaseExecutor {
       if (githubTokens?.accessToken) {
         copilotResult = await this.refreshCopilotToken(githubTokens.accessToken, log, proxyOptions);
         if (copilotResult) {
-          return { ...githubTokens, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt };
+          return { ...githubTokens, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt, providerSpecificData: { ...credentials.providerSpecificData, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt } };
         }
         return githubTokens;
       }
     }
 
     if (copilotResult) {
-      return { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt };
+      return { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt, providerSpecificData: { ...credentials.providerSpecificData, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt } };
     }
 
     return null;
@@ -992,11 +1008,12 @@ export class GithubExecutor extends BaseExecutor {
 
   needsRefresh(credentials) {
     // Always refresh if no copilotToken
-    if (!credentials.copilotToken) return true;
+    if (!(credentials.copilotToken || credentials.providerSpecificData?.copilotToken)) return true;
 
-    if (credentials.copilotTokenExpiresAt) {
+    const copilotTokenExpiresAt = credentials.copilotTokenExpiresAt || credentials.providerSpecificData?.copilotTokenExpiresAt;
+    if (copilotTokenExpiresAt) {
       // Handle both Unix timestamp (seconds) and ISO string
-      let expiresAtMs = credentials.copilotTokenExpiresAt;
+      let expiresAtMs = copilotTokenExpiresAt;
       if (isNumber(expiresAtMs) && expiresAtMs < 1e12) {
         expiresAtMs = expiresAtMs * 1000; // Convert seconds to ms
       } else if (isString(expiresAtMs)) {

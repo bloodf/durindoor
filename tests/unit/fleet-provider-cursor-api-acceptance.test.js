@@ -5,6 +5,7 @@
  * Static models and token-presence validation are metadata, not live discovery.
  * g4f, web relays and app-server transports do not establish native vendor support.
  * Keep cursor-api and unverified capabilities hidden pending account-backed proof.
+ * (Registered behind a per-connection opt-in in #2034; dispatch and discovery stay off.)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock before executor imports: no release updater or MITM DNS transport runs.
@@ -23,6 +24,7 @@ vi.mock("../../open-sse/services/cursorModels.js", () => ({
   resolveAutoModelSelection: vi.fn(() => null),
 }));
 import { CursorExecutor, __setCursorHttp2ForTesting } from "../../open-sse/executors/cursor.js";
+import { CursorApiExecutor } from "../../open-sse/executors/cursor-api.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { decodeMessage, encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";
 import { getModelsByProviderId } from "../../open-sse/config/providerModels.js";
@@ -105,19 +107,49 @@ describe("#1170 cursor-api native identity acceptance (offline partial)", () => 
     expect(listed.models).toContainEqual(expect.objectContaining({ id: model }));
     expect(listed.warning).toMatch(/static catalog/u);
 
+    // cursor-api is registered (#2034) as an API-key identity behind a per-connection opt-in.
+    // An OAuth-typed row, a token with no key and static models still never count as support.
     mocks.connection.mockResolvedValue({ id: "offline-candidate", provider: "cursor-api", authType: "oauth", ...credentials });
     expect(await testSingleConnection("offline-candidate")).toMatchObject({ valid: false, error: "Provider test not supported" });
+    // Discovery refuses before any key exchange or network call unless the connection opted in.
     expect(await fetchConnectionModels({ provider: "cursor-api", ...credentials })).toEqual({
-      error: "Provider cursor-api does not support models listing", status: 400,
+      error: "Cursor API dispatch is disabled for this connection", status: 403,
     });
-    expect(AI_PROVIDERS["cursor-api"]).toBeUndefined();
-    expect(getModelsByProviderId("cursor-api")).toEqual([]);
-    expect(hasSpecializedExecutor("cursor-api")).toBe(false);
+    expect(await fetchConnectionModels({ provider: "cursor-api", apiKey: "crsr_offline", providerSpecificData: { enableSessionDispatch: "true" } })).toEqual({
+      error: "Cursor API dispatch is disabled for this connection", status: 403,
+    });
+    expect(AI_PROVIDERS["cursor-api"]).toMatchObject({ id: "cursor-api", alias: "cua", authType: "apikey" });
+    expect(getModelsByProviderId("cursor-api")).toEqual(getModelsByProviderId("cursor"));
+    expect(hasSpecializedExecutor("cursor-api")).toBe(true);
+    expect(getExecutor("cursor-api")).toBeInstanceOf(CursorApiExecutor);
+    expect(getExecutor("cursor-api")).toBe(getExecutor("cua"));
     expect(getExecutor("cu")).toBeInstanceOf(CursorExecutor);
+    expect(getExecutor("cu")).not.toBeInstanceOf(CursorApiExecutor);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(["cursor-api", "fleet-unknown-cursor-api"])("rejects unsupported %s with 400 before credential or fetch dispatch", async (provider) => {
+  it("refuses cursor-api dispatch with 403 before credential or fetch dispatch while the opt-in is off", async () => {
+    const executor = getExecutor("cursor-api");
+    const buildHeaders = vi.spyOn(executor, "buildHeaders");
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ choices: [] }), {
+      headers: { "Content-Type": "application/json" },
+    }));
+    try {
+      for (const providerSpecificData of [undefined, {}, { enableSessionDispatch: "true" }, { enableSessionDispatch: false }]) {
+        const result = await executor.execute({
+          model, body: structuredClone(body), stream: false,
+          credentials: { apiKey: "crsr_offline", providerSpecificData },
+        });
+        expect.soft(result.response.status).toBe(403);
+      }
+      expect.soft(buildHeaders).not.toHaveBeenCalled();
+      expect.soft(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      buildHeaders.mockRestore();
+    }
+  });
+
+  it.each(["fleet-unknown-cursor-api"])("rejects unsupported %s with 400 before credential or fetch dispatch", async (provider) => {
     const executor = getExecutor(provider);
     const buildHeaders = vi.spyOn(executor, "buildHeaders");
     // A successful mock exposes unsafe fallback dispatch without retry or network.

@@ -13,7 +13,7 @@ const MEDIA_ONLY_ALIASES = {
   "aws-polly": "aws-polly"
 };
 
-const ALIAS_TO_PROVIDER_ID = { ...MEDIA_ONLY_ALIASES };
+const ALIAS_TO_PROVIDER_ID = Object.assign(Object.create(null), MEDIA_ONLY_ALIASES);
 for (const entry of REGISTRY) {
   ALIAS_TO_PROVIDER_ID[entry.id] = entry.id;
   if (entry.alias) ALIAS_TO_PROVIDER_ID[entry.alias] = entry.id;
@@ -47,8 +47,8 @@ const PROVIDER_MODEL_ALIASES = {
 export function resolveProviderModelAlias(providerOrAlias, modelId) {
   if (!isString(modelId) || !modelId) return modelId;
   const providerId = resolveProviderAlias(providerOrAlias);
-  const aliases = PROVIDER_MODEL_ALIASES[providerId];
-  return aliases?.[modelId] || modelId;
+  const aliases = Object.hasOwn(PROVIDER_MODEL_ALIASES, providerId) ? PROVIDER_MODEL_ALIASES[providerId] : null;
+  return aliases && Object.hasOwn(aliases, modelId) ? aliases[modelId] : modelId;
 }
 
 /**
@@ -119,10 +119,10 @@ export function parseModel(modelStr) {
 
 /**
  * Resolve model alias from aliases object
- * Format: { "alias": "provider/model" }
+ * Format: { "alias": "provider/model" }. Only own properties are aliases.
  */
 export function resolveModelAliasFromMap(alias, aliases) {
-  if (!aliases) return null;
+  if (!aliases || !Object.hasOwn(aliases, alias)) return null;
 
   // Check if alias exists
   const resolved = aliases[alias];

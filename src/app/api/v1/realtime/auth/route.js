@@ -1,5 +1,7 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { resolveClientApiKey } from "@/sse/services/auth.js";
 import { getSettings } from "@/lib/localDb";
+import { isLocalRequest } from "@/dashboardGuard";
 
 /**
  * Auth bridge for the `/v1/realtime` WebSocket endpoint.
@@ -19,24 +21,22 @@ import { getSettings } from "@/lib/localDb";
 export async function GET(request) {
   const settings = await getSettings();
   const { auth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+    required: settings.requireApiKey === true || !isLocalRequest(request),
   });
   if (auth.ok) {
-    return Response.json({ ok: true, operator: auth.operator === true }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    return Response.json({ ok: true, operator: auth.operator === true }, { headers: { ...corsHeaders(["GET", "OPTIONS"]) } });
   }
   const message = auth.reason === "missing" ? "Missing API key" : "Invalid API key";
   return Response.json(
     { ok: false, error: { message, type: "invalid_request_error", code: "invalid_api_key" } },
-    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } }
+    { status: 401, headers: { ...corsHeaders(["GET", "OPTIONS"]) } }
   );
 }
 
 export async function OPTIONS() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
+      ...corsHeaders(["GET", "OPTIONS"]),
     },
   });
 }

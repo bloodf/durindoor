@@ -66,7 +66,7 @@ export function extractUsageFromResponse(responseBody) {
 }
 
 export function buildRequestDetail(base, overrides = {}) {
-  return {
+  const detail = {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
@@ -81,6 +81,17 @@ export function buildRequestDetail(base, overrides = {}) {
     status: base.status || "success",
     ...overrides
   };
+  // Combo opt-out removes payloads after overrides, before the detail reaches storage.
+  if (base.comboNoLog === true) {
+    detail.request = null;
+    detail.providerRequest = null;
+    detail.providerResponse = null;
+    const responseStatus = detail.response?.status;
+    detail.response = detail.status === "error" ? { error: "Request failed" } : {};
+    if (detail.status === "error" && Number.isInteger(responseStatus)) detail.response.status = responseStatus;
+    detail.pxpipe = undefined;
+  }
+  return detail;
 }
 
 /**
@@ -113,7 +124,9 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
     inStr += ` (CACHE ${parts.join(" ")})`;
   }
   const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
-  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+  // Same marker as logUsage(): a count we guessed must not read like a measured one.
+  const estimatedStr = u.estimated === true ? " (estimated)" : "";
+  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}${estimatedStr}`;
   if (model) line += ` · ${provider ? `${provider}/${model}` : model}`;
   if (Number.isFinite(u.kiro_credits) && u.kiro_credits >= 0) line += ` · ${Number(u.kiro_credits.toFixed(4))}cr`;
   if (sessionId) line += ` · sid:${String(sessionId).replace(/[^\x20-\x7e]/g, "").replace(/^(?:claude|antigravity):/, "").slice(0, 8)}`;

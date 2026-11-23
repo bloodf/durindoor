@@ -1,223 +1,9 @@
 import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { DEFAULT_SETTINGS_SCHEMA as DEFAULT_SETTINGS, DEFAULT_QUOTA_TRACKER_STATE, SETTINGS_SCHEMA } from "../../settings/settingsSchema.js";
 import { isBoolean, isFunction, isRecord, isString } from "../../../shared/utils/typeChecks.js";
 
-const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
-const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
-
-const DEFAULT_QUOTA_TRACKER_STATE = {
-  providerFilter: "all",
-  accountFilter: "all",
-  quotaSortMode: "default",
-  expiringFirst: false,
-  pageSize: 20,
-  page: 1
-};
-
-const DEFAULT_SETTINGS = {
-  // Session message capture requires explicit operator opt-in and request consent.
-  enableSessionCapture: false,
-  cloudEnabled: false,
-  hidePaidModels: false,
-  exposeComboOnly: false,
-  /**
-   * OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
-   * /v1/models exposure, mirrored into auto/* combo candidate pools.
-   * Default off (empty arrays); see src/shared/utils/modelExposureList.js.
-   */
-  modelVisibilityAllowlist: [],
-  modelVisibilityDenylist: [],
-  tunnelEnabled: false,
-  tunnelUrl: "",
-  tunnelProvider: "cloudflare",
-  tailscaleEnabled: false,
-  tailscaleUrl: "",
-  stickyRoundRobinLimit: 3,
-  /**
-   * Per-provider static retry delay in seconds (decolua/9router#2895).
-   * Missing providers retain provider-reset or configured backoff behavior.
-   */
-  retryDelayByProvider: {},
-  /** Per-provider per-account RPM overrides (decolua/9router#3203); zero means unlimited. */
-  rpmByProvider: {},
-  /**
-   * Operator-declared per-provider error rules (OmniRoute #11104), consulted
-   * before the built-in providerRuleRegistry (open-sse/config/providerErrorRules.js).
-   * Keyed by lowercase provider id: [{ status, match, scope, reason?, cooldownMs? }].
-   */
-  providerErrorRules: {},
-  /**
-   * OmniRoute #10920: providers whose upstream quota is bucketed by egress
-   * IP rather than by account. A 429 on one connection cools every sibling
-   * connection assigned to the same proxy pool (src/sse/services/auth.js
-   * applyEgressBucketCooldown). Empty by default -- opt-in per provider id.
-   */
-  egressBucketedProviders: [],
-  providerStrategies: {},
-  quotaVisibility: {},
-  comboStrategy: "fallback",
-  comboStickyRoundRobinLimit: 1,
-  comboStrategies: {},
-  comboPrompts: {},
-  // Dashboard update checks and prompts are enabled for new and legacy settings.
-  showUpdateNotifications: true,
-  requireLogin: true,
-  tunnelDashboardAccess: true,
-  authMode: "password",
-  oidcIssuerUrl: "",
-  oidcClientId: "",
-  oidcClientSecret: "",
-  oidcScopes: "openid profile email",
-  oidcLoginLabel: "Sign in with OIDC",
-  // TOTP dashboard 2FA (decolua/9router#4144). mfaSecret/mfaBackupCodes are
-  // credentials -- see SECRET_SETTING_KEYS in settingsPatchAuth.js and the
-  // GET/PATCH redaction in the settings route; they must never round-trip
-  // through the generic settings API.
-  mfaEnabled: false,
-  mfaSecret: "",
-  mfaBackupCodes: [],
-  passwordSessionEpoch: "initial",
-  enableObservability: true,
-  enableProxyTimeline: false,
-  proxyTimelineRetentionDays: 1,
-  /** Automatic cleanup of usage, request details, timeline and quota history older than N days. */
-  dataRetentionEnabled: false,
-  dataRetentionDays: 30,
-  /**
-   * Model auto-sync (src/lib/modelAutoSync): hours between provider model
-   * catalog refreshes, 0 = off. modelAutoSyncProviders holds per-provider
-   * on/off overrides; providers not listed use MODEL_AUTO_SYNC_DEFAULT_PROVIDERS.
-   */
-  modelAutoSyncIntervalHours: 24,
-  modelAutoSyncProviders: {},
-  observabilityMaxRecords: 1000,
-  observabilityBatchSize: 20,
-  observabilityFlushIntervalMs: 5000,
-  outboundProxyEnabled: false,
-  outboundProxyUrl: "",
-  outboundNoProxy: "",
-  firecrawlBaseUrl: "",
-  mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
-  dnsToolEnabled: {},
-  rtkEnabled: true,
-  headroomEnabled: false,
-  headroomUrl: DEFAULT_HEADROOM_URL,
-  headroomCompressUserMessages: false,
-  headroomTimeoutMs: 15000,
-  pxpipeEnabled: true,
-  pxpipeMinChars: 25000,
-  pxpipeTimeoutMs: 15000,
-  pxpipeAllowedModels: [],
-  providerConcurrencyLimits: {},
-  // Hierarchical concurrency admission: caps in-flight upstream requests
-  // across every provider combined, above the per-provider caps in
-  // providerConcurrencyLimits. 0 = unlimited (no global gate).
-  globalConcurrentRequests: 0,
-  // fallbackStrategy: "quota-weighted" pool-floor split (percent). Accounts
-  // at or below this leftover-quota percent only get drawn from when every
-  // comparable account is already that thin.
-  quotaWeightedFloorPercent: 1,
-  // Optional upstream routing overrides. Shape:
-  // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
-  upstreamProxyConfig: {},
-  cliproxyapi_fallback_codes: "429,500,502,503,504",
-  // Vision Bridge (OmniRoute #6640): reroute image-bearing requests on a
-  // non-vision model to a configured vision-capable target. Requires an
-  // explicit, vision-capable visionBridgeModel; an empty/invalid target leaves
-  // the request on its original model (no unsafe auto-pick to a provider the
-  // caller may not have credentials for).
-  visionBridgeEnabled: false,
-  visionBridgeModel: "",
-  // Claude Code auto-mode classifier compat: "off" | "auto" | "always".
-  // When enabled, classifier requests are short-circuited to "<block>no</block>"
-  // (ALLOW) and `thinking` blocks are suppressed on Claude-shaped responses.
-  claudeClassifierCompat: "off",
-  // Compression engine stack (F-1b). Master switch is off by default; enabling
-  // runs the configured engine(s) after RTK/headroom and before caveman/pxpipe.
-  // compressionEngines is a per-id toggle map: { [engineId]: { enabled, level? } }.
-  // Any engine throw fail-opens and restores the body; the loop never throws.
-  compressionEnabled: false,
-  compressionEngines: {},
-  // Opt-in outbound PII / credential masking (#1112): mode "off" | "warn" | "mask".
-  contentMasking: { mode: "off", credentials: true, pii: true },
-  // Opt-in text fidelity gate for stack steps (numbers, URLs, JSON keys,
-  // negations). Protected blocks are always gated; see fidelityGate.js.
-  compressionFidelityGate: false,
-  // Context-budget adaptive escalation for the stack (#1100). mode "off" |
-  // "floor" | "replace-autotrigger"; see adaptiveCompression/types.js.
-  compressionAdaptive: { mode: "off" },
-  cavemanEnabled: false,
-  cavemanLevel: "full",
-  quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
-  ponytailEnabled: false,
-  ponytailLevel: "full",
-  // User-authored system prompt, injected independently of the built-in savers.
-  customPromptEnabled: false,
-  customPrompt: "",
-  // Default: free no-auth providers remain enabled unless the user explicitly
-  // disables them via Settings > Providers.
-  disabledFreeProviders: [],
-  // #10372: opt-in only — fresh installs (or rows missing the persisted
-  // key) must not run in debug mode; a persisted `true` is preserved.
-  debugMode: false,
-  // #2025: opt-in LAN discovery of Ollama / OpenAI-compatible endpoints.
-  // Off by default; POST /api/providers/lan-discovery returns 403 until enabled.
-  lanDiscoveryEnabled: false,
-  // ─── Opt-in PostgreSQL engine (issue: feat/postgres-engine) ──────────
-  // The runtime is SQLite by default. PG is opt-in; when the operator
-  // supplies a connection URL and runs a successful cutover, this flips
-  // to `"postgres"`. The `databaseEngineError` field surfaces the last
-  // boot-time fallback event (string, nullable).
-  databaseEngine: "sqlite",
-  databaseEngineError: null,
-  databaseCutoverAt: null,
-  databaseCutoverSchemaVersion: null,
-  // Cap on which major version the runtime will treat as the floor for
-  // feature adoption. Valid values: 16, 17, 18. The cluster's actual
-  // major version is read at boot; if it is below the cap, the runtime
-  // auto-disables features with `requires > clusterMajor` and records a
-  // warning in `databaseEngineError`.
-  databasePgVersion: 18,
-  // Per-feature toggle map. Each entry is `{ enabled, requires: ">=N" }`.
-  // The runtime computes `effectiveEnabled = enabled && clusterMajor >= N`
-  // and surfaces the effective state on the settings page. See
-  // `src/lib/db/postgresCapabilityGate.js` for the canonical enumeration.
-  databasePgFeatures: {
-    jsonTable:            { enabled: true,  requires: ">=17" },
-    mergeReturning:       { enabled: true,  requires: ">=17" },
-    copyOnError:          { enabled: true,  requires: ">=17" },
-    sslnegotiationDirect: { enabled: true,  requires: ">=17" },
-    incrementalBackup:    { enabled: true,  requires: ">=17" },
-    streamingIo:          { enabled: true,  requires: ">=17" },
-    vacuumMemoryOpt:      { enabled: true,  requires: ">=17" },
-    notNullElimination:   { enabled: true,  requires: ">=17" },
-    inBtreeOpt:           { enabled: true,  requires: ">=17" },
-    parallelGin:          { enabled: true,  requires: ">=17" },
-    aio:                  { enabled: true,  requires: ">=18" },
-    skipScan:             { enabled: true,  requires: ">=18" },
-    logLockWaits:         { enabled: true,  requires: ">=18" },
-    pgUpgradeSwap:        { enabled: true,  requires: ">=18" },
-    plannerStatsPreserved:{ enabled: true,  requires: ">=18" },
-    uuidv7:               { enabled: false, requires: ">=18" },
-    onConflictDoSelect:   { enabled: false, requires: ">=19" },
-    forPortionOf:         { enabled: false, requires: ">=19" },
-    waitForLsn:           { enabled: false, requires: ">=19" },
-    pgPlanAdvice:         { enabled: false, requires: ">=19" },
-    parallelAutovacuum:   { enabled: false, requires: ">=19" },
-    repack:               { enabled: false, requires: ">=19" },
-    onlineChecksumToggle: { enabled: false, requires: ">=19" },
-  },
-  // Redacted connection info for the UI display. The actual URL (with
-  // password) is held in `DATA_DIR/durindoor-secrets.json` (mode 0600)
-  // or in the env var `DURINDOOR_PG_URL`. These fields are only the
-  // non-secret parts.
-  postgresHost: "",
-  postgresPort: 5432,
-  postgresDatabase: "",
-  postgresUser: "",
-  postgresSslmode: "prefer",
-  postgresAuthSource: "settings", // or "env"
-};
+// The imported defaults include the OIDC allowlists: oidcAllowedSubjects: [], oidcAllowedEmails: [], oidcAllowedDomains: [].
 
 function migrateObservabilityKeys(raw) {
   const next = { ...(raw || {}) };
@@ -277,12 +63,33 @@ export function mergeCompressionEngines(stored, incoming) {
  * actually carries `compressionEngines` is touched; every other key keeps the
  * plain top-level replace semantics.
  */
-function applyCompressionEnginesMerge(current, updates) {
-  if (!Object.prototype.hasOwnProperty.call(updates, "compressionEngines")) return updates;
-  return {
-    ...updates,
-    compressionEngines: mergeCompressionEngines(current?.compressionEngines, updates.compressionEngines),
-  };
+function mergeObjectPatch(stored, incoming) {
+  if (!isRecord(incoming)) return incoming;
+  // An explicit empty map remains the established "clear all" operation used
+  // by settings forms and repository callers; non-empty maps are partial patches.
+  if (Object.keys(incoming).length === 0) return {};
+  const merged = isRecord(stored) ? { ...stored } : {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === null) {
+      delete merged[key];
+    } else if (isRecord(value)) {
+      merged[key] = mergeObjectPatch(merged[key], value);
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+export function mergeSettingsPatch(current, updates) {
+  const merged = { ...updates };
+  for (const [key, rule] of Object.entries(SETTINGS_SCHEMA)) {
+    if (!Object.prototype.hasOwnProperty.call(updates, key) || rule.merge !== "keys") continue;
+    merged[key] = key === "compressionEngines"
+      ? mergeCompressionEngines(current?.[key], updates[key])
+      : mergeObjectPatch(current?.[key], updates[key]);
+  }
+  return merged;
 }
 
 async function readRaw() {
@@ -358,7 +165,7 @@ export async function updateSettings(updates) {
     const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = resolved;
     next = migrateObservabilityKeys({
       ...current,
-      ...applyCompressionEnginesMerge(current, sanitizedUpdates),
+      ...mergeSettingsPatch(current, sanitizedUpdates),
     });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
@@ -393,7 +200,7 @@ export async function updateSettingsWithPasswordEpoch(updates, expectedEpoch) {
     matched = true;
     next = migrateObservabilityKeys({
       ...current,
-      ...applyCompressionEnginesMerge(current, sanitizedUpdates),
+      ...mergeSettingsPatch(current, sanitizedUpdates),
     });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,

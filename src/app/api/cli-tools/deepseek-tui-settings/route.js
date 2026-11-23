@@ -4,9 +4,12 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
+import { parseTOML, stringifyTOML } from "confbox";
+import { isObject, isString } from "@/shared/utils/typeChecks";
 
 const execAsync = promisify(exec);
 
@@ -15,54 +18,12 @@ const PROVIDER_NAME = "9router";
 const getDeepSeekDir = () => path.join(os.homedir(), ".deepseek");
 const getDeepSeekConfigPath = () => path.join(getDeepSeekDir(), "config.toml");
 
-// Simple TOML parser for key = "value" and [section] patterns
-const parseToml = (content) => {
-    const result = {};
-    let currentSection = result;
-
-    const lines = content.split(/\r?\n/);
-    for (const line of lines) {
-        const trimmed = line.trim();
-        // Skip empty lines and comments
-        if (!trimmed || trimmed.startsWith("#")) continue;
-
-        // Section header: [section] or [section.subsection]
-        const sectionMatch = trimmed.match(/^\[([^\]]+)\]$/);
-        if (sectionMatch) {
-            const sectionName = sectionMatch[1];
-            if (!result[sectionName]) result[sectionName] = {};
-            currentSection = result[sectionName];
-            continue;
-        }
-
-        // Key = "value" or key = value
-        const keyValueMatch = trimmed.match(/^(\w+)\s*=\s*"([^"]*)"$/);
-        if (keyValueMatch) {
-            currentSection[keyValueMatch[1]] = keyValueMatch[2];
-            continue;
-        }
-
-        // Key = value (unquoted)
-        const unquotedMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
-        if (unquotedMatch) {
-            currentSection[unquotedMatch[1]] = unquotedMatch[2].trim();
-        }
-    }
-
-    return result;
+const parseConfig = (content) => {
+    const parsed = parseTOML(content);
+    if (parsed === null || !isObject(parsed) || Array.isArray(parsed)) throw new Error("Invalid TOML config");
+    return parsed;
 };
-
-// Build TOML config for DurinDoor (openai provider mode)
-const build9RouterConfig = (baseUrl, apiKey, model) => {
-    const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    return `provider = "openai"
-
-[providers.openai]
-base_url = "${normalizedBaseUrl}"
-api_key = "${apiKey}"
-model = "${model}"
-`;
-};
+const containsControlCharacters = (value) => /[\x00-\x1F\x7F]/.test(value);
 
 // Default DeepSeek config (reset state)
 const DEFAULT_CONFIG = `provider = "deepseek"
@@ -110,7 +71,7 @@ export async function GET() {
             return NextResponse.json({ installed: false, settings: null, message: "DeepSeek TUI is not installed" });
         }
         const toml = await readConfigToml();
-        const config = parseToml(toml);
+        const config = parseConfig(toml);
         return NextResponse.json({
             installed: true,
             settings: redactSecrets(config),
@@ -123,20 +84,37 @@ export async function GET() {
     }
 }
 
+/** Merge the managed provider into valid TOML and serialize every value safely. */
 export async function POST(request) {
     try {
         const { baseUrl, apiKey, model } = await request.json();
-        if (!baseUrl || !model) {
+        if (!isString(baseUrl) || !baseUrl || !isString(model) || !model) {
             return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
+        }
+        if ([baseUrl, model, ...(apiKey == null ? [] : [apiKey])].some((value) => !isString(value) || containsControlCharacters(value))) {
+            return NextResponse.json({ error: "Settings must not contain control characters" }, { status: 400 });
         }
 
         const dir = getDeepSeekDir();
         await fs.mkdir(dir, { recursive: true });
 
-        const existing = parseToml(await readConfigToml());
-        const existingKey = existing["providers.openai"]?.api_key;
-        const newConfig = build9RouterConfig(baseUrl, apiKey || existingKey || "sk_durindoor", model);
-        await fs.writeFile(getDeepSeekConfigPath(), newConfig);
+        const existing = parseConfig(await readConfigToml());
+        const providers = isObject(existing.providers) && !Array.isArray(existing.providers) ? existing.providers : {};
+        const existingProvider = isObject(providers.openai) && !Array.isArray(providers.openai) ? providers.openai : {};
+        const updated = {
+            ...existing,
+            provider: "openai",
+            providers: {
+                ...providers,
+                openai: {
+                    ...existingProvider,
+                    base_url: baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`,
+                    api_key: apiKey || existingProvider.api_key || "sk_durindoor",
+                    model,
+                },
+            },
+        };
+        await writeConfigAtomic(getDeepSeekConfigPath(), stringifyTOML(updated), "utf-8");
 
         return NextResponse.json({
             success: true,
@@ -158,7 +136,7 @@ export async function DELETE() {
             return NextResponse.json({ success: true, message: "No config file to reset" });
         }
 
-        await fs.writeFile(configPath, DEFAULT_CONFIG);
+        await writeConfigAtomic(configPath, DEFAULT_CONFIG);
         return NextResponse.json({ success: true, message: `${PROVIDER_NAME} config reset to DeepSeek defaults` });
     } catch (error) {
         console.log("Error resetting deepseek-tui settings:", error);

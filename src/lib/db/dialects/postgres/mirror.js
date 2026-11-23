@@ -14,10 +14,6 @@ import { isNumber } from "../../../../shared/utils/typeChecks.js";
 
 const DEFAULT_CHUNK = 500;
 const RUNNER_META_KEYS = ["schemaVersion", "appliedMigrations"];
-// Migration-managed tables that are absent from the base schema.
-const MIGRATION_TABLE_COLUMNS = {
-  sessionCaptureTurns: ["id", "apiKeyId", "sessionId", "content", "byteSize", "createdAt", "expiresAt"],
-};
 const SKIP_TABLES = new Set(["requestDetails"]);
 const SERIAL_TABLES = new Map([
   ["usageHistory", "id"],
@@ -27,7 +23,7 @@ const SERIAL_TABLES = new Map([
 
 function tableColumns(tableName) {
   const def = TABLES[tableName];
-  if (!def || !def.columns) return MIGRATION_TABLE_COLUMNS[tableName];
+  if (!def || !def.columns) return null;
   return Object.keys(def.columns);
 }
 
@@ -66,7 +62,7 @@ export async function runMirror(sqlite, pg, options = {}) {
   let tablesMigrated = 0;
   let rowsMigrated = 0;
 
-  const names = [...Object.keys(TABLES), ...Object.keys(MIGRATION_TABLE_COLUMNS)];
+  const names = Object.keys(TABLES);
   for (const tableName of names) {
     if (skip.has(tableName)) continue;
     const cols = tableColumns(tableName);

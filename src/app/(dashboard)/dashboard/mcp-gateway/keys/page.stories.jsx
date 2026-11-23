@@ -288,7 +288,8 @@ export const MintRejectedAndRetry = {
     await userEvent.click(dialog.getByRole("button", { name: "Create key" }));
     await expect(await dialog.findByRole("alert")).toHaveTextContent("Key creation rejected");
     await expect(dialog.getByLabelText("Key name")).toHaveValue("Retry key");
-    await userEvent.click(dialog.getByRole("button", { name: "Create key" }));
+    // With the V5 switch on the submit button reads "Retry" after a rejection.
+    await userEvent.click(dialog.getByRole("button", { name: /^(Create key|Retry)$/ }));
     await expect(await body.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
     await userEvent.click(body.getByRole("button", { name: "Done" }));
     await expect(await canvas.findByText("Retry key")).toBeVisible();

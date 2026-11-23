@@ -1,6 +1,7 @@
+import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError } from "../utils/claudeProtocol.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 
@@ -37,6 +38,20 @@ function removeBetaFlag(headers, flag) {
     join(",");
     if (filtered) headers[key] = filtered;else
     delete headers[key];
+  }
+}
+
+/** Collapse case variants before fetch combines duplicate Anthropic headers. */
+export function normalizeAnthropicHeaders(headers) {
+  for (const name of ["anthropic-version", "anthropic-beta"]) {
+    const keys = Object.keys(headers).filter((key) => key.toLowerCase() === name);
+    if (!keys.length) continue;
+    const values = [...new Set(keys.flatMap((key) => String(headers[key] ?? "").split(",")).map((value) => value.trim()).filter(Boolean))];
+    // Keep the first spelling: callers and tests read the canonical key as set.
+    const [kept, ...duplicates] = keys;
+    for (const key of duplicates) delete headers[key];
+    if (values.length) headers[kept] = name === "anthropic-version" ? values[0] : values.join(",");
+    else delete headers[kept];
   }
 }
 
@@ -234,7 +249,7 @@ export class BaseExecutor {
       } else if (credentials.accessToken) {
         headers["Authorization"] = `Bearer ${credentials.accessToken}`;
       }
-      if (!headers["anthropic-version"]) {
+      if (!Object.keys(headers).some((key) => key.toLowerCase() === "anthropic-version")) {
         headers["anthropic-version"] = ANTHROPIC_API_VERSION;
       }
     } else {
@@ -250,6 +265,7 @@ export class BaseExecutor {
       headers["Accept"] = "text/event-stream";
     }
 
+    normalizeAnthropicHeaders(headers);
     return headers;
   }
 
@@ -263,6 +279,10 @@ export class BaseExecutor {
 
   shouldRetry(status, urlIndex) {
     return status === HTTP_STATUS.RATE_LIMITED && urlIndex + 1 < this.getFallbackCount();
+  }
+
+  shouldFallbackResponse(response, url, errorText) {
+    return false;
   }
 
   // Override in subclass for provider-specific refresh
@@ -289,7 +309,7 @@ export class BaseExecutor {
     // Allocate a fresh per-call object so executor request-scoped metadata
     // (Grok session/req/turn ids, etc.) is always threaded, never dropped.
     requestContext ??= {};
-    const fallbackCount = this.getFallbackCount();
+    const fallbackCount = this.getFallbackCount(credentials);
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
@@ -440,7 +460,9 @@ export class BaseExecutor {
         this.transformRequest(model, body, stream, credentials, requestContext, url),
         requestContext
       );
-      const headers = this.buildHeaders(credentials, stream, requestContext, model);
+      const headers = this.buildHeaders(credentials, stream, requestContext, model, body, transformedBody);
+      const claudeOAuth = this.provider === "claude" && !credentials?.apiKey && Boolean(credentials?.accessToken);
+      const claudeFast = claudeOAuth && isClaudeFastRequest(transformedBody, claudeRequestedBetas(body, requestContext.clientHeaders));
       // Relay correlation is server-owned. Never trust the client's x-request-id;
       // preserve an executor-supplied upstream ID when one is intentional.
       if (proxyOptions?.vercelRelayUrl && requestContext?.requestId &&
@@ -486,41 +508,7 @@ export class BaseExecutor {
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
         let response = await runQuotaBearingProviderRequest(() =>
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
-        // Cohere can explicitly suggest its supported tier on a 422. Retry only
-        // that rejection, once, and only when a different effort was sent.
-        //
-        // COMPATIBILITY CONTRACT (see internal/docs/port-reports/1073-existing-provider-request-residuals.md):
-        //  - The recovery is an EXTRA transport dispatch on this base URL, so it
-        //    is gated by the SAME transport-attempt budget the generic retry path
-        //    spends (`requestPolicy.maxTransportAttempts`, which counts the
-        //    first try). With a one-attempt ceiling the 422 is returned unchanged
-        //    and no second request is dispatched.
-        //  - The error body read is OPTIONAL. A body that cannot be read is a
-        //    NON-MATCH: the original response and its status are preserved
-        //    instead of the read failure surfacing as a transport error.
-        //  - Without a requestPolicy (no ceiling) the implicit pre-port
-        //    behavior is unchanged: the recovery still runs exactly once.
-        if (this.provider === "cohere" && response.status === 422 &&
-            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high" &&
-            transportBudgetLeft(urlIndex)) {
-          const errorText = await readOptionalProbeText(response, { signal });
-          if (/reasoning_effort/i.test(errorText) && /\buse\s+['"`]high['"`]\s+instead\b/i.test(errorText)) {
-            requestBody = { ...requestBody, reasoning_effort: "high" };
-            bodyStr = JSON.stringify(requestBody);
-            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
-            cancelDiscardedResponse(response);
-            clearTimeout(connectTimer);
-            connectCtrl = new AbortController();
-            connectTimer = armConnectTimer();
-            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            chargeDispatch(urlIndex);
-            beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              ...fetchOptions, body: bodyStr, signal: mergedSignal
-            }), proxyOptions));
-          }
-        }
-        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
+        if (!claudeFast && response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
           const errorText = await readOptionalProbeText(response, { signal });
@@ -553,6 +541,9 @@ export class BaseExecutor {
               ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
           }
+        }
+        if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
+          evictResponseDispatcher(response);
         }
         // Relayed SSE (vercel relay): keep the timeout/abort signal live until
         // the body actually ends — EOF, error, downstream cancel, or caller
@@ -590,8 +581,27 @@ export class BaseExecutor {
         // (never a transport error that would discard the upstream response), while
         // a caller abort during the probe still cancels the request.
         let errorText = null;
-        if (hasContainsRule && response.status >= 400) {
+        if ((hasContainsRule && response.status >= 400) || (claudeOAuth && !claudeFast && response.status === 429) ||
+          ((this.provider === "kiro" || this.provider === "amazon-q") && url.includes(".kiro.dev") && response.status === 400)) {
           errorText = await readOptionalProbeText(response, { signal });
+        }
+
+        if (claudeOAuth && !response.ok && (claudeFast || response.status === 429)) {
+          let message = errorText ?? "";
+          if (errorText) {
+            try {
+              const parsed = JSON.parse(errorText);
+              if (isString(parsed?.error?.message)) message = parsed.error.message;
+            } catch {
+              // Some upstream refusals have a plain-text body.
+            }
+          }
+          const claudeRequestScoped = isClaudeRequestScopedError(response.status, response.headers, message, claudeFast);
+          if (claudeRequestScoped || claudeFast) {
+            return { response, url, headers, transformedBody: requestBody,
+              attemptStartedAt: providerAttemptStartedAt, terminalProvenance: "upstream",
+              claudeRequestScoped };
+          }
         }
 
         // Antigravity 504s move to the account layer without replaying this URL.
@@ -616,7 +626,8 @@ export class BaseExecutor {
           };
         }
 
-        if (!antigravityGatewayTimeout && this.shouldRetry(response.status, urlIndex)) {
+        if (!antigravityGatewayTimeout && urlIndex + 1 < fallbackCount &&
+          (this.shouldRetry(response.status, urlIndex) || this.shouldFallbackResponse(response, url, errorText))) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -630,7 +641,8 @@ export class BaseExecutor {
           headers,
           transformedBody: requestBody,
           attemptStartedAt: providerAttemptStartedAt,
-          terminalProvenance: "upstream"
+          terminalProvenance: "upstream",
+          ...(claudeFast ? { claudeFast: true } : null)
         };
       } catch (error) {
         clearTimeout(connectTimer);
@@ -650,6 +662,13 @@ export class BaseExecutor {
         if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
           error.errorKind = "aborted";
           error.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw error;
+        }
+
+        if (claudeFast) {
+          error.errorKind = errorKind;
+          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.claudeRequestScoped = true;
           throw error;
         }
 

@@ -1,14 +1,17 @@
 // All intercepted domains + URL patterns per tool
 
 const { resolveTrustedUnixBinary } = require("./trustedBinaries");
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
 
 const IS_DEV = process.env.NODE_ENV === "development";
 // Explicit argv marker survives sudo and esbuild's CommonJS wrapper, where
 // require.main may no longer identify the bundled MITM entry module.
 const MITM_ENTRY_ARG = "--durindoor-mitm-entry";
 // Loopback-only OS locks disappear automatically when their owner exits.
-const MITM_START_LOCK_PORT = 20443;
-const ROOT_CA_LOCK_PORT = 20444;
+const lockUid = isFunction(process.getuid) ? process.getuid() : 0;
+// Separate lock listeners per OS account to prevent cross-user lock contention.
+const MITM_START_LOCK_PORT = 30000 + ((lockUid % 10000) * 2);
+const ROOT_CA_LOCK_PORT = MITM_START_LOCK_PORT + 1;
 const MITM_NODE_PORT = 8443;
 
 // Resolve lsof absolute path — packaged apps / sudo secure_path may strip /usr/sbin from PATH
@@ -27,6 +30,8 @@ const TARGET_HOSTS = [
   "api2.cursor.sh",
 ];
 
+const KIRO_RESPONSES_PATH = "/v1/responses";
+
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
@@ -34,12 +39,17 @@ const URL_PATTERNS = {
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
 };
 
-/** Whether request is a chat turn to intercept rather than passthrough. */
+/**
+ * Whether request is a chat turn to intercept rather than passthrough.
+ * Kiro 1.x+ also sends the agentic chat turn as `POST /v1/responses` (OpenAI
+ * Responses API shape, no x-amz-target); that is a chat turn too.
+ */
 function isChatRequest(tool, req) {
   const patterns = URL_PATTERNS[tool] || [];
   if (patterns.some((pattern) => (req.url || "").includes(pattern))) return true;
   if (tool === "kiro") {
-    return String(req.headers?.["x-amz-target"] || "").includes("GenerateAssistantResponse");
+    if (String(req.headers?.["x-amz-target"] || "").includes("GenerateAssistantResponse")) return true;
+    return (req.url || "") === KIRO_RESPONSES_PATH;
   }
   return false;
 }
@@ -107,4 +117,4 @@ function getToolForHost(host) {
   return null;
 }
 
-module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost, isChatRequest };
+module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, KIRO_RESPONSES_PATH, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost, isChatRequest };

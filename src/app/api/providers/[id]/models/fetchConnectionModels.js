@@ -1,7 +1,16 @@
-import { antigravityForbiddenBackoff, recordAntigravityForbidden } from "open-sse/services/antigravityCatalog.js";
+import { isPromptQlSessionError, readPromptQlCredentials } from "open-sse/executors/promptql.js";
+import {
+  antigravityCatalogRouteFingerprint,
+  antigravityCatalogUserAgent,
+  antigravityForbiddenBackoff,
+  buildAntigravityCapabilityHintsPsdPatch,
+  recordAntigravityForbidden,
+  reuseAntigravityCapabilityHints
+} from "open-sse/services/antigravityCatalog.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
+import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import yuanbaoWebRegistry from "open-sse/providers/registry/yuanbao-web.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
@@ -11,6 +20,8 @@ import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/provid
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
+import { updateProviderConnection } from "@/lib/localDb";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
 // Safety cap on paginated list endpoints (1000 models/page for Gemini).
@@ -21,11 +32,13 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   if (!baseUrl) return { error: "Missing custom base URL", status: 400 };
   const token = connection.accessToken || connection.apiKey;
   // Stored URLs are API bases (including any /v1), just like native chat URLs.
-  const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
+  // Provider-node credentials must not follow an unvalidated redirect. The
+  // outbound guard validates the initial URL and forces manual redirect mode.
+  const res = await guardedProbeFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     method: "GET",
     headers: headersFor(token),
     cache: "no-store"
-  }, proxyOptions);
+  }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
   if (!res.ok) {
     const text = await res.text();
     return { error: sanitizeErrorMessage(text || res.statusText), status: res.status };
@@ -73,24 +86,52 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
-  // T3 Chat and Adapta publish a curated catalog; model discovery sends no
-  // session cookie.
-  if (connection.provider === "t3-web" || connection.provider === "adapta-web") {
+  // T3 Chat, Adapta and the staged web-session providers publish a curated
+  // catalog; model discovery sends no session cookie or token.
+  if (LOCAL_CATALOG_WEB_PROVIDERS.has(connection.provider)) {
     return {
       provider: connection.provider, connectionId: connection.id,
       models: getProviderModels(connection.provider), source: "local_catalog",
     };
   }
 
-  // MaxAI and Arena publish curated web-app catalogs in their staged registry
-  // entries; neither web session exposes a stable OpenAI-style /models route.
-  if (connection.provider === "maxai" || connection.provider === "lmarena") {
-    return {
-      provider: connection.provider,
-      connectionId: connection.id,
-      models: getProviderModels(connection.provider),
-      source: "local_catalog",
-    };
+  // PromptQL exposes its model catalog through an authenticated GraphQL
+  // operation rather than an OpenAI-style /models endpoint.
+  if (connection.provider === "promptql") {
+    const endpoint = PROVIDERS.promptql?.baseUrl;
+    const { token } = readPromptQlCredentials(connection);
+    if (!endpoint || !token) return { error: "PromptQL requires a playground JWT for model discovery", status: 401 };
+    const promptQlProxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    const response = await proxyAwareFetch(endpoint, {
+      method: "POST",
+      redirect: "manual",
+      headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${String(token).replace(/^Bearer\\s+/i, "")}`, origin: "https://prompt.ql.app", referer: "https://prompt.ql.app/" },
+      body: JSON.stringify({ query: "query FetchLlmConfigs { llm_config(where: {deleted_at: {_is_null: true}}, order_by: {display_label: asc}) { id display_label model_reference model_id } }", operationName: "FetchLlmConfigs" }),
+      signal: signal || AbortSignal.timeout(8000),
+      cache: "no-store",
+    }, promptQlProxyOptions);
+    if (isPromptQlSessionError(response.status)) return { error: "PromptQL session expired or invalid", status: 401 };
+    if (!response.ok) return { error: `PromptQL model discovery failed: ${response.status}`, status: response.status };
+    const data = await response.json();
+    if (data.errors?.length) return { error: data.errors.map((entry) => entry.message || "GraphQL error").join("; "), status: 502 };
+    const models = (data.data?.llm_config || []).map((row) => ({ id: row.model_reference || row.model_id || row.id, name: row.display_label || row.model_reference || row.model_id || row.id, owned_by: "promptql" })).filter((row) => row.id);
+    return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
+  }
+
+  // Zed-hosted lists models only after a per-connection LLM-token exchange, and only
+  // for connections that opted in with providerSpecificData.enableSessionDispatch.
+  if (connection.provider === "zed-hosted") {
+    try {
+      const zedProxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+      const models = await discoverZedHostedModels({
+        accessToken: connection.accessToken || connection.apiKey,
+        providerSpecificData: connection.providerSpecificData || {},
+      }, { proxyOptions: zedProxyOptions, signal: signal || AbortSignal.timeout(15000) });
+      return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 502;
+      return { error: sanitizeErrorMessage(error?.message || "Zed model discovery failed"), status: status === 403 && error?.code !== "zed_hosted_dispatch_disabled" ? 401 : status };
+    }
   }
 
   if (connection.provider === "yuanbao-web") {
@@ -117,6 +158,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   }
 
   if (connection.provider === "antigravity" && connection.id) {
+    if (connection.isActive === false) return { error: "Provider connection is disabled", status: 409 };
     const backedOff = antigravityForbiddenBackoff(connection);
     if (backedOff) return backedOff;
   }
@@ -124,6 +166,23 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   // Model discovery is connection traffic too. Resolve the durable OAuth
   // egress contract once and reuse it for initial, refresh, and retry calls.
   const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+
+  // Antigravity capability hints: when a prior probe for this connection,
+  // project, endpoint and route fingerprint is still fresh, reuse it instead
+  // of hitting Cloud Code again. Hints live in connection PSD under
+  // `antigravity_capability_hints` (nested, transfer-filtered, credential-free).
+  if (connection.provider === "antigravity" && connection.id) {
+    const reused = reuseAntigravityCapabilityHints(connection, { proxyOptions, userAgent: antigravityCatalogUserAgent(connection) });
+    if (reused) {
+      return {
+        provider: connection.provider,
+        connectionId: connection.id,
+        models: reused.models,
+        source: reused.source,
+        routeFingerprint: reused.routeFingerprint
+      };
+    }
+  }
 
   if (connection.provider === "cerebrium") {
     const baseUrl = cerebriumBaseUrl(connection.providerSpecificData?.baseUrl);
@@ -191,6 +250,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   if (config.authQuery) url += `?${config.authQuery}=${token}`;
 
   const headers = config.buildHeaders ? config.buildHeaders(token, connection) || {} : { ...config.headers };
+  if (connection.provider === "antigravity") headers["User-Agent"] = antigravityCatalogUserAgent(connection);
   if (!config.buildHeaders && config.authHeader && !config.authQuery) {
     headers[config.authHeader] = (config.authPrefix || "") + token;
   }
@@ -215,6 +275,13 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
   // call: the Antigravity catalog carries the signed-in account's project.
   const requestBody = isFunction(config.buildBody) ? config.buildBody(token, connection) : config.body;
   if (requestBody && config.method === "POST") fetchOptions.body = JSON.stringify(requestBody);
+
+  // Antigravity applies the Hub User-Agent and a credential-free route
+  // fingerprint (proxy URL + UA) to every catalog probe so persisted hints
+  // stay bound to the egress contract that produced them.
+  const antigravityRouteFingerprint = connection.provider === "antigravity"
+    ? antigravityCatalogRouteFingerprint(proxyOptions, headers["User-Agent"] || headers["user-agent"])
+    : null;
 
   // A provider may declare how its probe outcome is classified, so a caller
   // can tell an auth rejection (the credential is the problem) from a
@@ -271,7 +338,38 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     }
     models.push(...(parsed || []));
     pageToken = isFunction(config.nextPageToken) ? config.nextPageToken(data) : null;
-    if (!pageToken) return { models };
+    if (!pageToken) {
+      if (connection.provider === "antigravity" && connection.id) {
+        const psdPatch = buildAntigravityCapabilityHintsPsdPatch(connection, data, { proxyOptions, userAgent: antigravityCatalogUserAgent(connection) });
+        if (psdPatch) {
+          try {
+            // Only touch capability hints in PSD. Deep-merge leaves tokens alone;
+            // transfer still filters the nested hints object out of exports.
+            const registration = (item) => JSON.stringify({
+              provider: item.provider, isActive: item.isActive, accessToken: item.accessToken,
+              refreshToken: item.refreshToken, projectId: item.projectId,
+              providerSpecificData: item.providerSpecificData
+            });
+            const expected = registration(connection);
+            const result = await updateProviderConnection(connection.id, { providerSpecificData: psdPatch }, {
+              expectedUpdatedAt: connection.updatedAt, signal, returnCommitResult: true,
+              shouldCommitConnection: (current) => current.isActive !== false && registration(current) === expected
+            });
+            if (!result || result.applied === false) return { error: "Provider connection changed during model discovery", status: 409 };
+          } catch (error) {
+            if (signal?.aborted || error?.code === "PROVIDER_CONNECTION_REVISION_CONFLICT") return { error: "Provider connection changed during model discovery", status: 409 };
+            // Without a successful fence the probe cannot publish a live catalog.
+            return { error: "Unable to publish model discovery", status: 500 };
+          }
+        }
+        const result = { models };
+        if (antigravityRouteFingerprint) {
+          result.routeFingerprint = antigravityRouteFingerprint;
+        }
+        return result;
+      }
+      return { models };
+    }
     // A repeated cursor would loop forever; a truncated list must not pass as complete.
     if (seenTokens.has(pageToken)) return { error: "Models list pagination cursor repeated", status: 502 };
     seenTokens.add(pageToken);

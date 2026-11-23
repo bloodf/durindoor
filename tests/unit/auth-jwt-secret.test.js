@@ -15,7 +15,7 @@ const SECRET_FILE_BASENAME = "jwt-secret";
 
 /** Fingerprint of the fail-closed resolution contract (env unless placeholder → legacy file → throw). */
 const LOAD_JWT_SECRET_CONTRACT_SHA256 =
-  "db95984476896a119b827dd48b1c98b36360debe474cb0c3aa6fbb6b3d1d4075";
+  "e95faf07d4533e384f4b3637eaae93863b1f0bfe12e45a75619ca0f1622ddb9d";
 
 function resetEnv() {
   delete process.env.JWT_SECRET;

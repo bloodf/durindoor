@@ -10,6 +10,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
 import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../config/defaultThinkingSignature.js";
+import { antigravityCatalogUserAgent } from "../services/antigravityCatalog.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";
@@ -344,7 +345,7 @@ export class AntigravityExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
-      "User-Agent": this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"]
+      "User-Agent": antigravityCatalogUserAgent(credentials, this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"])
     };
   }
 
@@ -706,9 +707,11 @@ export class AntigravityExecutor extends BaseExecutor {
   async refreshCredentials(credentials, log, proxyOptions = null) {
     if (!credentials.refreshToken) return null;
 
+    const signal = AbortSignal.timeout(30_000);
     try {
       const response = await credentialFetch((url, init) => proxyAwareFetch(url, init, proxyOptions), OAUTH_ENDPOINTS.google.token, {
         method: "POST",
+        signal,
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
         body: new URLSearchParams({
           grant_type: "refresh_token",
@@ -718,19 +721,27 @@ export class AntigravityExecutor extends BaseExecutor {
         })
       });
 
-      if (!response.ok) return null;
+      // Match OmniRoute's permanent OAuth rejection while keeping transient
+      // failures eligible for the caller's existing refresh policy.
+      const tokens = JSON.parse(await readBoundedResponseText(response, {
+        signal, maxBytes: response.ok ? 1024 * 1024 : 8 * 1024,
+        timeoutMs: 30_000, throwOnTimeout: true
+      }));
+      if (!response.ok) {
+        return tokens?.error === "invalid_grant" ? { error: "invalid_grant" } : null;
+      }
 
-      const tokens = await response.json();
+      if (!isString(tokens?.access_token) || !tokens.access_token.trim()) return null;
       log?.info?.("TOKEN", "Antigravity refreshed");
 
       return {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || credentials.refreshToken,
+        accessToken: tokens.access_token.trim(),
+        refreshToken: isString(tokens.refresh_token) && tokens.refresh_token.trim() || credentials.refreshToken,
         expiresIn: tokens.expires_in,
         projectId: credentials.projectId
       };
     } catch (error) {
-      log?.error?.("TOKEN", `Antigravity refresh error: ${error.message}`);
+      log?.error?.("TOKEN", `Antigravity refresh request failed (${error.name})`);
       return null;
     }
   }

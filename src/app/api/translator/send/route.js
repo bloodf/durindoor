@@ -107,7 +107,7 @@ async function POSTHandler(request) {
         // Retry only when its successful result still matches the stored credentials.
         if (result.refreshed) {
           const current = await getProviderConnectionById(connection.id);
-          if (current && current.provider === connection.provider &&
+          if (current && current.isActive !== false && current.provider === connection.provider &&
               providerRefreshContextMatches(current, providerRefreshContext(result.connection))) {
             newCredentials = current;
             committed = true;

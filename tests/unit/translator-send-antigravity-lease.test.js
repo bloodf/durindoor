@@ -101,6 +101,18 @@ describe("translator send stored Antigravity refresh", () => {
     expect(JSON.parse(db.get("SELECT data FROM providerConnections WHERE id = ?", [id]).data)).toMatchObject({ accessToken: "replacement", refreshToken: "replacement-refresh" });
   });
 
+  it("does not retry after the connection is disabled during refresh", async () => {
+    mock.detailed.mockImplementation(async () => {
+      db.run("UPDATE providerConnections SET isActive = 0 WHERE id = ?", [id]);
+      return { ok: true, tokens: { accessToken: "new-access", refreshToken: "new-refresh" } };
+    });
+    expect((await send()).status).toBe(401);
+    expect(mock.detailed).toHaveBeenCalledOnce();
+    expect(mock.execute).toHaveBeenCalledOnce();
+    const { getProviderConnectionById } = await import("../../src/lib/localDb.js");
+    expect(await getProviderConnectionById(id)).toMatchObject({ isActive: false, accessToken: "new-access" });
+  });
+
   it("preserves the direct refresh and update path for another provider", async () => {
     db.run("UPDATE providerConnections SET provider = 'openai' WHERE id = ?", [id]);
     mock.refresh.mockResolvedValue({ accessToken: "new-access", refreshToken: "new-refresh" });

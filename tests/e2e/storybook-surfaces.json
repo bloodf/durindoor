@@ -11492,20 +11492,17 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js#KeyLimitsModal",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js",
       "symbol": "KeyLimitsModal",
-      "sourceSha256": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+      "sourceSha256": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
       "proposedClassification": "visual",
-      "proposedCoverageRationale": "Direct reusable modal story.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "Independent source review",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-endpoint-apikeylimits--edit-limits",
         "production-endpoint-apikeylimits--invalid-limit-blocks-save"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-apikeylimits--edit-limits",
-        "production-endpoint-apikeylimits--invalid-limit-blocks-save"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-apikeylimits--edit-limits",
@@ -11515,7 +11512,7 @@
             "prepopulated rate and budget limits"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
             "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
           },
           "proposedSourceEvidence": "ApiKeyLimits.js:108-172",
@@ -11534,7 +11531,7 @@
             "negative validation"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
             "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
           },
           "proposedSourceEvidence": "ApiKeyLimits.js:114-141",
@@ -11542,33 +11539,82 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Direct reusable modal story.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Direct reusable modal story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-apikeylimits--edit-limits",
+            "production-endpoint-apikeylimits--invalid-limit-blocks-save"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-endpoint-apikeylimits--edit-limits",
+              "storyId": "production-endpoint-apikeylimits--edit-limits",
+              "runtimeArtifactId": "production-endpoint-apikeylimits--edit-limits",
+              "axes": [
+                "prepopulated rate and budget limits"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
+              },
+              "proposedSourceEvidence": "ApiKeyLimits.js:108-172",
+              "expectedVisibleText": "Limits for Build harness",
+              "proposedVisibleTexts": [
+                "Limits for Build harness",
+                "Requests / minute",
+                "Budget (USD)"
+              ]
+            },
+            {
+              "id": "production-endpoint-apikeylimits--invalid-limit-blocks-save",
+              "storyId": "production-endpoint-apikeylimits--invalid-limit-blocks-save",
+              "runtimeArtifactId": "production-endpoint-apikeylimits--invalid-limit-blocks-save",
+              "axes": [
+                "negative validation"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
+              },
+              "proposedSourceEvidence": "ApiKeyLimits.js:114-141",
+              "expectedVisibleText": "Save"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Direct reusable modal story.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js#KeyUsageSummary",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js",
       "symbol": "KeyUsageSummary",
-      "sourceSha256": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+      "sourceSha256": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
       "proposedClassification": "visual",
-      "proposedCoverageRationale": "Private UsageMeter covered by direct parent summary state.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "Independent source review",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-endpoint-apikeylimits--usage-summary"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-apikeylimits--usage-summary"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-apikeylimits--usage-summary",
@@ -11581,7 +11627,7 @@
             "money"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
             "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
           },
           "proposedSourceEvidence": "ApiKeyLimits.js:44-58",
@@ -11595,33 +11641,71 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private UsageMeter covered by direct parent summary state.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Private UsageMeter covered by direct parent summary state.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-apikeylimits--usage-summary"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-endpoint-apikeylimits--usage-summary",
+              "storyId": "production-endpoint-apikeylimits--usage-summary",
+              "runtimeArtifactId": "production-endpoint-apikeylimits--usage-summary",
+              "axes": [
+                "rate",
+                "token",
+                "exhausted",
+                "money"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
+              },
+              "proposedSourceEvidence": "ApiKeyLimits.js:44-58",
+              "expectedVisibleText": "Requests/min",
+              "proposedVisibleTexts": [
+                "Requests/min",
+                "Tokens/min",
+                "Daily tokens",
+                "Monthly cost"
+              ]
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private UsageMeter covered by direct parent summary state.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js#UsageMeter",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js",
       "symbol": "UsageMeter",
-      "sourceSha256": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+      "sourceSha256": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
       "proposedClassification": "visual",
-      "proposedCoverageRationale": "Private visual fragment covered by direct KeyUsageSummary story.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "Independent source review",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-endpoint-apikeylimits--usage-summary"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-apikeylimits--usage-summary"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-apikeylimits--usage-summary",
@@ -11631,7 +11715,7 @@
             "limited and exhausted meters"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+            "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "5aceeaa5970998f47858f3fad26bab14e8a59f1960b8ece27161ea4af05f40a9",
             "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
           },
           "proposedSourceEvidence": "ApiKeyLimits.js:18-35,44-58",
@@ -11644,16 +11728,52 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private visual fragment covered by direct KeyUsageSummary story.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Private visual fragment covered by direct KeyUsageSummary story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-apikeylimits--usage-summary"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-endpoint-apikeylimits--usage-summary",
+              "storyId": "production-endpoint-apikeylimits--usage-summary",
+              "runtimeArtifactId": "production-endpoint-apikeylimits--usage-summary",
+              "axes": [
+                "limited and exhausted meters"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.js": "7f5b375b90c1797c4b8b27a43513bbe5767c57f78ff38e68ef8e7419b77e9843",
+                "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx": "89806101c667bb2c5b7b769fc318ea9020664e66a4597ad96fe55985930dbaa8"
+              },
+              "proposedSourceEvidence": "ApiKeyLimits.js:18-35,44-58",
+              "expectedVisibleText": "Requests/min",
+              "proposedVisibleTexts": [
+                "Requests/min",
+                "Daily tokens",
+                "Monthly cost"
+              ]
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private visual fragment covered by direct KeyUsageSummary story.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyPolicyFields.js#ApiKeyPolicyFields",
@@ -102555,9 +102675,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "b430a5c01511d3c7b5c19217ca869033d19ea4de587bc795727dce1c88b332d5",
-    "sourceCensusSha256": "87cdb0bf28fe3c1ba325bd1f081884f3c2fa1022cd543e54125a4e91c23f41a5",
-    "pendingRows": 429,
-    "retainedApprovedRows": 210,
+    "sourceCensusSha256": "1b9dfceacb8b2ab4d2aa60c056d6418d5ddc606eec64a80c7fde25f1a6f37773",
+    "pendingRows": 432,
+    "retainedApprovedRows": 207,
     "pendingReferences": 1486,
     "runtimeStatus": "pending"
   }

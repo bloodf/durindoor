@@ -32,7 +32,10 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
 
     try {
       const modeResponse = await fetch("/api/deployment-mode", { cache: "no-store" });
-      if (!modeResponse.ok || (await modeResponse.json()).hosted !== false) {
+      // Hosted mode is opt-in: only an explicit `hosted: true` disables
+      // auto-import here. The server guard still rejects it when hosted.
+      const mode = modeResponse.ok ? await modeResponse.json().catch(() => null) : null;
+      if (mode?.hosted === true) {
         setAutoDetectError("Auto-import is local-only. Enter your access token and machine ID below.");
         return;
       }

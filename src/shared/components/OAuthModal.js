@@ -312,10 +312,10 @@ export default function OAuthModal({
       }
 
       const modeResponse = await fetch("/api/deployment-mode", { cache: "no-store", signal: flow.controller.signal });
-      if (!modeResponse.ok) throw new Error("Could not determine deployment mode");
-      const mode = await modeResponse.json();
-      if (mode.hosted !== true && mode.hosted !== false) throw new Error("Could not determine deployment mode");
-      const hosted = mode.hosted;
+      // Hosted mode is opt-in: anything but an explicit `hosted: true` keeps
+      // the local flow. Server routes enforce hosted restrictions themselves.
+      const mode = modeResponse.ok ? await modeResponse.json().catch(() => null) : null;
+      const hosted = mode?.hosted === true;
       const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
       // Claude uses Anthropic's registered manual-code callback, not the
       // dashboard origin. Other hosted providers use the public dashboard URL.

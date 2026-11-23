@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -80,7 +82,7 @@ export default function ComboDetailPage() {
     try {
       const [comboRes, settingsRes, logsRes, connsRes, aliasesRes] = await Promise.all([
       fetch(`/api/combos/${id}`, { cache: "no-store" }),
-      fetch("/api/settings", { cache: "no-store" }),
+      requestSettings({ cache: "no-store" }),
       fetch("/api/usage/logs", { cache: "no-store" }),
       fetch("/api/providers", { cache: "no-store" }),
       fetch("/api/models/alias", { cache: "no-store" })]
@@ -170,12 +172,12 @@ export default function ComboDetailPage() {
 
   const handleToggleRoundRobin = async (enabled) => {
     setRoundRobin(enabled);
-    const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+    const settingsRes = await requestSettings({ cache: "no-store" });
     const s = settingsRes.ok ? await settingsRes.json() : {};
     const updated = { ...(s.comboStrategies || {}) };
     if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };else
     delete updated[combo.name];
-    await fetch("/api/settings", {
+    await requestSettings({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comboStrategies: updated })

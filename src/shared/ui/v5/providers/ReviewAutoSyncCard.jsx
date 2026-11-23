@@ -1,4 +1,6 @@
 "use client";
+
+import { requestSettings } from "@/store/settingsStore";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@/shared/ui/components/Button.jsx';
 import Toggle from '@/shared/ui/components/Toggle.jsx';
@@ -47,10 +49,10 @@ export default function ReviewAutoSyncCard({ providerId, hasConnection, onModels
         const isCurrent = () => mounted.current && generation.current === token;
     setPhase('saving'); setMessage('');
     try {
-      const settingsRes = await fetch('/api/settings',{cache:'no-store'});
+      const settingsRes = await requestSettings({cache:'no-store'});
       if (!settingsRes.ok) throw new Error('Could not read settings. Your setting was not changed.');
       const settings = await settingsRes.json();
-      const res = await fetch('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({modelAutoSyncProviders:{...(settings.modelAutoSyncProviders || {}),[providerId]:enabled === true}})});
+      const res = await requestSettings({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({modelAutoSyncProviders:{...(settings.modelAutoSyncProviders || {}),[providerId]:enabled === true}})});
       if (!res.ok) throw new Error('Could not save the auto-update setting.');
       if (!isCurrent()) return;
       setMessage(enabled ? 'Automatic updates enabled.' : 'Automatic updates paused.'); await load({keepMessage:true});

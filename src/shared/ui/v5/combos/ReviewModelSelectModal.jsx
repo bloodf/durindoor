@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useMemo, useEffect } from "react";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
@@ -120,7 +122,7 @@ export default function ModelSelectModal({
     const controller = new AbortController();
     (async () => {
       try {
-        const settingsRes = await fetch("/api/settings", { signal: controller.signal });
+        const settingsRes = await requestSettings({ signal: controller.signal });
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
         if (settingsData?.hidePaidModels !== true || ignore) return;

@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import ModelCatalogProvenance from "./ModelCatalogProvenance";
@@ -56,11 +58,11 @@ function IncumbentModelAutoSyncPanel({ providerId, hasConnection, onModelsChange
     setBusy(true);
     setMessage("");
     try {
-      const settingsResponse = await fetch("/api/settings", { cache: "no-store" });
+      const settingsResponse = await requestSettings({ cache: "no-store" });
       if (!settingsResponse.ok) throw new Error("Could not read auto-update settings");
       const current = await settingsResponse.json();
       if (generation !== operation.current) return;
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelAutoSyncProviders: { ...(current.modelAutoSyncProviders || {}), [providerId]: value === true } })

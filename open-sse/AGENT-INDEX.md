@@ -164,7 +164,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cheaperinference` |  | apikey | `https://api.cheaperinference.com/v1/chat/completions` |
 | `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
-| `chutes` |  |  | `https://llm.chutes.ai/v1/chat/completions` |
+| `chutes` |  | apikey | `https://llm.chutes.ai/v1/chat/completions` |
 | `clarifai` |  | apikey | `https://api.clarifai.com/v2/ext/openai/v1/chat/completions` |
 | `claude` | claude | oauth | `https://api.anthropic.com/v1/messages` |
 | `claude-web` | openai | webCookie | `https://claude.ai/api` |

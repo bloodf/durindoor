@@ -127,6 +127,10 @@ export function isPaidModel(modelStr) {
   // Provider has a free roster → keep only the models the catalog marks free
   // (or an explicit zero-price row). Pricing is resolved raw-alias-first so
   // alias-keyed overrides (PROVIDER_PRICING.gh) still feed zero-price detection.
+  // The local table holds metered API rates, not provider payload evidence, so
+  // its positive rates must not trigger the #20060 paid veto against the
+  // curated free roster: check the roster without pricing first.
+  if (isFreeModel(provider, { id: model })) return false;
   const pricing =
   getPricingForModel(providerOrAlias, model) ?? getPricingForModel(provider, model);
   return !isFreeModel(provider, { id: model, pricing });

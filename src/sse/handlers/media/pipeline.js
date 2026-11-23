@@ -27,8 +27,9 @@ export async function resolveMediaModel(request, modelStr, body, apiKey, { onPol
   const { provider, model } = await getModelInfo(modelStr);
   if (!provider) return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format") };
 
-  if (provider === "openrouter") {
-    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, routingKind || "image"); }
+  // Only endpoints that select a routing kind apply their OpenRouter policy here.
+  if (provider === "openrouter" && routingKind) {
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, routingKind); }
     catch (error) { return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, error.message) }; }
   }
 

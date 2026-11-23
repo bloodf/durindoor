@@ -134,6 +134,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [hyperagent-2034.md](./hyperagent-2034.md)
 - [iflow-2034.md](./iflow-2034.md)
 - [kilocode-2034.md](./kilocode-2034.md)
+- [kiro-response-fallback-investigation.md](./kiro-response-fallback-investigation.md)
 - [lmarena-2034.md](./lmarena-2034.md)
 - [media-model-kind-audit.md](./media-model-kind-audit.md)
 - [megabrain-gateway.md](./megabrain-gateway.md)

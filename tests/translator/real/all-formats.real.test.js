@@ -93,13 +93,13 @@ const SCENARIOS = ["basic", "multimodal", "tools", "reasoning"];
 
 // Read active providers from DB at module-eval time (one test per provider/format/scenario).
 function targetProviders() {
+  if (!process.env.DATA_DIR) {
+    throw new Error("RUN_REAL=1 requires DATA_DIR to point to a copy of the data directory");
+  }
   try {
     const Database = require("better-sqlite3");
-    const os = require("os");
     const path = require("path");
-    const dbPath = process.env.DATA_DIR
-      ? path.join(process.env.DATA_DIR, "db", "data.sqlite")
-      : path.join(os.homedir(), ".9router", "db", "data.sqlite");
+    const dbPath = path.join(process.env.DATA_DIR, "db", "data.sqlite");
     const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare("SELECT DISTINCT provider FROM providerConnections WHERE isActive = 1").all();
     db.close();

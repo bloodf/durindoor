@@ -12,7 +12,7 @@ const handlersDir = join(here, "../../src/sse/handlers");
 // must not fall back to the bare selector. Best-effort single-attempt routes
 // (count_tokens, Gemini-native v1beta) intentionally keep the plain selector.
 const QUOTA_PREFLIGHT_ROUTES = [
-  "chat.js",
+  "chat/singleModel.js",
   "embeddings.js",
   "fetch.js",
   "imageEdit.js",

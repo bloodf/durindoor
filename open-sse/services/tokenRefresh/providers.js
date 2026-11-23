@@ -49,6 +49,8 @@ export async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
 }
 
 export async function refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions = null) {
+  // Antigravity refreshes must use the connection-bound lease protocol.
+  if (provider === "antigravity" || provider === "agy") return null;
   if (provider === "codex") {
     return refreshCodexToken(refreshToken, log, proxyOptions, credentials?._connection?.id ?? credentials?.id, resolveCodexAccountId(credentials?.providerSpecificData ?? credentials?._connection?.providerSpecificData, credentials?.idToken ?? credentials?._connection?.idToken));
   }

@@ -2,9 +2,11 @@
 
 import { create } from "zustand";
 import { CLIENT_STORE_TTL_MS } from "@/shared/constants/config";
+import api from "@/shared/utils/api";
 
 let settingsRevision = 0;
 let patchSequence = 0;
+let pendingRead = null;
 
 const useSettingsStore = create((set, get) => ({
   settings: null,
@@ -23,26 +25,29 @@ const useSettingsStore = create((set, get) => ({
       onResult?.({ ok: true, status: 200, body: settings });
       return settings;
     }
-    const revision = settingsRevision;
-    set({ loading: true, error: null });
-    try {
-      const res = signal ? await fetch("/api/settings", { signal }) : await fetch("/api/settings");
-      const data = await res.json();
-      if (revision !== settingsRevision) {
-        onResult?.({ ok: true, status: 200, body: get().settings });
-        return get().settings;
-      }
-      onResult?.({ ok: res.ok, status: res.status, body: data });
-      if (res.ok) {
-        set({ settings: data, loading: false, lastFetched: Date.now() });
-        return data;
-      }
-      set({ error: data.error, loading: false });
-    } catch (e) {
-      if (revision !== settingsRevision) return get().settings;
-      set({ error: "Failed to fetch settings", loading: false });
+    // Share only reads from the same revision; invalidation or a PATCH starts a new read.
+    if (!pendingRead || pendingRead.revision !== settingsRevision) {
+      const revision = settingsRevision;
+      set({ loading: true, error: null });
+      const promise = (async () => {
+        try {
+          const data = await api.get("/api/settings", signal ? { signal } : {});
+          if (revision !== settingsRevision) return { ok: true, status: 200, body: get().settings };
+          set({ settings: data, loading: false, lastFetched: Date.now() });
+          return { ok: true, status: 200, body: data };
+        } catch (e) {
+          if (revision !== settingsRevision) return { ok: true, status: 200, body: get().settings };
+          set({ error: e.body?.error || "Failed to fetch settings", loading: false });
+          if (e.status) return { ok: false, status: e.status, body: e.body };
+          return null;
+        }
+      })();
+      pendingRead = { revision, promise };
+      promise.finally(() => { if (pendingRead?.promise === promise) pendingRead = null; });
     }
-    return null;
+    const result = await pendingRead.promise;
+    if (result) onResult?.(result);
+    return result?.ok ? result.body : null;
   },
 
   // Cache successful settings and expose server failures to callers.
@@ -50,24 +55,16 @@ const useSettingsStore = create((set, get) => ({
     const sequence = ++patchSequence;
     set({ error: null, errorStatus: null, errorBody: null });
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const updated = await Promise.resolve().then(() => res.json()).catch(() => ({}));
-      onResult?.({ ok: res.ok, status: res.status, body: updated });
-      if (!res.ok) {
-        if (sequence === patchSequence) set({ error: updated.error || "Failed to save settings", errorStatus: res.status, errorBody: updated });
-        return null;
-      }
+      const updated = await api.patch("/api/settings", patch);
+      onResult?.({ ok: true, status: 200, body: updated });
       // A newer PATCH is in flight or finished: this snapshot is stale.
       if (sequence !== patchSequence) return get().settings;
       settingsRevision++;
       set({ settings: updated, loading: false, error: null, lastFetched: Date.now() });
       return updated;
-    } catch {
-      if (sequence === patchSequence) set({ error: "Failed to save settings" });
+    } catch (e) {
+      if (e.status) onResult?.({ ok: false, status: e.status, body: e.body || {} });
+      if (sequence === patchSequence) set({ error: e.body?.error || "Failed to save settings", errorStatus: e.status || null, errorBody: e.body || null });
       return null;
     }
   },

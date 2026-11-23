@@ -18,7 +18,7 @@ function shouldRewriteMetadata(metadata) {
 
 function rewriteAntigravityUserAgent(userAgent, version) {
   if (!isString(userAgent) || !userAgent.includes("antigravity/")) return userAgent;
-  return userAgent.replace(/antigravity\/[^\s]+/, `antigravity/${version}`);
+  return userAgent.replace(/antigravity\/(hub\/)?[^\s]+/, (_, hub = "") => `antigravity/${hub}${version}`);
 }
 
 function applyAntigravityIdeVersionOverride(bodyBuffer, headers, requestUrl) {

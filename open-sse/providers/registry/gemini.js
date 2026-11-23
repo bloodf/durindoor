@@ -36,6 +36,7 @@ export default {
   },
   models: [
     // Gemini 4 Argon (upstream 9router 29fc880e).
+    { id: "gemini-4-hydrogen", name: "Gemini 4 Hydrogen" },
     { id: "gemini-4-argon", name: "Gemini 4 Argon" },
     { id: "gemini-4-carbon", name: "Gemini 4 Carbon", toolCalling: true, supportsVision: true },
     { id: "gemini-4-neon", name: "Gemini 4 Neon", contextLength: 1048576, maxOutputTokens: 65536, supportsVision: true, toolCalling: true, supportsReasoning: true },

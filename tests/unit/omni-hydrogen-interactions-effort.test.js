@@ -27,7 +27,7 @@ describe("Hydrogen Interactions effort", () => {
     // Antigravity levels follow its registry tiers, which include xhigh since #5699.
     // Antigravity registers its own Hydrogen xhigh row (#1072); the Interactions route stays separate.
     expect(getThinkingLevels("antigravity", model)).toEqual(["low", "medium", "high", "xhigh"]);
-    expect(getModelUpstreamId("ag", model)).toBe("gemini-4-hydrogen-medium");
+    expect(getModelUpstreamId("ag", model)).toBe("gemini-4-hydrogen-high");
     expect(getCapabilitiesForModel(provider, model).maxOutput).toBe(65536);
   });
   it("pins the Antigravity Hydrogen xhigh tier row", () => {

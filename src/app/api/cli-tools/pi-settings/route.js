@@ -32,6 +32,8 @@ import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExisti
 import { getCombos } from "@/lib/localDb";
 import { getModelInfo, loadCustomCapabilities, parseModel } from "@/sse/services/model";
 import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { piCapsFromModelCaps, sanitizePiModelCaps } from "@/shared/utils/piModels";
 
 const execAsync = promisify(exec);
 
@@ -91,14 +93,21 @@ const resolveMissingCapabilities = async (id, comboLookupRef) => {
     comboLookupRef.current ??= Object.fromEntries((await getCombos()).map((c) => [c.name, c.models]));
     if (comboLookupRef.current[id]) {
       const caps = aggregateComboCapabilities(comboLookupRef.current[id], comboLookupRef.current);
-      if (caps) return caps;
+      if (caps) return { caps, thinkingLevels: null };
     }
   }
   const resolved = await getModelInfo(id);
   const model = resolved.model || id;
   const requestPrefix = parseModel(id).providerAlias || null;
   const scoped = await loadCustomCapabilities(resolved.provider, model, requestPrefix);
-  return scoped || getCapabilitiesForModel(resolved.provider, model);
+  const caps = scoped || getCapabilitiesForModel(resolved.provider, model);
+  let thinkingLevels = null;
+  try {
+    thinkingLevels = scoped ? null : getThinkingLevels(resolved.provider, model);
+  } catch {
+    thinkingLevels = null;
+  }
+  return { caps, thinkingLevels };
 };
 
 /**
@@ -111,15 +120,26 @@ const resolveMissingCapabilities = async (id, comboLookupRef) => {
 const mergeModelEntry = async (entry, previousModels, comboLookupRef) => {
   const supplied = isString(entry) ? { id: entry } : entry;
   const id = supplied?.id || "provider/model-id";
+  const isNew = !previousModels.has(id);
   const merged = { ...previousModels.get(id), ...supplied, id };
-  const needsCaps = !hasValidLimit(merged.contextWindow) || !hasValidLimit(merged.maxTokens);
-  const caps = needsCaps ? await resolveMissingCapabilities(id, comboLookupRef) : null;
-  return {
-    ...merged,
+  const needsCaps = isNew || !hasValidLimit(merged.contextWindow) || !hasValidLimit(merged.maxTokens);
+  const resolved = needsCaps ? await resolveMissingCapabilities(id, comboLookupRef) : null;
+  const caps = resolved?.caps;
+  // A newly added model is seeded with its input, reasoning and thinking levels
+  // (upstream 9router 1ca076167e); a saved entry keeps what it already states.
+  const seeded = isNew ? { ...piCapsFromModelCaps(caps, resolved?.thinkingLevels), ...merged } : merged;
+  const next = {
+    ...seeded,
     name: merged.name || id,
     contextWindow: hasValidLimit(merged.contextWindow) ? merged.contextWindow : caps?.contextWindow || DEFAULT_CONTEXT_WINDOW,
     maxTokens: hasValidLimit(merged.maxTokens) ? merged.maxTokens : caps?.maxOutput || DEFAULT_MAX_TOKENS,
   };
+  // Values Pi's schema rejects are dropped, never written back; a null map would
+  // invalidate the whole models.json.
+  delete next.input;
+  delete next.reasoning;
+  delete next.thinkingLevelMap;
+  return { ...next, ...sanitizePiModelCaps(seeded) };
 };
 
 /** GET — report install state, redacted models.json, and whether DurinDoor is configured. */

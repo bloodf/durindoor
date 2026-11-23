@@ -33,7 +33,7 @@ describe("Antigravity catalog refresh", () => {
   it.each(["ag", "agy"])("%s resolves new rows to clean wire ids with presets", (alias) => {
     expect(getModelUpstreamId(alias, "gemini-4-argon-low")).toBe("gemini-4-argon-low");
     expect(getModelUpstreamThinkingIntent(alias, "gemini-4-argon-low")).toEqual({ mode: "level", level: "low" });
-    expect(getModelUpstreamId(alias, "claude-sonnet-5-5")).toBe("claude-sonnet-5-5-high");
+    expect(getModelUpstreamId(alias, "claude-sonnet-5-5")).toBe("claude-sonnet-5-5-medium");
     expect(getModelUpstreamId(alias, "claude-opus-5-5", "low")).toBe("claude-opus-5-5-low");
     expect(getModelUpstreamId(alias, "gemini-3.1-pro-high")).toBe("gemini-pro-agent");
     expect(getModelUpstreamThinkingIntent(alias, "gemini-3.1-pro-low")).toEqual({ mode: "level", level: "low" });

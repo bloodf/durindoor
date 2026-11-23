@@ -96,22 +96,6 @@ export function advanceAntigravityGeneration(db, connectionId, refreshToken = nu
   return false;
 }
 
-export function enableAntigravityRecovery(db, connectionId, subject) {
-  if (!antigravityLeaseTableReady(db) || !connectionId) return { ok: false, category: "pre_dispatch_failure" };
-  const existing = db.get(`SELECT subject FROM antigravityRefreshLeases WHERE connectionId = ?`, [connectionId]);
-  const resolved = isString(subject) && subject ? subject : existing?.subject;
-  if (!isString(resolved) || !resolved) return { ok: false, category: "reauth_required" };
-  seedAntigravityLease(db, connectionId, null, resolved);
-  const now = dbNow(db);
-  const updated = db.run(
-    `UPDATE antigravityRefreshLeases
-     SET recoveryEnabled = 1, subject = ?, consentRecordedAt = ?, updatedAt = ${now}
-     WHERE connectionId = ?`,
-    [resolved, new Date().toISOString(), connectionId]
-  );
-  return oneRow(updated) ? { ok: true } : { ok: false, category: "pre_dispatch_failure" };
-}
-
 export function fenceAntigravityRecovery(db, connectionId, { deleteCredential = false } = {}) {
   if (!connectionId) return;
   const now = dbNow(db);

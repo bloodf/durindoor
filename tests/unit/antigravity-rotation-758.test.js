@@ -483,37 +483,22 @@ describe("antigravity rotation route", () => {
     expect(await denied.text()).not.toContain(SECRET);
   });
 
-  it("enrolls only with a subject and keeps the password out of status", async () => {
+  it("rejects editable subjects and legacy consent without writing credentials", async () => {
     const db = await openDb();
-    insertConnection(db, "acct-1", SAME_TOKEN, "");
+    insertConnection(db, "acct-1", SAME_TOKEN, "subject-1");
     const { POST, GET } = await route();
-    const missingSubject = await POST(request("POST", { body: { action: "enroll", connectionId: "acct-1", recoveryPassword: SECRET } }));
-    expect(missingSubject.status).toBe(409);
+    for (const action of ["enroll", "replace", "enable"]) {
+      const response = await POST(request("POST", { body: { action, connectionId: "acct-1", recoveryPassword: SECRET } }));
+      expect(response.status).toBe(409);
+      expect(await response.text()).not.toContain(SECRET);
+    }
     expect(db.get(`SELECT connectionId FROM antigravityRecoveryCredentials WHERE connectionId = ?`, ["acct-1"])).toBeFalsy();
-    db.run(`UPDATE providerConnections SET data = ? WHERE id = ?`, [JSON.stringify({
-      refreshToken: SAME_TOKEN,
-      providerSpecificData: { antigravitySubject: "subject-1", projectId: "project-1" },
-    }), "acct-1"]);
-    const enrolled = await POST(request("POST", { body: { action: "enroll", connectionId: "acct-1", recoveryPassword: SECRET } }));
-    expect(enrolled.status).toBe(200);
-    const payload = await enrolled.json();
-    expect(JSON.stringify(payload)).not.toContain(SECRET);
-    expect(payload.subjectPresent).toBe(true);
-    expect(payload.recoveryEnabled).toBe(false);
-    const stored = db.get(`SELECT ciphertext FROM antigravityRecoveryCredentials WHERE connectionId = ?`, ["acct-1"]).ciphertext;
-    expect(stored).not.toContain(SECRET);
-    const blank = await POST(request("POST", { body: { action: "replace", connectionId: "acct-1", recoveryPassword: "" } }));
-    expect(blank.status).toBe(400);
-    expect(db.get(`SELECT ciphertext FROM antigravityRecoveryCredentials WHERE connectionId = ?`, ["acct-1"]).ciphertext).toBe(stored);
-    const enabled = await POST(request("POST", { body: { action: "enable", connectionId: "acct-1" } }));
-    expect(enabled.status).toBe(200);
-    expect((await enabled.json()).recoveryEnabled).toBe(true);
     const status = await GET(request("GET", { connectionId: "acct-1" }));
     const body = await status.json();
+    expect(body.subjectPresent).toBe(false);
+    expect(body.recoveryEnabled).toBe(false);
     expect(body.schedulerEnabled).toBe(false);
     expect(JSON.stringify(body)).not.toContain(SECRET);
-    expect(body.email).toBeUndefined();
-    expect(body.subject).toBeUndefined();
   });
 });
 

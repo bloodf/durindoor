@@ -9,12 +9,10 @@ import { getProviderConnectionById } from "@/lib/db/repos/connectionsRepo.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials.js";
 import { isAntigravityProvider } from "@/lib/antigravity/refreshProtocol.js";
 import {
-  enableAntigravityRecovery,
   fenceAntigravityRecovery,
   readAntigravityLeaseStatus,
   resetAntigravityRetryBudget,
 } from "@/lib/antigravity/leaseSql.js";
-import { putRecoveryPassword, recoveryCredentialExists } from "@/lib/antigravity/recoveryStore.js";
 import { publicCategory } from "@/lib/antigravity/publicError.js";
 import { isRecord, isString } from "@/shared/utils/typeChecks.js";
 import {
@@ -101,9 +99,7 @@ async function authorize(request, { passwordRequired }) {
   return { ok: true };
 }
 
-function publicStatus(row, connection) {
-  const storedSubject = connection?.providerSpecificData?.antigravitySubject;
-  const subjectPresent = row?.subjectPresent === true || (isString(storedSubject) && storedSubject.length > 0);
+function publicStatus(row) {
   if (!row) {
     return {
       attemptState: "idle",
@@ -111,16 +107,16 @@ function publicStatus(row, connection) {
       recoveryEnabled: false,
       retryCount: 0,
       nextRetryAt: null,
-      subjectPresent,
+      subjectPresent: false,
     };
   }
   return {
     attemptState: row.attemptState,
     errorCategory: row.errorCategory ? publicCategory(row.errorCategory) : null,
-    recoveryEnabled: row.recoveryEnabled === true,
+    recoveryEnabled: false,
     retryCount: row.retryCount || 0,
     nextRetryAt: row.nextRetryAt || null,
-    subjectPresent,
+    subjectPresent: false,
   };
 }
 
@@ -171,21 +167,10 @@ export async function POST(request) {
     if (!connection) return json({ error: "Not found" }, 404);
     const db = await getAdapter();
 
-    if (action === "enroll" || action === "replace") {
-      const subject = connection.providerSpecificData?.antigravitySubject;
-      if (!isString(subject) || !subject) return categoryResponse("reauth_required");
-      const password = body.recoveryPassword;
-      if (!isString(password) || !password) return categoryResponse("encryption", 400);
-      await putRecoveryPassword(connection.id, password);
-      return json({ ok: true, ...publicStatus(readAntigravityLeaseStatus(db, connection.id), connection) });
-    }
-
-    if (action === "enable") {
-      if (!recoveryCredentialExists(db, connection.id)) return categoryResponse("encryption");
-      const subject = connection.providerSpecificData?.antigravitySubject || null;
-      const enabled = db.transaction(() => enableAntigravityRecovery(db, connection.id, subject));
-      if (!enabled.ok) return categoryResponse(enabled.category);
-      return json({ ok: true, ...publicStatus(readAntigravityLeaseStatus(db, connection.id), connection) });
+    // Legacy subjects and consent timestamps have no verified provenance.
+    // Refuse new credential writes until the reviewed binding protocol exists.
+    if (action === "enroll" || action === "replace" || action === "enable") {
+      return categoryResponse("reauth_required");
     }
 
     if (action === "disable" || action === "delete") {

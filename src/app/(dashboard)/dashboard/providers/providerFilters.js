@@ -1,11 +1,29 @@
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { FREE_TIER_PROVIDERS } from "@/shared/constants/providers";
 
-/** Match a provider name without dereferencing incomplete registry metadata. */
-export function matchesProviderSearch(name, searchQuery) {
-  if (!searchQuery.trim()) return true;
-  if (!name) return false;
-  return name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+/**
+ * Match a provider card against the header search by provider name or by any
+ * registry model (id, display name, or "providerId/modelId"), so users can type
+ * a model such as "gpt-5" and find every provider that serves it. Incomplete
+ * registry metadata (missing name or model fields) never throws.
+ *
+ * @param {string|undefined} name
+ * @param {string} searchQuery
+ * @param {string} [providerId]
+ * @param {Array<{id?: string, name?: string}>} [models]
+ */
+export function matchesProviderSearch(name, searchQuery, providerId = "", models = []) {
+  const query = searchQuery.trim().toLowerCase();
+  if (!query) return true;
+  if (name && name.toLowerCase().includes(query)) return true;
+  if (!providerId || !Array.isArray(models)) return false;
+  return models.some((model) => {
+    const id = String(model?.id ?? "").toLowerCase();
+    const modelName = String(model?.name ?? "").toLowerCase();
+    return (id && id.includes(query)) ||
+      modelName.includes(query) ||
+      (id && `${providerId.toLowerCase()}/${id}`.includes(query));
+  });
 }
 
 export function isProviderConfigured(connections, providerId, noAuth = false) {

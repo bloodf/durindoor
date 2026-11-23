@@ -1,13 +1,29 @@
 import { tableColumnNames } from "../helpers/apiKeyUsageTotals.js";
 
+const BATCH_SIZE = 500;
+
 export function backfillUsageHistoryApiKeyIds(db) {
-  db.exec(`
-    UPDATE "usageHistory"
-    SET "apiKeyId" = "apiKeys".id
-    FROM "apiKeys"
-    WHERE "usageHistory"."apiKeyId" IS NULL
-      AND "usageHistory"."apiKey" = "apiKeys".key
-  `);
+  const columns = tableColumnNames(db, "usageHistory");
+  if (!columns.has("id") || !columns.has("apiKey") || !columns.has("apiKeyId")) return 0;
+
+  let lastId = 0;
+  let updated = 0;
+  for (;;) {
+    const rows = db.all(
+      `SELECT usageHistory.id AS id, apiKeys.id AS apiKeyId
+         FROM usageHistory JOIN apiKeys ON apiKeys.key = usageHistory.apiKey
+        WHERE usageHistory.apiKeyId IS NULL AND usageHistory.id > ?
+        ORDER BY usageHistory.id LIMIT ${BATCH_SIZE}`,
+      [lastId]
+    );
+    if (!rows.length) break;
+    for (const row of rows) {
+      db.run('UPDATE usageHistory SET apiKeyId = ? WHERE id = ? AND apiKeyId IS NULL', [row.apiKeyId, row.id]);
+      updated += 1;
+    }
+    lastId = rows[rows.length - 1].id;
+  }
+  return updated;
 }
 
 export default {

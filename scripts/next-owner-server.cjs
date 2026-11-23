@@ -5,6 +5,7 @@ const path = require("path");
 const {
   canonicalizeRuntimePaths,
   createOwnerAwareHandler,
+  installRealtimeUpgradeDispatcher,
   setProcessTitle,
 } = require("../custom-server");
 
@@ -29,6 +30,7 @@ const handler = createOwnerAwareHandler(app.getRequestHandler());
 app.prepare().then(() => {
   const server = http.createServer(handler);
   server.on("upgrade", app.getUpgradeHandler());
+  installRealtimeUpgradeDispatcher(server, { dashboardPort: port });
   server.listen(port, hostname, () => {
     console.log(`DurinDoor ${dev ? "development" : "production"} server ready on ${hostname}:${port}`);
   });

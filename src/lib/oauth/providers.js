@@ -377,6 +377,9 @@ function kimiDeviceProvider(config, fallbackVerificationUrl) {
         throw new Error(`Kimi device authorization request failed (HTTP ${response.status})`);
       }
       const data = await response.json();
+      if (!isString(data?.device_code) || !data.device_code.trim()) {
+        throw new Error("Kimi device authorization response missing device_code");
+      }
       if (!data?.user_code) throw new Error("Invalid Kimi device authorization response");
       const verificationUri = data.verification_uri || fallbackVerificationUrl;
       const verificationUriComplete = data.verification_uri_complete ||
@@ -1490,11 +1493,19 @@ const PROVIDERS = {
       });
 
       let data;
-      try {
-        data = await response.json();
-      } catch (e) {
+      if (isFunction(response.text)) {
         const text = await response.text();
-        data = { error: "invalid_response", error_description: text };
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { error: "invalid_response", error_description: text };
+        }
+      } else {
+        try {
+          data = await response.json();
+        } catch (e) {
+          data = { error: "invalid_response" };
+        }
       }
 
       // AWS SSO OIDC returns camelCase

@@ -25335,7 +25335,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js#CompatibleModelRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js",
       "symbol": "CompatibleModelRow",
-      "sourceSha256": "633866b2da94b18c828ab146c77fa5dba171b4bb9b7663cf275b74c5584b24f9",
+      "sourceSha256": "b551b5e9494d07a6c0105a8fc3a37dd3b5f5224dca1392bd99dbec4b2513855a",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -25356,7 +25356,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js": "633866b2da94b18c828ab146c77fa5dba171b4bb9b7663cf275b74c5584b24f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js": "b551b5e9494d07a6c0105a8fc3a37dd3b5f5224dca1392bd99dbec4b2513855a",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -25520,7 +25520,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js#CompatibleModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js",
       "symbol": "CompatibleModelsSection",
-      "sourceSha256": "633866b2da94b18c828ab146c77fa5dba171b4bb9b7663cf275b74c5584b24f9",
+      "sourceSha256": "b551b5e9494d07a6c0105a8fc3a37dd3b5f5224dca1392bd99dbec4b2513855a",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -25541,7 +25541,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js": "633866b2da94b18c828ab146c77fa5dba171b4bb9b7663cf275b74c5584b24f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js": "b551b5e9494d07a6c0105a8fc3a37dd3b5f5224dca1392bd99dbec4b2513855a",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -103019,7 +103019,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "9d25b8937bf875265201d6b674fec8f26cc9728cf619137cc7ef7c8f8d7bbe75",
+    "sourceCensusSha256": "63c6218d14b68ce1eb281f140d4417a8f3db62fc15d405fd10140efbe11d89e1",
     "pendingRows": 438,
     "retainedApprovedRows": 202,
     "pendingReferences": 1488,

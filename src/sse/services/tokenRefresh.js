@@ -313,7 +313,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
 
       // Persist to DB (non-blocking path continues below)
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
-      const applied = await updateProviderCredentials(creds.connectionId, mergedCreds,
+      const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
         guardedCodex ? { expectedRefreshContext } : undefined);
       if (guardedCodex && !applied) return creds;
 

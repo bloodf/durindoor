@@ -217,6 +217,15 @@ The intercept helper is optional and local. Several of these are set by the mana
 | `MITM_LAUNCH_GATE_FILE` | set by the manager | Launch-gate file path. |
 | `MITM_MANAGER_PID` | set by the manager | Parent pid for the launch gate. |
 
+## Antigravity rotation
+
+See [Antigravity rotation](../operations/antigravity-rotation.mdx). Leave both unset. Setting them does not prove a Chromium sandbox or container egress, and it does not download Chrome.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY` | unset | `1` is required before browser recovery can load Puppeteer. Any other value keeps recovery off. |
+| `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED` | unset | `1` is required together with the flag above. The refresh path still does not launch a browser after `invalid_grant`. |
+
 ## ChatGPT Web
 
 See [ChatGPT Web](../providers/chatgpt-web.mdx) for the transports these tune.

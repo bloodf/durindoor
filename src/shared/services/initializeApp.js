@@ -87,6 +87,7 @@ export async function initializeApp() {
           g.networkMonitorInterval = null;
           stopQuotaAutoPing();
           g.stopBackgroundTokenRefresh?.();
+          g.stopAntigravityScheduler?.();
           try { killAllBridges(); } catch { /* best effort */ }
           try { killAllStdioEntries(); } catch { /* best effort */ }
           try { await stopHeadroomProxy(); } catch { /* best effort */ }
@@ -128,6 +129,13 @@ export async function initializeApp() {
         if (!g.shuttingDown) startBackgroundTokenRefresh();
       })
       .catch((e) => console.log("[BackgroundTokenRefresh] scheduler start failed:", e.message));
+
+    import("@/lib/antigravity/scheduler.js")
+      .then(({ resumeAntigravitySchedulerIfEnabled, stopAntigravityScheduler }) => {
+        g.stopAntigravityScheduler = stopAntigravityScheduler;
+        if (!g.shuttingDown) return resumeAntigravitySchedulerIfEnabled();
+      })
+      .catch((e) => console.log("[AntigravityRotation] scheduler resume failed:", e.message));
   } catch (error) {
     clearInterval(g.watchdogInterval);
     clearInterval(g.networkMonitorInterval);

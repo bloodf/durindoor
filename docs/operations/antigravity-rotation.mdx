@@ -1,0 +1,69 @@
+---
+title: Antigravity rotation
+description: Shared database lease for Antigravity token refresh. Browser recovery and the scheduler stay off.
+---
+
+`antigravity` and `agy` share one database lease before a provider token refresh. Browser password recovery and the automatic scheduler stay off until an owner demonstrates the gates below.
+
+## Refresh lease
+
+A production refresh that has a connection id and uses the real connection writer acquires the lease before any provider call. An injected test updater does not. The lease holds a unique owner, a generation, an expiry, and a fencing token. Database time decides expiry. The in-process refresh lock is not cross-process safety.
+
+Attempt states are `idle`, `claimed`, `dispatched`, `uncertain`, and `reauth`.
+
+- A claimed lease that has expired can be taken again.
+- `dispatched` blocks another dispatch, including from the gateway and from a manual retry. Expiry after dispatch becomes `uncertain` and still blocks. It does not authorize a retry.
+- `invalid_grant` becomes `reauth`. The refresh path does not launch a browser.
+- HTTP 429 with `Retry-After` and no token is a non-consuming backoff: the attempt returns to `idle` and sets `nextRetryAt`. A later provider trace that shows Google rotating the refresh token on 429 must change this.
+- HTTP 5xx, a timeout, a connection reset, an empty body, or a throw after dispatch becomes `uncertain`.
+- A successful refresh writes the token pair and clears the marker in the same transaction. It does not bump the generation. An omitted replacement refresh token is kept.
+- OAuth replacement and interactive reauth bump the generation, even when the refresh token string is unchanged.
+- Pre-dispatch failures use bounded exponential backoff, add 0–30 seconds of jitter, and honor a larger `Retry-After`. `retryCount` and `nextRetryAt` survive restart. After 5 failures the category is `budget_exhausted` until an operator reset. Reset clears the budget only while the state is `idle`. `force` skips `nextRetryAt` and the budget. It does not skip `uncertain`, `reauth`, or `dispatched`.
+
+The previous access token stays usable until it expires. A commit checks generation, owner, fencing token, lease, connection existence, the refresh-token revision, and enablement. No fencing token can fence Google.
+
+## Management API
+
+`GET` and `POST /api/oauth/antigravity/rotation` stay protected when dashboard login is optional. A browser request needs a same-origin `Origin`, or the machine-bound CLI token. The session is a dashboard JWT or `x-9r-cli-token`.
+
+`enroll`, `replace`, `enable`, and `scheduler-enable` also require header `x-9r-password` and a dashboard password that is not the built-in default. `disable`, `delete`, `retry`, `reset`, and `scheduler-disable` need the session and the origin check.
+
+The JSON body limit is 8192 bytes. Public errors are allowlisted categories. Status returns `attemptState`, `errorCategory`, `recoveryEnabled`, `retryCount`, `nextRetryAt`, `subjectPresent`, and `schedulerEnabled`. It does not return tokens, the recovery password, ciphertext, email, the owner, the fencing token, or the subject string. `GET` does not start the scheduler.
+
+Enrollment requires `providerSpecificData.antigravitySubject` from userinfo `sub` or `id`. An email match is not enough. A blank password does not delete or replace a stored recovery password. Disable fences the generation and keeps the ciphertext. Delete removes only the recovery row and fences the generation. It does not delete the access or refresh token.
+
+Sign-in still succeeds when Google omits a subject. Recovery enrollment and enablement stay refused until a subject is stored. Dashboard and CLI authorization use PKCE (`code_challenge` and `code_verifier`). A missing verifier or challenge fails closed.
+
+## Scheduler
+
+The scheduler is off until `scheduler-enable`. Boot resumes it only when that flag is stored. One account runs per tick, through the same leased refresh. A missing expiry does not trigger an immediate login. Expired dispatched leases become `uncertain` on acquire and are not replayed.
+
+## Browser recovery
+
+Recovery stays disabled unless both of these are set:
+
+- `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY=1`
+- `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED=1`
+
+Setting the flags is not proof of a sandbox or of egress control. Leave them unset. The real browser path does not type a password and does not click consent or solve a challenge. A callback is accepted only when scheme, host, port, and path match exactly and the URL has one `code` and one `state`. That match happens before DNS or any local connection. Any other host is resolved and allowed only when every address is public HTTPS on port 443 and the hostname is on the reviewed Google list.
+
+Chromium is not downloaded at install or at gateway startup. A missing browser disables recovery and does not stop the gateway. The pinned packages are `puppeteer@25.18.1` (Apache-2.0), `puppeteer-extra@3.3.6` (MIT), and `puppeteer-extra-plugin-stealth@2.11.2` (MIT). puppeteer-core records Chrome-for-Testing `157.0.8103.78`. This port does not install that build.
+
+Temporary browser profiles are created mode `0700` and removed on success, failure, and cancellation. Crash dumps are disabled. The Chromium sandbox flags are left on.
+
+## Storage
+
+Migration 37 adds `antigravityRefreshLeases` and `antigravityRecoveryCredentials`. On PostgreSQL the epoch-millisecond columns are `BIGINT`. Recovery ciphertext is AES-256-GCM with AAD `antigravity-recovery:v1:<connectionId>:recoveryPassword`. A missing master key fails closed when a recovery row already exists. The first enrollment may create the key.
+
+Export does not select either table. Import rejects a payload that contains `antigravityRecoveryCredentials` or `antigravityRefreshLeases`. Import of a different refresh token advances the generation. The same refresh token leaves an `uncertain` or `reauth` block in place. Connections removed by import drop their rotation rows.
+
+## Gates still closed
+
+Do not enable the scheduler or the browser flags until an owner shows:
+
+- a real Chromium sandbox
+- egress enforcement in the owner container, including child processes, redirects, and DNS rebinding
+- a PostgreSQL multi-process race (`DURINDOOR_TEST_PG_URL` was unset for this port; the SQLite worker race is covered)
+- a disposable Google account, if a live provider check is required
+
+This page does not authorize a production deploy, a Chromium download, or use of real credentials.

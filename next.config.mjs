@@ -17,7 +17,7 @@ const nextConfig = {
   // Isolated provider paths retain upstream slash semantics; src/proxy.js
   // keeps the default no-trailing-slash redirect on ordinary application hosts.
   skipTrailingSlashRedirect: true,
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node", "wreq-js"],
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node", "wreq-js", "puppeteer", "puppeteer-extra", "puppeteer-extra-plugin-stealth"],
   turbopack: {
     root: tracingRoot
   },
@@ -68,6 +68,7 @@ const nextConfig = {
       config.externals = [
         ({ request }, cb) => (
           request === "better-sqlite3" || request === "pg" || request === "wreq-js"
+            || request === "puppeteer" || request === "puppeteer-extra" || request === "puppeteer-extra-plugin-stealth"
             ? cb(null, `commonjs ${request}`)
             : cb()
         ),

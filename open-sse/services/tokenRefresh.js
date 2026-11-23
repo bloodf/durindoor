@@ -250,11 +250,26 @@ function vertexRefreshHandler(c, log, proxyOptions) {
   return refreshVertexToken(saJson, log, proxyOptions);
 }
 
+async function refreshAntigravityProvider(provider, credentials, log, proxyOptions) {
+  const connectionId = credentials?.connectionId || credentials?._connection?.id || credentials?.id;
+  const client = PROVIDERS[provider];
+  if (!connectionId) {
+    return refreshGoogleToken(credentials.refreshToken, client.clientId, client.clientSecret, log, proxyOptions);
+  }
+  const { exchangeAntigravityRefresh } = await import("../../src/lib/antigravity/refreshProtocol.js");
+  const { refreshGoogleTokenDetailed } = await import("./tokenRefresh/providers.js");
+  return exchangeAntigravityRefresh({
+    connectionId,
+    credentials: { ...credentials, provider, id: connectionId },
+    dispatch: () => refreshGoogleTokenDetailed(credentials.refreshToken, client.clientId, client.clientSecret, log, proxyOptions),
+  });
+}
+
 const REFRESH_HANDLERS = {
   openference: (c, log, p) => refreshOpenferenceToken(c, log, p),
   "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
-  antigravity: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log, p),
-  agy: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log, p),
+  antigravity: (c, log, p) => refreshAntigravityProvider("antigravity", c, log, p),
+  agy: (c, log, p) => refreshAntigravityProvider("agy", c, log, p),
   claude: (c, log, p) => refreshClaudeOAuthToken(c.refreshToken, log, p),
   codex: (c, log, p) => refreshCodexToken(c.refreshToken, log, p, c._connection?.id ?? c.id, resolveCodexAccountId(c.providerSpecificData ?? c._connection?.providerSpecificData, c.idToken ?? c._connection?.idToken)),
   qwen: (c, log, p) => refreshQwenToken(c.refreshToken, log, p),

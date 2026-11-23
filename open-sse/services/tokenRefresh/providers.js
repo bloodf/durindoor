@@ -5,8 +5,9 @@ import { buildKiroOidcEndpoint, KIRO_DEFAULT_REGION } from "../../config/kiroReg
 import { dedupRefresh } from "./dedup.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { getClineAccessToken } from "../../shared/clineAuth.js";
+import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 function safeRefreshError(value) {
   if (isString(value)) return sanitizeErrorMessage(value);
@@ -199,10 +200,45 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log,
   }, log, proxyOptions);
 }
 
+// OmniRoute's Claude refresher recognizes OAuth errors even through nested or
+// JSON-encoded error envelopes. Keep this specific to Claude's grant handling.
+const claudeRefreshBlocks = new Map();
+function claudeRefreshDelay(headers) {
+  const retryAfter = headers.get("retry-after");
+  const seconds = Number(retryAfter);
+  const date = Date.parse(retryAfter);
+  const milliseconds = Number(headers.get("retry-after-ms"));
+  const delay = retryAfter && Number.isFinite(seconds) ? seconds * 1000 :
+    retryAfter && Number.isFinite(date) ? date - Date.now() :
+    headers.has("retry-after-ms") && Number.isFinite(milliseconds) ? milliseconds : 5000;
+  return Math.max(5000, Math.min(300000, delay));
+}
+
+function claudeRefreshErrorCode(value, depth = 0) {
+  if (depth > 6) return null;
+  if (isString(value)) {
+    const text = value.trim();
+    if (/^[{[\"]/.test(text)) {
+      try {
+        return claudeRefreshErrorCode(JSON.parse(text), depth + 1);
+      } catch { return null; }
+    }
+    return text.match(/\b(invalid_grant|invalid_request)\b/i)?.[1]?.toLowerCase() || null;
+  }
+  if (!isObject(value)) return null;
+  return claudeRefreshErrorCode(value.error, depth + 1) ||
+    claudeRefreshErrorCode(value.code, depth + 1) ||
+    claudeRefreshErrorCode(value.error_code, depth + 1);
+}
+
 export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {
     try {
+      const blockKey = digestMemoryKey("claude-refresh-backoff", refreshToken);
+      const now = Date.now();
+      for (const [key, until] of claudeRefreshBlocks) if (until <= now) claudeRefreshBlocks.delete(key);
+      if (claudeRefreshBlocks.get(blockKey) > now) return null;
       // Anthropic's OAuth control plane answers the grant only when the
       // OAuth-only beta is present, and the grant has to name the scope the
       // authorize step obtained — a refresh that omits it can come back
@@ -229,14 +265,20 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = 
       }, proxyOptions);
 
       if (!response.ok) {
+        if (response.status === 429) {
+          if (claudeRefreshBlocks.size >= 1024) claudeRefreshBlocks.delete(claudeRefreshBlocks.keys().next().value);
+          claudeRefreshBlocks.set(blockKey, Date.now() + claudeRefreshDelay(response.headers));
+          return null;
+        }
         const errorText = await response.text();
         const failure = classifyOAuthRefreshError(errorText, response.status);
-        if (failure.permanent) {
+        const claudeCode = claudeRefreshErrorCode(errorText);
+        if (failure.permanent || claudeCode) {
           log?.error?.("TOKEN_REFRESH", "Claude refresh token already used or invalid. Re-auth required.", {
             status: response.status,
-            code: safeRefreshError(failure.code)
+            code: safeRefreshError(claudeCode || failure.code)
           });
-          return { error: "unrecoverable_refresh_error", code: failure.code };
+          return { error: "unrecoverable_refresh_error", code: claudeCode || failure.code };
         }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", {
           status: response.status,

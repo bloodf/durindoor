@@ -1,5 +1,23 @@
 # Claude Code sign-in and request comparison (#2034)
 
+## Follow-up comparison at the requested revisions
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Permanent refresh errors in nested, encoded, or plain-text envelopes | OmniRoute `5ffa68e83544`, `open-sse/services/tokenRefresh/providers/claudeOAuth.ts` and `shared.ts` | Ported here for `invalid_grant` and `invalid_request`; transient server errors remain retryable. |
+| Executor refresh error propagation | OmniRoute `claudeOAuth.ts` | Ported here: the default executor now uses the Claude refresher, so permanent errors reach credential management. |
+| Refresh 429 backoff | CLIProxyAPI `6eb8554f0ede`, `internal/auth/claude/anthropic_auth.go` | Ported here: retry hints are clamped to 5 seconds–5 minutes and shared by token within the process. |
+| Refresh token rotation fallback | OmniRoute `5ffa68e83544`, `claudeOAuth.ts` | Already matched: retain the old refresh token if none is returned. |
+| Refresh payload | CLIProxyAPI `6eb8554f0ede`, `internal/auth/claude/anthropic_auth.go`; OmniRoute `5ffa68e83544`, `claudeOAuth.ts` | Intentionally different from OmniRoute's form encoding: JSON with scope follows CLIProxyAPI. |
+
+This follow-up table covers the refresh behavior inspected in this change; it is
+not a completed function-by-function comparison of the pinned revisions. In
+particular, CLIProxyAPI falls back to identity in the token exchange response
+when the profile lookup fails. The dashboard's `claude.mapTokens` in
+`src/lib/oauth/providers.js` currently uses only the profile result. That file
+is excluded by this work order; adding token response account and organization
+fallbacks there remains necessary for parity.
+
 Compared on 2026-11-20, without provider credentials or account traffic. Every
 statement about an upstream comes from reading the pinned upstream trees at the
 SHAs below; none of it is evidence that Anthropic currently accepts any

@@ -16,7 +16,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshOpenferenceToken } from "../services/openferenceAuth.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
-import { refreshKimiToken } from "../services/tokenRefresh/providers.js";
+import { refreshClaudeOAuthToken, refreshKimiToken } from "../services/tokenRefresh/providers.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
@@ -900,7 +900,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     const refreshers = {
       openference: () => refreshOpenferenceToken(credentials, log, proxyOptions),
-      claude: () => this.refreshFromGrant(credentials, proxyOptions),
+      claude: () => refreshClaudeOAuthToken(credentials.refreshToken, log, proxyOptions),
       codex: () => this.refreshFromGrant(credentials, proxyOptions),
       iflow: () => this.refreshIflow(credentials.refreshToken, proxyOptions),
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
@@ -917,7 +917,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     try {
       const result = await refresher();
-      if (result) log?.info?.("TOKEN", `${this.provider} refreshed`);
+      if (result && !result.error) log?.info?.("TOKEN", `${this.provider} refreshed`);
       return result;
     } catch (error) {
       log?.error?.("TOKEN", `${this.provider} refresh error: ${error.message}`);

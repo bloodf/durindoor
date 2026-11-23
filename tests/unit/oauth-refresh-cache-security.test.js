@@ -123,7 +123,7 @@ describe("OAuth refresh cache security", () => {
 
   it("redacts upstream response secrets before refresh errors reach logs", async () => {
     const responseBody = JSON.stringify({
-      error: "invalid_request",
+      error: "server_error",
       refresh_token: "body-refresh-secret",
       detail: "connect http://bob:proxy-pass@proxy.example.test:8080?token=query-secret",
     });

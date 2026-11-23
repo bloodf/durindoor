@@ -78,6 +78,28 @@ const realtimeWss = new WebSocketServer({ noServer: true, maxPayload: MAX_REALTI
 const INBOUND_KEEP_ALIVE_TIMEOUT_MS = 72_000;
 const INBOUND_HEADERS_TIMEOUT_MS = 76_000;
 
+/** Resolve the single listen contract used by the dev and standalone entries. */
+function resolveListenConfig({ argv = process.argv, env = process.env, dev = false } = {}) {
+  const portIndex = argv.indexOf("--port");
+  const rawPort = env.PORT || (portIndex >= 0 ? argv[portIndex + 1] : dev ? 20127 : 20128);
+  const port = Number(rawPort);
+  const host = env.HOSTNAME || "127.0.0.1";
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("Invalid server port");
+  return { port, host };
+}
+
+/** Create the common HTTP server, applying the gateway request and upgrade boundaries. */
+function createGatewayServer(handler, { httpModule = http, serverArgs = [], dashboardPort, upgradeHandler, alreadyWrapped = false, wrapperOptions = {} } = {}) {
+  const requestHandler = alreadyWrapped ? handler : createOwnerAwareHandler(handler, { ...wrapperOptions, httpModule });
+  const server = httpModule.createServer(...serverArgs, requestHandler);
+  if (!isHttpServer(server)) return server;
+  server.keepAliveTimeout = INBOUND_KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = INBOUND_HEADERS_TIMEOUT_MS;
+  if (isFunction(upgradeHandler)) server.on("upgrade", upgradeHandler);
+  installRealtimeUpgradeDispatcher(server, { dashboardPort: dashboardPort || Number(process.env.PORT || 20128) });
+  return server;
+}
+
 function canonicalizeRuntimePaths() {
   // Resolve before Next's generated server can change cwd. Every bundled
   // subsystem then observes the same absolute data directory, and the MITM
@@ -213,16 +235,9 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
         dispatch
       );
     };
-    const server = origCreate(...rest, wrapped);
+    const server = createGatewayServer(wrapped, { httpModule: { createServer: origCreate }, serverArgs: rest, dashboardPort, alreadyWrapped: true });
     // createOwnerAwareHandler's shim only returns the wrapped handler function;
     // gate on real Server API so we never schedule .listeners() on a function.
-    if (isHttpServer(server)) {
-      // Node's 5s keep-alive default closes idle pooled client sockets; a client
-      // racing onto one gets ECONNRESET. headersTimeout must exceed keepAliveTimeout.
-      server.keepAliveTimeout = INBOUND_KEEP_ALIVE_TIMEOUT_MS;
-      server.headersTimeout = INBOUND_HEADERS_TIMEOUT_MS;
-      installRealtimeUpgradeDispatcher(server, { dashboardPort });
-    }
     return server;
   };
 }
@@ -556,6 +571,9 @@ function setProcessTitle(processImpl = process) {
 function run() {
   canonicalizeRuntimePaths();
   setProcessTitle();
+  const { port, host } = resolveListenConfig({ dev: false });
+  process.env.PORT = String(port);
+  process.env.HOSTNAME = host;
   installRequestWrapper();
   require("./server.js");
 }
@@ -568,11 +586,13 @@ module.exports = {
   applyBaselineSecurityHeaders,
   canonicalizeRuntimePaths,
   createOwnerAwareHandler,
+  createGatewayServer,
   handleRealtimeUpgrade,
   installRealtimeUpgradeDispatcher,
   installRequestWrapper,
   isHttpServer,
   isMitmMutation,
   run,
+  resolveListenConfig,
   setProcessTitle
 };

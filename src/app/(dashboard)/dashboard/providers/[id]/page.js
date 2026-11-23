@@ -1,5 +1,7 @@
 "use client";
 
+import { filterModelRows, toggleVisibleModels, runModelOperations } from "./modelSelection.js";
+
 import OpenRouterRoutingCard from "./OpenRouterRoutingCard";
 
 import ProviderRpmControl from "./ProviderRpmControl.jsx";
@@ -210,6 +212,12 @@ function ProviderDetail({ providerId }) {
   const [syncedModels, setSyncedModels] = useState(null);
   const [liveAntigravityModels, setLiveAntigravityModels] = useState(null);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
+  const [modelFilter, setModelFilter] = useState("");
+  const [modelGroup, setModelGroup] = useState("all");
+  const [modelOperator, setModelOperator] = useState("contains");
+  const [modelSort, setModelSort] = useState("");
+  const [selectedModels, setSelectedModels] = useState([]);
+  const [modelBulkBusy, setModelBulkBusy] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
   const [refreshingProfiles, setRefreshingProfiles] = useState(false);
@@ -228,6 +236,7 @@ function ProviderDetail({ providerId }) {
 
   useEffect(() => {
     currentProviderIdRef.current = providerId;
+    setSelectedModels([]);
     providerGenerationRef.current += 1;
     return () => {
       currentProviderIdRef.current = null;
@@ -1728,7 +1737,6 @@ function ProviderDetail({ providerId }) {
     ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
     filter((m) => {const k = getModelKind(m);return !k || k === "llm";}), customModels, providerStorageAlias);
     const disabledSet = new Set(disabledModelIds);
-    const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
     const customModelRows = getProviderCustomModelRows({
       customModels,
@@ -1741,12 +1749,65 @@ function ProviderDetail({ providerId }) {
       type: "llm"
     });
 
+    const rows = [
+      ...customModelRows.map((model) => ({ ...model, key: `${model.source}:${model.fullModel}`, group: "custom" })),
+      ...allModels.map((model) => ({ ...model, key: `builtin:${model.id}`, group: disabledSet.has(model.id) ? "disabled" : "active" })),
+    ];
+    const visible = filterModelRows(rows, modelFilter, modelGroup, modelOperator, modelSort);
+    const selected = rows.filter((model) => selectedModels.includes(model.key));
+    const toggleModel = (key) => setSelectedModels((prev) => prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]);
+    const runBulk = async (action, targets) => {
+      setModelBulkBusy(true);
+      setModelsTestError("");
+      setModelsTestMessage("");
+      const requestGeneration = providerGenerationRef.current;
+      const { succeeded, failed } = action === "delete" ? await runModelOperations(targets, async (model) => {
+        const params = model.source === "custom" ? new URLSearchParams({ providerAlias: providerStorageAlias, id: model.id, type: "llm" }) : new URLSearchParams({ alias: model.alias });
+        const res = await fetch(`/api/models/${model.source === "custom" ? "custom" : "alias"}?${params}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("Request failed");
+      }) : await (async () => {
+        try {
+          const params = new URLSearchParams({ providerAlias: providerStorageAlias });
+          targets.forEach((model) => params.append("id", model.id));
+          const res = action === "disable" ? await fetch("/api/models/disabled", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias: providerStorageAlias, ids: targets.map((model) => model.id) }) }) : await fetch(`/api/models/disabled?${params}`, { method: "DELETE" });
+          if (!res.ok) throw new Error("Request failed");
+          return { succeeded: targets.map((model) => model.key), failed: [] };
+        } catch { return { succeeded: [], failed: targets.map((model) => model.id) }; }
+      })();
+      if (providerGenerationRef.current !== requestGeneration) return;
+      setSelectedModels((prev) => prev.filter((key) => !succeeded.includes(key)));
+      if (action === "delete") { await Promise.all([fetchCustomModels(), fetchAliases()]); if (isBrowser()) window.dispatchEvent(new CustomEvent("customModelChanged")); }
+      else await fetchDisabledModels();
+      if (failed.length) setModelsTestError(`Could not ${action}: ${failed.join(", ")}`);
+      if (succeeded.length) setModelsTestMessage(`${action} succeeded for ${succeeded.length} model(s).`);
+      setModelBulkBusy(false);
+    };
+    const selectedActive = selected.filter((model) => model.group === "active");
+    const selectedDisabled = selected.filter((model) => model.group === "disabled");
+    const selectedCustom = selected.filter((model) => model.group === "custom");
     return (
       <div className="flex flex-wrap gap-3">
+        <div className="w-full flex flex-wrap gap-2 items-center">
+          <input aria-label="Filter models" type="search" placeholder="Filter models" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} className="rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-sm text-dd-text" />
+          <select aria-label="Filter operator" value={modelOperator} onChange={(event) => setModelOperator(event.target.value)} className="rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-sm text-dd-text"><option value="contains">Contains</option><option value="notContains">Does not contain</option><option value="startsWith">Starts with</option><option value="endsWith">Ends with</option><option value="equals">Equals</option></select>
+          <select aria-label="Sort models" value={modelSort} onChange={(event) => setModelSort(event.target.value)} className="rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-sm text-dd-text"><option value="">Default order</option><option value="asc">A to Z</option><option value="desc">Z to A</option></select>
+          <select aria-label="Model group" value={modelGroup} onChange={(event) => setModelGroup(event.target.value)} className="rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-sm text-dd-text">
+            <option value="all">All models</option><option value="active">Active</option><option value="disabled">Disabled</option><option value="custom">Custom</option>
+          </select>
+          <button type="button" disabled={modelBulkBusy || !visible.length} onClick={() => setSelectedModels((prev) => toggleVisibleModels(prev, visible))} className="text-sm text-dd-accent">{visible.length > 0 && visible.every((model) => selectedModels.includes(model.key)) ? "Deselect visible" : "Select visible"}</button>
+          <span className="text-sm text-dd-muted">{selected.length} selected</span>
+          {selected.length > 0 && <button type="button" disabled={modelBulkBusy} onClick={() => setSelectedModels([])} className="text-sm text-dd-accent">Clear selection</button>}
+          {selectedActive.length > 0 && <Button size="sm" disabled={modelBulkBusy} onClick={() => runBulk("disable", selectedActive)}>Disable selected</Button>}
+          {selectedDisabled.length > 0 && <Button size="sm" disabled={modelBulkBusy} onClick={() => runBulk("enable", selectedDisabled)}>Enable selected</Button>}
+          {selectedCustom.length > 0 && <Button size="sm" disabled={modelBulkBusy} onClick={() => setConfirmState({ title: "Delete selected models", message: `Delete ${selectedCustom.length} selected custom model(s)? This cannot be undone.`, onConfirm: () => { setConfirmState(null); runBulk("delete", selectedCustom); } })}>Delete selected</Button>}
+        </div>
+        {visible.length === 0 && <p className="w-full text-sm text-dd-muted">No models match this filter.</p>}
         {/* Custom models first */}
-        {customModelRows.map((model) =>
+        {visible.filter((model) => model.group === "custom").map((model) =>
         <ModelRow
           key={`${model.source}-${model.fullModel}`}
+          selected={selectedModels.includes(`${model.source}:${model.fullModel}`)}
+          onSelect={() => toggleModel(`${model.source}:${model.fullModel}`)}
           model={{ id: model.id, name: model.name }}
           fullModel={`${providerDisplayAlias}/${model.id}`}
           alias={model.alias}
@@ -1772,7 +1833,7 @@ function ProviderDetail({ providerId }) {
 
         )}
 
-        {displayModels.map((model) => {
+        {visible.filter((model) => model.group === "active").map((model) => {
           const fullModel = `${providerStorageAlias}/${model.id}`;
           const oldFormatModel = `${providerId}/${model.id}`;
           const existingAlias = Object.entries(modelAliases).find(
@@ -1789,6 +1850,8 @@ function ProviderDetail({ providerId }) {
           return (
             <ModelRow
               key={model.id}
+              selected={selectedModels.includes(`builtin:${model.id}`)}
+              onSelect={() => toggleModel(`builtin:${model.id}`)}
               model={model}
               fullModel={`${providerDisplayAlias}/${model.id}`}
               alias={existingAlias}
@@ -1888,8 +1951,8 @@ function ProviderDetail({ providerId }) {
         <div className="w-full mt-2">
             <p className="text-xs text-dd-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
-              {disabledDisplayModels.map((m) =>
-            <button
+              {visible.filter((m) => m.group === "disabled").map((m) =>
+            <label key={m.id} className="flex items-center gap-1"><input type="checkbox" aria-label={`Select ${m.id}`} checked={selectedModels.includes(`builtin:${m.id}`)} onChange={() => toggleModel(`builtin:${m.id}`)} /><button
               key={m.id}
               onClick={() => handleEnableModel(m.id)}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 hover:bg-dd-accent-soft transition-colors"
@@ -1897,7 +1960,7 @@ function ProviderDetail({ providerId }) {
 
                   <span className="material-symbols-outlined text-[13px]">add</span>
                   {m.id}
-                </button>
+                </button></label>
             )}
             </div>
           </div>

@@ -17,6 +17,7 @@ import {
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { FORMATS } from "../translator/formats.js";
+import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 
 
 // Format byte count to human-readable string for debug logs
@@ -450,7 +451,7 @@ export class BaseExecutor {
       // The third slot deliberately differs from upstream's URL slot so executor
       // adaptations can consume request-scoped state without retaining it.
       // Extra arguments are backward-compatible with executors that do not use them.
-      const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
+      let url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.clampCustomMaxOutput(
         this.transformRequest(model, body, stream, credentials, requestContext, url),
         requestContext
@@ -501,6 +502,49 @@ export class BaseExecutor {
         if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
         let response = await runQuotaBearingProviderRequest(() =>
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
+        let responseFormat;
+        // Only the official Chat endpoint can negotiate its token field or
+        // fall back to Responses. Each replay uses the ordinary dispatch budget.
+        if (this.provider === "openai" && openAIChatWire && Array.isArray(requestBody?.messages) &&
+            /\/chat\/completions\/?$/.test(new URL(url).pathname)) {
+          const replay = async () => {
+            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+            cancelDiscardedResponse(response);
+            clearTimeout(connectTimer);
+            connectCtrl = new AbortController();
+            connectTimer = armConnectTimer();
+            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            chargeDispatch(urlIndex);
+            beginDispatch();
+            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
+              ...fetchOptions, body: JSON.stringify(requestBody), signal: mergedSignal
+            }), proxyOptions));
+          };
+          const errorPayload = async () => {
+            try { return JSON.parse(await readOptionalProbeText(response, { signal })); }
+            catch (error) { if (signal?.aborted) throw error; return null; }
+          };
+          if (response.status === 400 && requestBody.max_tokens !== undefined && transportBudgetLeft(urlIndex)) {
+            const err = (await errorPayload())?.error;
+            const message = String(err?.message || "").toLowerCase();
+            if ((["unsupported_parameter", "unknown_parameter"].includes(err?.code) && err?.param === "max_tokens") ||
+                (message.includes("max_tokens") && (message.includes("unknown parameter") || message.includes("max_completion_tokens")))) {
+              requestBody = { ...requestBody, max_completion_tokens: requestBody.max_completion_tokens ?? requestBody.max_tokens };
+              delete requestBody.max_tokens;
+              await replay();
+            }
+          }
+          if ((response.status === 400 || response.status === 404) && transportBudgetLeft(urlIndex)) {
+            const message = String((await errorPayload())?.error?.message || "").toLowerCase();
+            if (message.includes("/chat/completions") &&
+                (message.includes("not a chat model") || (message.includes("/v1/responses") && message.includes("instead")))) {
+              requestBody = openaiToOpenAIResponsesRequest(model, requestBody, stream, credentials);
+              url = url.replace(/\/chat\/completions\/?(?=\?|$)/i, "/responses");
+              responseFormat = FORMATS.OPENAI_RESPONSES;
+              await replay();
+            }
+          }
+        }
         if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
@@ -508,9 +552,9 @@ export class BaseExecutor {
           const field = findOffendingField(errorText);
           if (
           field &&
-          // Azure negotiates token-limit spellings in its executor. Dropping
-          // either field here would silently remove the caller's output cap.
-          !(this.provider === "azure" && (field === "max_tokens" || field === "max_completion_tokens")) &&
+          // Azure and OpenAI negotiate token-limit spellings. Dropping a
+          // limit here would silently remove the caller's output cap.
+          !(["azure", "openai"].includes(this.provider) && (field === "max_tokens" || field === "max_completion_tokens" || field === "max_output_tokens")) &&
           requestBody && isObject(
             requestBody) &&
           !Array.isArray(requestBody) &&
@@ -595,6 +639,7 @@ export class BaseExecutor {
             url,
             headers,
             transformedBody: requestBody,
+            responseFormat,
             attemptStartedAt: providerAttemptStartedAt,
             terminalProvenance: "upstream"
           };
@@ -613,6 +658,7 @@ export class BaseExecutor {
           url,
           headers,
           transformedBody: requestBody,
+          responseFormat,
           attemptStartedAt: providerAttemptStartedAt,
           terminalProvenance: "upstream"
         };

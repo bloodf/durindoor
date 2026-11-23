@@ -48,7 +48,7 @@ async function handleEmbeddingsHandler(request) {
   // Keep the admission epoch, including null, across upstream retries.
   const { billingEpoch } = apiKeyAuth;
   if (apiKey) {
-    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
+    log.debug("AUTH", "API key provided");
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }

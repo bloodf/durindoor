@@ -87,6 +87,8 @@ export default function ProfilePage() {
   // Keep OIDC disclosure unavailable until saved settings settle its layout and draft.
   const [loading, setLoading] = useState(true);
   const [settingsError, setSettingsError] = useState("");
+  const [toolSourcesSaving, setToolSourcesSaving] = useState(false);
+  const [toolSourcesError, setToolSourcesError] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [notificationError, setNotificationError] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
@@ -675,6 +677,24 @@ export default function ProfilePage() {
     }
   };
 
+  const updateLogToolSources = async (enabled) => {
+    setToolSourcesSaving(true);
+    setToolSourcesError("");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logToolSources: enabled }),
+      });
+      if (!res.ok) throw new Error("Settings update failed");
+      setSettings((prev) => ({ ...prev, logToolSources: enabled }));
+    } catch {
+      setToolSourcesError("Could not save tool source diagnostics. Try again.");
+    } finally {
+      setToolSourcesSaving(false);
+    }
+  };
+
   const updateObservabilityEnabled = async (enabled) => {
     try {
       const res = await fetch("/api/settings", {
@@ -1018,7 +1038,7 @@ export default function ProfilePage() {
         {dbStatus.message ? <p role="status" className={`text-xs ${statusClass(dbStatus)}`}>{dbStatus.message}</p> : null}<SelectiveTransferPanel />
       </CardContent></Card>
 
-      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
+      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Log tool sources" description="Log tool names and source counts for authenticated requests when LOG_LEVEL=DEBUG. Tool names may disclose identifiers." checked={settings.logToolSources === true} onChange={updateLogToolSources} disabled={loading || toolSourcesSaving} />{toolSourcesError ? <p role="alert" className="text-xs text-dd-danger">{toolSourcesError}</p> : null}<Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
         <div className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5">
           <Toggle label="Auto-clean old data" description="Every hour, delete usage history, request details, timeline traces and quota snapshots older than the window below." checked={dataRetentionEnabled} onChange={(value) => updateDataRetention({ dataRetentionEnabled: value === true })} disabled={loading} />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

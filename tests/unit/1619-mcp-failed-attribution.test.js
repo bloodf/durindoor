@@ -1,3 +1,4 @@
+import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "@/lib/db/helpers/usageKeyIdentity.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -46,7 +47,7 @@ it("keeps failed MCP calls in their gateway-key view without charging key limits
     status: "error", tokens: {}, cost: 0, costStatus: "known", costSource: "mcp-gateway",
   });
 
-  expect(adapter.all("SELECT apiKey, status FROM usageHistory")).toEqual([{ apiKey: key, status: "error" }]);
+  expect(adapter.all("SELECT apiKey, status FROM usageHistory")).toEqual([{ apiKey: fingerprintApiKey(key, getOrCreateUsageIdentitySalt(adapter)), status: "error" }]);
   const stats = await database.getUsageStats("all");
   expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
     apiKeyKey: `mcp-gateway-key:${gatewayKey.id}`,

@@ -26,7 +26,7 @@ export function register() {
     void import("./instrumentation.node.js")
       .then(({ bootstrapNodejsRuntime }) => bootstrapNodejsRuntime())
       .catch((error) => {
-        console.log(`[headroom] bootstrap skipped: ${error?.message || error}`);
+        console.warn(`[startup] nodejs instrumentation failed: ${error?.message || error}`);
       });
   }
 }

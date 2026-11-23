@@ -7,6 +7,7 @@ import { enforceApiKeyModelPolicy } from "../../services/apiKeyPolicy.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable } from "../../services/auth.js";
 import { getModelInfo } from "../../services/model.js";
 import { imageModelKindError } from "../imageModelKind.js";
+import { modelKindError } from "../modelKind.js";
 
 /**
  * Admit a parsed image request before endpoint validation and route selection.
@@ -22,12 +23,12 @@ export async function runMediaEndpoint(request, { kind, pinConnection = false, r
   return route(admission, pinOptions);
 }
 
-export async function resolveImageModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle } = {}) {
+export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind } = {}) {
   const { provider, model } = await getModelInfo(modelStr);
   if (!provider) return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format") };
 
   if (provider === "openrouter") {
-    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, "image"); }
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, routingKind || "image"); }
     catch (error) { return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, error.message) }; }
   }
 
@@ -36,8 +37,20 @@ export async function resolveImageModel(request, modelStr, body, apiKey, { onPol
   const lifecycleError = checkLifecycle?.(provider, model);
   if (lifecycleError) return { error: lifecycleError };
 
-  const error = await imageModelKindError(provider, model, await getSettings());
+  const settings = await getSettings();
+  const error = kindCheck ? await kindCheck(provider, model, settings) : await imageModelKindError(provider, model, settings);
   return { provider, model, error };
+}
+
+export function resolveImageModel(request, modelStr, body, apiKey, options = {}) {
+  return resolveMediaModel(request, modelStr, body, apiKey, { ...options, routingKind: "image" });
+}
+
+export async function resolveTypedMediaModel(request, modelStr, body, apiKey, kind, options = {}) {
+  return resolveMediaModel(request, modelStr, body, apiKey, {
+    ...options,
+    kindCheck: (provider, model, settings) => modelKindError(provider, model, settings, kind),
+  });
 }
 
 /**
@@ -45,7 +58,7 @@ export async function resolveImageModel(request, modelStr, body, apiKey, { onPol
  * result and the dispatched credential snapshot for account health tracking.
  */
 export async function runMediaAccounts({
-  provider, model, selectionOptions, runAttempt, buildExhaustedResponse,
+  provider, model, selectionOptions, runAttempt, buildExhaustedResponse, selectCredentials,
   onAccountFailure, onFallback, buildFailureResponse = (result) => result.response,
 }) {
   const excluded = new Set();
@@ -53,7 +66,9 @@ export async function runMediaAccounts({
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excluded, model, selectionOptions);
+    const credentials = selectCredentials
+      ? await selectCredentials(excluded, model, selectionOptions)
+      : await getProviderCredentialsWithQuotaPreflight(provider, excluded, model, selectionOptions);
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       return buildExhaustedResponse(credentials, { lastError, lastStatus, attempted: excluded.size });
     }

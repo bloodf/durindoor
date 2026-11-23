@@ -1,4 +1,5 @@
 import { jsonNotFoundResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
+import { correlateResponse, getRequestId } from "@/sse/utils/requestCorrelation.js";
 
 /**
  * Catch-all for unknown `/api/*` paths (OmniRoute #6424 / PR #6516).
@@ -15,25 +16,47 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "*",
 };
 
-export async function OPTIONS() {
+function preserveBodyWithRequestCorrelation(handler) {
+  return async (...args) => {
+    const requestId = getRequestId(args[0]);
+    const response = await handler(...args);
+    const correlated = await correlateResponse(response, requestId);
+    if (!(response instanceof Response) || !(correlated instanceof Response)) return correlated;
+    return new Response(response.body, {
+      status: correlated.status,
+      statusText: correlated.statusText,
+      headers: correlated.headers,
+    });
+  };
+}
+
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS_HEADERS });
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function POST(request) {
+async function POSTHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function PUT(request) {
+async function PUTHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function PATCH(request) {
+async function PATCHHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function DELETE(request) {
+async function DELETEHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function HEAD() {
+async function HEADHandler() {
   return headNotFoundResponse();
 }
+
+export const OPTIONS = preserveBodyWithRequestCorrelation(OPTIONSHandler);
+export const GET = preserveBodyWithRequestCorrelation(GETHandler);
+export const POST = preserveBodyWithRequestCorrelation(POSTHandler);
+export const PUT = preserveBodyWithRequestCorrelation(PUTHandler);
+export const PATCH = preserveBodyWithRequestCorrelation(PATCHHandler);
+export const DELETE = preserveBodyWithRequestCorrelation(DELETEHandler);
+export const HEAD = preserveBodyWithRequestCorrelation(HEADHandler);

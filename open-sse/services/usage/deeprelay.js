@@ -1,3 +1,4 @@
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 /**
  * DeepRelay usage — prepaid balance plus per-day spend.
  *
@@ -52,7 +53,7 @@ function spendQuota(usageBody) {
   let totalCents = 0;
   let earliest = null;
   for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
+    if (!row || !isObject(row)) continue;
     totalCents += toFiniteNumber(row.cost_cents, 0);
     const bucketStart = parseResetTime(row.bucket_start);
     if (bucketStart && (earliest === null || bucketStart < earliest)) earliest = bucketStart;
@@ -93,7 +94,7 @@ async function fetchUsageSpend(apiKey, proxyOptions) {
  * @param {object|null} proxyOptions
  */
 export async function getDeepRelayUsage(apiKey, proxyOptions = null) {
-  if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+  if (!apiKey || !isString(apiKey) || !apiKey.trim()) {
     return { message: "DeepRelay API key not available. Add a key to view usage." };
   }
 
@@ -129,7 +130,7 @@ export async function getDeepRelayUsage(apiKey, proxyOptions = null) {
     }
 
     const balance = await response.json().catch(() => null);
-    if (!balance || typeof balance !== "object") {
+    if (!balance || !isObject(balance)) {
       return { plan: PLAN, message: "DeepRelay balance response was not JSON." };
     }
 

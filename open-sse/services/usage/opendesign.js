@@ -1,3 +1,4 @@
+import { isObject, isString, isBigInt, isNumber } from "../../../src/shared/utils/typeChecks.js";
 /**
  * OpenDesign Go usage — coding-plan credit windows plus the workspace wallet.
  *
@@ -91,7 +92,7 @@ async function getJson(url, controlKey, workspaceId, proxyOptions) {
     }
 
     const body = await response.json().catch(() => null);
-    if (!body || typeof body !== "object") {
+    if (!body || !isObject(body)) {
       return { ok: false, status: response.status, error: "response was not JSON" };
     }
     return { ok: true, body };
@@ -110,7 +111,7 @@ async function getJson(url, controlKey, workspaceId, proxyOptions) {
 // connection can pin `opendesignWorkspaceId` to choose explicitly.
 async function resolveWorkspaceId(controlKey, providerSpecificData, proxyOptions) {
   const pinned = providerSpecificData?.opendesignWorkspaceId;
-  if (typeof pinned === "string" && pinned.trim()) {
+  if (isString(pinned) && pinned.trim()) {
     return { workspaceId: pinned.trim(), error: null };
   }
 
@@ -119,7 +120,7 @@ async function resolveWorkspaceId(controlKey, providerSpecificData, proxyOptions
 
   const items = Array.isArray(result.body?.items) ? result.body.items : [];
   const ids = items
-    .map((item) => (item && typeof item === "object" && typeof item.workspaceId === "string"
+    .map((item) => (item && isObject(item) && isString(item.workspaceId)
       ? item.workspaceId.trim()
       : ""))
     .filter(Boolean);
@@ -140,19 +141,19 @@ async function resolveWorkspaceId(controlKey, providerSpecificData, proxyOptions
 // workspace's spend as this connection's own. Treating a mismatch as a failure
 // is the conservative choice.
 function workspaceMatches(body, workspaceId) {
-  if (!body || typeof body !== "object") return false;
-  if (typeof body.workspaceId !== "string") return false;
+  if (!body || !isObject(body)) return false;
+  if (!isString(body.workspaceId)) return false;
   return body.workspaceId.trim() === workspaceId;
 }
 
 // Exact decimal-string → BigInt. Returns null for anything that is not a plain
 // non-negative integer string, so a "12.5" or "" never silently becomes 0.
 function parseCredits(value) {
-  if (typeof value === "bigint") return value >= 0n ? value : null;
-  if (typeof value === "number") {
+  if (isBigInt(value)) return value >= 0n ? value : null;
+  if (isNumber(value)) {
     return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
   }
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const trimmed = value.trim();
   if (!/^\d+$/.test(trimmed)) return null;
   try {
@@ -183,7 +184,7 @@ function remainingPercentOf(used, limit) {
  * or the limit is zero — a "0 / 0" row is noise, not a quota.
  */
 function windowQuota(window) {
-  if (!window || typeof window !== "object") return null;
+  if (!window || !isObject(window)) return null;
   const used = parseCredits(window.usedCredits);
   const limit = parseCredits(window.limitCredits);
   if (used === null || limit === null || limit <= 0n) return null;
@@ -223,7 +224,7 @@ function planQuotas(preflight) {
  */
 function balanceQuota(body) {
   const raw = body?.balanceUsd;
-  if (typeof raw !== "string" || !raw.trim()) return null;
+  if (!isString(raw) || !raw.trim()) return null;
   const dollars = toFiniteNumber(raw.trim(), null);
   if (dollars === null || dollars < 0) return null;
 
@@ -249,7 +250,7 @@ export async function getOpenDesignUsage(ctx = {}) {
   const providerSpecificData = ctx.providerSpecificData || {};
   const controlKey = providerSpecificData.opendesignControlKey;
 
-  if (!controlKey || typeof controlKey !== "string" || !controlKey.trim()) {
+  if (!controlKey || !isString(controlKey) || !controlKey.trim()) {
     // Deliberately explicit: users almost always paste the sk-amr key here
     // because that is the key the provider form asks for.
     return { plan: PLAN, message: MISSING_CONTROL_KEY_MESSAGE };

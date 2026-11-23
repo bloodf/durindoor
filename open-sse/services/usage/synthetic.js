@@ -88,6 +88,7 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
 
     const total = toFiniteNumber(sub.limit, 0);
     if (total <= 0) {
+      if (searchTotal > 0) return { plan: "Synthetic", quotas: searchQuota };
       return { plan: "Synthetic", message: "No Synthetic subscription quota found for this key." };
     }
     const used = toFiniteNumber(sub.requests, 0);

@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useMemo, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
@@ -156,7 +158,7 @@ export default function ModelSelectModal({
     const controller = new AbortController();
     (async () => {
       try {
-        const settingsRes = await fetch("/api/settings", { signal: controller.signal });
+        const settingsRes = await requestSettings({ signal: controller.signal });
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
         if (ignore) return;

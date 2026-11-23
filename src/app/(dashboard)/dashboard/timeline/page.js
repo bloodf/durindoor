@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -75,7 +77,7 @@ function TimelineList() {
     setError("");
     setLoading(true);
     try {
-      const settingsRequest = fetch("/api/settings", { cache: "no-store", signal: controller.signal }).catch(() => null);
+      const settingsRequest = requestSettings({ cache: "no-store", signal: controller.signal }).catch(() => null);
       if (query.get("pageSize") === "all") {
         const allQuery = new URLSearchParams(query);
         allQuery.set("page", "1");

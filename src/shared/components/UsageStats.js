@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
@@ -144,7 +146,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     Promise.all([
     fetch("/api/providers", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
     fetch("/api/provider-nodes", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
-    fetch("/api/settings", { signal: controller.signal }).then((r) => r.ok ? r.json() : null)]
+    requestSettings({ signal: controller.signal }).then((r) => r.ok ? r.json() : null)]
     ).
     then(([d, nodesData, settings]) => {
       const providers = buildUsageProviders(

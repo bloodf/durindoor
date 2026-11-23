@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { getOutputTokens } from "./tokenDisplay.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
@@ -270,7 +272,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/settings", { signal: controller.signal })
+    requestSettings({ signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data && !controller.signal.aborted) setObservabilityEnabled(data.enableObservability === true); })
       .catch(() => {});

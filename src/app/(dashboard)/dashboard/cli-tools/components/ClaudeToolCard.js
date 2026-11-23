@@ -11,6 +11,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import useSettingsStore from "@/store/settingsStore";
 import DocsLink from "@/shared/components/DocsLink";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
@@ -53,6 +54,8 @@ export default function ClaudeToolCard({
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const settings = useSettingsStore((state) => state.settings);
+  const settingsError = useSettingsStore((state) => state.error);
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
   const [claudeClassifierCompat, setClaudeClassifierCompat] = useState("off");
   const [claudeClassifierCompatLoading, setClaudeClassifierCompatLoading] = useState(false);
@@ -86,21 +89,18 @@ export default function ClaudeToolCard({
     if (isExpanded) fetchModelAliases();
   }, [isExpanded]);
 
+  useEffect(() => { void useSettingsStore.getState().fetchSettings(); }, []);
+
   useEffect(() => {
-    fetch("/api/settings").then(r => r.json()).then(data => {
-      setCcFilterNaming(!!data.ccFilterNaming);
-      setClaudeClassifierCompat(["auto", "always"].includes(data.claudeClassifierCompat) ? data.claudeClassifierCompat : "off");
-    }).catch(() => {});
-  }, []);
+    if (!settings) return;
+    setCcFilterNaming(!!settings.ccFilterNaming);
+    setClaudeClassifierCompat(["auto", "always"].includes(settings.claudeClassifierCompat) ? settings.claudeClassifierCompat : "off");
+  }, [settings]);
 
   const handleCcFilterNamingToggle = async (e) => {
     const value = e.target.checked;
-    setCcFilterNaming(value);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ccFilterNaming: value }),
-    }).catch(() => {});
+    const saved = await useSettingsStore.getState().patchSettings({ ccFilterNaming: value });
+    if (saved) setCcFilterNaming(value);
   };
 
   // "claudeClassifierCompat" gates a security-relevant default-allow short-
@@ -122,13 +122,8 @@ export default function ClaudeToolCard({
     setClaudeClassifierCompat(next);
     setClaudeClassifierCompatLoading(true);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claudeClassifierCompat: next }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const saved = await res.json();
+      const saved = await useSettingsStore.getState().patchSettings({ claudeClassifierCompat: next });
+      if (!saved) throw new Error(useSettingsStore.getState().error);
       setClaudeClassifierCompat(["auto", "always"].includes(saved.claudeClassifierCompat) ? saved.claudeClassifierCompat : "off");
     } catch {
       setClaudeClassifierCompat(previous);
@@ -302,6 +297,7 @@ export default function ClaudeToolCard({
         <span aria-hidden="true" className={`material-symbols-outlined text-dd-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
       </button>
 
+      {isExpanded && settingsError && <p role="alert" className="text-dd-danger">{settingsError}</p>}
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-dd-border flex flex-col gap-4">
           {checkingClaude && (

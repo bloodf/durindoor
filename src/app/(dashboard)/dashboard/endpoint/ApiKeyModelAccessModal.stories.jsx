@@ -11,7 +11,7 @@ const meta = {
   component: ApiKeyModelAccessModal,
   parameters: {
     layout: "padded",
-    storyFixture: { scenario: "default", pathname: "/dashboard/endpoint", routes: { "GET /api/settings": { body: { settings: { requireApiKey: false } } } } },
+    storyFixture: { scenario: "default", pathname: "/dashboard/endpoint", routes: { "GET /api/settings": { body: { requireApiKey: false } } } },
   },
   args: { apiKey, catalog, onClose: () => {}, onSave: () => {} },
 };

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { deleteProviderConnectionsByProviderInTx } from "./connectionsRepo.js";
 import { isString } from "../../../shared/utils/typeChecks.js";
 
 function rowToNode(row) {
@@ -84,45 +85,66 @@ export async function createProviderNode(data) {
   return node;
 }
 
+// A mutable prefix only belongs to a node while no other node or built-in uses it.
+function ownsPrefix(db, node, prefix) {
+  return Boolean(prefix) && !REGISTRY.some((p) => [p.id, p.alias, p.uiAlias, ...(p.aliases || [])].includes(prefix)) &&
+    !db.all(`SELECT * FROM providerNodes`).some((row) => row.id !== node.id && (row.id === prefix || rowToNode(row).prefix === prefix));
+}
+
+function rewriteOwnedAliases(db, prefix, replacement) {
+  for (const alias of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) {
+    const model = parseJson(alias.value, null);
+    if (isString(model) && model.startsWith(`${prefix}/`)) {
+      if (replacement) db.run(`UPDATE kv SET value = ? WHERE scope = 'modelAliases' AND key = ?`, [stringifyJson(`${replacement}${model.slice(prefix.length)}`), alias.key]);
+      else db.run(`DELETE FROM kv WHERE scope = 'modelAliases' AND key = ?`, [alias.key]);
+    }
+  }
+}
+
 export async function updateProviderNode(id, data) {
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
     const row = db.get(`SELECT * FROM providerNodes WHERE id = ?`, [id]);
     if (!row) return;
-    const merged = { ...rowToNode(row), ...data, updatedAt: new Date().toISOString() };
+    const current = rowToNode(row);
+    if (data.prefix !== undefined && data.prefix !== current.prefix && ownsPrefix(db, current, current.prefix)) {
+      rewriteOwnedAliases(db, current.prefix, id);
+    }
+    const merged = { ...current, ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     result = merged;
   });
   return result;
 }
 
-export async function deleteProviderNode(id) {
+async function removeProviderNode(id, includeConnections) {
   const db = await getAdapter();
   let removed = null;
   db.transaction(() => {
     const row = db.get(`SELECT * FROM providerNodes WHERE id = ?`, [id]);
     if (!row) return;
     removed = rowToNode(row);
+    if (includeConnections) deleteProviderConnectionsByProviderInTx(db, id);
+    const prefixOwned = ownsPrefix(db, removed, removed.prefix);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
-    // Aliases targeting this node cannot resolve after the node is deleted.
-    for (const alias of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) {
-      const model = parseJson(alias.value, null);
-      if (isString(model) && model.startsWith(`${id}/`)) {
-        db.run(`DELETE FROM kv WHERE scope = 'modelAliases' AND key = ?`, [alias.key]);
-      }
-    }
-    // customModels keys are `${providerAlias}|${id}|${type}`; the alias is the node id or its prefix.
-    // A prefix is not unique for openai-compatible nodes and may equal a built-in alias, so only
-    // prune by prefix when no other node holds it and no built-in provider does.
+    rewriteOwnedAliases(db, id, null);
+    if (prefixOwned && removed.prefix !== id) rewriteOwnedAliases(db, removed.prefix, null);
+    // Keep custom models for prefixes shared with another node or a built-in.
     const prefix = removed.prefix;
-    const prefixOwned = !prefix
-      || REGISTRY.some((p) => [p.id, p.alias, p.uiAlias, ...(p.aliases || [])].includes(prefix))
-      || db.all(`SELECT * FROM providerNodes`).some((r) => rowToNode(r).prefix === prefix);
-    for (const alias of [id, prefixOwned ? null : prefix].filter(Boolean)) {
+    for (const alias of [id, prefixOwned ? prefix : null].filter(Boolean)) {
       const head = `${alias}|`;
       db.run(`DELETE FROM kv WHERE scope = 'customModels' AND substr(key, 1, ?) = ?`, [head.length, head]);
     }
   });
   return removed;
+}
+
+export async function deleteProviderNode(id) {
+  return removeProviderNode(id, false);
+}
+
+// All provider-owned data and the scoped-key guard share one transaction.
+export async function deleteProviderNodeWithConnections(id) {
+  return removeProviderNode(id, true);
 }

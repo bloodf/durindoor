@@ -16,7 +16,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
-import { getAutoComboCatalog } from "../services/model.js";
+import { getAutoComboCatalog, filterDisabledComboModels } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
@@ -133,7 +133,7 @@ async function handleFetchHandler(request) {
   // above calls getComboModelsFromData without filtering so combo existence/ACL
   // stay against the real member list.
   const comboModels = filterPaidModels(
-    getComboModelsFromData(providerInput, combos, autoOptions),
+    await filterDisabledComboModels(getComboModelsFromData(providerInput, combos, autoOptions), "fetch"),
     settings.hidePaidModels === true
   );
   if (comboModels) {

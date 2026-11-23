@@ -47,7 +47,8 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
   checkAndRefreshToken: vi.fn(async (_provider, credentials) => credentials),
 }));
-vi.mock("../../src/sse/services/model.js", () => ({ getAutoComboCatalog: vi.fn() }));
+vi.mock("../../src/sse/services/model.js", () => ({ filterDisabledComboModels: async (models) => models,
+  getAutoComboCatalog: vi.fn() }));
 vi.mock("../../src/sse/services/mediaRoutes.js", async (importOriginal) => ({
   ...(await importOriginal()),
   resolveMediaRoute: vi.fn(async () => ({ models: state.routeModels })),

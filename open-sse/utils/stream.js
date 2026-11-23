@@ -3,7 +3,7 @@ import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -478,6 +478,8 @@ export function createSSEStream(options = {}) {
   const withTps = (usageObj) => attachTokensPerSecond(usageObj, ttftAt ? Date.now() - ttftAt : null);
   /** Tool-call frames are useful output even when providers omit usage and text. */
   let hadToolCalls = false;
+  // Claude output seen so far; refreshes a provisional message_start count.
+  let claudeOutputChars = 0;
   // Names only, for a readable log label — a turn that only calls tools accumulates
   // no content and would otherwise log as "[Empty streaming response]", indistinguishable
   // from a truncated stream. Dedup keeps a chatty multi-call turn's label short.
@@ -529,6 +531,11 @@ export function createSSEStream(options = {}) {
       for (const call of parsed.message.tool_calls) {
         if (isString(call?.function?.name) && call.function.name) toolCallNames.add(call.function.name);
       }
+    }
+    if (summary && parsed.type === "content_block_delta") {
+      const delta = parsed.delta;
+      const piece = [delta?.text, delta?.thinking, delta?.partial_json].find((value) => isString(value) && value);
+      if (piece) claudeOutputChars += piece.length;
     }
     const extracted = extractUsage(parsed);
     if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
@@ -746,7 +753,7 @@ export function createSSEStream(options = {}) {
    */
   // Replicate predictions do not consistently report token counts; leave them unknown.
   const getStreamSnapshot = () => {
-    const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
+    const currentUsage = refreshProvisionalOutput(mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage, claudeOutputChars);
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
     provider !== "replicate" && totalContentLength > 0 ?
     estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
@@ -1717,6 +1724,7 @@ export function createSSEStream(options = {}) {
           }
 
           emitPendingUsageEstimate(controller);
+          usage = refreshProvisionalOutput(usage, claudeOutputChars);
           if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
           }
@@ -1816,7 +1824,7 @@ export function createSSEStream(options = {}) {
             sanitizePublicErrorEnvelope(parsed, errorSecrets);
             /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
             if (parsed && !parsed.done) {
-              recordCompletionData(parsed, { trackUsage: false });
+              recordCompletionData(parsed, { trackUsage: false, content: true });
               const extracted = extractUsage(parsed);
               if (extracted) state.usage = mergeUsage(state.usage, extracted);
             }

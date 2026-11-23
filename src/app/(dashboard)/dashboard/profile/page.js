@@ -266,7 +266,7 @@ export default function ProfilePage() {
     setProxyLoading(true);
     setProxyStatus({ type: "", message: "" });
     try {
-      const response = await fetch("/api/settings", {
+      const response = await requestSettings( {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxyTestUrl: proxyForm.proxyTestUrl.trim() })
@@ -707,7 +707,7 @@ export default function ProfilePage() {
     setToolSourcesSaving(true);
     setToolSourcesError("");
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings( {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ logToolSources: enabled }),

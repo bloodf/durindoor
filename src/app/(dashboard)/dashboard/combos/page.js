@@ -1,5 +1,6 @@
-import useSettingsStore from "@/store/settingsStore";
 "use client";
+
+import useSettingsStore from "@/store/settingsStore";
 
 import { useState, useEffect, useEffectEvent, useRef } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -169,7 +170,7 @@ export default function CombosPage() {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
-        useSettingsStore.getState().fetchSettings(),
+        useSettingsStore.getState().fetchSettings({ force: true }),
         fetch("/api/connection-groups"),
       ]);
       const combosData = combosRes.ok ? await combosRes.json() : await combosRes.json().catch(() => ({}));

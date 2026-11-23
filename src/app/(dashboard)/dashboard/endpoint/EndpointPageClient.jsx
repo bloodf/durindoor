@@ -267,7 +267,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     setTunnelChecking(true);
     try {
       const [settings, status] = await Promise.all([
-        useSettingsStore.getState().fetchSettings(),
+        useSettingsStore.getState().fetchSettings({ force: true }),
         requestJSON("/api/tunnel/status", { cache: "no-store" }),
       ]);
       if (!settings || !isBoolean(settings.requireApiKey) || !isBoolean(settings.requireLogin) || !status?.tunnel || !status?.tailscale) throw new Error("Endpoint configuration is incomplete. Retry.");

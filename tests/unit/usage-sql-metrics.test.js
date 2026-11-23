@@ -1,3 +1,4 @@
+import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "@/lib/db/helpers/usageKeyIdentity.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -123,7 +124,7 @@ describe("portable SQL usage metrics", { timeout: 20000 }, () => {
         const dims = ["provider", "model", ...(dimension ? [dimension] : [])];
         const oracle = db.all(`SELECT ${dims.join(", ")}, MAX(timestamp) AS timestamp FROM usageHistory WHERE timestamp <= ? GROUP BY ${dims.join(", ")}`, [now.toISOString()]);
         for (const entry of Object.values(stats[group])) {
-          const row = oracle.find((r) => r.provider === entry.rawProvider && r.model === entry.rawModel && (!dimension || r[dimension] === entry[field]));
+          const row = oracle.find((r) => r.provider === entry.rawProvider && r.model === entry.rawModel && (!dimension || r[dimension] === (dimension === "apiKey" ? fingerprintApiKey(entry[field], getOrCreateUsageIdentitySalt(db)) : entry[field])));
           expect(entry.lastUsed).toBe(row.timestamp);
         }
       }

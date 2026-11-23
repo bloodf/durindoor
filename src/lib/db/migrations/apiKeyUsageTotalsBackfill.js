@@ -1,3 +1,5 @@
+import { fingerprintApiKey, getOrCreateUsageIdentitySalt } from "../helpers/usageKeyIdentity.js";
+import { getMetaSync } from "../helpers/metaStore.js";
 import { parseJson } from "../helpers/jsonCol.js";
 import { hasUnknownCostColumn, tableColumnNames, unknownCostEligibilitySql } from "../helpers/apiKeyUsageTotals.js";
 
@@ -42,6 +44,13 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
   const historyColumns = tableColumnNames(db, "usageHistory");
   const eligibility = unknownCostEligibilitySql(db, "usageHistory");
   const withUnknownCost = hasUnknownCostColumn(db);
+  // Resolve previously unknown key identities before the legacy SQL rebuild.
+  if (historyColumns.has("apiKeyId") && Number(getMetaSync(db, "schemaVersion", "0")) >= 33) {
+    const salt = getOrCreateUsageIdentitySalt(db);
+    for (const key of db.all("SELECT id, key FROM apiKeys")) {
+      db.run("UPDATE usageHistory SET apiKeyId = ? WHERE apiKeyId IS NULL AND apiKey = ?", [key.id, fingerprintApiKey(key.key, salt)]);
+    }
+  }
   // A history table that carries the stable key id is joined on it, so the
   // rebuild follows the key rather than the secret it stores. Legacy rows
   // without an id keep their existing scoped association through the secret.

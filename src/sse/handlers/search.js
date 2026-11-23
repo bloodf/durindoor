@@ -51,7 +51,7 @@ async function handleSearchHandler(request) {
     required: settings.requireApiKey === true
   });
   if (apiKey) {
-    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
+    log.debug("AUTH", "API key provided");
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }

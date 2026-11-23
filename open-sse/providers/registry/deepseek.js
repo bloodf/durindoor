@@ -51,6 +51,8 @@ export default {
       auth: { combined: true, header: "x-api-key", scheme: "raw" },
     },
   ],
+  // Thinking aliases apply only to known model names; exact catalog names win.
+  thinkingSuffixes: ["none", "low", "medium", "high", "max"],
   models: [
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", aliases: ["deepseek-v4-pro-max", "deepseek-v4-pro-none"], supportedFormats: ["openai", "claude"], toolCalling: true },
     { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", aliases: ["deepseek-v4.1-flash"], supportedFormats: ["openai", "claude"], contextLength: 1000000, maxOutputTokens: 384000, toolCalling: true, supportsReasoning: true, supportsVision: true },

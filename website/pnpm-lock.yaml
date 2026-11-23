@@ -169,6 +169,9 @@ importers:
 
   .:
     dependencies:
+      '@animateicons/react':
+        specifier: ^0.12.0
+        version: 0.12.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@designcodeio/threeui':
         specifier: ^1.2.0
         version: 1.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(three@0.165.0)
@@ -275,6 +278,13 @@ packages:
   '@alloc/quick-lru@5.3.0':
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
     engines: {node: '>=10'}
+
+  '@animateicons/react@0.12.1':
+    resolution: {integrity: sha512-2Ygdl3Fp5rPO1JE757KW/+YMbGF+RPkDukaEyzQTL6TDgdCNJRxjxu3S/BlvwtxMlUrKmM3ni0CMf4PYcWhKMw==}
+    engines: {node: '>=18.17.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
 
   '@axe-core/playwright@4.13.0':
     resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
@@ -2883,6 +2893,11 @@ packages:
 snapshots:
 
   '@alloc/quick-lru@5.3.0': {}
+
+  '@animateicons/react@0.12.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
 
   '@axe-core/playwright@4.13.0(playwright-core@1.63.0)':
     dependencies:

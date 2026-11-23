@@ -22,6 +22,15 @@ describe("website build configuration", () => {
     }
   });
 
+  it("declares the shared motion icon dependency at the app version", async () => {
+    const [app, website] = await Promise.all([
+      readFile(new URL("../../package.json", import.meta.url), "utf8").then(JSON.parse),
+      readFile(new URL("package.json", websiteRoot), "utf8").then(JSON.parse),
+    ]);
+    expect(app.devDependencies["@animateicons/react"]).toBeTruthy();
+    expect(website.dependencies["@animateicons/react"]).toBe(app.devDependencies["@animateicons/react"]);
+  });
+
   it("throws with the source file and regex when the CSS import rewrite matches nothing", () => {
     const file = "src/shared/ui/tokens.css";
     expect(() => rewriteCssImport("@import \"tailwindcss\";", file)).toThrow(file);

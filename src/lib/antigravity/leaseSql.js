@@ -313,6 +313,7 @@ export function clearAntigravityLease(db, lease, refreshToken) {
 
 export function resetAntigravityRetryBudget(db, connectionId) {
   if (!antigravityLeaseTableReady(db)) return { ok: false, category: "pre_dispatch_failure" };
+  observeExpiredAntigravityLeases(db);
   const now = dbNow(db);
   const updated = db.run(
     `UPDATE antigravityRefreshLeases
@@ -323,7 +324,7 @@ export function resetAntigravityRetryBudget(db, connectionId) {
   if (oneRow(updated)) return { ok: true };
   const row = db.get(`SELECT attemptState FROM antigravityRefreshLeases WHERE connectionId = ?`, [connectionId]);
   if (!row) return { ok: false, category: "pre_dispatch_failure" };
-  if (row.attemptState === "uncertain" || row.attemptState === "dispatched") return { ok: false, category: "uncertain_dispatch" };
+  if (row.attemptState === "uncertain") return { ok: false, category: "uncertain_dispatch" };
   if (row.attemptState === "reauth") return { ok: false, category: "reauth_required" };
   return { ok: false, category: "busy" };
 }

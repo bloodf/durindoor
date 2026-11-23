@@ -91,7 +91,9 @@ describe("antigravity rotation lease", () => {
     const first = acquireAntigravityLease(db, { connectionId: "restart-1", refreshToken: SAME_TOKEN, owner: "owner-a" });
     expect(first.ok).toBe(true);
     expect(markAntigravityDispatched(db, first.lease)).toBe(true);
+    expect(resetAntigravityRetryBudget(db, "restart-1")).toEqual({ ok: false, category: "busy" });
     db.run(`UPDATE antigravityRefreshLeases SET leaseExpiresAt = 1 WHERE connectionId = ?`, ["restart-1"]);
+    expect(resetAntigravityRetryBudget(db, "restart-1")).toEqual({ ok: false, category: "uncertain_dispatch" });
     const restarted = acquireAntigravityLease(db, { connectionId: "restart-1", refreshToken: SAME_TOKEN, owner: "owner-b" });
     expect(restarted.ok).toBe(false);
     expect(restarted.category).toBe("uncertain_dispatch");

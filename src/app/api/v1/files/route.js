@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Files collection — local filesystem store under ~/.9router/files/<id>. (DurinDoor data directory)
 import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
@@ -8,9 +9,7 @@ import { annotateClientAdmissionFailure } from "open-sse/services/operationalMet
 import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "*"
+  ...corsHeaders(["GET", "POST", "HEAD", "OPTIONS"]),
 };
 
 const json = (body, status = 200) =>

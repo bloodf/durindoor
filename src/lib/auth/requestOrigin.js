@@ -58,7 +58,7 @@ function splitHostPort(hostOrUrl, { isUrl = false } = {}) {
   }
 }
 
-export function hasExactRequestOrigin(request) {
+export function originAbsentOrSame(request) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
 
@@ -87,6 +87,9 @@ export function hasExactRequestOrigin(request) {
   if (h.explicitPort) return o.effectivePort === h.explicitPort;
   return o.effectivePort === "80" || o.effectivePort === "443";
 }
+
+// Compatibility for the out-of-scope provider models route.
+export const hasExactRequestOrigin = originAbsentOrSame;
 // Browser proof issuance requires an allowlisted loopback Host and Origin.
 // A loopback socket alone is not sufficient: DNS rebinding controls Host and
 // Origin while retaining the trusted peer address.

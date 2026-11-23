@@ -1,3 +1,4 @@
+import { decodeUsdReceipt } from "../../src/lib/usage/receipt.js";
 import REGISTRY from "./registry/index.js";
 import { JEV_INPUT_PRICE_PER_MTOK, JEV_OUTPUT_PRICE_PER_MTOK } from "../config/jev.js";
 import {
@@ -691,12 +692,11 @@ const ZERO_COST_BREAKDOWN = Object.freeze({
 export function calculateCostBreakdown(tokens, pricing) {
   if (!tokens) return ZERO_COST_BREAKDOWN;
 
-  const directCost = tokens.cost_usd ?? tokens.cost_in_usd;
-  if (Number.isFinite(Number(directCost)) && Number(directCost) >= 0) {
-    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(directCost) };
-  }
-  if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
-    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(tokens.cost_in_usd_ticks) / 1e10 };
+  for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
+    if (tokens[field] == null) continue;
+    const cost = decodeUsdReceipt(tokens[field], field);
+    if (cost !== null) return { ...ZERO_COST_BREAKDOWN, totalCost: cost };
+    break;
   }
   if (!pricing) return ZERO_COST_BREAKDOWN;
 

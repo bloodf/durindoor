@@ -312,6 +312,16 @@ curl "http://localhost:20128/v1beta/models/gemini/gemini-2.5-flash:generateConte
 | POST, OPTIONS | `/v1beta/models/{model}:generateContent` | Gemini `contents` body | no | any chat model; Gemini TTS goes to Google |
 | POST, OPTIONS | `/v1beta/models/{model}:streamGenerateContent` | Gemini `contents` body | yes | any chat model; Gemini TTS goes to Google |
 
+## Additional API routes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/v1/me/sessions` | List sessions associated with the authenticated API key. |
+| GET, DELETE | `/v1/session-captures/{session}` | Read or delete a captured session. |
+| POST | `/v1/alpha/search` | Codex alpha search endpoint. |
+| POST | `/v1beta/interactions` | Create a Gemini interaction. |
+| POST | `/backend-api/codex/alpha/search` | Codex backend alpha search endpoint. |
+
 ## Unknown paths
 
 Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_route", path } }` with HTTP 404, not the dashboard HTML shell. Registered routes take precedence over that fallback.

@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { listTtsVoices } from "@/lib/ttsVoices.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
@@ -30,7 +31,7 @@ const PROVIDER_API = {
 
 async function OPTIONSHandler() {
   return new Response(null, {
-    headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS" },
+    headers: { ...corsHeaders(["GET", "OPTIONS"]), },
   });
 }
 
@@ -45,7 +46,7 @@ async function GETHandler(request) {
     if (!provider || !PROVIDER_API[provider]) {
       return Response.json(
         { error: { message: `provider must be one of: ${Object.keys(PROVIDER_API).join(", ")}`, type: "invalid_request_error" } },
-        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
+        { status: 400, headers: { ...corsHeaders(["GET", "OPTIONS"]) } },
       );
     }
 
@@ -62,7 +63,7 @@ async function GETHandler(request) {
       if (!res.ok || data.error) {
         return Response.json(
           { error: { message: data.error || `Upstream ${res.status}`, type: "server_error" } },
-          { status: res.status, headers: { "Access-Control-Allow-Origin": "*" } },
+          { status: res.status, headers: { ...corsHeaders(["GET", "OPTIONS"]) } },
         );
       }
 
@@ -84,12 +85,12 @@ async function GETHandler(request) {
     }));
 
     return Response.json({ object: "list", data: data_out }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
+      headers: { ...corsHeaders(["GET", "OPTIONS"]) },
     });
   } catch (err) {
     return Response.json(
       { error: { message: err.message || "Failed", type: "server_error" } },
-      { status: 502, headers: { "Access-Control-Allow-Origin": "*" } },
+      { status: 502, headers: { ...corsHeaders(["GET", "OPTIONS"]) } },
     );
   }
 }

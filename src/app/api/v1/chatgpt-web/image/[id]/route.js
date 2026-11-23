@@ -1,9 +1,8 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { getChatGptImage } from "../../../../../../../open-sse/services/chatgptImageCache.js";
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  ...corsHeaders(["GET", "OPTIONS"]),
 };
 
 export async function OPTIONS() {

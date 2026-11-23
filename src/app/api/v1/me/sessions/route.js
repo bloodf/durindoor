@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { resolveClientApiKey } from "@/sse/services/auth.js";
 import { listKeyUsageSessions } from "@/lib/db/repos/usageRepo.js";
 
@@ -14,4 +15,8 @@ export async function GET(request) {
   }
   return Response.json({ sessions: await listKeyUsageSessions(auth.apiKeyId, values.length ? Number(values[0]) : 50) },
     { headers: { "Cache-Control": "no-store" } });
+}
+
+export function OPTIONS() {
+  return new Response(null, { headers: corsHeaders(["GET", "OPTIONS"]) });
 }

@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
@@ -145,7 +146,7 @@ async function lookup(fullId, requestedKind) {
 
 export async function OPTIONS() {
   return new Response(null, {
-    headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS" },
+    headers: { ...corsHeaders(["GET", "HEAD", "OPTIONS"]), },
   });
 }
 
@@ -160,7 +161,7 @@ export async function HEAD(request) {
   if (!id) {
     return new Response(null, {
       status: 400,
-      headers: { "content-type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "content-type": "application/json", ...corsHeaders(["GET", "HEAD", "OPTIONS"]) },
     });
   }
   const info = await lookup(id, kind);
@@ -176,15 +177,15 @@ export async function GET(request) {
   if (!id) {
     return Response.json(
       { error: { message: "Missing required query param: id (e.g. ?id=openai/dall-e-3)", type: "invalid_request_error" } },
-      { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
+      { status: 400, headers: { ...corsHeaders(["GET", "HEAD", "OPTIONS"]) } },
     );
   }
   const info = await lookup(id, kind);
   if (!info) {
     return Response.json(
       { error: { message: `Model not found: ${id}`, type: "not_found" } },
-      { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
+      { status: 404, headers: { ...corsHeaders(["GET", "HEAD", "OPTIONS"]) } },
     );
   }
-  return Response.json(info, { headers: { "Access-Control-Allow-Origin": "*" } });
+  return Response.json(info, { headers: { ...corsHeaders(["GET", "HEAD", "OPTIONS"]) } });
 }

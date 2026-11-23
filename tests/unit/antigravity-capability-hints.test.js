@@ -153,17 +153,17 @@ describe("Antigravity capability hints and transport fingerprint", () => {
   it("applies the route fingerprint on catalog requests and invalidates on route change", async () => {
     const directFp = catalog.antigravityCapabilityRouteFingerprint(
       "",
-      "antigravity/hub/2.24.0 darwin/arm64"
+      "antigravity/hub/2.33.0 darwin/arm64"
     );
     const proxyFp = catalog.antigravityCapabilityRouteFingerprint(
       "http://user:secret@proxy.example:8080",
-      "antigravity/hub/2.24.0 darwin/arm64"
+      "antigravity/hub/2.33.0 darwin/arm64"
     );
     expect(directFp).toMatch(/^[a-f0-9]{64}$/);
     expect(proxyFp).toMatch(/^[a-f0-9]{64}$/);
     expect(proxyFp).not.toBe(directFp);
     expect(proxyFp).not.toContain("secret");
-    expect(catalog.antigravityCapabilityRouteFingerprint("http://other:8080", "antigravity/hub/2.24.0 darwin/arm64"))
+    expect(catalog.antigravityCapabilityRouteFingerprint("http://other:8080", "antigravity/hub/2.33.0 darwin/arm64"))
       .not.toBe(proxyFp);
     expect(catalog.antigravityCapabilityRouteFingerprint("http://proxy.example:8080", "   ")).toBe("");
 
@@ -179,7 +179,7 @@ describe("Antigravity capability hints and transport fingerprint", () => {
     expect(probed.body.routeFingerprint).toBe(proxyFp);
     expect(providerFetch).toHaveBeenCalledTimes(1);
     const probeHeaders = new Headers(providerFetch.mock.calls[0][1].headers);
-    expect(probeHeaders.get("user-agent")).toBe("antigravity/hub/2.24.0 darwin/arm64");
+    expect(probeHeaders.get("user-agent")).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(String(providerFetch.mock.calls[0][0])).toBe(CATALOG_URL);
 
     // Same proxy route reuses hints.

@@ -545,12 +545,20 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "gemini-level":{
+        // Antigravity serves xhigh (Hydrogen, Neon) and max (Claude 5.5) natively; keep a
+        // tier the model declares, and fold max onto xhigh where only xhigh exists
+        // (upstream 9router 767d7aeb0b).
+        const agLevels = ["antigravity", "ag", "agy"].includes(provider) ?
+          (caps.thinkingEfforts || (/claude-(sonnet|opus)-5[.-]5/i.test(model || "") ? getThinkingLevels(provider, model) : null) || []) : [];
+        const requested = String(toLevel(eff) || "").toLowerCase();
         let level = none ? "minimal" :
-          (["antigravity", "ag", "agy"].includes(provider) && caps.thinkingEfforts?.includes("xhigh") && toLevel(eff) === "xhigh" ? "xhigh" : toGeminiThinkingLevel(eff));
+          ["xhigh", "max"].includes(requested) && agLevels.includes(requested) ? requested :
+          requested === "max" && agLevels.includes("xhigh") ? "xhigh" : toGeminiThinkingLevel(eff);
         // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
         const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;
-        if (Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
+        const nativeTopTier = ["xhigh", "max"].includes(level) && agLevels.includes(level);
+        if (!nativeTopTier && Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
           level = ["none", "minimal"].includes(level) && allowed.includes("low") ?
             "low" : allowed.includes("high") ? "high" : allowed[0];
         }

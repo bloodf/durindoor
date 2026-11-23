@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor, normalizeAnthropicHeaders } from "./base.js";
+import { wantsGeminiLongDecode, withGeminiLongDecode } from "../utils/geminiLongDecode.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
@@ -409,6 +410,17 @@ export class DefaultExecutor extends BaseExecutor {
     const providerId = resolveProviderAlias(provider);
     // Dynamic nodes resolve their endpoint from credentials, never another vendor.
     super(providerId, PROVIDERS[providerId] || { ...PROVIDER_DEFAULTS });
+  }
+
+  // Gemini 4 long decode (upstream 9router 109e4816e3): a gemini-format request asking for more
+  // than one hop's output re-sends the same body with the top-level continuationToken until done.
+  async execute(args) {
+    const result = await super.execute(args);
+    if (this.config?.format !== "gemini" || !result?.response?.ok) return result;
+    if (!wantsGeminiLongDecode(this.provider, args.model, result.transformedBody?.generationConfig)) return result;
+    const nextHop = async (continuationToken) =>
+      (await super.execute({ ...args, body: { ...args.body, continuationToken } })).response;
+    return withGeminiLongDecode(result, { stream: args.stream, nextHop, signal: args.signal, log: args.log });
   }
 
   applyRequestDefaults(body) {

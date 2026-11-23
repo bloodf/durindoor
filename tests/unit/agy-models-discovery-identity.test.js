@@ -16,9 +16,9 @@ describe("agy model discovery identity", () => {
     await PROVIDER_MODELS_CONFIG.agy.customResolver({ accessToken: "tok", providerSpecificData: { projectId: "p" } });
     const [url, init] = mocks.fetch.mock.calls[0];
     expect(url).toBe("https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels");
-    expect(init.headers["User-Agent"]).toBe("antigravity/hub/2.24.0 darwin/arm64");
+    expect(init.headers["User-Agent"]).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(init.headers["X-Client-Name"]).toBe("antigravity");
-    expect(init.headers["X-Client-Version"]).toBe("2.24.0");
+    expect(init.headers["X-Client-Version"]).toBe("2.33.0");
     expect(JSON.parse(init.body)).toEqual({ project: "p" });
   });
 });

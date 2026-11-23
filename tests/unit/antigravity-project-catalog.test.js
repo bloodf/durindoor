@@ -136,7 +136,7 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(firstProbe.body).toEqual({ project: "project-two" });
     expect(firstProbe.headers.get("authorization")).toBe("Bearer token-two");
     // The Hub identity travels with the probe.
-    expect(firstProbe.headers.get("user-agent")).toBe("antigravity/hub/2.24.0 darwin/arm64");
+    expect(firstProbe.headers.get("user-agent")).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(firstProbe.headers.get("x-client-name")).toBe("antigravity");
 
     // Each account reads its own catalog, never the other account's project.

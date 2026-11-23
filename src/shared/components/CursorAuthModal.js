@@ -31,6 +31,11 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
     setWindowsManual(false);
 
     try {
+      const modeResponse = await fetch("/api/deployment-mode", { cache: "no-store" });
+      if (!modeResponse.ok || (await modeResponse.json()).hosted !== false) {
+        setAutoDetectError("Auto-import is local-only. Enter your access token and machine ID below.");
+        return;
+      }
       const res = await fetch("/api/oauth/cursor/auto-import");
       const data = await res.json();
 

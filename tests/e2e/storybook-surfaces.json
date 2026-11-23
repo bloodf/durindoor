@@ -19772,7 +19772,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js#EmbeddingExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js",
       "symbol": "EmbeddingExampleCard",
-      "sourceSha256": "97784f50f0758f335f79bdcc38b1780accf0308af707d9b7e0b992091e3ea1a6",
+      "sourceSha256": "eca62faaea5d51647468e326a82ba9707f6932bc9cb891671eebb900513d81ff",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -19793,7 +19793,7 @@
             "run interaction"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js": "97784f50f0758f335f79bdcc38b1780accf0308af707d9b7e0b992091e3ea1a6",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js": "eca62faaea5d51647468e326a82ba9707f6932bc9cb891671eebb900513d81ff",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.stories.jsx": "b26ace068a6159e25a3ee455e41d26b76ef243bb60288114ba6ed75bba0998a0"
           },
           "proposedSourceEvidence": "POST /api/v1/embeddings result and latency branches",
@@ -19811,7 +19811,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js": "97784f50f0758f335f79bdcc38b1780accf0308af707d9b7e0b992091e3ea1a6",
+            "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js": "eca62faaea5d51647468e326a82ba9707f6932bc9cb891671eebb900513d81ff",
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.stories.jsx": "b26ace068a6159e25a3ee455e41d26b76ef243bb60288114ba6ed75bba0998a0"
           },
           "proposedSourceEvidence": "handleRun error branch",
@@ -103019,7 +103019,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "774ed627ff017f1afe4797aa70b1d9daa8406701e4882b37b77035d7ea6c262e",
+    "sourceCensusSha256": "66f18216719bdbbdf7ef5b4e2a86d9f73b6f6413264cc509e29e3e03bc9fdfde",
     "pendingRows": 438,
     "retainedApprovedRows": 202,
     "pendingReferences": 1488,

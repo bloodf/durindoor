@@ -10,6 +10,7 @@ import { getProviderAlias, isCustomEmbeddingProvider } from "@/shared/constants/
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row } from "./exampleShared";
+import { INPUT_TYPE_VALUES, DEFAULT_INPUT_TYPE } from "open-sse/config/embeddingParams.js";
 
 const DEFAULT_RESPONSE_EXAMPLE = `{
   "object": "list",
@@ -35,6 +36,8 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
   const setSelectedModel = (id) => setSelection({ providerId, id });
   const [input, setInput] = useState("The quick brown fox jumps over the lazy dog");
   const [dimensions, setDimensions] = useState("");
+  const [inputType, setInputType] = useState(DEFAULT_INPUT_TYPE);
+  const supportsInputType = embeddingModels.find((model) => model.id === selectedModel)?.params?.includes("input_type");
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
   const [localEndpoint, setLocalEndpoint] = useState("");
@@ -61,6 +64,7 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
     const body = { model: modelFull, input: input.trim() };
     const dim = Number(dimensions);
     if (dimensions && Number.isFinite(dim) && dim > 0) body.dimensions = dim;
+    if (supportsInputType) body.input_type = inputType;
     return body;
   };
 
@@ -123,6 +127,7 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
         </Row>
         <Row label="API Key"><Input aria-label="API Key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." autoComplete="off" className="font-mono" /></Row>
         <Row label="Input"><div className="relative"><Input aria-label="Input" value={input} onChange={(e) => setInput(e.target.value)} className="pe-12" />{input && <IconButton icon="close" label="Clear input" size="sm" onClick={() => setInput("")} className="absolute end-0 top-1/2 -translate-y-1/2" />}</div></Row>
+        {supportsInputType && <Row label="Input Type"><Select aria-label="Input Type" value={inputType} onChange={setInputType} options={INPUT_TYPE_VALUES.map((value) => ({ value, label: value }))} /></Row>}
         <Row label="Dimensions"><Input aria-label="Dimensions" type="number" min="1" value={dimensions} onChange={(e) => setDimensions(e.target.value)} placeholder="optional, e.g. 512" /></Row>
         <div className="mt-1">
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Request</span><div className="flex gap-2"><Button size="sm" variant="ghost" icon={copiedCurl ? "check" : "content_copy"} onClick={() => copyCurl(curlSnippet)}>{copiedCurl ? "Copied" : "Copy"}</Button><Button size="sm" variant="primary" icon="play_arrow" loading={running} onClick={handleRun} disabled={!input.trim() || !modelFull}>Run</Button></div></div>

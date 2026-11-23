@@ -290,7 +290,7 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
-// Copilot (github, GHE), NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
+// Copilot (github, GHE), NanoGPT, Kiro and OpenDesign Go serve Claude 5.5 under dotted ids. Same models as the dashed
 // rows (Opus 5.5 / Sonnet 5.5 reject thinking.type "disabled"; Sonnet takes "between_tools"),
 // scoped per provider so other gateways (e.g. OpenRouter) keep their own handling.
 const CLAUDE_5_5_DOTTED_BASE = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 };
@@ -566,6 +566,8 @@ export const PROVIDER_CAPABILITIES = {
   github: CLAUDE_5_5_DOTTED_CAPS,
   "ghe-copilot": CLAUDE_5_5_DOTTED_CAPS,
   ghe: CLAUDE_5_5_DOTTED_CAPS,
+  // OpenDesign Go lists the same dotted ids; its aliases (odg, opendesign) resolve through the registry id.
+  "opendesign-go": CLAUDE_5_5_DOTTED_CAPS,
   // NanoGPT lists the vendor-prefixed id and capability lookup keys on the full registry id.
   nanogpt: { "anthropic/claude-sonnet-5.5": CLAUDE_5_5_DOTTED_CAPS["claude-sonnet-5.5"] },
   "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,

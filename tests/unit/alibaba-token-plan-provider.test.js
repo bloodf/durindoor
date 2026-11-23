@@ -28,15 +28,26 @@ describe("Alibaba Token Plan provider", () => {
     expect(new Set(hosts).size).toBe(hosts.length);
   });
 
-  it("exposes exactly the six models the plan serves, in registry order", () => {
+  it("exposes exactly the plan catalogue, in registry order", () => {
+    // Catalogue expanded by the dbe446d port (Alibaba native transports).
     const ids = (PROVIDER_MODELS["alitp-intl"] || []).map((m) => m.id);
     expect(ids).toEqual([
+      "auto",
+      "qwen4-max",
+      "qwen4-max-preview",
+      "qwen3.8-max",
+      "qwen3.8-flash",
       "qwen3.8-max-preview",
       "qwen3.7-max",
       "qwen3.7-plus",
       "qwen3.6-flash",
+      "glm-5.3",
       "glm-5.2",
       "deepseek-v4-pro",
+      "deepseek-v4-pro-0813",
+      "deepseek-v4-flash-0731",
+      "deepseek-v4.1-flash",
+      "deepseek-v4.1-flash-1017",
     ]);
   });
 

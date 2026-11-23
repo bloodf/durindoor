@@ -20,6 +20,7 @@ import {
 
 // Normalize static prefixes and the known terminal leaves after file/batch IDs.
 // Dynamic IDs and catch-all tails must reach Next in their original encoding.
+// Model capabilities uses the same guard as the models route before normalization.
 const API_STATIC_PATHS = [
   "chat/completions", "chatgpt-web/image", "responses/compact", "responses",
   "messages/count_tokens", "messages/batches", "messages", "files", "batches",
@@ -27,7 +28,7 @@ const API_STATIC_PATHS = [
   "images/edits", "images/generations", "music/generations", "video/generations", "videos",
   "realtime/translations/client_secrets", "realtime/auth", "realtime/client_secrets",
   "realtime/native", "realtime/transcription_sessions", "live/sessions",
-  "models/info", "models", "native", "web/fetch", "search", "systemone", "rerank",
+  "models/capabilities", "models/info", "models", "native", "web/fetch", "search", "systemone", "rerank",
   "moderations", "completions", "embeddings", "provider-plugin-manifest", "api/chat",
   "alpha/search", "me/sessions", "session-captures",
 ].map((path) => path.split("/"));

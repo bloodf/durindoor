@@ -2,7 +2,7 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
-import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { getProviderConnectionById, updateProviderConnection, getSettings } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
@@ -1259,7 +1259,7 @@ export async function testSingleConnection(id) {
   const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
   if (effectiveProxy.connectionProxyEnabled && effectiveProxy.connectionProxyUrl && !effectiveProxy.vercelRelayUrl) {
-    const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl });
+    const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl, testUrl: (await getSettings()).proxyTestUrl });
     if (!proxyResult.ok) {
       const proxyError = sanitizeErrorMessage(
         proxyResult.error || `Proxy test failed with status ${proxyResult.status}`

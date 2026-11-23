@@ -23721,7 +23721,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "1246db7b6bf5cbd4f549d9fab7cb157e7d41ed6b43490328cce36e3439f4a27f",
+      "sourceSha256": "8d2d523b0ab6ccf744023a7dfd592d99e6b8f986896ad4de97fd09321174c3dd",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23745,7 +23745,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "1246db7b6bf5cbd4f549d9fab7cb157e7d41ed6b43490328cce36e3439f4a27f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "8d2d523b0ab6ccf744023a7dfd592d99e6b8f986896ad4de97fd09321174c3dd",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -23761,7 +23761,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "1246db7b6bf5cbd4f549d9fab7cb157e7d41ed6b43490328cce36e3439f4a27f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "8d2d523b0ab6ccf744023a7dfd592d99e6b8f986896ad4de97fd09321174c3dd",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#OidcAndProxy",
@@ -23776,7 +23776,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "1246db7b6bf5cbd4f549d9fab7cb157e7d41ed6b43490328cce36e3439f4a27f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "8d2d523b0ab6ccf744023a7dfd592d99e6b8f986896ad4de97fd09321174c3dd",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#ShutdownConfirm",
@@ -23792,7 +23792,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "1246db7b6bf5cbd4f549d9fab7cb157e7d41ed6b43490328cce36e3439f4a27f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "8d2d523b0ab6ccf744023a7dfd592d99e6b8f986896ad4de97fd09321174c3dd",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens export prompt."
@@ -23807,7 +23807,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "1246db7b6bf5cbd4f549d9fab7cb157e7d41ed6b43490328cce36e3439f4a27f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "8d2d523b0ab6ccf744023a7dfd592d99e6b8f986896ad4de97fd09321174c3dd",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens transfer branch."
@@ -103019,7 +103019,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
-    "sourceCensusSha256": "9031a9f7b32443ebf5405c22f82c1b3150fb38050e35fc1245594aaf030e3b9e",
+    "sourceCensusSha256": "774ed627ff017f1afe4797aa70b1d9daa8406701e4882b37b77035d7ea6c262e",
     "pendingRows": 438,
     "retainedApprovedRows": 202,
     "pendingReferences": 1488,

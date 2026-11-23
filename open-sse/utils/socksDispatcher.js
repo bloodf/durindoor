@@ -36,7 +36,7 @@ export function createSocksDispatcher(url, options = {}) {
           socket.setTimeout(0);
           if (settled) { socket.destroy(); return; }
           if (protocol !== "https:") { finish(null, socket); return; }
-          const serverName = servername || hostname;
+          const serverName = options.targetServername || servername || hostname;
           const tlsOptions = { socket };
           if (serverName && !net.isIP(serverName)) tlsOptions.servername = serverName;
           if (serverName && net.isIP(serverName)) {

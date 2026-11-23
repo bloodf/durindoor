@@ -8,7 +8,8 @@ describe("profile password change contract", () => {
     const page = await readFile(pagePath, "utf8");
     expect(page).toContain('currentPassword: passwords.current');
     expect(page).toContain('if (res.ok && data?.reauthenticate)');
-    expect(page).toContain('window.location.assign("/login")');
+    // #1810 prefixes the login redirect with NEXT_PUBLIC_BASE_PATH ("" at root).
+    expect(page).toMatch(/if \(res\.ok && data\?\.reauthenticate\) \{\s*window\.location\.assign\(\(process\.env\.NEXT_PUBLIC_BASE_PATH \|\| ""\) \+ "\/login"\);\s*return;/);
   });
 
   it("keeps a visible current-password field in the protected password form", async () => {

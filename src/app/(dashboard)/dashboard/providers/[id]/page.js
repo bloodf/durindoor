@@ -3,6 +3,7 @@
 import { filterModelRows, toggleVisibleModels, runModelOperations } from "./modelSelection.js";
 
 import OpenRouterRoutingCard from "./OpenRouterRoutingCard";
+import { requestSettings } from "@/store/settingsStore";
 
 import ProviderRpmControl from "./ProviderRpmControl.jsx";
 
@@ -503,7 +504,7 @@ function ProviderDetail({ providerId }) {
       fetch("/api/providers", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
       fetch("/api/provider-nodes", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
       fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
-      fetch("/api/settings", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) })]
+      requestSettings({ cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) })]
       ).then(async ([connectionsRes, nodesRes, proxyPoolsRes, settingsRes]) => {
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
@@ -629,7 +630,7 @@ function ProviderDetail({ providerId }) {
 
   const saveProviderStrategy = async (strategy, stickyLimit) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsRes = await requestSettings({ cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerStrategies || {};
 
@@ -647,7 +648,7 @@ function ProviderDetail({ providerId }) {
         updated[providerId] = override;
       }
 
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerStrategies: updated })
@@ -684,7 +685,7 @@ function ProviderDetail({ providerId }) {
 
   const saveThinkingConfig = async (mode) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsRes = await requestSettings({ cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerThinking || {};
       const updated = { ...current };
@@ -693,7 +694,7 @@ function ProviderDetail({ providerId }) {
       } else {
         updated[providerId] = { mode };
       }
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerThinking: updated })
@@ -710,7 +711,7 @@ function ProviderDetail({ providerId }) {
 
   const saveConcurrencyLimit = async (value) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsRes = await requestSettings({ cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerConcurrencyLimits || {};
       const updated = { ...current };
@@ -720,7 +721,7 @@ function ProviderDetail({ providerId }) {
       } else {
         delete updated[providerId];
       }
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerConcurrencyLimits: updated })
@@ -736,12 +737,12 @@ function ProviderDetail({ providerId }) {
   };
   const saveRetryDelay = async (value) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsRes = await requestSettings({ cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const updated = { ...(settingsData.retryDelayByProvider || {}) };
       if (value === "auto") delete updated[providerId];else
       updated[providerId] = Number(value);
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ retryDelayByProvider: updated })
@@ -759,13 +760,13 @@ function ProviderDetail({ providerId }) {
   /** Persist decolua/9router#3203 per-account RPM; blank restores provider default, zero disables. */
   const saveRpmLimit = async (value) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsRes = await requestSettings({ cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const updated = { ...(settingsData.rpmByProvider || {}) };
       const trimmed = String(value ?? "").trim();
       if (!trimmed) delete updated[providerId];else
       updated[providerId] = Math.min(MAX_PROVIDER_RPM, Math.max(0, Number.parseInt(trimmed, 10) || 0));
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rpmByProvider: updated })
@@ -778,11 +779,11 @@ function ProviderDetail({ providerId }) {
   /** OmniRoute #10920, adapted: opt this provider into egress-IP-bucketed 429 cooldown. */
   const saveEgressBucketed = async (checked) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsRes = await requestSettings({ cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = new Set(settingsData.egressBucketedProviders || []);
       if (checked) current.add(providerId);else current.delete(providerId);
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ egressBucketedProviders: Array.from(current) })
@@ -803,11 +804,11 @@ function ProviderDetail({ providerId }) {
    * validation message instead of silently discarding the edit.
    */
   const saveErrorRules = async (rules) => {
-    const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+    const settingsRes = await requestSettings({ cache: "no-store" });
     const settingsData = settingsRes.ok ? await settingsRes.json() : {};
     const updated = { ...(settingsData.providerErrorRules || {}) };
     if (rules.length > 0) updated[providerId] = rules;else delete updated[providerId];
-    const res = await fetch("/api/settings", {
+    const res = await requestSettings({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ providerErrorRules: updated })

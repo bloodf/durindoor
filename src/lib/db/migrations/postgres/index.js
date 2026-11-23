@@ -34,10 +34,12 @@ import m030 from "./030-usage-history-api-key-id.js";
 import m031 from "./031-usage-session-attribution.js";
 import m032 from "./032-session-capture.js";
 import m033 from "./033-usage-history-api-key-id-backfill.js";
+import m034 from "./034-usage-last-seen-key-identity.js";
+import m035 from "./035-usage-daily-key-identity.js";
 
 export const PG_MIGRATIONS = [
   m001, m002, m003, m004, m005, m006, m007, m008, m009,
-  m010, m011, m012, m013, m014, m015, m016, m017, m018, m019, m020, m021, m022, m023, m024, m025, m026, m027, m028, m030, m031, m032, m033,
+  m010, m011, m012, m013, m014, m015, m016, m017, m018, m019, m020, m021, m022, m023, m024, m025, m026, m027, m028, m030, m031, m032, m033, m034, m035,
 ].sort((a, b) => a.version - b.version);
 
 export function pgLatestVersion() {

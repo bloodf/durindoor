@@ -8,6 +8,7 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
+import useSettingsStore from "@/store/settingsStore";
 import SecurityWarning from "./components/SecurityWarning";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
@@ -29,17 +30,13 @@ export default function ApiKeyModelAccessModal({ apiKey, catalog = [], onClose, 
   const [mode, setMode] = useState(() => (ACCESS_OPTIONS.some((o) => o.value === current?.mode) ? current.mode : "all"));
   const [patterns, setPatterns] = useState(() => (Array.isArray(current?.patterns) ? current.patterns : []));
   const [newPattern, setNewPattern] = useState("");
-  const [requireApiKey, setRequireApiKey] = useState(true);
+  const settings = useSettingsStore((state) => state.settings);
+  const requireApiKey = settings ? settings.requireApiKey === true : true;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const suggestionsId = useId();
 
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => data && setRequireApiKey(data.settings?.requireApiKey === true))
-      .catch(() => {});
-  }, []);
+  useEffect(() => { void useSettingsStore.getState().fetchSettings(); }, []);
 
   const addPattern = () => {
     const pattern = newPattern.trim();

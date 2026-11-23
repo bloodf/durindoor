@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getConnectionErrorDisplay, getStatusVariant as getConnectionStatusVariant, replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
@@ -337,7 +339,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const fetch_ = useCallback(({ signal } = {}) => Promise.all([
     fetch("/api/providers", { cache: "no-store", signal }),
     fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal }),
-    fetch("/api/settings", { cache: "no-store", signal })
+    requestSettings({ cache: "no-store", signal })
   ]).then(async ([connRes, proxyRes, settingsRes]) => {
     const connData = await connRes.json();
     const proxyData = await proxyRes.json();
@@ -362,7 +364,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
   const saveStrategy = async (strategy, stickyLimit) => {
     try {
-      const res = await fetch("/api/settings", { cache: "no-store" });
+      const res = await requestSettings({ cache: "no-store" });
       const data = res.ok ? await res.json() : {};
       const current = data.providerStrategies || {};
       const override = {};
@@ -371,7 +373,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       const updated = { ...current };
       if (Object.keys(override).length === 0) delete updated[providerId];else
       updated[providerId] = override;
-      await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerStrategies: updated }) });
+      await requestSettings({ method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerStrategies: updated }) });
     } catch (e) {console.log("saveStrategy error:", e);}
   };
 

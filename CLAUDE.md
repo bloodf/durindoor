@@ -24,12 +24,16 @@ The server accepts legacy 9router identifiers at the runtime boundary only, for 
 
 A one-shot cutover script ships as `scripts/migrate-from-9router.mjs` (idempotent; backup-before-any-move; never rewrites API key secrets).
 
+## Requirements
+
+Use Node.js 24.22.2 and pnpm 12.18.0, as declared by `package.json` and `packageManager`.
+
 ## Build
 
 ```bash
-npm install --no-audit --no-fund
-npm run build          # Next.js production build (--webpack)
-npm run dev            # Dev server on port 20127
+pnpm install --frozen-lockfile
+pnpm run build          # Next.js production build (--webpack)
+pnpm run dev            # Dev server on port 20127
 ```
 
 ## Test
@@ -37,7 +41,7 @@ npm run dev            # Dev server on port 20127
 The suite lives in `tests/`, its own package. From the repo root:
 
 ```bash
-cd tests && npm install && npm run test:ci
+cd tests && pnpm install --frozen-lockfile && pnpm run test:ci
 ```
 
 `test:ci` runs Vitest, then `tests/__baseline__/verify-no-regression.mjs`. `tests/__baseline__/known-fails.txt` is empty, so every failing assertion is a regression. Do not add lines to that file. A checked-in `baseline-results.json` is an old report from another tree; it is not a live count for this checkout.

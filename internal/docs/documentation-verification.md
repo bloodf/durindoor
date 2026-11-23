@@ -1,4 +1,6 @@
-# Documentation rewrite verification
+# Historical documentation rewrite verification
+
+Historical report: this records the rewrite verification as of 2026-10-07 and is not current coverage evidence. At that time, 73 public MDX pages were reviewed.
 
 Date: 2026-10-07. Final source revision: `336fc08bf849d73eea415b82ae21a648d71171fe`. The later evidence-only commit adds this report without changing the tested website or examples.
 

@@ -14,6 +14,7 @@ vi.mock("@/sse/services/model.js", () => ({
     return { provider, model: model.join("/") };
   }),
   getComboModels: vi.fn(async () => state.combo), getComboCanonicalName: vi.fn(async () => null),
+  filterDisabledComboModels: vi.fn((models) => models),
 }));
 vi.mock("@/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: vi.fn(async () => state.policy),

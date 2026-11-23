@@ -438,6 +438,11 @@ export default function ProviderLimits() {
   }
   const initialFilterState = initialFilterStateRef.current;
   const [connections, setConnections] = useState([]);
+  const [providerOrder, setProviderOrder] = useState([]);
+  const [orderPending, setOrderPending] = useState(false);
+  const [orderError, setOrderError] = useState("");
+  const draggedProvider = useRef(null);
+  const [keyboardProvider, setKeyboardProvider] = useState(null);
   const [connectionsError, setConnectionsError] = useState("");
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const connectionsSnapshot = useRef([]);
@@ -793,6 +798,7 @@ export default function ProviderLimits() {
         const nextTotals = getSafeTotals(data.totals, connectionList.length);
 
         setConnections(connectionList);
+        setProviderOrder(data.providerOrder || []);
         setProviderOptions(getProviderOptions(data.providerOptions));
         setPagination(nextPagination);
         setTotals(nextTotals);
@@ -806,6 +812,22 @@ export default function ProviderLimits() {
     },
     [accountFilter, page, pageSize, providerFilter]
   );
+
+  const moveProvider = useCallback(async (provider, target) => {
+    if (!target || provider === target || orderPending) return;
+    setOrderPending(true);
+    setOrderError("");
+    try {
+      const response = await fetch("/api/settings/quota-provider-order", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, target })
+      });
+      if (!response.ok) throw new Error("Could not save provider order. Try again.");
+      await fetchConnections();
+    } catch (error) {
+      setOrderError(error.message || "Could not save provider order. Try again.");
+    } finally { setOrderPending(false); }
+  }, [fetchConnections, orderPending]);
 
   const fetchQuota = useCallback(async (connectionId, provider, { force = false, refresh = false } = {}) => {
     setLoading((prev) => ({ ...prev, [connectionId]: true }));
@@ -1554,7 +1576,20 @@ export default function ProviderLimits() {
           [];
           const anyAccountLoading = group.connections.some((conn) => loading[conn.id]);
 
-          return <Card key={group.provider || group.connections[0]?.id} padding={false} className="min-w-0">
+          return <Card key={group.provider || group.connections[0]?.id} padding={false} className="min-w-0"
+            onDragOver={(event) => { if (draggedProvider.current) event.preventDefault(); }}
+            onDrop={(event) => { event.preventDefault(); const source = draggedProvider.current; draggedProvider.current = null; if (source) void moveProvider(source, group.provider); }}>
+            <div className="flex items-center gap-1 px-3 pt-2">
+              <button type="button" draggable={!orderPending} disabled={orderPending} aria-label={`Drag ${group.provider} to reorder`} title="Drag to reorder, or press Space then arrow keys" onDragStart={() => { draggedProvider.current = group.provider; }} onDragEnd={() => { draggedProvider.current = null; }} aria-pressed={keyboardProvider === group.provider} onClick={() => setKeyboardProvider((current) => current === group.provider ? null : group.provider)} onKeyDown={(event) => {
+                if (event.key === "Escape") { setKeyboardProvider(null); return; }
+                if (keyboardProvider !== group.provider || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                event.preventDefault();
+                const offset = event.key === "ArrowUp" ? -1 : 1;
+                void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) + offset]);
+              }} className="cursor-grab text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined">drag_indicator</span></button>
+              <button type="button" disabled={orderPending || providerOrder.indexOf(group.provider) <= 0} onClick={() => void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) - 1])} aria-label={`Move ${group.provider} earlier`} className="text-dd-muted disabled:opacity-40">↑</button>
+              <button type="button" disabled={orderPending || providerOrder.indexOf(group.provider) < 0 || providerOrder.indexOf(group.provider) === providerOrder.length - 1} onClick={() => void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) + 1])} aria-label={`Move ${group.provider} later`} className="text-dd-muted disabled:opacity-40">↓</button>
+            </div>
             <CardHeader
               title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={group.provider} size={32} /><span className="truncate capitalize">{group.provider}</span></span>}
               subtitle={isGrouped ? `${group.connections.length} accounts` : null}
@@ -1579,6 +1614,7 @@ export default function ProviderLimits() {
           </Card>;
         }) : connectionsError ? null : <div className="md:col-span-2"><Card><EmptyState icon={emptyState.icon} title={emptyState.title} message={emptyState.description} /></Card></div>}
       </div>
+      {orderError ? <div role="alert">{orderError}</div> : null}
       {connectionsLoaded ? <Card padding={false}>
         <CardContent className="flex flex-wrap items-center gap-3 p-3">
           <span className="text-xs text-dd-muted">{connectionsPageSummary}</span>

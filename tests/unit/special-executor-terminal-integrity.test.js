@@ -344,7 +344,7 @@ describe("special executor terminal integrity", () => {
 
   it("preserves Cursor AbortError instead of returning a 500 provider failure", async () => {
     const executor = new CursorExecutor();
-    vi.spyOn(executor, "makeFetchRequest").mockRejectedValue(new DOMException("cancelled", "AbortError"));
+    vi.spyOn(executor, "executeAgent").mockRejectedValue(new DOMException("cancelled", "AbortError"));
     await expect(executor.execute({
       model: "cursor-model",
       body: { messages: [{ role: "user", content: "hi" }] },
@@ -503,7 +503,7 @@ describe("special executor terminal integrity", () => {
 
     expect(http2Request).not.toHaveBeenCalled();
     expect(result.response.status).toBe(500);
-    expect(await result.response.text()).toContain("Proxy required but unavailable");
+    expect(await result.response.text()).toMatch(/proxy required but unavailable/i);
   });
 
   it("honors ambient Cursor proxy routing while explicit direct mode stays HTTP/2", async () => {
@@ -512,7 +512,7 @@ describe("special executor terminal integrity", () => {
     process.env.HTTPS_PROXY = "http://proxy.example.test:8080";
     delete process.env.NO_PROXY;
     delete process.env.no_proxy;
-    delete process.env.CURSOR_AGENT_SERVICE;
+    process.env.CURSOR_AGENT_SERVICE = "off";
     try {
       const proxied = new CursorExecutor();
       const proxiedFetch = vi.spyOn(proxied, "makeFetchRequest").mockResolvedValue({
@@ -534,6 +534,7 @@ describe("special executor terminal integrity", () => {
       expect(proxiedResult.terminalProvenance).toBe("validated");
 
       // Text requests use AgentService, also HTTP/2 and never the proxy-aware fetch.
+      delete process.env.CURSOR_AGENT_SERVICE;
       const agent = new CursorExecutor();
       const agentFetch = vi.spyOn(agent, "makeFetchRequest");
       const agentLegacyHttp2 = vi.spyOn(agent, "makeHttp2Request");

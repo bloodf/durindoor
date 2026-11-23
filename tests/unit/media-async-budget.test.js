@@ -120,7 +120,7 @@ describe("async video completion and the dollar budget", () => {
     await restart();
     await poll(pollRequest(), "job-1");
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ cost: 0.6, connectionId: "account-a", apiKey: "owner-secret" });
+    expect(rows()[0]).toMatchObject({ cost: 0.6, connectionId: "account-a", apiKey: null, apiKeyId: state.keyId });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ nativeUnits: { videoSeconds: 5 }, costStatus: "known" });
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.6 });

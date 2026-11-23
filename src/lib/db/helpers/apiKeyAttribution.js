@@ -81,15 +81,15 @@ export function apiKeyUsageScope(db, { apiKeyId = null, apiKey = null } = {}) {
     // A legacy row is only reachable through the secret it still stores.
     if (hasSecret && apiKey) {
       return {
-        clause: "(apiKeyId = ? OR (apiKeyId IS NULL AND apiKey = ?))",
-        params: [apiKeyId, apiKey],
+        clause: "(apiKeyId = ? OR (apiKeyId IS NULL AND apiKey IN (?, ?)))",
+        params: [apiKeyId, apiKey, usageKeyIdentity(null, apiKey)],
       };
     }
     return { clause: "apiKeyId = ?", params: [apiKeyId] };
   }
   if (hasSecret && apiKey) {
     const legacyOnly = columns.has("apiKeyId") ? "apiKeyId IS NULL AND " : "";
-    return { clause: `(${legacyOnly}apiKey = ?)`, params: [apiKey] };
+    return { clause: `(${legacyOnly}apiKey IN (?, ?))`, params: [apiKey, usageKeyIdentity(null, apiKey)] };
   }
   return { clause: "1 = 0", params: [] };
 }
@@ -97,7 +97,7 @@ export function apiKeyUsageScope(db, { apiKeyId = null, apiKey = null } = {}) {
 // MCP gateway credentials have a separate namespace from ordinary API keys.
 export function usageKeyIdentity(apiKeyId, apiKey, provider) {
   if (apiKeyId && provider !== "mcp-gateway") return apiKeyId;
-  return apiKey && isString(apiKey) ? `hmac:${usageKeyDigest(apiKey)}` : "";
+  return apiKey && isString(apiKey) ? (/^hmac:[0-9a-f]{64}$/.test(apiKey) ? apiKey : `hmac:${usageKeyDigest(apiKey)}`) : "";
 }
 
 // The joined key is only a fallback for history without a recorded id.

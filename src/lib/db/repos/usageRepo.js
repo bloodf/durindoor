@@ -59,6 +59,63 @@ function getApiKeyStatsKey(apiKey, model, provider, salt) {
   return `${keyIdentity}|${model}|${provider || "unknown"}`;
 }
 
+// Project key identities without exposing stored secrets, including deleted keys.
+function createPublicApiKeyIdentity(apiKeyMap, gatewayKeyMap, identitySalt) {
+  // API responses use database IDs for registered keys and salted HMACs for
+  // deleted/unknown keys. Neither identity contains raw key material.
+  const unknownApiKeyIds = new Map();
+  return function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey, provider = null) {
+    if (!apiKey && (!internalIdentity || String(internalIdentity).startsWith("local-no-key"))) {
+      return { id: "local-no-key", keyName: "Local (No API Key)", apiKeyMasked: null };
+    }
+    // Gateway and API keys live in separate tables. Resolve MCP rows first
+    // against gateway keys, with a separate ID namespace for cross-table collisions.
+    const gatewayKey = provider === "mcp-gateway" && apiKey ? gatewayKeyMap[apiKey] : null;
+    if (gatewayKey?.id) {
+      return {
+        id: `mcp-gateway-key:${gatewayKey.id}`,
+        keyName: gatewayKey.name || "MCP Gateway Key",
+        apiKeyMasked: maskApiKey(apiKey)
+      };
+    }
+    // A shared secret cannot prove that old MCP history used an ordinary key.
+    // Keep unmatched MCP rows opaque, including after gateway deletion, rather
+    // than assigning a surviving/imported ordinary key's identity to them.
+    const keyInfo = provider !== "mcp-gateway" && apiKey ? apiKeyMap[apiKey] : null;
+    if (keyInfo?.id) {
+      return {
+        id: `api-key:${keyInfo.id}`,
+        keyName: keyInfo.name || "API Key",
+        apiKeyMasked: maskApiKey(apiKey)
+      };
+    }
+    const lookup = apiKey || String(internalIdentity);
+    if (!unknownApiKeyIds.has(lookup)) {
+      unknownApiKeyIds.set(lookup, unknownApiKeyIds.size + 1);
+    }
+    const ordinal = unknownApiKeyIds.get(lookup);
+    return {
+      id: `api-key:${fingerprintApiKey(lookup, identitySalt)}`,
+      keyName: `Deleted API key ${ordinal}`,
+      apiKeyMasked: maskApiKey(apiKey || "unknown")
+    };
+  }
+
+}
+
+async function loadPublicApiKeyIdentity(db) {
+  const [{ getApiKeys }, { getGatewayKeys }] = await Promise.all([import("./apiKeysRepo.js"), import("./mcpGatewayRepo.js")]);
+  let keys = [];
+  let gatewayKeys = [];
+  try { keys = await getApiKeys(); } catch {}
+  try { gatewayKeys = await getGatewayKeys(); } catch {}
+  const apiKeyMap = Object.create(null);
+  const gatewayKeyMap = Object.create(null);
+  for (const key of keys) apiKeyMap[key.key] = key;
+  for (const key of gatewayKeys) gatewayKeyMap[key.key] = key;
+  return createPublicApiKeyIdentity(apiKeyMap, gatewayKeyMap, getOrCreateUsageIdentitySalt(db));
+}
+
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
@@ -526,6 +583,7 @@ export async function getActiveRequests() {
   }
 
   await ensureRingInitialized();
+  const getPublicApiKeyIdentity = await loadPublicApiKeyIdentity(await getAdapter());
   const seen = new Set();
   const recentRequests = [...recentRing.items].
   sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).
@@ -533,6 +591,8 @@ export async function getActiveRequests() {
     const t = e.tokens || {};
     return {
       eventKey: e.storedEventId ? `event:${e.storedEventId}` : `row:${index}`,
+      apiKeyId: getPublicApiKeyIdentity(e.apiKey, undefined, e.provider).id,
+      keyName: getPublicApiKeyIdentity(e.apiKey, undefined, e.provider).keyName,
       timestamp: e.timestamp, model: e.model, provider: e.provider || "",
       promptTokens: t.prompt_tokens || t.input_tokens || 0,
       completionTokens: t.completion_tokens || t.output_tokens || 0,
@@ -1298,54 +1358,18 @@ export async function getUsageStats(period = "all", opts = {}) {
   const gatewayKeyMap = Object.create(null);
   for (const k of gatewayKeys) gatewayKeyMap[k.key] = { name: k.name, id: k.id };
 
-  // API responses use database IDs for registered keys and salted HMACs for
-  // deleted/unknown keys. Neither identity contains raw key material.
-  const unknownApiKeyIds = new Map();
-  function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey, provider = null) {
-    if (!apiKey && (!internalIdentity || String(internalIdentity).startsWith("local-no-key"))) {
-      return { id: "local-no-key", keyName: "Local (No API Key)", apiKeyMasked: null };
-    }
-    // Gateway and API keys live in separate tables. Resolve MCP rows first
-    // against gateway keys, with a separate ID namespace for cross-table collisions.
-    const gatewayKey = provider === "mcp-gateway" && apiKey ? gatewayKeyMap[apiKey] : null;
-    if (gatewayKey?.id) {
-      return {
-        id: `mcp-gateway-key:${gatewayKey.id}`,
-        keyName: gatewayKey.name || "MCP Gateway Key",
-        apiKeyMasked: maskApiKey(apiKey)
-      };
-    }
-    // A shared secret cannot prove that old MCP history used an ordinary key.
-    // Keep unmatched MCP rows opaque, including after gateway deletion, rather
-    // than assigning a surviving/imported ordinary key's identity to them.
-    const keyInfo = provider !== "mcp-gateway" && apiKey ? apiKeyMap[apiKey] : null;
-    if (keyInfo?.id) {
-      return {
-        id: `api-key:${keyInfo.id}`,
-        keyName: keyInfo.name || "API Key",
-        apiKeyMasked: maskApiKey(apiKey)
-      };
-    }
-    const lookup = apiKey || String(internalIdentity);
-    if (!unknownApiKeyIds.has(lookup)) {
-      unknownApiKeyIds.set(lookup, unknownApiKeyIds.size + 1);
-    }
-    const ordinal = unknownApiKeyIds.get(lookup);
-    return {
-      id: `api-key:${fingerprintApiKey(lookup, identitySalt)}`,
-      keyName: `Deleted API key ${ordinal}`,
-      apiKeyMasked: maskApiKey(apiKey || "unknown")
-    };
-  }
+  const getPublicApiKeyIdentity = createPublicApiKeyIdentity(apiKeyMap, gatewayKeyMap, identitySalt);
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT id, usageEventId, timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT id, usageEventId, timestamp, provider, model, apiKey, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows.
   map((r) => {
     const t = parseJson(r.tokens, {}) || {};
     return {
       eventKey: r.usageEventId ? `event:${r.usageEventId}` : `row:${r.id}`,
+      apiKeyId: getPublicApiKeyIdentity(r.apiKey, undefined, r.provider).id,
+      keyName: getPublicApiKeyIdentity(r.apiKey, undefined, r.provider).keyName,
       timestamp: r.timestamp, model: r.model, provider: r.provider || "",
       promptTokens: t.prompt_tokens || t.input_tokens || 0,
       completionTokens: t.completion_tokens || t.output_tokens || 0,

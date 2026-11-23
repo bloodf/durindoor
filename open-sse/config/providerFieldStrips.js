@@ -35,7 +35,7 @@ export function findRejected422Field(errorText, body) {
   const protectedFields = new Set(["model", "messages", "input", "contents", "system", "stream", "tools", "tool_choice"]);
   for (const detail of details) {
     const path = detail?.loc;
-    if (!Array.isArray(path) || path.length !== 2 || path[0] !== "body" || typeof path[1] !== "string") continue;
+    if (!Array.isArray(path) || path.length !== 2 || path[0] !== "body" || !isString(path[1])) continue;
     const field = path[1];
     if (protectedFields.has(field) || !Object.hasOwn(body, field)) continue;
     if (detail.type === "extra_forbidden" || (field === "service_tier" && ["enum", "literal_error"].includes(detail.type))) return field;

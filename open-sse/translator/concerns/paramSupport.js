@@ -193,7 +193,7 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
       delete body[from];
     }
     for (const field of ["user", "logit_bias", "store", "verbosity"]) delete body[field];
-    if (typeof body.temperature === "number" && body.temperature > 1.5) body.temperature = 1.5;
+    if (isNumber(body.temperature) && body.temperature > 1.5) body.temperature = 1.5;
     if (Object.hasOwn(body, "service_tier")) {
       if (["default", "flex", "scale"].includes(body.service_tier)) body.service_tier = "standard_only";
       else if (!["auto", "standard_only"].includes(body.service_tier)) delete body.service_tier;

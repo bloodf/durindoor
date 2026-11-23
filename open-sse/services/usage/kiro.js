@@ -11,9 +11,13 @@ import { U, parseResetTime } from "./shared.js";
  * Kiro (AWS CodeWhisperer) Usage
  */
 function parseKiroQuotaData(data) {
-  const usageList = data.usageBreakdownList || [];
+  const usageList = Array.isArray(data.usageBreakdownList) ? data.usageBreakdownList : [];
   const quotaInfo = {};
   const resetAt = parseResetTime(data.nextDateReset || data.resetDate);
+  // Enabled overage means reaching the included limit does not stop service.
+  const overage = data.overageEnabled === true ||
+    data.overageConfiguration?.overageEnabled === true ||
+    String(data.overageConfiguration?.overageStatus || "").trim().toUpperCase() === "ENABLED";
 
   usageList.forEach((breakdown) => {
     const resourceType = breakdown.resourceType?.toLowerCase() || "unknown";
@@ -25,7 +29,8 @@ function parseKiroQuotaData(data) {
       total,
       remaining: total - used,
       resetAt,
-      unlimited: false
+      unlimited: overage,
+      ...(overage ? { remainingPercentage: 100 } : null)
     };
 
     // Add free trial if available
@@ -38,10 +43,15 @@ function parseKiroQuotaData(data) {
         total: freeTotal,
         remaining: freeTotal - freeUsed,
         resetAt: parseResetTime(breakdown.freeTrialInfo.freeTrialExpiry || resetAt),
-        unlimited: false
+        unlimited: overage,
+        ...(overage ? { remainingPercentage: 100 } : null)
       };
     }
   });
+
+  if (!Object.keys(quotaInfo).length) {
+    return { plan: data.subscriptionInfo?.subscriptionTitle || "Kiro", message: "Kiro connected, but the account returned no usage breakdown. Some AWS IAM / Builder ID accounts don't expose per-resource quota via GetUsageLimits.", quotas: {} };
+  }
 
   return {
     plan: data.subscriptionInfo?.subscriptionTitle || "Kiro",

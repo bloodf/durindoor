@@ -71,3 +71,22 @@ describe("Kiro refresh proxy routing", () => {
     );
   });
 });
+
+describe("Kiro refresh method and region", () => {
+  it.each([
+    ["imported", "eu-west-1", "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken"],
+    ["builder-id", "eu-west-1", "https://oidc.eu-west-1.amazonaws.com/token"],
+  ])("routes %s refresh to its issuing service", async (authMethod, region, endpoint) => {
+    vi.resetModules();
+    mocks.proxyAwareFetch.mockReset().mockResolvedValue({
+      ok: true,
+      json: async () => ({ accessToken: "fresh", expiresIn: 3600 }),
+    });
+    const { refreshKiroToken } = await import("../../open-sse/services/tokenRefresh.js");
+    const result = await refreshKiroToken(`refresh-${authMethod}`, {
+      authMethod, region, clientId: "id", clientSecret: "secret", profileArn: "arn:aws:codewhisperer:eu-west-1:123:profile/test",
+    });
+    expect(result.accessToken).toBe("fresh");
+    expect(mocks.proxyAwareFetch.mock.calls[0][0]).toBe(endpoint);
+  });
+});

@@ -1,6 +1,6 @@
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
-import { getSettings } from "@/lib/localDb";
-import { resolveClientApiKey, getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
+import { admit } from "../services/admission.js";
 import { getModelInfo } from "../services/model.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
@@ -20,12 +20,13 @@ const REQUEST_LIMIT = 1024 * 1024;
 const RESPONSE_LIMIT = 4 * 1024 * 1024;
 const safeHeader = (value, limit = 256) => isString(value) && value.length <= limit && /^[\x21-\x7e]+$/.test(value);
 
-/** Native Codex SearchRequest; never forwards caller credentials or destinations. */
+/** Native Codex SearchRequest; never forwards caller credentials or destinations.
+ * Client authentication denials carry the shared auth_missing/auth_invalid admission annotation.
+ */
 export async function handleCodexAlphaSearch(request) {
   await captureRequestBillingEpoch(request);
-  const settings = await getSettings();
-  const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
-  if (!auth.ok) return errorResponse(401, auth.reason === "missing" ? "Missing API key" : "Invalid API key");
+  const { settings, apiKey, auth, error: admissionError } = await admit(request, { kind: "codexAlphaSearch" });
+  if (admissionError) return admissionError;
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60000)]);
   let body;
   try {

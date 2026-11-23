@@ -1,8 +1,8 @@
+import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
-  resolveClientApiKey,
   getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError,
 } from "../services/auth.js";
@@ -15,7 +15,6 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
@@ -71,16 +70,10 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
   const modelStr = formData.get("model");
   log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "stt" });
   // Keep the admission epoch, including null, through combo and account retries.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  if (admissionError) return admissionError;
 
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 

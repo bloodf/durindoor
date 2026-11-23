@@ -1545,7 +1545,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     null;
     // The `agy` alias carries the same private marker; an unmarked 504 is never promoted.
     const antigravityPreResponseTimeout = (provider === "antigravity" || provider === "agy") && error?.antigravityPreResponseTimeout === true;
-    const failureStatus = antigravityPreResponseTimeout ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
+    const failureStatus = antigravityPreResponseTimeout || (provider === "codex" && transportFailure === "connect_timeout") ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
     await settleQuota(false, terminalReason);
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : failureStatus}` }).catch(() => {});
     saveRequestDetail(buildRequestDetail({

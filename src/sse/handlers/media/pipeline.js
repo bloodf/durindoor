@@ -59,7 +59,7 @@ export async function resolveTypedMediaModel(request, modelStr, body, apiKey, ki
  */
 export async function runMediaAccounts({
   provider, model, selectionOptions, runAttempt, buildExhaustedResponse, selectCredentials,
-  onAccountFailure, onFallback, buildFailureResponse = (result) => result.response,
+  onAccountFailure, onAttemptResult, onFallback, buildFailureResponse = (result) => result.response,
 }) {
   const excluded = new Set();
   let lastError = null;
@@ -75,6 +75,9 @@ export async function runMediaAccounts({
 
     const { response, result, dispatch, resetAt = null, failureContext } = await runAttempt(credentials);
     if (!result) return response;
+
+    const terminalAttemptResponse = await onAttemptResult?.(result, credentials);
+    if (terminalAttemptResponse) return terminalAttemptResponse;
 
     const failure = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetAt, {
       usedCredential: credentials.accessToken || credentials.apiKey || null,

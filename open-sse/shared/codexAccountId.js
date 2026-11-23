@@ -2,6 +2,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 const CODEX_ACCOUNT_ID_FIELDS = Object.freeze([
 "workspaceId",
 "chatgptAccountId",
+"chatgptWorkspaceId",
 "accountId"]
 );
 const UNSAFE_HEADER_VALUE = /[\0\r\n]/;
@@ -32,7 +33,7 @@ function decodeAccountIdFromIdToken(idToken) {
 
 /**
  * Resolves the Codex account binding ID without rewriting legacy metadata.
- * Precedence is workspaceId, then chatgptAccountId, then accountId, then the
+ * Precedence is workspaceId, then chatgptAccountId, chatgptWorkspaceId, accountId, then the
  * account id decoded from the OAuth id_token. Only a non-empty trimmed string is
  * accepted; numbers and objects are never coerced.
  */

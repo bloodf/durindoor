@@ -1,4 +1,5 @@
 import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -118,9 +119,11 @@ async function handleEmbeddingsHandler(request) {
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
+      routingPolicy: (await getSettings()).openrouterRouting,
       credentials: refreshedCredentials,
       signal: request.signal,
       log,
@@ -132,7 +135,7 @@ async function handleEmbeddingsHandler(request) {
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       }
     });
 
@@ -153,7 +156,8 @@ async function handleEmbeddingsHandler(request) {
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
 
     if (shouldFallback) {

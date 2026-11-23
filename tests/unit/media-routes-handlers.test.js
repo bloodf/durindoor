@@ -445,3 +445,19 @@ describe("media endpoints without a model", () => {
   });
   });
 });
+
+describe("OpenRouter image ZDR policy", () => {
+  it("blocks generation before dispatch and permits an explicit exception", async () => {
+    mocks.handleImageGenerationCore.mockResolvedValue(ok({ data: [] }, "image"));
+    const imageRequest = () => post("/v1/images/generations", { model: "openrouter/openai/gpt-5-image", prompt: "a cat" });
+    mocks.getSettings.mockResolvedValue({ openrouterRouting: { zdr: true } });
+    const blocked = await handleImageGeneration(imageRequest());
+    expect(blocked.status).toBe(400);
+    expect(await blocked.text()).toMatch(/blocked by the ZDR requirement/);
+    expect(mocks.handleImageGenerationCore).not.toHaveBeenCalled();
+    mocks.getSettings.mockResolvedValue({ openrouterRouting: { zdr: true, allowImageWithoutZdr: true } });
+    const allowed = await handleImageGeneration(imageRequest());
+    expect(allowed.status).toBe(200);
+    expect(mocks.handleImageGenerationCore).toHaveBeenCalledTimes(1);
+  });
+});

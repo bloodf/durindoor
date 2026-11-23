@@ -275,12 +275,10 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
   let idx = 0;
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning) {
-    output.push({
-      type: "reasoning",
-      id: `rs_${completion.id || Date.now()}_${idx}`,
-      summary: [{ type: "summary_text", text: reasoning }]
-    });
+  if (reasoning || message.reasoning_encrypted_content) {
+    const item = { type: "reasoning", id: `rs_${completion.id || Date.now()}_${idx}`, summary: [{ type: "summary_text", text: reasoning || "" }] };
+    if (message.reasoning_encrypted_content) item.encrypted_content = message.reasoning_encrypted_content;
+    output.push(item);
     idx++;
   }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import OpenRouterRoutingCard from "./OpenRouterRoutingCard";
+
 import ProviderRpmControl from "./ProviderRpmControl.jsx";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -157,6 +159,7 @@ function ProviderDetail({ providerId }) {
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [connectionFilter, setConnectionFilter] = useState("");
   const [connectionPageNumber, setConnectionPageNumber] = useState(1);
+  const [connectionPageSize, setConnectionPageSize] = useState(25);
   const [bulkFailures, setBulkFailures] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
@@ -209,6 +212,8 @@ function ProviderDetail({ providerId }) {
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
+  const [refreshingProfiles, setRefreshingProfiles] = useState(false);
+  const [profileRefreshStatus, setProfileRefreshStatus] = useState("");
   const [oneByOneRunning, setOneByOneRunning] = useState(false);
   const [oneByOneStopping, setOneByOneStopping] = useState(false);
   const [oneByOneCurrentConnectionId, setOneByOneCurrentConnectionId] = useState(null);
@@ -656,6 +661,12 @@ function ProviderDetail({ providerId }) {
 
   const handleCacheAffinityToggle = (enabled) => {
     const strategy = enabled ? "cache-affinity" : null;
+    setProviderStrategy(strategy);
+    saveProviderStrategy(strategy, providerStickyLimit);
+  };
+
+  const handleEarliestResetToggle = (enabled) => {
+    const strategy = enabled ? "earliest-reset" : null;
     setProviderStrategy(strategy);
     saveProviderStrategy(strategy, providerStickyLimit);
   };
@@ -1341,7 +1352,7 @@ function ProviderDetail({ providerId }) {
   const selectedActiveCount = selectedConnections.filter((conn) => conn.isActive !== false).length;
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
   const visibleConnections = connections.filter((conn) => `${conn.name || ""} ${conn.email || ""}`.toLowerCase().includes(connectionFilter.trim().toLowerCase()));
-  const { page, pageCount, items: pageConnections } = connectionPage(visibleConnections, connectionPageNumber);
+  const { page, pageCount, items: pageConnections } = connectionPage(visibleConnections, connectionPageNumber, connectionPageSize);
   const allSelected = pageConnections.length > 0 && pageConnections.every((conn) => selectedConnectionIds.includes(conn.id));
   const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped", "unavailable"].includes(oneByOneResults[conn.id]?.state)).length;
 
@@ -1498,6 +1509,12 @@ function ProviderDetail({ providerId }) {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+                onUpdateQuotaLockout={async (quotaLockout) => {
+                  const response = await fetch(`/api/providers/${conn.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quotaLockout }) });
+                  if (!response.ok) throw new Error("Quota schedule update failed");
+                  const data = await response.json();
+                  setConnections((previous) => replaceUpdatedConnections(previous, [data.connection]));
+                }}
                 onClearCooldown={handleClearCooldown}
                 clearingCooldown={clearingCooldownId === conn.id}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
@@ -2013,6 +2030,7 @@ function ProviderDetail({ providerId }) {
 
       <NativeProviderReadiness providerId={providerId} connections={connections} />
 
+      {providerId === "openrouter" && <OpenRouterRoutingCard providerId={providerId} />}
       {isCompatible && providerNode &&
       <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2138,6 +2156,27 @@ function ProviderDetail({ providerId }) {
 
                     {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
                   </Button>
+                  {["codebuddy-cn", "qoder-cn"].includes(providerId) && connections.some((connection) => connection.authType === "oauth") && (
+                    <>
+                      <Button size="sm" variant="secondary" icon="sync" disabled={refreshingProfiles} onClick={async () => {
+                        setRefreshingProfiles(true);
+                        setProfileRefreshStatus("");
+                        let failures = 0;
+                        for (const connection of connections.filter((item) => item.authType === "oauth")) {
+                          try {
+                            const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/refresh-profile`, { method: "POST" });
+                            if (!response.ok) failures++;
+                          } catch { failures++; }
+                        }
+                        await fetchConnections();
+                        setProfileRefreshStatus(failures ? `${failures} profile refresh failed. Try again.` : "Profiles refreshed.");
+                        setRefreshingProfiles(false);
+                      }}>
+                        {refreshingProfiles ? "Refreshing profiles..." : "Refresh profiles"}
+                      </Button>
+                      <span role="status">{profileRefreshStatus}</span>
+                    </>
+                  )}
                   {oneByOneRunning &&
               <Button
                 size="sm"
@@ -2212,6 +2251,10 @@ function ProviderDetail({ providerId }) {
                       onChange={handleCacheAffinityToggle} />
                   </>
                 )}
+              </div>
+              <div className="inline-flex items-center gap-2">
+                <span className="text-xs text-dd-muted font-medium">Earliest Reset</span>
+                <Toggle ariaLabel="Toggle earliest reset" checked={providerStrategy === "earliest-reset"} onChange={handleEarliestResetToggle} />
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">
@@ -2363,6 +2406,12 @@ function ProviderDetail({ providerId }) {
               {selectedConnections.length > 0 && <details className="mb-3 text-sm text-dd-muted"><summary className="min-h-11 cursor-pointer py-3">Review {selectedConnections.length} selected connections</summary><ul>{selectedConnections.map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id} ({conn.id})</li>)}</ul></details>}
               {bulkFailures.length > 0 && <div role="alert" className="mb-3 text-sm text-dd-danger"><p>Some connections could not be updated:</p><ul>{bulkFailures.map((failure) => <li key={failure.id}>{failure.name} ({failure.id}): {failure.reason}</li>)}</ul></div>}
               {connectionsList}
+              <label className="mt-3 flex items-center gap-2 text-xs text-dd-muted">
+                Connections per page
+                <select value={connectionPageSize} onChange={(event) => { setConnectionPageSize(Number(event.target.value)); setConnectionPageNumber(1); }} className="rounded border border-dd-border bg-transparent p-2">
+                  {[10, 25, 50, 100, 200].map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </label>
               {pageCount > 1 && <nav aria-label="Connection pages" className="mt-3 flex items-center gap-2">
                 <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setConnectionPageNumber(page - 1)}>Previous</Button>
                 <span aria-live="polite" className="text-xs text-dd-muted">Page {page} of {pageCount} ({visibleConnections.length} matching)</span>

@@ -97,7 +97,7 @@ beforeAll(async () => {
   await (await import("@/lib/db/repos/settingsRepo.js")).updateSettings({
     requireApiKey: true, enableProxyTimeline: false,
     // Keep the public catalog from probing unrelated keyless providers.
-    disabledFreeProviders: ["aihorde"],
+    disabledFreeProviders: ["aihorde", "opencode"],
   });
 });
 

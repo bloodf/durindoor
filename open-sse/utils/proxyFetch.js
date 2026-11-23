@@ -1006,7 +1006,7 @@ function hasNonReplayableBody(input, body) {
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // `directFetch` lets an executor replace the no-proxy transport (OpenCode's
   // TLS fingerprint, upstream ce060c79). Proxies and relays still take priority.
-  const { directFetch: directTransport, ...fetchOptions } = options;
+  const { directFetch: directTransport, noTransportReplay = false, ...fetchOptions } = options;
   options = fetchOptions;
   const sendDirect = () => isFunction(directTransport) ?
   runProviderAttemptDispatch(() => directTransport(url, options)) :
@@ -1095,6 +1095,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       } catch (proxyError) {
         if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
         rethrowTransportAbort(proxyError, options.signal);
+        if (noTransportReplay) throw proxyError;
         if (proxyOptions?.strictProxy === true) {
           throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
         }
@@ -1124,6 +1125,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (error instanceof OutboundUrlGuardError) throw error;
       if (isQuotaDispatchUnavailable(error)) throw error;
       rethrowTransportAbort(error, options.signal);
+      if (noTransportReplay) throw error;
       logTransportDiagnostic(console.warn, "mitm_bypass_failed", error);
     }
   }
@@ -1157,7 +1159,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
-      if (nonReplayable) throw proxyError;
+      if (noTransportReplay || nonReplayable) throw proxyError;
       logTransportDiagnostic(console.debug, "proxy_direct_fallback", proxyError);
       return sendDirect();
     }

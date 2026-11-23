@@ -1,5 +1,6 @@
 import { admit } from "../services/admission.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getModelInfo } from "../services/model.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
@@ -57,6 +58,7 @@ export async function handleCodexAlphaSearch(request) {
   let success = false;
   try {
     const { prompt_cache_key: _cacheKey, prompt_cache_retention: _cacheRetention, ...searchBody } = body;
+    const dispatch = credentialDispatchSnapshot(selected);
     const upstream = await proxyAwareFetch(UPSTREAM, {
       method: "POST", redirect: "error", signal, directFetch: codexHttpFetch,
       headers: { Authorization: `Bearer ${selected.accessToken}`, "ChatGPT-Account-Id": accountId, "Content-Type": "application/json", Accept: "application/json", "User-Agent": codex.transport.headers["User-Agent"] },
@@ -65,7 +67,7 @@ export async function handleCodexAlphaSearch(request) {
     if (!upstream.ok) {
       await upstream.body?.cancel();
       const status = upstream.status >= 400 && upstream.status <= 599 ? upstream.status : 502;
-      await markAccountUnavailable(credentials.connectionId, status, "Codex search failed", provider, searchLockKey, null, { usedCredential: selected.accessToken, webSearch: true });
+      await markAccountUnavailable(credentials.connectionId, status, "Codex search failed", provider, searchLockKey, null, { usedCredential: selected.accessToken, webSearch: true, ...dispatch });
       return errorResponse(status, "Codex search failed");
     }
     const bytes = await readBounded(upstream.body, RESPONSE_LIMIT, signal, 502);
@@ -73,7 +75,7 @@ export async function handleCodexAlphaSearch(request) {
     try { data = JSON.parse(bytes.toString("utf8")); } catch { return errorResponse(502, "Invalid Codex search response"); }
     if (!data || !isObject(data) || Array.isArray(data) || !isString(data.output) || (data.results != null && !Array.isArray(data.results)) || (data.encrypted_output != null && !isString(data.encrypted_output))) return errorResponse(502, "Invalid Codex search response");
     success = true;
-    await clearAccountError(credentials.connectionId, selected, searchLockKey, { provider, webSearch: true });
+    await clearAccountError(credentials.connectionId, selected, searchLockKey, { provider, webSearch: true, ...dispatch });
     return await recordApiKeyUsageForResponse(apiKey, Response.json(data), {
       apiKeyId: auth.apiKeyId, billingEpoch: auth.billingEpoch, usageEventId: `${getRequestId(request)}:codex-alpha-search`, provider, model,
       connectionId: credentials.connectionId, endpoint: "/v1/alpha/search", modality: "webSearch", tokens: {}, nativeUnits: { operations: 1 }, cost: null, costStatus: "unknown", costSource: "unavailable",

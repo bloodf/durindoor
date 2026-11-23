@@ -1,3 +1,4 @@
+import { isHosted } from "@/shared/utils/deploymentMode";
 import "open-sse/utils/proxyFetch.js";
 
 import { ORCAROUTER_ID } from "open-sse/providers/orcarouterCatalog.js";
@@ -828,6 +829,7 @@ export async function GET(request, { params }) {
         authMethod: searchParams.get("auth_method")
       }));
     }
+    if (action === "start-proxy" && isHosted()) return NextResponse.json({ error: "Local only" }, { status: 403 });
     if (action === "start-proxy") {
       return NextResponse.json(await startFixedPortProxy(provider, {
         appPort: searchParams.get("app_port"),
@@ -876,6 +878,7 @@ export async function POST(request, { params }) {
     if (action === "device-code") {
       return NextResponse.json(await beginDeviceCode(provider, body));
     }
+    if (action === "start-proxy" && isHosted()) return NextResponse.json({ error: "Local only" }, { status: 403 });
     if (action === "start-proxy") {
       return NextResponse.json(await startFixedPortProxy(provider, body));
     }

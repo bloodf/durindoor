@@ -311,10 +311,15 @@ export default function OAuthModal({
         return;
       }
 
+      const modeResponse = await fetch("/api/deployment-mode", { cache: "no-store", signal: flow.controller.signal });
+      // Hosted mode is opt-in: anything but an explicit `hosted: true` keeps
+      // the local flow. Server routes enforce hosted restrictions themselves.
+      const mode = modeResponse.ok ? await modeResponse.json().catch(() => null) : null;
+      const hosted = mode?.hosted === true;
       const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
       // Claude uses Anthropic's registered manual-code callback, not the
       // dashboard origin. Other hosted providers use the public dashboard URL.
-      const redirectUri = buildOAuthRedirectUri(window.location, flow.provider);
+      const redirectUri = buildOAuthRedirectUri(window.location, flow.provider, hosted);
       const response = await fetch(`/api/oauth/${flow.provider}/authorize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -343,7 +348,7 @@ export default function OAuthModal({
       const browserIsLoopback = isLoopbackHostname(window.location.hostname);
       let fixedProxyActive = false;
       let serverSide = false;
-      if (FIXED_PORT_PROVIDERS.has(flow.provider) && (flow.provider !== "codex" || browserIsLoopback)) {
+      if (!hosted && FIXED_PORT_PROVIDERS.has(flow.provider) && (flow.provider !== "codex" || browserIsLoopback)) {
         const proxyResponse = await fetch(`/api/oauth/${flow.provider}/start-proxy`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

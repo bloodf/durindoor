@@ -759,6 +759,8 @@ export function createSSEStream(options = {}) {
   };
 
   let completionFlushTimer = null;
+  let pendingClaudeFinish = null;
+  let releasingClaudeFinish = false;
   let translatedStreamFinalized = false;
   const clearCompletionFlushTimer = () => {
     clearTimeout(completionFlushTimer);
@@ -843,6 +845,18 @@ export function createSSEStream(options = {}) {
   const processLines = (lines, controller) => {
       for (const [lineIndex, line] of lines.entries()) {
         const trimmed = line.trim();
+
+        if (pendingClaudeFinish && trimmed) {
+          const receipt = parseSSELine(trimmed, targetFormat);
+          const finish = pendingClaudeFinish;
+          pendingClaudeFinish = null;
+          clearCompletionFlushTimer();
+          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) {
+            finish.usage = receipt.usage;
+          }
+          releasingClaudeFinish = true;
+          try { processLines([`data: ${JSON.stringify(finish)}`], controller); } finally { releasingClaudeFinish = false; }
+        }
 
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
@@ -1270,6 +1284,25 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
+        // Only wait when the actual upstream request asks for a usage trailer.
+        if (!releasingClaudeFinish && targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE &&
+            providerBody?.stream_options?.include_usage === true && parsed.id &&
+            parsed.choices?.some?.((choice) => choice.finish_reason) && !hasValidUsage(parsed.usage)) {
+          pendingClaudeFinish = parsed;
+          completionFlushTimer = setTimeout(() => {
+            completionFlushTimer = null;
+            const finish = pendingClaudeFinish;
+            pendingClaudeFinish = null;
+            if (!finish) return;
+            releasingClaudeFinish = true;
+            try { processLines([`data: ${JSON.stringify(finish)}`], controller); }
+            catch (error) { controller.error(error); }
+            finally { releasingClaudeFinish = false; }
+          }, PENDING_COMPLETION_FLUSH_MS);
+          completionFlushTimer.unref?.();
+          continue;
+        }
+
         // An OpenAI-shaped upstream may stream `delta.content` as typed part
         // arrays (Mistral thinking chunks). Fold them into the string
         // `content` / `reasoning_content` the chat-chunk contract requires, so
@@ -1555,6 +1588,15 @@ export function createSSEStream(options = {}) {
         const remaining = decoder.decode();
         if (remaining) buffer += remaining;
 
+        if (pendingClaudeFinish) {
+          const finish = pendingClaudeFinish;
+          pendingClaudeFinish = null;
+          const receipt = buffer.trim() && parseSSELine(buffer.trim(), targetFormat);
+          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) finish.usage = receipt.usage;
+          releasingClaudeFinish = true;
+          try { processLines([`data: ${JSON.stringify(finish)}`], controller); } finally { releasingClaudeFinish = false; }
+        }
+
         if (mode === STREAM_MODE.PASSTHROUGH) {
           if (sanitizeMinimaxThinking) {
             const tail = flushMinimaxThinkingStreamState(minimaxThinkingState);
@@ -1773,7 +1815,11 @@ export function createSSEStream(options = {}) {
             streamErrorPayload ??= extractStreamErrorPayload(parsed);
             sanitizePublicErrorEnvelope(parsed, errorSecrets);
             /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
-            if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
+            if (parsed && !parsed.done) {
+              recordCompletionData(parsed, { trackUsage: false });
+              const extracted = extractUsage(parsed);
+              if (extracted) state.usage = mergeUsage(state.usage, extracted);
+            }
             if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
               const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 

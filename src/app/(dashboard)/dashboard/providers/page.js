@@ -28,6 +28,7 @@ import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { getModelsByProviderId } from "@/shared/constants/models";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import LanDiscoveryPanel from "./components/LanDiscoveryPanel";
@@ -135,7 +136,8 @@ export default function ProvidersPage() {
     return () => unregisterSearch();
   }, [registerSearch, unregisterSearch]);
 
-  const matchSearch = (name) => matchesProviderSearch(name, searchQuery);
+  const matchSearch = (name, providerId) =>
+  matchesProviderSearch(name, searchQuery, providerId, providerId ? getModelsByProviderId(providerId) : []);
 
   const sortByPriority = (entries, authType) =>
   [...entries].sort(([ka, a], [kb, b]) => {
@@ -328,7 +330,7 @@ export default function ProvidersPage() {
     apiType: node.apiType,
     ...(node.iconUrl ? { iconUrl: node.iconUrl } : null)
   })).
-  filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));
+  filter((p) => matchSearch(p.name, p.id) && matchStatus(p.id, "apikey"));
 
   const anthropicCompatibleProviders = providerNodes.
   filter((node) => node.type === "anthropic-compatible").
@@ -338,13 +340,13 @@ export default function ProvidersPage() {
     ...resolveProviderNodeIcon(node),
     ...(node.iconUrl ? { iconUrl: node.iconUrl } : null)
   })).
-  filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));
+  filter((p) => matchSearch(p.name, p.id) && matchStatus(p.id, "apikey"));
 
   const oauthEntries = sortByPriority(
     Object.entries(OAUTH_PROVIDERS).filter(
       ([key, info]) =>
       !info.hidden &&
-      matchSearch(info.name) &&
+      matchSearch(info.name, key) &&
       matchStatus(key, OAUTH_STATUS_AUTH_TYPES, info.noAuth)
     ),
     "oauth"
@@ -353,7 +355,7 @@ export default function ProvidersPage() {
   filter(
     ([key, info]) =>
     !info.hidden &&
-    matchSearch(info.name) &&
+    matchSearch(info.name, key) &&
     matchStatus(key, getFreeAuthTypes(key, info), info.noAuth)
   ).
   sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
@@ -361,7 +363,7 @@ export default function ProvidersPage() {
     Object.entries(FREE_TIER_PROVIDERS).filter(
       ([key, info]) =>
       !info.hidden &&
-      matchSearch(info.name) &&
+      matchSearch(info.name, key) &&
       (info.serviceKinds ?? ["llm"]).includes("llm") &&
       matchStatus(key, info.authType ?? "apikey", info.noAuth)
     ),
@@ -370,7 +372,7 @@ export default function ProvidersPage() {
   // Web Cookie Providers: filter with search and sort by priority
   const webCookieEntries = sortByPriority(
     Object.entries(WEB_COOKIE_PROVIDERS).filter(
-      ([key, info]) => !info.hidden && matchSearch(info.name) && matchStatus(key, "cookie", info.noAuth)
+      ([key, info]) => !info.hidden && matchSearch(info.name, key) && matchStatus(key, "cookie", info.noAuth)
     ),
     "cookie"
   );
@@ -389,7 +391,7 @@ export default function ProvidersPage() {
     !info.hidden && (
     (info.serviceKinds ?? ["llm"]).includes("llm") ||
     getProviderStats(key, "apikey").total > 0) &&
-    matchSearch(info.name) &&
+    matchSearch(info.name, key) &&
     matchStatus(key, "apikey")
   ).
   sort(([ka, a], [kb, b]) => {

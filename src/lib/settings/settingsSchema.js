@@ -91,6 +91,8 @@ const DEFAULT_SETTINGS = {
   mfaBackupCodes: [],
   passwordSessionEpoch: "initial",
   enableObservability: true,
+  // Controls logging of tool source summaries.
+  logToolSources: false,
   enableProxyTimeline: false,
   proxyTimelineRetentionDays: 1,
   /** Automatic cleanup of usage, request details, timeline and quota history older than N days. */
@@ -239,9 +241,9 @@ const DEFAULT_SETTINGS = {
 };
 
 
-const secretKeys = ["password", "passwordSessionEpoch", "mitmSudoEncrypted", "postgresUrl", "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks"];
-const authCriticalKeys = ["comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess", "enableObservability", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl", "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled"];
-const redactKeys = ["password", "passwordSessionEpoch", "oidcClientSecret", "mitmSudoEncrypted", "postgresUrl", "mfaSecret", "mfaBackupCodes", "operatorWebhooks"];
+const secretKeys = ["password", "passwordSessionEpoch", "mitmSudoEncrypted", "postgresUrl", "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting"];
+const authCriticalKeys = ["comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess", "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl", "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled"];
+const redactKeys = ["password", "passwordSessionEpoch", "oidcClientSecret", "mitmSudoEncrypted", "postgresUrl", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting"];
 const scopedKeys = ["claudeAutoPing", "codexAutoPing"];
 
 const typeForDefault = (value) => {
@@ -259,7 +261,8 @@ const specialTypes = {
   comboStrategies: "object", comboPrompts: "object", compressionEngines: "object",
   modelFallbacks: "object", mediaRoutes: "object",
   requireApiKey: "boolean", password: "string", mitmSudoEncrypted: "string",
-  postgresUrl: "string", operatorWebhooks: "array", claudeAutoPing: "object", codexAutoPing: "object",
+  postgresUrl: "string", operatorWebhooks: "array", openrouterRouting: "object",
+  quotaProviderOrder: "array", antigravityAdaptiveHealth: "object", claudeAutoPing: "object", codexAutoPing: "object",
   theme: "string",
   pxpipeAutoInstall: "unknown",
 };
@@ -272,7 +275,7 @@ export const SETTINGS_SCHEMA = Object.fromEntries([
     scoped: scopedKeys.includes(key), redactOnGet: redactKeys.includes(key),
     merge: mergeByKey.has(key) ? "keys" : null,
   })]),
-  ...["password", "mitmSudoEncrypted", "postgresUrl", "operatorWebhooks", "requireApiKey", "claudeAutoPing", "codexAutoPing", "modelFallbacks", "mediaRoutes", "theme", "pxpipeAutoInstall"].filter((key) => !Object.hasOwn(DEFAULT_SETTINGS, key)).map((key) => [key, Object.freeze({
+  ...["password", "mitmSudoEncrypted", "postgresUrl", "operatorWebhooks", "openrouterRouting", "quotaProviderOrder", "antigravityAdaptiveHealth", "requireApiKey", "claudeAutoPing", "codexAutoPing", "modelFallbacks", "mediaRoutes", "theme", "pxpipeAutoInstall"].filter((key) => !Object.hasOwn(DEFAULT_SETTINGS, key)).map((key) => [key, Object.freeze({
     type: specialTypes[key], default: undefined, secret: secretKeys.includes(key), authCritical: authCriticalKeys.includes(key), scoped: scopedKeys.includes(key), redactOnGet: redactKeys.includes(key), merge: null
   })]),
   ...["newPassword", "currentPassword", "mfaCode"].map((key) => [key, Object.freeze({

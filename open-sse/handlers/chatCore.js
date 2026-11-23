@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { validateSearchRoute } from "../translator/concerns/searchRouting.js";
 import { parseModelModifiers } from "../translator/concerns/thinkingSuffix.js";
@@ -335,7 +336,7 @@ async function cancelResponseBody(response) {
  * @param {object} [options.executorOverride] - Server-bound executor for a scoped dispatch.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -777,7 +778,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       // Translators flag a malformed client payload with statusCode 400; anything else is ours.
       if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
       finishTimeline("error", "error", error.message);
-      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+      const result = createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+      if (error.localSchemaError) {
+        result.localSchemaError = true;
+        result.response[Symbol.for("durindoor.localSchemaError")] = true;
+      }
+      return result;
     }
     if (!translatedBody) {
       finishTimeline("error", "error", `Failed to translate request for ${sourceFormat} to ${targetFormat}`);
@@ -1360,6 +1366,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishActiveDashboardSession("error");
       appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => {});
       saveRequestDetail(buildRequestDetail({
+        comboNoLog,
         provider, model: cleanModel, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
         tokens: { prompt_tokens: 0, completion_tokens: 0 },
@@ -1370,6 +1377,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       })).catch(() => { });
       finishTimeline("error", "error", "outbound validation failed");
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, errMsg);
+    }
+  }
+  if (provider === "openrouter") {
+    try {
+      const routingBody = { ...translatedBody };
+      if (body.provider !== undefined) routingBody.provider = body.provider;
+      if (body.models !== undefined) routingBody.models = body.models;
+      translatedBody = applyOpenRouterRouting(routingBody, routingPolicy, "completion");
+    } catch (error) {
+      finishActiveDashboardSession("error");
+      finishTimeline("error", "error", "OpenRouter routing policy conflict");
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
     }
   }
   // Defensive strip AFTER the gate.
@@ -1489,12 +1508,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   }
 
+  let claudeRequestScoped = false;
+  let claudeFast = false;
   try {
     const result = await executeProvider();
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
+    claudeRequestScoped = result.claudeRequestScoped === true;
+    claudeFast = result.claudeFast === true;
     captureExecutorToolNameMap(finalBody);
     terminalProvenance = result.terminalProvenance || null;
     providerResponseFormat = result.responseFormat || targetFormat;
@@ -1524,6 +1547,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     await settleQuota(false, terminalReason);
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : failureStatus}` }).catch(() => {});
     saveRequestDetail(buildRequestDetail({
+        comboNoLog,
       provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
@@ -1549,13 +1573,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
     finishTimeline("error", "error", errMsg);
-    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, attemptStartedAt: latestProviderAttemptStartedAt };
+    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, claudeRequestScoped: error?.claudeRequestScoped === true, attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   const parseAndRestateError = async (response) => {
     let upstreamError;
     try {
-      upstreamError = await parseUpstreamError(response, executor, { signal: providerSignal, credentials, proxyOptions });
+      upstreamError = await parseUpstreamError(response, executor, { signal: providerSignal, credentials, proxyOptions, claudeRequestScoped });
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       upstreamError = { statusCode: response.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
@@ -1608,7 +1632,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // second attempt.
   const authFailure = parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED ||
   parsedError?.statusCode === HTTP_STATUS.FORBIDDEN;
-  const refreshAfterAuthFailure = authFailure && !executor.noAuth &&
+  const refreshAfterAuthFailure = !claudeRequestScoped && authFailure && !executor.noAuth &&
   (isFunction(executor.shouldRefreshAfterAuthFailure)
     ? executor.shouldRefreshAfterAuthFailure(parsedError, providerResponse) !== false
     : true);
@@ -1643,6 +1667,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           providerUrl = retryResult.url;
           providerHeaders = retryResult.headers;
           finalBody = retryResult.transformedBody;
+          claudeRequestScoped = retryResult.claudeRequestScoped === true;
+          claudeFast = retryResult.claudeFast === true;
           captureExecutorToolNameMap(finalBody);
           terminalProvenance = retryResult.terminalProvenance || null;
           providerResponseFormat = retryResult.responseFormat || targetFormat;
@@ -1683,7 +1709,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     // thinking omitted (active tool-use cycle preserved) before any cooldown/
     // fallback accounting. Any other failure flows through unchanged.
     if (
-    !providerSignal?.aborted &&
+    !claudeRequestScoped && !providerSignal?.aborted &&
     isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message }))
     {
       const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
@@ -1696,6 +1722,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           providerUrl = retry.url;
           providerHeaders = retry.headers;
           finalBody = retry.transformedBody;
+          claudeRequestScoped = retry.claudeRequestScoped === true;
+          claudeFast = retry.claudeFast === true;
           captureExecutorToolNameMap(finalBody);
           reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
           if (providerResponse.ok) {
@@ -1723,7 +1751,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
-      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody, antigravityQuotaSignal } = parsedError;
+      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody, antigravityQuotaSignal, noQuotaMetadata } = parsedError;
       // Kimi docs classify exhausted membership windows as 403. Confirm the
       // rolling 5-hour window is empty while weekly quota remains before
       // attaching a temporary model-scoped reset deadline.
@@ -1743,6 +1771,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       }
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
+        comboNoLog,
       provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
@@ -1761,7 +1790,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     // Scoped to 429: other statuses (e.g. Kimi's usage-derived 403) already
     // have their own deliberate resetsAtMs handling above, including leaving
     // it undefined on purpose when no real reset is known.
-    if (statusCode === HTTP_STATUS.RATE_LIMITED && !Number.isFinite(resetsAtMs)) {
+    if (!claudeRequestScoped && statusCode === HTTP_STATUS.RATE_LIMITED && !Number.isFinite(resetsAtMs)) {
       const { cooldownMs, terminal } = checkFallbackError(statusCode, message, 0);
       if (!terminal && Number.isFinite(cooldownMs) && cooldownMs > 0) {
         resetsAtMs = Date.now() + cooldownMs;
@@ -1771,7 +1800,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     // prose instead of rate-limit headers, so rpmLimiter.js never learns it
     // and keeps racing into the same cap. Learn it here and pace future
     // selection for this connection under it (#13895 upstream).
-    if (statusCode === HTTP_STATUS.RATE_LIMITED && connectionId) {
+    if (!claudeRequestScoped && statusCode === HTTP_STATUS.RATE_LIMITED && connectionId) {
       try {
         learnRequestCapFromBody(connectionId, errorBody ?? message);
       } catch {
@@ -1793,6 +1822,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return {
       ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials, getClientStatusFromError(statusCode, errorBody ?? message)),
       antigravityQuotaSignal,
+      noQuotaMetadata,
+      claudeRequestScoped,
       attemptStartedAt: latestProviderAttemptStartedAt,
       headers: providerResponse.headers,
     };
@@ -1862,6 +1893,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     connectionId,
     comboId,
     comboName,
+    comboNoLog,
     apiKey,
     apiKeyId,
     billingEpoch,
@@ -1875,7 +1907,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         attemptStartedAt: context.attemptStartedAt || latestProviderAttemptStartedAt
       });
     },
-    onEmptyStream,
+    onEmptyStream: claudeFast ? undefined : onEmptyStream,
     getProviderAttemptStartedAt: () => latestProviderAttemptStartedAt,
     pxpipe: pxpipeSummary,
     reqTag,
@@ -1913,7 +1945,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       streamController.handleComplete();
       finishTimeline(result?.success ? "ok" : "error", result?.success ? null : "error", result?.success ? null : "malformed terminal");
     }
-    return result;
+    return claudeFast && !result?.success ? { ...result, claudeRequestScoped: true } : result;
   };
   const failPostResponseHandling = async (error) => {
     const reason = classifyQuotaTerminalReason(error, { providerSignal });
@@ -1924,12 +1956,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     await settleQuota(false, reason);
     streamController.handleError(error instanceof Error ? error : new Error("provider response handling failed"));
     finishTimeline(aborted ? "aborted" : "error", aborted ? "abort" : "error", "failed to process provider response");
-    return withCompressionHeader(
-      createErrorResult(aborted ? 499 : HTTP_STATUS.BAD_GATEWAY, aborted ?
-      "Request aborted" :
-      "Failed to process provider response"),
-      compressionHeaderValue
-    );
+    const result = createErrorResult(aborted ? 499 : HTTP_STATUS.BAD_GATEWAY,
+      aborted ? "Request aborted" : "Failed to process provider response");
+    return withCompressionHeader(claudeFast ? { ...result, claudeRequestScoped: true } : result, compressionHeaderValue);
   };
 
   // OmniRoute #6820 (issue #3697): Codex CLI model echo. Compute the
@@ -2001,7 +2030,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   try {
     const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
     if (!result?.success) await settleQuota(false, "stream_error");
-    return await finalizeResponse(result);
+    return await finalizeResponse(claudeFast ? { ...result, claudeFast, claudeRequestScoped: !result.success } : result);
   } catch (error) {
     return failPostResponseHandling(error);
   }

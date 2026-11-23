@@ -140,10 +140,10 @@ it("isolates search cooldowns while preserving model policy and quota identity",
   expect(mocks.lifecycle).toHaveBeenCalledWith(expect.objectContaining({ routeKey: "codex/gpt-5.4" }));
   expect(mocks.usage).toHaveBeenCalledWith("gateway", expect.any(Response), expect.objectContaining({ apiKeyId: "key", billingEpoch: "admission-epoch" }));
   expect(mocks.select).toHaveBeenCalledWith("codex", expect.any(Set), "websearch:codex", { apiKeyId: "key", webSearch: true, modelCandidates: ["gpt-5.4"] });
-  expect(mocks.clear).toHaveBeenCalledWith("one", mocks.credentials, "websearch:codex", { provider: "codex", webSearch: true });
+  expect(mocks.clear).toHaveBeenCalledWith("one", mocks.credentials, "websearch:codex", { provider: "codex", webSearch: true, credentialFingerprint: null, dispatchedAt: expect.any(Number) });
   expect(mocks.mark).not.toHaveBeenCalled();
   mocks.fetch.mockResolvedValueOnce(new Response("failed", { status: 429 }));
   expect((await POST(request())).status).toBe(429);
-  expect(mocks.mark).toHaveBeenCalledWith("one", 429, "Codex search failed", "codex", "websearch:codex", null, { usedCredential: "stored-token", webSearch: true });
+  expect(mocks.mark).toHaveBeenCalledWith("one", 429, "Codex search failed", "codex", "websearch:codex", null, { usedCredential: "stored-token", webSearch: true, credentialFingerprint: null, dispatchedAt: expect.any(Number) });
   expect(mocks.clear).toHaveBeenCalledTimes(1);
 });

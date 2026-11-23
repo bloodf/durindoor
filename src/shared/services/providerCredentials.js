@@ -341,6 +341,7 @@ proxyOptions = null,
   structuredClone(connection.providerSpecificData) :
   connection.providerSpecificData;
   const credentials = {
+    id: connection.provider === "codex" ? connection.id : undefined,
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
     idToken: connection.idToken,

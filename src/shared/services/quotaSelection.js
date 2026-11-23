@@ -128,6 +128,22 @@ export function rankQuotaConnections(connections, decisions, pressure = new Map(
   return ranked;
 }
 
+/** Pick the eligible account with the soonest fresh, future quota reset.
+ * Unknown or expired resets fall back to configured account priority.
+ */
+export function pickEarliestResetConnection(connections, decisions, now = Date.now()) {
+  return [...connections].sort((a, b) => {
+    const reset = (connection) => {
+      const profile = decisions.get(connection.id)?.quotaProfile;
+      if (profile?.freshness !== "fresh") return Infinity;
+      const times = (profile.routingWindows || []).map((window) => Date.parse(window.resetAt))
+        .filter((time) => Number.isFinite(time) && time > now);
+      return times.length ? Math.min(...times) : Infinity;
+    };
+    return reset(a) - reset(b) || (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER);
+  })[0] || null;
+}
+
 /**
  * Weighted draw over positive weights. `r` is expected in `[0, sum(weights))`.
  * The first cumulative weight strictly greater than `r` wins (half-open), so

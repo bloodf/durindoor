@@ -1486,6 +1486,7 @@ export async function handleComboChat({
   decisionBackend = null,
   comboTimeoutMs = 0,
   quotaRanker = null,
+  lockRanker = null,
   signal = null,
   contextRequirements = null,
   capabilitiesMap = null,
@@ -1620,6 +1621,16 @@ export async function handleComboChat({
       // Quota diagnostics are fail-open for unknown/repository errors; account
       // selection still applies the authoritative atomic capacity gate.
     }}
+  // Stable partition after strategy and quota ordering, including weighted picks.
+  if (isFunction(lockRanker)) {
+    try {
+      const ordered = await lockRanker(rotatedModels);
+      if (Array.isArray(ordered) && ordered.length === rotatedModels.length) rotatedModels = ordered;
+    } catch {
+      // Credential selection remains authoritative if inspection fails.
+    }
+  }
+
   let lastError = null;
   let earliestRetryAfter = null;
   let recoveryBlockedTargets = 0;
@@ -1724,6 +1735,11 @@ export async function handleComboChat({
         log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
         continue;
       }
+      if (result.claudeRequestScoped === true) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
+      }
+
       // A provider can tunnel a backend failure through HTTP 200. Classify that
       // payload before recording success so combo fallback can try the next model.
       if (result.ok) {
@@ -1745,6 +1761,14 @@ export async function handleComboChat({
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
           const { hasContent, body: replayBody, streamError } = await peekStreamForContent(result);
+          if (!hasContent && result.claudeFast === true) {
+            releaseFailedAffinity(modelStr, i);
+            return replayBody ? new Response(replayBody, {
+              status: result.status,
+              statusText: result.statusText,
+              headers: result.headers
+            }) : result;
+          }
           if (!hasContent) {
             replayBody?.cancel("combo stream contained no meaningful frame").catch(() => {});
             // A request-scoped refusal (invalid request, context too long) may
@@ -1803,6 +1827,11 @@ export async function handleComboChat({
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
+      }
+
+      if (result[Symbol.for("durindoor.localSchemaError")]) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
       }
 
       if (result.headers?.get?.(ACCEPTED_JOB_HEADER)) {

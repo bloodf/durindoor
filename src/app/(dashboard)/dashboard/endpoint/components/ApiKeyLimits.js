@@ -80,6 +80,17 @@ const LIMIT_SECTIONS = [
       { name: "dailyLimitTokens", label: "Total tokens" },
       { name: "dailyInputTokenLimit", label: "Input tokens" },
       { name: "dailyOutputTokenLimit", label: "Output tokens" },
+      { name: "dailyBudget", label: "Budget (USD)", step: "0.01" },
+    ],
+  },
+  {
+    title: "Per week",
+    hint: "Resets at the server's local midnight on Monday. Budget uses the cost estimates from Pricing settings.",
+    fields: [
+      { name: "weeklyTokenLimit", label: "Total tokens" },
+      { name: "weeklyInputTokenLimit", label: "Input tokens" },
+      { name: "weeklyOutputTokenLimit", label: "Output tokens" },
+      { name: "weeklyBudget", label: "Budget (USD)", step: "0.01" },
     ],
   },
   {

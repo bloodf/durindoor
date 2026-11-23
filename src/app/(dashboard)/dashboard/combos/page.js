@@ -998,6 +998,7 @@ function ModelItem({ id, index, model, weight = 1, requirePositiveWeight = false
 function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
+  const [noLog, setNoLog] = useState(combo?.noLog === true);
   const [models, setModels] = useState(combo?.models || []);
   const [weights, setWeights] = useState(() => Object.fromEntries((combo?.members || []).map((member) => [member.id, member.weight])));
   const [modelError, setModelError] = useState("");
@@ -1124,7 +1125,10 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     setSaveError("");
     setSaving(true);
     try {
-      const result = await onSave({ name: name.trim(), models, members, capabilities });
+      // Omit the default unless an existing disabled log must be re-enabled.
+      const data = { name: name.trim(), models, members, capabilities };
+      if (noLog || combo?.noLog === true) data.noLog = noLog;
+      const result = await onSave(data);
       if (!result?.ok) setSaveError(result?.error || "Failed to save combo");
     } finally {
       setSaving(false);
@@ -1175,6 +1179,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             error={nameError}
             hint="Only letters, numbers, -, _ and . allowed"
           />
+          <label className="flex items-center gap-2 text-sm text-dd-text">
+            <input type="checkbox" checked={!noLog} onChange={(event) => setNoLog(!event.target.checked)} />
+            Logging
+          </label>
+          <p className="text-xs text-dd-subtle">When off, request and response content is not saved in request details. Usage metadata is retained.</p>
           {saveError ? <p role="alert" className="text-xs text-dd-danger">{saveError}</p> : null}
 
           <section aria-labelledby="combo-models-heading">

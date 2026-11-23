@@ -1669,7 +1669,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
     status
   );
-  const providerRuleConnectionWide = fallbackResult.scope === "connection";
+  const providerRuleConnectionWide = fallbackResult.scope === "connection" || (provider === "claude" && callerEvidence?.scope === "connection");
   const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
   const isolatedSearch = context?.webSearch === true && !accountWide;
   const fallbackModel = resolveFallbackModelScope(provider, model, {

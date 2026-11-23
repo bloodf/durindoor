@@ -44,3 +44,13 @@ describe("9router #3945 reasoning-token fold", () => {
     expect(canonical.total_tokens).toBe(610);
   });
 });
+
+describe("9router #3945 fold on raw additive usage", () => {
+  it("canonicalizeUsage leaves raw additive usage for the caller to mark", () => {
+    const canonical = canonicalizeUsage({
+      prompt_tokens: 1000, completion_tokens: 200, total_tokens: 1500, completion_tokens_details: { reasoning_tokens: 300 },
+    });
+    expect(canonical.completion_tokens).toBe(200);
+    expect(canonical.total_tokens).toBe(1500);
+  });
+});

@@ -288,7 +288,8 @@ export function canonicalizeUsage(usage) {
   // 9router #3945: when reasoning sits inside the output count, an upstream
   // that reports completion 0 (or below its own reasoning slice) undercounts.
   // Additive families (reasoning_included_in_output === 0) bill it on top.
-  const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion;
+  const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
+    reasoningIsSubsetOfOutput(usage);
   const completion = foldReasoning ? reasoning : reportedCompletion;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (

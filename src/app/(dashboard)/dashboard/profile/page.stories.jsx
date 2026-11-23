@@ -12,6 +12,7 @@ const settings = {
   exposeComboOnly: false,
   hidePaidModels: false,
   enableObservability: true,
+  logToolSources: false,
   enableProxyTimeline: true,
   proxyTimelineRetentionDays: 7,
   visionBridgeModel: "openai/gpt-4o",
@@ -156,5 +157,17 @@ export const SettingsLoading = {
   parameters: { storyFixture: { routes: { ...baseRoutes, "GET /api/settings": () => new Promise(() => {}) } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("status")).toHaveTextContent("Loading settings");
+  },
+};
+
+export const ToolSourceDiagnostics = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: /System/ }));
+    const toggle = await canvas.findByRole("switch", { name: "Log tool sources" });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
   },
 };

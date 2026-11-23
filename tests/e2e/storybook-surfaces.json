@@ -23644,7 +23644,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "9b24cb32cc24054180f8e6c42a0a5c9121fa61646270bf6239f034763e07f98f",
+      "sourceSha256": "f08c30192e877e9149ee8c2744d7340f94a507b508b273dcfe2ced9547926d1e",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23668,8 +23668,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "9b24cb32cc24054180f8e6c42a0a5c9121fa61646270bf6239f034763e07f98f",
-            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
+            "src/app/(dashboard)/dashboard/profile/page.js": "f08c30192e877e9149ee8c2744d7340f94a507b508b273dcfe2ced9547926d1e",
+            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
           "expectedVisibleText": "Profile & Settings"
@@ -23684,8 +23684,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "9b24cb32cc24054180f8e6c42a0a5c9121fa61646270bf6239f034763e07f98f",
-            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
+            "src/app/(dashboard)/dashboard/profile/page.js": "f08c30192e877e9149ee8c2744d7340f94a507b508b273dcfe2ced9547926d1e",
+            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#OidcAndProxy",
           "expectedVisibleText": "OIDC"
@@ -23699,8 +23699,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "9b24cb32cc24054180f8e6c42a0a5c9121fa61646270bf6239f034763e07f98f",
-            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
+            "src/app/(dashboard)/dashboard/profile/page.js": "f08c30192e877e9149ee8c2744d7340f94a507b508b273dcfe2ced9547926d1e",
+            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#ShutdownConfirm",
           "expectedVisibleText": "Shut down"
@@ -23715,8 +23715,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "9b24cb32cc24054180f8e6c42a0a5c9121fa61646270bf6239f034763e07f98f",
-            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
+            "src/app/(dashboard)/dashboard/profile/page.js": "f08c30192e877e9149ee8c2744d7340f94a507b508b273dcfe2ced9547926d1e",
+            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens export prompt."
         },
@@ -23730,8 +23730,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "9b24cb32cc24054180f8e6c42a0a5c9121fa61646270bf6239f034763e07f98f",
-            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68"
+            "src/app/(dashboard)/dashboard/profile/page.js": "f08c30192e877e9149ee8c2744d7340f94a507b508b273dcfe2ced9547926d1e",
+            "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens transfer branch."
         }
@@ -79034,67 +79034,147 @@
     {
       "storyId": "v5-review-pages-profile-profilepage--default",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--default",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-profile-profilepage--oidc-and-proxy",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--oidc-and-proxy",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-profile-profilepage--shutdown-confirm",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--shutdown-confirm",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-profile-profilepage--database-export-prompt",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--database-export-prompt",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-profile-profilepage--selective-transfer-preview",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--selective-transfer-preview",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-profile-profilepage--settings-unavailable",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--settings-unavailable",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-profile-profilepage--settings-loading",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
-      "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-profile-profilepage--settings-loading",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+        "sourceSha256": "2714ce1db418d15a3940029e706698e13ee664b1574467c6f563374c714b8836",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-profile-profilepage--tool-source-diagnostics",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-profile-page.stories.jsx",
+      "sourceSha256": "b21aa92b7b12cc0a235f183827984cf75fc880a6d50ad22b348eb4d734b347da",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -90606,22 +90686,82 @@
     {
       "storyId": "production-profile-profilepage--settings-unavailable",
       "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
-      "sourceSha256": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68",
+      "sourceSha256": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-profile-profilepage--settings-unavailable",
+        "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
+        "sourceSha256": "d041ef681e2cfe95936c4a6a81c87f98bb3d398cefcb66cb58bed3a86a2354c0",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "production-profile-profilepage--settings-unavailable",
+          "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
+          "sourceSha256": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
+      }
     },
     {
       "storyId": "production-profile-profilepage--settings-loading",
       "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
-      "sourceSha256": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68",
+      "sourceSha256": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-profile-profilepage--settings-loading",
+        "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
+        "sourceSha256": "d041ef681e2cfe95936c4a6a81c87f98bb3d398cefcb66cb58bed3a86a2354c0",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null,
+        "historicalReferenceReview": {
+          "storyId": "production-profile-profilepage--settings-loading",
+          "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
+          "sourceSha256": "9551f829f78d263d461a890f19d9bb0afd466c1827c2e83f1ce73cf8210dfa68",
+          "reviewStatus": "pending",
+          "reviewedBy": null,
+          "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+          "runtimeStatus": "pending",
+          "reviewEvidence": null
+        }
+      }
+    },
+    {
+      "storyId": "production-profile-profilepage--tool-source-diagnostics",
+      "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
+      "sourceSha256": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "production-profile-profilepage--tool-source-diagnostics",
+        "sourcePath": "./src/app/(dashboard)/dashboard/profile/page.stories.jsx",
+        "sourceSha256": "d041ef681e2cfe95936c4a6a81c87f98bb3d398cefcb66cb58bed3a86a2354c0",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "production-providers-addapikeymodal--open",
@@ -102714,11 +102854,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "b430a5c01511d3c7b5c19217ca869033d19ea4de587bc795727dce1c88b332d5",
-    "sourceCensusSha256": "f9de0bff9732747513986a13e00da397ba9ec4cd0ca26e6f75547629fe80236d",
+    "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
+    "sourceCensusSha256": "3f54c33618de2c47798874162280ebe28a73a94df82c4df091261f2278eacd8e",
     "pendingRows": 433,
     "retainedApprovedRows": 207,
-    "pendingReferences": 1486,
+    "pendingReferences": 1488,
     "runtimeStatus": "pending"
   }
 }

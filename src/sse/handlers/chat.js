@@ -78,6 +78,7 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { holdReservationForResponse, releaseLifetimeTokens, reserveLifetimeTokens } from "@/lib/apiKeyTokenReservations.js";
 import { getBatchRequestKeyId } from "../services/batchKeyIdentity.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { modelKindError } from "./modelKind.js";
@@ -549,6 +550,18 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // The per-model policy checks below skip this step for the same request.
     const windowedLimit = await enforceApiKeyLimits(request, authenticatedKeyRecord);
     if (windowedLimit) return windowedLimit;
+
+    // Reserve the lifetime token allowance (#2833) once per request, before any
+    // combo or retry dispatch; handleChat releases it when the response ends.
+    if (authenticatedKeyRecord?.isActive) {
+      const reservation = reserveLifetimeTokens(request, authenticatedKeyRecord, body);
+      if (!reservation.ok) {
+        log.warn("AUTH", `API key lifetime token limit reached (${reservation.used}/${reservation.limit})`);
+        return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.RATE_LIMITED,
+          `API key token limit reached (${Math.round(reservation.used)}/${reservation.limit} tokens)`), "client_limit");
+      }
+      body = reservation.body;
+    }
   }
 
   if (sourceFormat === FORMATS.CLAUDE) {
@@ -1805,4 +1818,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (lastTokenSaverEvent && !tokenSaverCollector) await recordTokenSaverEvent(lastTokenSaverEvent);
   }
 }
-export const handleChat = withRequestCorrelation(handleChatHandler);
+async function handleChatWithTokenReservation(request, ...rest) {
+  try {
+    return holdReservationForResponse(request, await handleChatHandler(request, ...rest));
+  } catch (error) {
+    releaseLifetimeTokens(request);
+    throw error;
+  }
+}
+
+export const handleChat = withRequestCorrelation(handleChatWithTokenReservation);

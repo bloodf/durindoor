@@ -15,11 +15,7 @@ function isRecord(value) {
 // Tolerates an /openai segment (e.g. deepinfra's /v1/openai/chat/completions).
 export function deriveModerationsUrl(baseUrl) {
   if (/\/chat\/completions$/.test(baseUrl)) return baseUrl.replace(/\/chat\/completions$/, "/moderations");
-  // Fallback: drop the last path segment, append /moderations.
-  const u = new URL(baseUrl);
-  const parts = u.pathname.split("/").filter(Boolean);
-  parts.pop();
-  return `${u.origin}${parts.length ? "/" + parts.join("/") : ""}/moderations`;
+  return null;
 }
 
 /**
@@ -41,7 +37,8 @@ export async function handleModerationsCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null
+  onRequestSuccess = null,
+  signal
 }) {
   const { provider, model } = modelInfo;
   const cfg = PROVIDERS[provider];
@@ -49,10 +46,11 @@ export async function handleModerationsCore({
   if (!baseUrl) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' has no base URL for moderation`);
   }
+  const url = deriveModerationsUrl(baseUrl);
+  if (!url) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not expose a derivable /moderations endpoint`);
 
   const executor = getExecutor(provider);
   const headers = executor.buildHeaders(credentials || {}, false, null, model);
-  const url = deriveModerationsUrl(baseUrl);
 
   log?.debug?.("MODERATION", `${provider} | ${model} | ${url}`);
 
@@ -60,6 +58,7 @@ export async function handleModerationsCore({
   try {
     res = await proxyAwareFetch(url, {
       method: "POST",
+      signal,
       headers,
       body: JSON.stringify({ ...body, model })
     });

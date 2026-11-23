@@ -46,7 +46,8 @@ export async function handleRerankCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null
+  onRequestSuccess = null,
+  signal
 }) {
   const { provider, model } = modelInfo;
   const url = deriveRerankUrl(PROVIDERS[provider], PROVIDER_MEDIA[provider]);
@@ -63,6 +64,7 @@ export async function handleRerankCore({
   try {
     res = await proxyAwareFetch(url, {
       method: "POST",
+      signal,
       headers,
       body: JSON.stringify({ ...body, model })
     }, resolveCredentialProxyOptions(credentials));

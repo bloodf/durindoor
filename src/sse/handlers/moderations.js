@@ -17,6 +17,7 @@ import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+import { modelKindError } from "./modelKind.js";
 
 /**
  * Handle moderations request — OpenAI-compatible /v1/moderations passthrough.
@@ -75,6 +76,8 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const kindError = await modelKindError(provider, model, await getSettings(), "moderation");
+  if (kindError) return kindError;
   /** Record the core receipt without consuming the response or assuming free service. */
   const recordSuccess = (result, credentials) => recordApiKeyUsageForResponse(apiKey, result.response, {
     ...result.accounting,
@@ -107,7 +110,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log });
+    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log, signal: request.signal, onRequestSuccess: async () => clearAccountError(credentials.connectionId, credentials, model) });
     if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Moderation failed");
   }
@@ -147,12 +150,15 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
       modelInfo: { provider, model },
       credentials: toExecutorCredentials(refreshedCredentials),
       log,
+      signal: request.signal,
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
       },
     });
 
     if (result.success) return recordSuccess(result, credentials);
+
+    if (result.status === HTTP_STATUS.BAD_REQUEST) return result.response;
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
 

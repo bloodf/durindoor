@@ -1,3 +1,4 @@
+import { usageKeyIdentity } from "@/lib/db/helpers/apiKeyAttribution.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -76,7 +77,7 @@ afterAll(async () => {
 it.each(failures)("%s keeps its error row but uses none of the key's limits", async (_name, arrange) => {
   arrange();
   for (let i = 0; i < 2; i++) await call();
-  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "error"], [KEY, "error"]]);
+  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[usageKeyIdentity(null, KEY), "error"], [usageKeyIdentity(null, KEY), "error"]]);
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
   const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
@@ -112,7 +113,7 @@ it("successful calls still count toward the key's request limit", async () => {
   state.dispatch.mockResolvedValue({ result: { content: [], isError: false } });
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
   for (let i = 0; i < 2; i++) await call();
-  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "ok"], [KEY, "ok"]]);
+  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[usageKeyIdentity(null, KEY), "ok"], [usageKeyIdentity(null, KEY), "ok"]]);
   expect((await checkApiKeyLimits(RECORD))?.message || "").toContain("monthly requests limit reached");
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 2 });
 });
@@ -142,7 +143,7 @@ it.each(failures)("%s identifies a real gateway-only key through auth and grants
     [{ instanceId: "instance-1", slug: "tools", toolAllowlist: ["echo"] }],
     "tools__echo", {},
   );
-  expect(rows()).toEqual([expect.objectContaining({ apiKey: gateway.key, status: "error" })]);
+  expect(rows()).toEqual([expect.objectContaining({ apiKey: usageKeyIdentity(null, gateway.key), status: "error" })]);
   for (const period of ["all", "today", "24h"]) {
     const stats = await database.getUsageStats(period);
     expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
@@ -273,7 +274,7 @@ it.each([[{}, 0], [{ prompt_tokens: 5 }, null]])("excludes failed MCP ledger usa
   const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
   expect(window.day).toEqual({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
   expect(window.month).toEqual(window.day);
-  expect(rows()).toEqual([expect.objectContaining({ apiKey: KEY, status: "error" })]);
+  expect(rows()).toEqual([expect.objectContaining({ apiKey: usageKeyIdentity(null, KEY), status: "error" })]);
 });
 
 it.each([
@@ -360,7 +361,7 @@ it("preserves unknown-cost failed MCP attribution through replay and rebuild", a
   const paid = { usageEventId: "preserved-chat-paid-replay", provider: "openai", status: "error", apiKey: KEY, tokens: { prompt_tokens: 3 }, cost: 1, strict: true };
   for (const entry of [failed, failed, paid, paid]) await database.saveRequestUsage({ ...entry });
 
-  expect(rows().map(({ apiKey, status }) => [apiKey, status])).toEqual([[KEY, "error"], [KEY, "error"]]);
+  expect(rows().map(({ apiKey, status }) => [apiKey, status])).toEqual([[usageKeyIdentity(null, KEY), "error"], [null, "error"]]);
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 3, totalCost: 1, unknownCostRequests: 0 });
   const window = await database.getApiKeyWindowUsageTotals(KEY, start, start);
   expect(window.day).toEqual({ inputTokens: 3, outputTokens: 0, requests: 1, cost: 1, unknownCostRequests: 0 });

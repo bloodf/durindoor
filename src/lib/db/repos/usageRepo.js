@@ -112,8 +112,8 @@ async function loadPublicApiKeyIdentity(db) {
   try { gatewayKeys = await getGatewayKeys(); } catch {}
   const apiKeyMap = Object.create(null);
   const gatewayKeyMap = Object.create(null);
-  for (const key of keys) apiKeyMap[key.key] = key;
-  for (const key of gatewayKeys) gatewayKeyMap[key.key] = key;
+  for (const key of keys) { apiKeyMap[key.key] = key; apiKeyMap[key.id] = key; }
+  for (const key of gatewayKeys) { gatewayKeyMap[key.key] = key; gatewayKeyMap[usageKeyIdentity(null, key.key, "mcp-gateway")] = key; }
   return createPublicApiKeyIdentity(apiKeyMap, gatewayKeyMap, getOrCreateUsageIdentitySalt(db));
 }
 
@@ -279,10 +279,10 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta, usageEventId FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, apiKeyId, endpoint, cost, status, tokens, meta, usageEventId FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
-      apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
+      apiKey: usageKeyIdentity(r.apiKeyId, r.apiKey, r.provider), endpoint: r.endpoint, cost: r.cost, status: r.status,
       tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId,
       completedAt: parseJson(r.meta, {})?.completedAt
     }));
@@ -978,7 +978,7 @@ export async function saveRequestUsage(entry) {
       ];
       const historyValues = [
         entry.timestamp, entry.provider || null, entry.model || null,
-        entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+        entry.connectionId || null, apiKeyId && entry.provider !== "mcp-gateway" ? null : (usageKeyIdentity(null, entry.apiKey, entry.provider) || null), entry.endpoint || null,
         promptTokens, completionTokens, entry.cost, entry.status || "ok",
         stringifyJson(tokens), stringifyJson(entry.meta), usageEventId || null,
         entry.comboId || null, entry.comboName || null, usageSessionId, usageProjectId, ...Object.values(usageTokenColumns(tokens)),
@@ -1030,7 +1030,7 @@ export async function saveRequestUsage(entry) {
     }
 
     if (inserted) {
-      pushToRing({ ...entry, storedEventId: usageEventId });
+      pushToRing({ ...entry, apiKey: usageKeyIdentity(attributedApiKeyId, entry.apiKey, entry.provider), storedEventId: usageEventId });
       // Non-success usage remains billable history but must not overwrite the
       // request lifecycle's error/cancellation state with a completed session.
       if (!entry.status || entry.status === "ok") {
@@ -1154,7 +1154,7 @@ export async function getUsageHistory(filter = {}) {
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const rows = db.all(
-    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens,
+    `SELECT timestamp, provider, model, connectionId, apiKey, apiKeyId, endpoint, cost, status, tokens,
             promptTokens, completionTokens, comboId, comboName
        FROM usageHistory ${where} ORDER BY id ASC`,
     params
@@ -1166,7 +1166,7 @@ export async function getUsageHistory(filter = {}) {
 function mapUsageHistoryRow(r) {
   return {
     timestamp: r.timestamp, provider: r.provider, model: r.model,
-    connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
+    connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKeyId || r.apiKey), endpoint: r.endpoint,
     cost: r.cost, status: r.status,
     promptTokens: Number(r.promptTokens ?? parseJson(r.tokens, {}).prompt_tokens ?? 0),
     completionTokens: Number(r.completionTokens ?? parseJson(r.tokens, {}).completion_tokens ?? 0),
@@ -1198,7 +1198,7 @@ export async function listUsageHistoryPage({ limit = 50, offset = 0, filters = {
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const total = Number(db.get(`SELECT COUNT(*) AS total FROM usageHistory ${where}`, params)?.total || 0);
   const rows = db.all(
-    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens,
+    `SELECT timestamp, provider, model, connectionId, apiKey, apiKeyId, endpoint, cost, status, tokens,
             promptTokens, completionTokens, comboId, comboName
        FROM usageHistory ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
     [...params, pageLimit, pageOffset]

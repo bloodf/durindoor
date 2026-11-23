@@ -46,11 +46,11 @@ function chmodQuiet(target, mode) {
   }
 }
 
-function loadMasterKey() {
-  if (cachedKey) return cachedKey;
-  if (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR) {
+function loadMasterKey({ allowDefault = false } = {}) {
+  if (!allowDefault && (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR)) {
     throw new Error("columnCrypto: DATA_DIR required to load master key");
   }
+  if (cachedKey) return cachedKey;
   const dataDir = getDataDir();
   fs.mkdirSync(dataDir, { recursive: true, mode: DATA_DIR_MODE });
   const keyPath = path.join(dataDir, MASTER_KEY_BASENAME);
@@ -97,7 +97,7 @@ function loadMasterKey() {
 
 /** Derive an installation-scoped usage identity without exporting the master key. */
 export function usageKeyDigest(secret) {
-  return crypto.createHmac("sha256", loadMasterKey()).update(secret).digest("hex");
+  return crypto.createHmac("sha256", loadMasterKey({ allowDefault: true })).update(secret).digest("hex");
 }
 
 function validateKey(raw, keyPath) {

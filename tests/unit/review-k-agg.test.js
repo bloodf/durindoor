@@ -286,3 +286,16 @@ it("keeps last-seen dimensions consistent when a deleted key's event gains an en
     { apiKey: "alpha", endpoint: "/chat", lastUsed: initial },
   ]);
 });
+
+it("uses the default storage directory for unknown-key digests without requiring DATA_DIR", async () => {
+  const dataDir = await import("@/lib/dataDir");
+  const getDataDir = vi.spyOn(dataDir, "getDataDir").mockReturnValue(dir);
+  vi.stubEnv("DATA_DIR", undefined);
+  try {
+    await writeUsage(initial, "fixture-unknown", null);
+    expect(db.get("SELECT apiKey FROM usageLastSeen").apiKey).toMatch(/^hmac:[a-f0-9]{64}$/);
+    expect(fs.existsSync(path.join(dir, "master-key"))).toBe(true);
+  } finally {
+    getDataDir.mockRestore();
+  }
+});

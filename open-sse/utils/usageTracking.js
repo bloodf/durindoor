@@ -545,7 +545,8 @@ export function extractUsage(chunk) {
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
-      cached_tokens: usageMeta.cachedContentTokenCount ?? usageMeta.cached_content_token_count,
+      cached_tokens: [usageMeta.cachedContentTokenCount, usageMeta.cached_content_token_count]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: usageMeta.thoughtsTokenCount
     }));
   }

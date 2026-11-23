@@ -45,3 +45,7 @@ it("keeps provider usage in an interrupted stream snapshot", async () => {
   expect(transform.getStreamSnapshot().usage).toMatchObject({ input_tokens: 12, output_tokens: 7 });
   void reader.cancel();
 });
+
+it("uses valid Gemini cache evidence when the primary alias is invalid", () => {
+  expect(extractUsage({ usageMetadata: { promptTokenCount: 10, cachedContentTokenCount: -1, cached_content_token_count: "0" } }).cached_tokens).toBe(0);
+});

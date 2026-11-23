@@ -3,7 +3,7 @@ import { getSettings } from "@/lib/localDb";
 import { fetchOidcDiscovery, getPublicOrigin, probeOidcClientSecret } from "@/lib/auth/oidc";
 import {
   canAccessManagementApi,
-  originPresentAndSame,
+  hasExactRequestOrigin,
   hasValidCliToken,
   isOperatorRequest,
 } from "@/dashboardGuard";
@@ -21,7 +21,7 @@ export async function POST(request) {
     // Never let a sibling login page drive it using ambient dashboard cookies,
     // even when invoked without middleware or with login disabled.
     const originDenied = await requireSameOrigin(request, {
-      isSameOrigin: originPresentAndSame,
+      isSameOrigin: hasExactRequestOrigin,
       allowCliToken: hasValidCliToken,
       message: "Cross-origin management request denied",
     });

@@ -4,6 +4,8 @@ PR #1313 delivered review-only compositions, not production or release acceptanc
 
 This increment carries the provider detail RPM label from the review into the production control at all viewport widths. The existing value, limits, change handler and blur-to-save behavior are retained. The matching Storybook-only override is removed so the review uses the production label.
 
+Recent requests now include a non-secret API key identity and label; the Requests panel displays the label. Deleted keys use installation-scoped identities, while local and MCP requests retain their own labels.
+
 ## Storybook inventory
 
 The rebuilt Storybook catalog contains 2,526 stories, including 1,209 scenarios across 205 generated V5 review compositions. The regenerated compositions add Playground Compare, Network Node Status and LAN Discovery, plus the synced image model, custom speech-to-text model and unavailable batch provider states.

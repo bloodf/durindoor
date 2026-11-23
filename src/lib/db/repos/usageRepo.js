@@ -1323,15 +1323,16 @@ export async function getUsageStats(period = "all", opts = {}) {
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT id, usageEventId, timestamp, provider, model, apiKey, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT h.id, h.usageEventId, h.timestamp, h.provider, h.model, h.tokens, h.status, ${usageHistoryKeyColumnsSql(db)} FROM usageHistory h ORDER BY h.id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows.
   map((r) => {
     const t = parseJson(r.tokens, {}) || {};
+    const identity = getPublicApiKeyIdentity(usageKeyIdentity(r.usageKeyId, r.legacyKey, r.provider), r.provider);
     return {
       eventKey: r.usageEventId ? `event:${r.usageEventId}` : `row:${r.id}`,
-      apiKeyId: getPublicApiKeyIdentity(r.apiKey, undefined, r.provider).id,
-      keyName: getPublicApiKeyIdentity(r.apiKey, undefined, r.provider).keyName,
+      apiKeyId: identity.id,
+      keyName: identity.keyName,
       timestamp: r.timestamp, model: r.model, provider: r.provider || "",
       promptTokens: t.prompt_tokens || t.input_tokens || 0,
       completionTokens: t.completion_tokens || t.output_tokens || 0,
@@ -2081,7 +2082,7 @@ function pruneUsageBeforeInTx(db, cutoffMs) {
  * `cutoffMs` (the selected recent reset window), then rebuild the boundary day
  * and the lifetime counter from remaining older history.
  */
-function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
+function deleteUsageSinceInTx(db, cutoffMs) {
   const cutoffIso = new Date(cutoffMs).toISOString();
   const cutoffDate = new Date(cutoffMs);
   const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
@@ -2092,15 +2093,12 @@ function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
   const utcCutoffDay = cutoffIso.slice(0, 10);
   const utcCutoffDayStart = `${utcCutoffDay}T00:00:00.000Z`;
   db.run(`DELETE FROM usageLastSeen WHERE lastUsed >= ?`, [cutoffIso]);
-  db.run(`INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
-    SELECT SUBSTR(timestamp, 1, 10), COALESCE(provider, ''), COALESCE(model, ''),
-           COALESCE(connectionId, ''), COALESCE(apiKey, ''), COALESCE(endpoint, ''), MAX(timestamp)
-      FROM usageHistory
-     WHERE timestamp >= ? AND timestamp < ?
-     GROUP BY SUBSTR(timestamp, 1, 10), COALESCE(provider, ''), COALESCE(model, ''),
-              COALESCE(connectionId, ''), COALESCE(apiKey, ''), COALESCE(endpoint, '')
-    ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
-      lastUsed = excluded.lastUsed`, [utcCutoffDayStart, cutoffIso]);
+  // Rebuild the boundary day using the same key identity as normal writes.
+  const remainingLastSeen = historyLastSeen(db, "timestamp >= ? AND timestamp < ?", [utcCutoffDayStart, cutoffIso]);
+  upsertUsageLastSeen(db, remainingLastSeen.map((row) => ({
+    dateKey: row.timestamp.slice(0, 10), provider: row.provider || "", model: row.model || "",
+    connectionId: row.connectionId || "", apiKey: row.apiKey, endpoint: row.endpoint || "", lastUsed: row.timestamp,
+  })));
 
   // Delete usageDaily entries after the cutoff day and rebuild the boundary day
   db.run(`DELETE FROM usageDaily WHERE dateKey > ?`, [cutoffKey]);
@@ -2110,7 +2108,7 @@ function deleteUsageSinceInTx(db, cutoffMs, identitySalt) {
   backfillTokenSaverDaily(db, "WHERE timestamp >= ? AND timestamp < ?", [
     utcCutoffDayStart, cutoffIso,
   ]);
-  rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
+  rebuildDailyKeyInTx(db, cutoffKey);
 
   // Recalculate totalRequestsLifetime from remaining history
   const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);
@@ -2150,7 +2148,7 @@ export async function resetUsageHistory(period) {
       db.run("DELETE FROM tokenSaverDailyReasons");
       db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
     } else {
-      deleteUsageSinceInTx(db, Date.now() - RESET_PERIOD_MS[period], identitySalt);
+      deleteUsageSinceInTx(db, Date.now() - RESET_PERIOD_MS[period]);
     }
   });
 

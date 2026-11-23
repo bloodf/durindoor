@@ -242,7 +242,7 @@ it.skipIf(!process.env.DURINDOOR_TEST_PG_URL)("rewrites populated last-seen and 
       },
     })]);
 
-    expect(applyVersionedMigrations(pgDb, PG_MIGRATIONS)).toEqual({ applied: 2, from: 32, to: 35 });
+    expect(applyVersionedMigrations(pgDb, PG_MIGRATIONS)).toEqual({ applied: 3, from: 32, to: 35 });
     expect(pgDb.all("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual([{ apiKey: "alpha", lastUsed: latest }]);
     const { data } = pgDb.get("SELECT data FROM usageDaily");
     expect(data).not.toMatch(/fixture-(old|current|unknown)/);
@@ -264,7 +264,7 @@ it("preserves model last-seen data and detaches key attribution on backup restor
   await writeUsage(initial, "fixture-old", "alpha");
   await writeUsage("2026-09-19T17:00:00.000Z", null, null);
   const { exportDb, importDb } = await import("@/lib/db/index.js");
-  await importDb(await exportDb());
+  await importDb(await exportDb({ includeSecrets: true }));
 
   expect(db.all("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual([
     { apiKey: "", lastUsed: "2026-09-19T17:00:00.000Z" },

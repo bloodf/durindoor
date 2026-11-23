@@ -455,6 +455,16 @@ function buildDisabledComboMemberMatcher(disabledByProvider, aliases, nodes) {
   };
 }
 
+// Exact combo name first; retry without a Claude context-window suffix
+// ("[1m]"/"-1m") only when the name actually carries one, so plain names are
+// looked up exactly once (9router #2780).
+async function getComboWithSuffixFallback(modelStr) {
+  const combo = await getComboForModel(modelStr);
+  if (combo) return combo;
+  const stripped = stripRecognizedContextSuffix(modelStr);
+  return stripped !== modelStr ? getComboForModel(stripped) : null;
+}
+
 export async function getComboModels(modelStr, hidePaidModels = false, exposureSettings = null) {
   if (isAutoComboId(modelStr)) {
     const family = familyOfAutoId(modelStr);
@@ -475,7 +485,7 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
   // genuine `provider/model` routing whenever a saved combo happened to share
   // the basename. Callers that still want provider-prefixed combo resolution
   // must save the combo under the full `provider/name` form.
-  const combo = await getComboForModel(modelStr) || await getComboForModel(stripRecognizedContextSuffix(modelStr));
+  const combo = await getComboWithSuffixFallback(modelStr);
   if (!combo || !Array.isArray(combo.models)) return null;
   const disabledByProvider = await getDisabledModels().catch(() => ({}));
   if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) {
@@ -503,6 +513,6 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
 // with a slash is treated as a provider/model call, never a basename lookup.
 export async function getComboCanonicalName(modelStr) {
   if (isAutoComboId(modelStr)) return modelStr;
-  const combo = await getComboForModel(modelStr) || await getComboForModel(stripRecognizedContextSuffix(modelStr));
+  const combo = await getComboWithSuffixFallback(modelStr);
   return combo ? combo.name : null;
 }

@@ -241,7 +241,7 @@ describe("successful import", () => {
     expect(text).not.toContain(pairing.token);
     const [row] = rows();
     expect(row.data).not.toContain(FIRST);
-    expect(JSON.parse(row.data).apiKey).toMatchObject({ v: 1 });
+    expect(JSON.parse(row.data).apiKey).toMatchObject({ v: 2 });
     expect(await getProviderConnectionById(JSON.parse(text).connection.id)).toMatchObject({
       provider: "cookie-web", authType: "cookie", name: "Imported", isActive: true,
       apiKey: `session.0=${FIRST}; session.1=${SECOND}`,

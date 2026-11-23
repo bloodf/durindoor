@@ -168,7 +168,7 @@ describe("columnCrypto first-start master key race", () => {
     expect(created.code, created.stderr).toBe(0);
     const original = JSON.parse(created.stdout);
     expect(original.apiKey).toBe(secret);
-    expect(original.stored).toEqual({ v: 1, iv: expect.any(String), ct: expect.any(String) });
+    expect(original.stored).toEqual({ v: 2, iv: expect.any(String), ct: expect.any(String) });
     expect(JSON.stringify(original.stored)).not.toContain(secret);
 
     const keyPath = path.join(dataDir, "master-key");

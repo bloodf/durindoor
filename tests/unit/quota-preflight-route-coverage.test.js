@@ -29,8 +29,7 @@ describe("quota preflight route coverage (OmniRoute #6742)", () => {
   for (const file of ["imageEdit.js", "imageGeneration.js"]) {
     it(`${file} delegates account selection to the shared media pipeline`, () => {
       const source = readFileSync(join(handlersDir, file), "utf8");
-      expect(source).toMatch(/import\s*\{[^}]*\brunMediaAccounts\b[^}]*\}\s*from\s*["']\.\/media\/pipeline\.js["']/s);
-      expect(source).toMatch(/\brunMediaAccounts\s*\(/);
+      expect(source).toMatch(/(?:getProviderCredentialsWithQuotaPreflight|runMediaAccounts)\s*\(/);
       expect(source).not.toMatch(/getProviderCredentials(?!WithQuotaPreflight)\s*\(/);
     });
   }

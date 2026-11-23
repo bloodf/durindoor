@@ -79,17 +79,6 @@ const config = {
             code = `import ${named ? "{ ReviewLoginView as Replacement }" : "Replacement"} from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5", replacement))};\n` + code
               + `\n${named ? "export" : "export default"} function ${name}(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" ? <Replacement {...props} /> : <Incumbent${name} {...props} />; }\n`;
           }
-          if (id.endsWith("/providers/[id]/page.js")) {
-            for (const handler of ["handleRoundRobinToggle", "handleCacheAffinityToggle"]) {
-              const label = handler === "handleRoundRobinToggle" ? "Round Robin" : "Cache Affinity";
-              const pair = new RegExp(`(<span[^>]*>${label}</span>\\s*<Toggle[\\s\\S]*?onChange=\\{${handler}\\} />)`);
-              code = code.replace(pair, '<div className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "inline-flex items-center gap-2 whitespace-nowrap" : "contents"}>$1</div>');
-            }
-            const panel = code.match(/\{!isCompatible &&\s*<ModelAutoSyncPanel[\s\S]*?\/>\s*\}/)?.[0];
-            if (!panel) throw new Error("Provider auto-sync placement changed");
-            code = code.replace(panel, `{globalThis.document?.documentElement.dataset.v5Review !== "true" && (${panel.slice(1, -1)})}`)
-              .replace("{/* Models */}", `{globalThis.document?.documentElement.dataset.v5Review === "true" && (${panel.slice(1, -1)})}\n      {/* Models */}`);
-          }
           if (id.endsWith("/token-saver/TokenSaverClient.jsx")) {
             code = code.replace("export default function TokenSaverClient(", "function IncumbentTokenSaverClient(");
             code = `import TokenSaverDashboard from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx"))};\n` + code

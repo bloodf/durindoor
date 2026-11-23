@@ -28340,7 +28340,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#ProviderDetail",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "ProviderDetail",
-      "sourceSha256": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+      "sourceSha256": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -28363,7 +28363,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28376,7 +28376,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28389,7 +28389,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28402,7 +28402,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28418,7 +28418,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#ProviderDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "ProviderDetailPage",
-      "sourceSha256": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+      "sourceSha256": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -28440,7 +28440,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -28463,7 +28463,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -28485,7 +28485,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -28507,7 +28507,7 @@
             "retained-open"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -28659,8 +28659,8 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#autoSyncPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "autoSyncPanel",
-      "sourceSha256": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
-      "proposedClassification": "visual",
+      "sourceSha256": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
+      "proposedClassification": "nonvisual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -28683,7 +28683,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28696,7 +28696,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28709,7 +28709,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28722,7 +28722,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28735,7 +28735,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -28751,8 +28751,8 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#bulkActionModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "bulkActionModal",
-      "sourceSha256": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
-      "proposedClassification": "visual",
+      "sourceSha256": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
+      "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -28771,7 +28771,7 @@
             "retained-open"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -28803,7 +28803,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258"
           },
           "expectedAbsentRole": {
@@ -28899,8 +28899,8 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#connectionsList",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "connectionsList",
-      "sourceSha256": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
-      "proposedClassification": "visual",
+      "sourceSha256": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
+      "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -28918,7 +28918,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -28988,8 +28988,8 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#renderModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "renderModelsSection",
-      "sourceSha256": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
-      "proposedClassification": "visual",
+      "sourceSha256": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
+      "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -29006,7 +29006,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "f4821bc1c1a55acb1f9f0cc683f9a22a828494e6ed8bc16b45edd1d31ae2f973",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
             "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "55d42e8165d9963b2baf3f462db226e046948199a14de1bf37a6f3821947c258",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -29103,6 +29103,126 @@
       },
       "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "runtimeStatus": "pending"
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx#ProviderDetailSections",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx",
+      "symbol": "ProviderDetailSections",
+      "sourceSha256": "e2b07e90409bbbb4b1ea75c1736374ca7369db90b5a0f4c29f41d930c2fc4e86",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx#autoSyncPanel",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx",
+      "symbol": "autoSyncPanel",
+      "sourceSha256": "e2b07e90409bbbb4b1ea75c1736374ca7369db90b5a0f4c29f41d930c2fc4e86",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx#buildConnectionSections",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx",
+      "symbol": "buildConnectionSections",
+      "sourceSha256": "577c290183d14c1022e32808704b9965fdb552cd3dc771e8f24e58c01632f877",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx#bulkActionModal",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx",
+      "symbol": "bulkActionModal",
+      "sourceSha256": "577c290183d14c1022e32808704b9965fdb552cd3dc771e8f24e58c01632f877",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx#connectionsList",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx",
+      "symbol": "connectionsList",
+      "sourceSha256": "577c290183d14c1022e32808704b9965fdb552cd3dc771e8f24e58c01632f877",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildModelsSection.jsx#renderModelsSection",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/buildModelsSection.jsx",
+      "symbol": "renderModelsSection",
+      "sourceSha256": "d09c2c88c50b3390b7b99ca0393588e5156730e1a28c96a52c3e056cd19ab441",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
     },
     {
       "id": "src/app/(dashboard)/dashboard/providers/[id]/updateCompatibleProviderNode.js#[module]",
@@ -103241,8 +103361,8 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "83962cfb40892c171deeb71e1a6339232323ad54dcc644c46946b5a4c7703fc1",
-    "sourceCensusSha256": "04cecc7a44f0b346f6df778ef97c5090b50cbc480ece65c34a6ee08c1e6efe83",
-    "pendingRows": 442,
+    "sourceCensusSha256": "93d014c6062c4d1579209cec75e5ead4454277ea01679ac6facbee4c5712eb9d",
+    "pendingRows": 448,
     "retainedApprovedRows": 199,
     "pendingReferences": 1488,
     "runtimeStatus": "pending"

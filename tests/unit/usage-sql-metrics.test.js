@@ -119,7 +119,7 @@ describe("portable SQL usage metrics", { timeout: 20000 }, () => {
     await repo.saveRequestUsage({ timestamp: new Date(now.getTime() + 3600000).toISOString(), provider: "openai", model: "model", connectionId: "account-one", apiKey: "key-a", endpoint: "/chat", tokens: { prompt_tokens: 1 } });
     for (const period of ["7d", "all"]) {
       const stats = await repo.getUsageStats(period);
-      for (const [group, dimension, field] of [["byModel", null, null], ["byAccount", "connectionId", "connectionId"], ["byApiKey", "apiKey", "keyName"], ["byEndpoint", "endpoint", "endpoint"]]) {
+      for (const [group, dimension, field] of [["byModel", null, null], ["byAccount", "connectionId", "connectionId"], ["byApiKey", "apiKeyId", "keyName"], ["byEndpoint", "endpoint", "endpoint"]]) {
         const dims = ["provider", "model", ...(dimension ? [dimension] : [])];
         const oracle = db.all(`SELECT ${dims.join(", ")}, MAX(timestamp) AS timestamp FROM usageHistory WHERE timestamp <= ? GROUP BY ${dims.join(", ")}`, [now.toISOString()]);
         for (const entry of Object.values(stats[group])) {

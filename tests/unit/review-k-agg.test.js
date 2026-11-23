@@ -44,7 +44,7 @@ it("preserves single-key totals, legacy association, and the current key label",
   insertKey("alpha", "fixture-first", "Alpha");
   await writeUsage(initial, "fixture-first", "alpha");
   await writeUsage(rotated, "fixture-first", "alpha");
-  db.run("UPDATE usageHistory SET apiKeyId = NULL WHERE timestamp = ?", [rotated]);
+  db.run("UPDATE usageHistory SET apiKeyId = NULL, apiKey = 'fixture-first' WHERE timestamp = ?", [rotated]);
   const window = await repo.getApiKeyWindowUsageTotals("fixture-first", initial, initial, "alpha");
   expect(window.day).toMatchObject({ requests: 2, inputTokens: 4, outputTokens: 6 });
   for (const period of ["all", "7d", "24h"]) {
@@ -204,7 +204,7 @@ it("normalizes rollups when a fresh database imports legacy usage JSON", async (
     },
   }));
   db = await (await import("@/lib/db/driver.js")).getAdapter();
-  expect(db.get("SELECT apiKey, apiKeyId FROM usageHistory")).toEqual({ apiKey, apiKeyId: "alpha" });
+  expect(db.get("SELECT apiKey, apiKeyId FROM usageHistory")).toEqual({ apiKey: null, apiKeyId: "alpha" });
   expect(db.get("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual({ apiKey: "alpha", lastUsed: initial });
   expect(JSON.parse(db.get("SELECT data FROM usageDaily").data).byApiKey).toEqual({
     "alpha|model|fixture": { apiKey: "alpha", provider: "fixture", rawModel: "model", requests: 1 },

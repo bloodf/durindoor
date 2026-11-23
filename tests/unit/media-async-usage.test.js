@@ -155,7 +155,7 @@ describe("durable video jobs use the existing ledger", () => {
   it("records an accepted unknown-cost row at submission, then settles it once across concurrent and restarted polls", async () => {
     await submit();
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ status: "accepted", cost: null, provider: "xai", model: "grok-imagine-video", connectionId: "account-a", apiKey: "owner-secret", endpoint: "/v1/videos/generations" });
+    expect(rows()[0]).toMatchObject({ status: "accepted", cost: null, provider: "xai", model: "grok-imagine-video", connectionId: "account-a", apiKey: null, apiKeyId: "owner", endpoint: "/v1/videos/generations" });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ modality: "video", costStatus: "unknown", costSource: "accepted-job", jobState: "accepted" });
     expect(rows()[0].tokens).not.toContain("secret");
     const stored = adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value;
@@ -169,7 +169,7 @@ describe("durable video jobs use the existing ledger", () => {
     adapter = await (await import("@/lib/db/driver.js")).getAdapter();
     await poll(pollRequest(), "shared-id");
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ status: "ok", cost: null, promptTokens: 0, completionTokens: 0, connectionId: "account-a", apiKey: "owner-secret" });
+    expect(rows()[0]).toMatchObject({ status: "ok", cost: null, promptTokens: 0, completionTokens: 0, connectionId: "account-a", apiKey: null, apiKeyId: "owner" });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ nativeUnits: { videoSeconds: 4.5 }, costStatus: "unknown" });
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, unknownCostRequests: 1 });

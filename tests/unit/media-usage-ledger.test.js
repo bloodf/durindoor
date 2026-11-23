@@ -128,7 +128,7 @@ function event(overrides = {}) {
 }
 
 function rows() {
-  return adapter.all("SELECT * FROM usageHistory WHERE apiKey = ? ORDER BY id", [secret]);
+  return adapter.all("SELECT * FROM usageHistory WHERE apiKeyId = ? ORDER BY id", [keyId]);
 }
 
 async function expectCounters(requests, cost, inputTokens = 0, outputTokens = 0, unknownCostRequests = 0) {
@@ -158,7 +158,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     expect(rows()).toHaveLength(1);
     const [row] = rows();
     expect(row).toMatchObject({
-      timestamp, usageEventId: usage.usageEventId, apiKey: secret,
+      timestamp, usageEventId: usage.usageEventId, apiKey: null, apiKeyId: keyId,
       provider: usage.provider, model: usage.model, connectionId: usage.connectionId,
       endpoint: usage.endpoint, status: "ok", cost: 0.25, promptTokens: 0, completionTokens: 0,
     });

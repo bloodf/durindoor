@@ -92,7 +92,7 @@ describe("music terminal usage lifecycle", () => {
     const response = await generate(request(`${provider}/music-3.0`));
     expect(await response.json()).toMatchObject({ status: "completed", data: [{ b64_json: "AP8BgA==" }] });
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, provider, model: "music-3.0", connectionId: "account-a", endpoint: "/v1/music/generations", cost: null, promptTokens: 0, completionTokens: 0, usageEventId: `${response.headers.get("x-request-id")}:music` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: state.keyId, provider, model: "music-3.0", connectionId: "account-a", endpoint: "/v1/music/generations", cost: null, promptTokens: 0, completionTokens: 0, usageEventId: `${response.headers.get("x-request-id")}:music` });
     expect(meta(rows()[0])).toMatchObject({ modality: "music", nativeUnits: { audioSeconds: 25.364 }, costStatus: "unknown", costSource: "unavailable" });
   });
 

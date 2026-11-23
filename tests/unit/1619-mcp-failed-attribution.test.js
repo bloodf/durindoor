@@ -46,7 +46,7 @@ it("keeps failed MCP calls in their gateway-key view without charging key limits
     status: "error", tokens: {}, cost: 0, costStatus: "known", costSource: "mcp-gateway",
   });
 
-  expect(adapter.all("SELECT apiKey, status FROM usageHistory")).toEqual([{ apiKey: key, status: "error" }]);
+  expect(adapter.all("SELECT apiKey, status FROM usageHistory")).toEqual([{ apiKey: (await import("@/lib/db/helpers/apiKeyAttribution.js")).usageKeyIdentity(null, key), status: "error" }]);
   const stats = await database.getUsageStats("all");
   expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
     apiKeyKey: `mcp-gateway-key:${gatewayKey.id}`,

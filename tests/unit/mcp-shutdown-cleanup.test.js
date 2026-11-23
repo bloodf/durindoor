@@ -11,7 +11,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
 let exitSpy;
 let preSig;
 
@@ -69,11 +68,12 @@ function wireAppMocks({ killAllBridges, getSettings, startQuotaAutoPing }) {
     loadEncryptedPassword: () => null, initDbHooks: () => {},
     restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
   }));
-  vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: startQuotaAutoPing || (() => {}) }));
   vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: startQuotaAutoPing || (() => {}), stopQuotaAutoPing: () => {} }));
   vi.doMock("@/sse/services/backgroundTokenRefresh.js", () => ({ startBackgroundTokenRefresh: () => {}, stopBackgroundTokenRefresh: () => {} }));
   vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
   vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));
+  vi.doMock("@/lib/mcp/gateway/stdioClient", () => ({ killAllStdioEntries: () => {} }));
+  vi.doMock("@/lib/headroom/process", () => ({ stopHeadroomProxy: async () => ({ stopped: false, reason: "not_running" }) }));
 }
 
 describe("initializeApp SIGTERM cleanup", () => {
@@ -85,11 +85,10 @@ describe("initializeApp SIGTERM cleanup", () => {
     await initializeApp();
 
     process.emit("SIGTERM");
-    await flush();
-    await flush();
-
-    expect(killAllBridges).toHaveBeenCalledTimes(1);
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    await vi.waitFor(() => {
+      expect(killAllBridges).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    }, { timeout: 10000 });
   }, 15000);
 });
 

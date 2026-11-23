@@ -6,6 +6,7 @@ import { MIGRATIONS, latestVersion } from "./migrations/index.js";
 import { backfillUsageLastSeen } from "./migrations/021-usage-last-seen.js";
 import { rewriteLastSeenKeyIdentities } from "./migrations/034-usage-last-seen-key-identity.js";
 import usageDailyKeyIdentity from "./migrations/035-usage-daily-key-identity.js";
+import stopRawUsageKeys from "./migrations/036-stop-raw-usage-api-keys.js";
 import { backfillUsageHistoryApiKeyIds } from "./migrations/030-usage-history-api-key-id.js";
 import { PG_MIGRATIONS, bootstrapPgMetaTable } from "./migrations/postgres/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
@@ -479,6 +480,7 @@ async function runMigrationOnceLeased(adapter, lease) {
           backfillUsageLastSeen(adapter);
           rewriteLastSeenKeyIdentities(adapter);
           usageDailyKeyIdentity.up(adapter);
+          stopRawUsageKeys.up(adapter);
         }
         backfillApiKeyUsageTotals(adapter);
         importLegacyDisabled(adapter, legacyDisabled);

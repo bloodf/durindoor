@@ -1093,9 +1093,13 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
 // key's window.
 export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso, apiKeyId = null, weekStartIso = null) {
   const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
-  const withWeek = typeof weekStartIso === "string" && weekStartIso !== "";
-  const emptyResult = () => ({ day: empty(), ...(withWeek ? { week: empty() } : {}), month: empty() });
-  if (!apiKey && !apiKeyId) return emptyResult();
+  const withWeek = Boolean(weekStartIso);
+  if (!apiKey && !apiKeyId) {
+    const none = { day: empty() };
+    if (withWeek) none.week = empty();
+    none.month = empty();
+    return none;
+  }
   const db = await getAdapter();
   const scope = apiKeyUsageScope(db, { apiKeyId, apiKey });
   // One pass over the widest window; each period is a conditional sum. The
@@ -1130,7 +1134,10 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
     cost: n(row?.[`cost${cap}`]),
     unknownCostRequests: n(row?.[`unk${cap}`]),
   });
-  return { day: read("Day"), ...(withWeek ? { week: read("Week") } : {}), month: read("Month") };
+  const totals = { day: read("Day") };
+  if (withWeek) totals.week = read("Week");
+  totals.month = read("Month");
+  return totals;
 }
 
 export async function getUsageHistory(filter = {}) {

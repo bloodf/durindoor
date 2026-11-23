@@ -1,5 +1,5 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
-import { getProviderCredentials, resolveClientApiKey } from "../services/auth.js";
+import { getProviderCredentials, resolveClientApiKey, markAccountUnavailable } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleCountTokensCore, estimateTokens } from "open-sse/handlers/countTokensCore.js";
@@ -8,6 +8,8 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+
+const ANTIGRAVITY_COUNT_TOKENS_COOLDOWN_MS = 60_000;
 
 /**
  * Handle /v1/messages/count_tokens. Calls the provider's native count_tokens
@@ -52,6 +54,14 @@ async function handleCountTokensHandler(request) {
   }
 
   const result = await handleCountTokensCore({ body, modelInfo: { provider, model }, credentials, log });
+  if (!result.success) {
+    if (result.status === HTTP_STATUS.RATE_LIMITED && credentials.connectionId) {
+      await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, Date.now() + ANTIGRAVITY_COUNT_TOKENS_COOLDOWN_MS, {
+        usedCredential: credentials.accessToken || credentials.apiKey || null,
+      });
+    }
+    return errorResponse(result.status, result.error);
+  }
   return result.response;
 }
 export const handleCountTokens = withRequestCorrelation(handleCountTokensHandler);

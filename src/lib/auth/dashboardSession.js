@@ -2,8 +2,9 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir";
-import { getSettings, getSettingsSync } from "@/lib/localDb";
+import { getSettings, getSettingsSync, updateSettings } from "@/lib/localDb";
 import { isString } from "../../shared/utils/typeChecks.js";
 import { timingSafeCompare } from "../../shared/utils/timingSafeCompare.js";
 
@@ -262,6 +263,7 @@ export async function verifyDashboardAuthToken(token) {
     // intermediate cookie, so it is rejected everywhere a session is expected.
     if (payload.scope === MFA_PENDING_SCOPE) return false;
     const settings = await getSettings();
+    if (settings.mfaEnabled === true && settings.mfaSecret && !payload.mfa) return false;
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch;
   } catch {
     return false;
@@ -274,6 +276,7 @@ export async function getDashboardAuthSession(token) {
     const { payload } = await jwtVerify(token, getSecretBytes());
     if (payload.scope === MFA_PENDING_SCOPE) return null;
     const settings = await getSettings();
+    if (settings.mfaEnabled === true && settings.mfaSecret && !payload.mfa) return null;
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch ? payload : null;
   } catch {
     return null;
@@ -339,6 +342,13 @@ export async function setDashboardAuthCookie(cookieStore, request, claims = {}, 
 
 export function clearDashboardAuthCookie(cookieStore) {
   cookieStore.delete("auth_token");
+}
+
+/** Revoke all dashboard sessions by advancing the shared session epoch. */
+export async function rotateDashboardSessionEpoch(settingsPatch = {}) {
+  const passwordSessionEpoch = crypto.randomBytes(16).toString("hex");
+  await updateSettings({ ...settingsPatch, passwordSessionEpoch });
+  return passwordSessionEpoch;
 }
 
 // Verify the current dashboard password (re-auth for sensitive actions).

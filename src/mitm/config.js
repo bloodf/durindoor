@@ -1,14 +1,17 @@
 // All intercepted domains + URL patterns per tool
 
 const { resolveTrustedUnixBinary } = require("./trustedBinaries");
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
 
 const IS_DEV = process.env.NODE_ENV === "development";
 // Explicit argv marker survives sudo and esbuild's CommonJS wrapper, where
 // require.main may no longer identify the bundled MITM entry module.
 const MITM_ENTRY_ARG = "--durindoor-mitm-entry";
 // Loopback-only OS locks disappear automatically when their owner exits.
-const MITM_START_LOCK_PORT = 20443;
-const ROOT_CA_LOCK_PORT = 20444;
+const lockUid = isFunction(process.getuid) ? process.getuid() : 0;
+// Separate lock listeners per OS account to prevent cross-user lock contention.
+const MITM_START_LOCK_PORT = 30000 + ((lockUid % 10000) * 2);
+const ROOT_CA_LOCK_PORT = MITM_START_LOCK_PORT + 1;
 const MITM_NODE_PORT = 8443;
 
 // Resolve lsof absolute path — packaged apps / sudo secure_path may strip /usr/sbin from PATH

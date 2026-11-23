@@ -1,3 +1,4 @@
+import { antigravityGeminiResponse } from "../handlers/chatCore/antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
@@ -172,7 +173,8 @@ export function createSSEStream(options = {}) {
     providerBody = null,
     apiKey = null,
     claudeClassifierCompat = "off",
-    credentials = null
+    credentials = null,
+    nativeGemini = false
   } = options;
 
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
@@ -1313,11 +1315,11 @@ export function createSSEStream(options = {}) {
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         sanitizePublicErrorEnvelope(parsed, errorSecrets);
-        const terminalError = translatedTerminalError(parsed, sourceFormat);
+        const terminalError = translatedTerminalError(parsed, nativeGemini ? FORMATS.GEMINI : sourceFormat);
         if (terminalError) {
           streamErrorPayload ??= extractStreamErrorPayload({ error: terminalError });
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(terminalError, sourceFormat, errorSecrets);
+          const output = formatTranslatedStreamError(terminalError, nativeGemini ? FORMATS.GEMINI : sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -1435,7 +1437,10 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        // Extract usage
+        // Preserve Cloud Code's hidden usage for accounting as well as the client.
+        if (nativeGemini && parsed.response?.cpaUsageMetadata) {
+          parsed.response.usageMetadata = parsed.response.cpaUsageMetadata;
+        }
         const extracted = extractUsage(parsed);
         if (extracted) state.usage = mergeUsage(state.usage, extracted);
 
@@ -1495,7 +1500,13 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        if (translated?.length > 0) {
+        if (nativeGemini) {
+          const output = formatSSE(antigravityGeminiResponse(parsed, toolNameMap, true), FORMATS.GEMINI);
+          reqLogger?.appendConvertedChunk?.(output);
+          controller.enqueue(sharedEncoder.encode(output));
+          sseEmittedCount++;
+        }
+        if (!nativeGemini && translated?.length > 0) {
           for (const item of translated) {
             if (item === null || item === undefined) continue;
             // Filter empty chunks
@@ -1819,7 +1830,10 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              if (translated?.length > 0) {
+              if (nativeGemini) {
+                controller.enqueue(sharedEncoder.encode(formatSSE(antigravityGeminiResponse(parsed, toolNameMap, true), FORMATS.GEMINI)));
+              }
+              if (!nativeGemini && translated?.length > 0) {
                 for (const item of translated) {
                   if (item === null || item === undefined) continue;
                   const output = formatSSE(item, sourceFormat);
@@ -1840,7 +1854,7 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        if (flushed?.length > 0) {
+        if (!nativeGemini && flushed?.length > 0) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
             const output = formatSSE(item, sourceFormat);
@@ -1860,7 +1874,7 @@ export function createSSEStream(options = {}) {
 
         // Every OpenAI-shaped client stream ends with the [DONE] sentinel, whatever
         // the upstream protocol: Gemini and Ollama upstreams close without one.
-        const needsOpenAIDone = sourceFormat === FORMATS.OPENAI || keepsOpenAIResponsesFormat;
+        const needsOpenAIDone = !nativeGemini && (sourceFormat === FORMATS.OPENAI || keepsOpenAIResponsesFormat);
         if (needsOpenAIDone && !openAIResponsesDoneSent && !streamDoneSent) {
           const doneOutput = "data: [DONE]\n\n";
           reqLogger?.appendConvertedChunk?.(doneOutput);
@@ -1895,7 +1909,7 @@ export function createSSEStream(options = {}) {
   return transformStream;
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null, claudeCloaked = false) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null, claudeCloaked = false, nativeGemini = false) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -1912,7 +1926,8 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     apiKey,
     claudeClassifierCompat,
     credentials,
-    claudeCloaked
+    claudeCloaked,
+    nativeGemini
   });
 }
 

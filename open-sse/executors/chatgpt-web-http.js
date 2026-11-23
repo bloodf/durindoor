@@ -603,19 +603,19 @@ function stripInlinedImages(content) {
   );
 }
 
-function findCachedImageContext(content) {
+function findCachedImageContext(content, owner) {
   let latest = null;
   // String.prototype.matchAll consumes a fresh iterator and ignores the
   // regex's lastIndex, so no manual reset is required.
   for (const match of content.matchAll(CACHED_IMAGE_URL_RE)) {
     const id = match[1];
-    const context = getChatGptImageConversationContext(id);
+    const context = getChatGptImageConversationContext(id, owner?.apiKeyId, owner?.connectionId);
     if (context) latest = context;
   }
   return latest;
 }
 
-function parseOpenAIMessages(messages) {
+function parseOpenAIMessages(messages, owner) {
   let systemMsg = "";
   const history = [];
   let latestImageContext = null;
@@ -634,7 +634,7 @@ function parseOpenAIMessages(messages) {
         .join(" ");
     }
     content = stripInlinedImages(content);
-    const imageContext = findCachedImageContext(content);
+    const imageContext = findCachedImageContext(content, owner);
     if (imageContext) latestImageContext = imageContext;
     if (!content.trim()) continue;
 
@@ -1961,13 +1961,8 @@ async function fetchDownloadUrl(endpoint, ctx) {
 const IMAGE_DOWNLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 async function imageUrlToCachedImageUrl(signedUrl, ctx, imageContext) {
-  const headers = {
-    ...browserHeaders(),
-    Accept: "image/*,*/*;q=0.8",
-    Authorization: `Bearer ${ctx.accessToken}`,
-    Cookie: buildNextAuthSessionCookie(ctx.cookie),
-  };
-  if (ctx.accountId) headers["chatgpt-account-id"] = ctx.accountId;
+  const headers = buildImageDownloadHeaders(signedUrl, ctx);
+  if (!headers) return null;
 
   let response;
   try {
@@ -1976,9 +1971,7 @@ async function imageUrlToCachedImageUrl(signedUrl, ctx, imageContext) {
       headers,
       timeoutMs: 60_000,
       signal: ctx.signal,
-      // Required for binary payloads — the underlying tls-client returns
-      // bytes as a `data:<mime>;base64,...` string when this is true.
-      // Without it, raw image bytes get mangled by UTF-8 decoding.
+      // Required for binary payloads; otherwise raw image bytes get mangled by UTF-8 decoding.
       byteResponse: true,
     });
   } catch (err) {
@@ -2035,6 +2028,29 @@ async function imageUrlToCachedImageUrl(signedUrl, ctx, imageContext) {
   const id = storeChatGptImage(bytes, mime, undefined, imageContext);
   return `${ctx.publicBaseUrl}/v1/chatgpt-web/image/${id}`;
 }
+
+function buildImageDownloadHeaders(signedUrl, ctx) {
+  let url;
+  try {
+    url = new URL(signedUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  const isChatGptHost = url.hostname === "chatgpt.com" || url.hostname.endsWith(".chatgpt.com");
+  const headers = {
+    ...browserHeaders(),
+    Accept: "image/*,*/*;q=0.8",
+  };
+  if (isChatGptHost) {
+    headers.Authorization = `Bearer ${ctx.accessToken}`;
+    headers.Cookie = buildNextAuthSessionCookie(ctx.cookie);
+    if (ctx.accountId) headers["chatgpt-account-id"] = ctx.accountId;
+  }
+  return headers;
+}
+
+export const __buildImageDownloadHeadersForTesting = buildImageDownloadHeaders;
 
 /**
  * Resolve the async image_gen result by registering a WebSocket with
@@ -2421,7 +2437,7 @@ function makeImageResolver(ctx) {
       finalUrl = await imageUrlToCachedImageUrl(
         signedUrl,
         ctx,
-        conversationId && parentMessageId ? { conversationId, parentMessageId } : undefined
+        conversationId && parentMessageId && ctx.imageContextOwner ? { conversationId, parentMessageId, owner: ctx.imageContextOwner } : undefined
       );
     }
     cache.set(assetPointer, finalUrl);
@@ -2457,6 +2473,8 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     body,
     stream,
     credentials,
+    apiKeyId,
+    connectionId,
     signal,
     log,
     onCredentialsRefreshed,
@@ -2649,7 +2667,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     }
 
     // 4. Build conversation request
-    const parsed = parseOpenAIMessages(effectiveMessages);
+    const parsed = parseOpenAIMessages(effectiveMessages, { apiKeyId, connectionId });
     if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
       return {
         response: errorResponse(400, "Empty user message"),
@@ -2778,6 +2796,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
       sessionId,
       deviceId,
       cookie,
+      imageContextOwner: apiKeyId && connectionId ? { apiKeyId, connectionId } : null,
       signal,
       log,
       publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),

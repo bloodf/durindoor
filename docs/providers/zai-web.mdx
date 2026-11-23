@@ -1,8 +1,9 @@
 ---
 title: "Z.ai Web"
+description: Route chat through a signed-in Z.ai consumer web session.
 ---
 
-Z.ai Web routes chat requests through the consumer service at [chat.z.ai](https://chat.z.ai). This connection uses the session token issued by the website, not a Z.ai API key. The provider was ported from OmniRoute `release/v3.8.55`, pinned at [`4265bb2`](https://github.com/cheaper-inference/OmniRoute/tree/4265bb2ad5477450a07d3a43ea33a62c6c874878), specifically `open-sse/config/providers/registry/zai-web/index.ts` and `open-sse/executors/zai-web.ts`.
+Z.ai Web routes chat requests through the consumer service at [chat.z.ai](https://chat.z.ai). This connection uses the session token issued by the website, not a Z.ai API key.
 
 ## Setup
 
@@ -14,4 +15,4 @@ For DevTools, open Network after signing in, select a request to `chat.z.ai`, an
 
 The catalog includes GLM-5.3-Flash, GLM-5.3, and GLM-5.2. Availability, quotas, and model access are controlled by Z.ai. The web session flow may require CAPTCHA proof; requests rejected for missing or stale proof can fail even while the session token remains valid. HTTP 401/403 indicate a rejected or expired session, and HTTP 429 indicates quota or rate limiting.
 
-The integration follows the pinned OmniRoute protocol for chat creation, signed completion requests, and SSE frames. Source references: [OmniRoute provider entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/zai-web/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/zai-web.ts), [protocol](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/zai-web/protocol.ts), and [stream parser](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/zai-web/stream.ts).
+The integration supports chat creation, signed completion requests, and SSE frames.

@@ -1,12 +1,27 @@
 services:
   durindoor:
-    image: ghcr.io/bloodf/durindoor:latest
+    # Bump this tag to the current published DurinDoor release.
+    image: ghcr.io/bloodf/durindoor:4.9.2
     container_name: durindoor
     restart: always
+    read_only: true
+    cap_drop:
+      - ALL
+    # The root entrypoint needs these capabilities before it drops to node.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "20128:20128"
+      # Keep the app private by default; route a reverse proxy to this port.
+      - "127.0.0.1:20128:20128"
     volumes:
       - durindoor-data:/app/data
+    tmpfs:
+      - /tmp
     env_file:
       - path: .env
         required: false

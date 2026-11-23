@@ -54,6 +54,18 @@ function sortConnections(connections, sort) {
   });
 }
 
+// Provider ordering is cosmetic: a settings read failure must not break the
+// quota connection listing, so fall back to the default order.
+async function readQuotaProviderOrderSetting() {
+  try {
+    const settings = await getSettings();
+    return Array.isArray(settings?.quotaProviderOrder) ? settings.quotaProviderOrder : [];
+  } catch (error) {
+    console.log("Error reading quota provider order:", error);
+    return [];
+  }
+}
+
 export async function GET(request) {
   try {
     await backfillCodexEmails();
@@ -84,9 +96,9 @@ export async function GET(request) {
       return true;
     });
 
-    const settings = await getSettings();
-    const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), settings.quotaProviderOrder);
-    const sortedConnections = applyQuotaProviderOrder(sortConnections(accountFilteredConnections, sort), settings.quotaProviderOrder || []);
+    const savedProviderOrder = await readQuotaProviderOrderSetting();
+    const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), savedProviderOrder);
+    const sortedConnections = applyQuotaProviderOrder(sortConnections(accountFilteredConnections, sort), savedProviderOrder);
     const total = sortedConnections.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);

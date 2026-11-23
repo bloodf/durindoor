@@ -102,6 +102,7 @@ async function handleFetchHandler(request) {
     if (route.error) return route.error;
     usageContext.comboName = defaultRouteComboOptions("webFetch").comboName;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings),
@@ -150,6 +151,7 @@ async function handleFetchHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("FETCH", `Combo "${comboName}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings, comboRouting),

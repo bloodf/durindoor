@@ -116,9 +116,11 @@ export class NotionWebExecutor extends BaseExecutor {
     try {
       const { spaceId, userId } = await discoverNotionModels(cookie, this.fetcher);
       const clientId = input.clientHeaders?.["x-notion-thread-id"] || body.notion_thread_id || "";
-      const scope = `${cookieValue(cookie, "notion_user_id")}:${spaceId}:${input.credentials?.connectionId || ""}`;
-      const key = `${scope}:${clientId || body.messages.filter((m) => m.role === "user").map((m) => m.content).join("|").slice(0, 100)}`;
-      const oldId = sessions.get(key);
+      const apiKeyId = input.apiKeyId;
+      const connectionId = input.connectionId || input.credentials?.connectionId;
+      const scope = apiKeyId && connectionId ? JSON.stringify([apiKeyId, connectionId, cookieValue(cookie, "notion_user_id"), spaceId]) : null;
+      const key = scope ? `${scope}:${clientId || body.messages.filter((m) => m.role === "user").map((m) => m.content).join("|").slice(0, 100)}` : null;
+      const oldId = key ? sessions.get(key) : null;
       const threadId = oldId || randomUUID();
       const payload = { traceId: randomUUID(), spaceId, threadId, createThread: !oldId, generateTitle: !oldId, asPatchResponse: true, patchResponseVersion: 2, isPartialTranscript: Boolean(oldId), saveAllThreadOperations: true, setUnreadState: !oldId, createdSource: "ai_module", threadType: "workflow", transcript: transcript(body.messages, body.model, spaceId, userId), threadParentPointer: { table: "space", id: spaceId, spaceId }, debugOverrides: { annotationInferences: {}, cachedInferences: {}, emitAgentSearchExtractedResults: true, emitInferences: false } };
       const response = await request(INFERENCE, { method: "POST", headers: headers(cookie, spaceId, userId), body: JSON.stringify(payload), signal: input.signal }, this.fetcher);
@@ -127,7 +129,7 @@ export class NotionWebExecutor extends BaseExecutor {
       if (!response.ok) return this.fail(response.status >= 500 ? 502 : response.status, `Notion inference failed (${response.status})`, body);
       const text = parseNotionInference(await response.text());
       if (!text) return this.fail(502, "Notion returned no assistant text", body);
-      sessions.set(key, threadId);
+      if (key) sessions.set(key, threadId);
       const model = String(body.model || "notion-ai").replace(/^(notion-web|nw)\//, "");
       const id = `chatcmpl-notion-${threadId}`;
       const chunk = (content, finish_reason = null) => ({ id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: content ? { content } : {}, finish_reason }] });

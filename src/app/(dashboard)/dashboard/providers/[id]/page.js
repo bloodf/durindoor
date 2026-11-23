@@ -1573,14 +1573,14 @@ function ProviderDetail({ providerId }) {
     isOpen={showBulkProxyModal}
     onClose={closeBulkProxyModal}
     title={`Apply Proxy (${selectedConnections.length > 0 ? `${selectedConnections.length} selected` : `all ${connections.length}`} connections)`}>
-    
+
       <div className="flex flex-col gap-3">
         <div className="flex flex-col">
           <button
           onClick={handleApplyOneToOne}
           disabled={bulkUpdatingProxy || activePools.length === 0}
           className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
-          
+
             <span className="material-symbols-outlined text-dd-muted text-[18px]">sync_alt</span>
             <span className="text-sm text-dd-text">One-to-one (rotate)</span>
           </button>
@@ -1588,7 +1588,7 @@ function ProviderDetail({ providerId }) {
           onClick={() => handleApplySinglePool(null)}
           disabled={bulkUpdatingProxy}
           className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
-          
+
             <span className="material-symbols-outlined text-dd-muted text-[18px]">link_off</span>
             <span className="text-sm text-dd-text">None (unbind all)</span>
           </button>
@@ -1598,7 +1598,7 @@ function ProviderDetail({ providerId }) {
           onClick={() => handleApplySinglePool(pool.id)}
           disabled={bulkUpdatingProxy || pool.isActive !== true}
           className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
-          
+
               <span className="material-symbols-outlined text-dd-muted text-[18px]">lan</span>
               <span className="truncate text-sm text-dd-text">{pool.name}</span>
               {pool.isActive !== true &&
@@ -1811,7 +1811,7 @@ function ProviderDetail({ providerId }) {
         <button
           onClick={() => setShowAddCustomModel(true)}
           className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-accent/40 px-3 py-2 text-xs text-dd-accent transition-colors hover:border-dd-accent hover:bg-dd-accent-soft sm:w-auto">
-          
+
           <span className="material-symbols-outlined text-sm">add</span>
           Add Model
         </button>
@@ -1822,7 +1822,7 @@ function ProviderDetail({ providerId }) {
           onClick={handleImportQoderModels}
           disabled={importingQoderModels}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-info/40 px-3 py-2 text-xs text-dd-info transition-colors hover:border-dd-info hover:bg-dd-info/10 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
-          
+
             <span className={`material-symbols-outlined text-sm ${importingQoderModels ? "animate-spin motion-reduce:animate-none" : ""}`}>
               {importingQoderModels ? "progress_activity" : "download"}
             </span>
@@ -1836,7 +1836,7 @@ function ProviderDetail({ providerId }) {
           disabled={syncingModels}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-accent/40 px-3 py-2 text-xs text-dd-accent transition-colors hover:bg-dd-accent-soft sm:w-auto disabled:opacity-50"
           title={modelsFetchedAt ? `Last synced ${modelsFetchedAt.toLocaleString()}` : "Fetch latest provider models"}>
-          
+
             <span className={`material-symbols-outlined text-sm ${syncingModels ? "animate-spin" : ""}`}>sync</span>
             {syncingModels ? "Syncing…" : "Sync models"}
           </button>
@@ -1871,7 +1871,7 @@ function ProviderDetail({ providerId }) {
                   }}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 hover:bg-dd-accent-soft transition-colors"
                   title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}>
-                  
+
                     <span className="material-symbols-outlined text-[13px]">add</span>
                     {m.id.split("/").pop()}
                   </button>
@@ -1892,7 +1892,7 @@ function ProviderDetail({ providerId }) {
               onClick={() => handleEnableModel(m.id)}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 hover:bg-dd-accent-soft transition-colors"
               title="Restore model">
-              
+
                   <span className="material-symbols-outlined text-[13px]">add</span>
                   {m.id}
                 </button>
@@ -2019,7 +2019,7 @@ function ProviderDetail({ providerId }) {
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex justify-center rounded bg-dd-info px-2 py-1 text-xs font-medium text-dd-on-accent transition-colors hover:bg-dd-info sm:py-0.5">
-          
+
               Get API Key →
             </a>
         }
@@ -2048,7 +2048,7 @@ function ProviderDetail({ providerId }) {
                 setShowAddApiKeyModal(true);
               }}
               className="w-full sm:w-auto">
-              
+
                 Add API Key
               </Button>
               <Button
@@ -2057,7 +2057,7 @@ function ProviderDetail({ providerId }) {
               icon="edit"
               onClick={() => setShowEditNodeModal(true)}
               className="w-full sm:w-auto">
-              
+
                 Edit
               </Button>
               <Button
@@ -2082,7 +2082,7 @@ function ProviderDetail({ providerId }) {
                 });
               }}
               className="w-full sm:w-auto">
-              
+
                 Delete
               </Button>
             </div>
@@ -2105,7 +2105,7 @@ function ProviderDetail({ providerId }) {
               variant="secondary"
               icon="lan"
               onClick={() => setShowBulkProxyModal(true)}>
-              
+
                   Apply Proxy
                 </Button>
             }
@@ -2119,7 +2119,7 @@ function ProviderDetail({ providerId }) {
                   icon="check_circle"
                   onClick={() => requestBulkStatusReview(true)}
                   disabled={bulkStatusAction !== null || selectedInactiveCount === 0}>
-                  
+
                         {bulkStatusAction === "on" ? "Turning On..." : `On Selected (${selectedConnectionIds.length})`}
                       </Button>
                       <Button
@@ -2128,7 +2128,7 @@ function ProviderDetail({ providerId }) {
                   icon="block"
                   onClick={() => requestBulkStatusReview(false)}
                   disabled={bulkStatusAction !== null || selectedActiveCount === 0}>
-                  
+
                         {bulkStatusAction === "off" ? "Turning Off..." : `Off Selected (${selectedConnectionIds.length})`}
                       </Button>
                       <Button size="sm" variant="secondary" icon="sync" onClick={() => handleRunOneByOneTest(selectedConnections)} disabled={oneByOneRunning}>
@@ -2140,7 +2140,7 @@ function ProviderDetail({ providerId }) {
                   icon="delete"
                   onClick={requestBulkDeleteReview}
                   disabled={bulkStatusAction !== null}>
-                  
+
                         Delete Selected ({selectedConnectionIds.length})
                       </Button>
                     </>
@@ -2151,7 +2151,7 @@ function ProviderDetail({ providerId }) {
                 icon="sync"
                 onClick={() => handleRunOneByOneTest()}
                 disabled={oneByOneRunning}>
-                
+
                     {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
                   </Button>
                   {oneByOneRunning &&
@@ -2161,7 +2161,7 @@ function ProviderDetail({ providerId }) {
                 icon="stop"
                 onClick={handleStopOneByOneTest}
                 disabled={oneByOneStopping}>
-                
+
                       {oneByOneStopping ? "Stopping..." : "Stop"}
                     </Button>
               }
@@ -2175,7 +2175,7 @@ function ProviderDetail({ providerId }) {
               onClick={handleReorderByStatus}
               disabled={connectionFilter.length > 0}
               title="Reorder by availability status">
-              
+
                   Reorder
                 </Button>
             }
@@ -2197,7 +2197,7 @@ function ProviderDetail({ providerId }) {
                       onChange={handleRoundRobinToggle} />
                   </>
                 )}
-              
+
                 {providerStrategy === "round-robin" &&
               <div className="flex items-center gap-1.5">
                     <span className="text-xs text-dd-muted">Sticky:</span>
@@ -2208,7 +2208,7 @@ function ProviderDetail({ providerId }) {
                   onChange={(e) => handleStickyLimitChange(e.target.value)}
                   placeholder="1"
                   className="h-9 w-14 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
-                
+
                   </div>
               }
                 {uiV5 ? (
@@ -2331,7 +2331,7 @@ function ProviderDetail({ providerId }) {
                 size="sm"
                 icon="add"
                 onClick={triggerAddConnection}>
-                
+
                       {isCompatible ? "Add API Key" : providerId === "iflow" ? "OAuth" : "Add Connection"}
                     </Button>
                   </>
@@ -2404,7 +2404,7 @@ function ProviderDetail({ providerId }) {
               onClick={() => setShowIFlowCookieModal(true)}
               title="Add connection using browser cookie"
               className="w-full sm:w-auto">
-              
+
                       Cookie
                     </Button>
             }
@@ -2416,7 +2416,7 @@ function ProviderDetail({ providerId }) {
               onClick={() => setShowBulkImportCodex(true)}
               title={translate("Bulk import codex accounts from JSON")}
               className="w-full sm:w-auto">
-              
+
                       {translate("Bulk Add")}
                     </Button>
             }
@@ -2462,7 +2462,7 @@ function ProviderDetail({ providerId }) {
                 variant="secondary"
                 onClick={triggerOAuthConnection}
                 className="w-full sm:w-auto">
-                
+
                         {oauthConnectionLabel}
                       </Button>
                       }
@@ -2472,7 +2472,7 @@ function ProviderDetail({ providerId }) {
                 icon="key"
                 onClick={() => triggerApiKeyConnection("apikey")}
                 className="w-full sm:w-auto">
-                
+
                         {apiKeyConnectionLabel}
                       </Button>
                       }
@@ -2483,7 +2483,7 @@ function ProviderDetail({ providerId }) {
                 variant="secondary"
                 onClick={() => triggerApiKeyConnection("auth_token")}
                 className="w-full sm:w-auto">
-                
+
                         Auth Token
                       </Button>
                       }
@@ -2494,7 +2494,7 @@ function ProviderDetail({ providerId }) {
               icon="add"
               onClick={triggerAddConnection}
               className="w-full sm:w-auto">
-              
+
                       Add
                     </Button>
             }
@@ -2712,31 +2712,32 @@ function ProviderDetail({ providerId }) {
               setShowImportTokenModal(false);
             }}
             disabled={importingToken}>
-            
+
               Cancel
             </Button>
             <Button
             icon="upload"
             loading={importingToken}
             onClick={handleImportTokenSubmit}>
-            
+
               Import
             </Button>
           </>
         }>
-        
+
         <div className="space-y-4">
           <p className="text-sm text-dd-muted">
             Paste the contents of <code className="rounded bg-dd-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-dd-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
           </p>
           <textarea
+            aria-label="Import provider token"
             value={importTokenValue}
             onChange={(event) => setImportTokenValue(event.target.value)}
             rows={10}
             spellCheck={false}
             className="w-full rounded-[10px] border border-dd-border bg-dd-surface px-3 py-2 font-mono text-xs text-dd-text outline-none focus:border-dd-accent"
             placeholder='{"https://auth.x.ai::client":{"key":"eyJ...","refresh_token":"...","expires_at":"..."}}' />
-          
+
           {!!importTokenError &&
           <p className="text-sm text-dd-danger">{importTokenError}</p>
           }
@@ -2774,14 +2775,14 @@ function ProviderDetail({ providerId }) {
         connections={connections}
         onSuccess={fetchConnections}
         onClose={() => setShowCookieImportModal(false)} />
-      
+
       <EditConnectionModal
         isOpen={showEditModal}
         connection={selectedConnection}
         proxyPools={proxyPools}
         onSave={handleUpdateConnection}
         onClose={() => setShowEditModal(false)} />
-      
+
       {isCompatible &&
       <EditCompatibleNodeModal
         isOpen={showEditNodeModal}
@@ -2881,7 +2882,7 @@ function ProviderDetail({ providerId }) {
         confirmText="I Understand, Continue"
         cancelText="Cancel"
         variant="danger" />
-      
+
 
       <BulkReviewModal review={bulkReview?.review ?? null} onConfirm={confirmBulkReview} onCancel={cancelBulkReview} />
 
@@ -2893,7 +2894,7 @@ function ProviderDetail({ providerId }) {
         title={confirmState?.title || "Confirm"}
         message={confirmState?.message}
         variant="danger" />
-      
+
     </div>);
 
 }

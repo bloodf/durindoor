@@ -1422,6 +1422,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         stream,
         credentials,
         connectionId,
+        apiKeyId,
         providerSessionId: sessionSeed,
         clientTool,
         signal: providerSignal,
@@ -1475,7 +1476,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
 
         undefined,
         providerSignal,
-        { body, stream }
+        { body, stream, apiKeyId }
       );
       // A disconnect may finish the request while acquireMany is returning its lease.
       if (providerRequestFinished) releaseConcurrencySlots();
@@ -1492,7 +1493,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         };
       }
       if (e instanceof ConcurrencyGateTimeoutError) {
-        log?.warn?.("CONCURRENCY", `${provider} | gate timeout after ${e.timeoutMs}ms (${e.limit} max)`);
+        log?.warn?.("CONCURRENCY", `${provider} | ${e.message}`);
         finishTimeline("error", "error", "concurrency gate timeout");
         return {
           ...createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, e.message),

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { clearDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { clearDashboardAuthCookie, rotateDashboardSessionEpoch } from "@/lib/auth/dashboardSession";
 
 export async function POST() {
   const cookieStore = await cookies();
+  await rotateDashboardSessionEpoch();
   clearDashboardAuthCookie(cookieStore);
   cookieStore.delete("oidc_state");
   cookieStore.delete("oidc_nonce");

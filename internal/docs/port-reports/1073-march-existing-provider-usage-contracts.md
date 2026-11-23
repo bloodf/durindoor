@@ -14,7 +14,7 @@ The behavior under review is quota/plan display metadata for existing provider i
 
 ### Claude OAuth quota values
 
-The current OAuth parser treats Anthropic `utilization` as percentage used, computes `remaining = 100 - used`, and publishes that value as `remainingPercentage`; it requires a numeric utilization value and ignores malformed/non-object windows. It also uses `extra_usage ?? null`. See [`open-sse/services/usage/claude.js`](../../../open-sse/services/usage/claude.js) and the dashboard normalizer [`ProviderLimits/utils.js`](../../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js).
+The current OAuth parser treats Anthropic `utilization` as percentage used, computes `remaining = 100 - used`, and publishes that value as `remainingPercentage`; it requires a numeric utilization value and ignores malformed/non-object windows. It also uses `extra_usage ?? null`. See [`open-sse/services/usage/claude.js`](../../../open-sse/services/usage/claude.js) and the dashboard normalizer `ProviderLimits/utils.js`.
 
 Offline fixtures assert used/remaining values for OAuth windows and model windows in [`provider-quota-normalizers.test.js`](../../../tests/unit/provider-quota-normalizers.test.js), preserve provider-supplied percentages in [`quota-remaining-percentage.test.js`](../../../tests/unit/quota-remaining-percentage.test.js), and verify extra-usage credit display and absolute balance handling in [`claude-extra-usage-quota.test.js`](../../../tests/unit/claude-extra-usage-quota.test.js). Persisted request usage remains separate from these quota snapshots.
 

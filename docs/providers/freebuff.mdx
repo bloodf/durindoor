@@ -5,7 +5,7 @@ description: Opt-in provider for Freebuff device sessions. Separate from paid Co
 
 Freebuff (`freebuff`, alias `fb`) is the free, ad-supported Codebuff product. Signing in with the Freebuff CLI flow gives a device-session `authToken`. That token is **not** a paid `cb_...` Codebuff API key, and DurinDoor treats the two as different providers. The existing Codebuff connection is unchanged, and a Freebuff token is never stored in it or sent as its key.
 
-This provider is **unverified**. It is a port of the reverse-engineered client in OmniRoute, not a documented third-party API: Freebuff has not published a supported auth and headless boundary for orchestrators (see [Freebuff issue #947](https://github.com/CodebuffAI/freebuff/issues/947) and the repository note `internal/docs/freebuff-provider-contract.md`). Tests use closed mocks. No live Freebuff account, token or request has been used.
+This provider is **unverified**. Freebuff has not published a supported authentication and headless boundary for orchestrators. Tests use closed mocks. No live Freebuff account, token or request has been used.
 
 ## Read this first
 
@@ -81,9 +81,4 @@ A pasted token can be checked with the same session probe (`validateFreebuffToke
 
 ## Sources
 
-- [OmniRoute freebuff registry entry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/freebuff/index.ts)
-- [OmniRoute freebuff executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/freebuff.ts)
-- [OmniRoute freebuff sign-in service](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/oauth/providers/freebuff.ts)
-- [OmniRoute OAuth constants (FREEBUFF_CONFIG)](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/oauth/constants/oauth.ts)
-- [OmniRoute validator](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/src/lib/providers/validation.ts)
-- [Freebuff repository](https://github.com/CodebuffAI/freebuff) and [issue #947 (headless and SDK request)](https://github.com/CodebuffAI/freebuff/issues/947)
+- [Freebuff repository](https://github.com/CodebuffAI/freebuff)

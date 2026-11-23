@@ -265,7 +265,7 @@ describe("#2181 Deepgram, AssemblyAI, and HuggingFace STT proxy and abort signal
     expect(result.success).toBe(true);
     expect(await result.response.json()).toEqual({ text: "proxied hf" });
     expect(captured).toHaveLength(1);
-    expect(captured[0].url).toBe("https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3");
+    expect(captured[0].url).toBe("https://router.huggingface.co/hf-inference/models/openai%2Fwhisper-large-v3");
     expect(captured[0].init.dispatcher).toBe(fakeDispatcher);
     expect(captured[0].init.signal).toBe(ctrl.signal);
   });

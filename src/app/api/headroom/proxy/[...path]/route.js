@@ -146,11 +146,25 @@ function buildTargetUrl(base, path, search) {
   return target;
 }
 
+function hasTraversalSegment(path) {
+  return path.some((segment) => {
+    let decoded = segment;
+    for (let i = 0; i < 5; i++) {
+      let next;
+      try { next = decodeURIComponent(decoded); } catch { return true; }
+      if (next === decoded) break;
+      decoded = next;
+    }
+    return decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\");
+  });
+}
+
 async function proxy(request, { params }) {
   try {
     const { target: base, timeoutMs } = await getTargetConfig();
     const { search } = new URL(request.url);
     const path = (await params).path || [];
+    if (hasTraversalSegment(path)) return NextResponse.json({ error: "Invalid proxy path" }, { status: 400 });
     const target = buildTargetUrl(base, path, search);
     const method = request.method;
     const hasBody = !["GET", "HEAD"].includes(method);

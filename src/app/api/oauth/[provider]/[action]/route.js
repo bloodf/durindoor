@@ -43,7 +43,7 @@ import {
   stopXaiProxy } from
 "@/lib/oauth/utils/server";
 import { createProviderConnection } from "@/models";
-import { isFunction, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { timingSafeCompare } from "../../../../../shared/utils/timingSafeCompare.js";
 
 const NO_PKCE_DEVICE_PROVIDERS = new Set([
@@ -469,9 +469,8 @@ async function completeAuthorization(provider, input, signal = null) {
 
   const claim = claimBoundOAuthFlow({ flowId, state, provider, kind: "authorization" });
   try {
-    // These flows require provider exchange even when the input looks like a JWT.
-    const requiresExchange = [ORCAROUTER_ID, "openference", "devin-desktop", "zed-hosted"].includes(provider);
-    if (!requiresExchange && code.startsWith("eyJ") && code.includes(".")) {
+    // Only Codex supports pasting an access token in the code field.
+    if (provider === "codex" && code.startsWith("eyJ") && code.includes(".")) {
       const resolvedProxy = await resolveOAuthProxySelection(claim.payload.proxySelection);
       // Await before finally consumes the claim so the DB's shouldCommit guard
       // remains active through the actual write.
@@ -776,6 +775,10 @@ async function importToken(provider, body) {
   // stored as the access token and then sent verbatim in an auth header.
   if (!isString(tokenData?.accessToken) || !tokenData.accessToken.trim()) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing accessToken");
+  }
+  // Reject invalid and unrepresentable expiry dates before persisting a token.
+  if (tokenData.expiresIn != null && (!isNumber(tokenData.expiresIn) || !Number.isFinite(tokenData.expiresIn) || tokenData.expiresIn <= 0 || !Number.isFinite(new Date(Date.now() + tokenData.expiresIn * 1000).getTime()))) {
+    throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Invalid expiresIn");
   }
   return createProviderConnection({
     provider,

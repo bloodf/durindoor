@@ -309,7 +309,7 @@ export default function KeysPageClient() {
         fetch("/api/keys"),
         fetch("/api/combos"),
       ]);
-      const keysData = await keysRes.json();
+      const keysData = keysRes.ok ? await keysRes.json() : await keysRes.json().catch(() => ({}));
       if (keysRes.ok) {
         setProviderConnections(keysData.providerConnections || []);
         setKeys(keysData.keys || []);
@@ -374,9 +374,9 @@ export default function KeysPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-      const data = await response.json();
+      const data = response.ok ? await response.json() : await response.json().catch(() => ({}));
       if (!response.ok) {
-        setLoadError(data.error || "Failed to save group");
+        setLoadError(data.error || `Failed to save group (${response.status})`);
         return;
       }
       setGroups((prev) =>
@@ -448,7 +448,7 @@ export default function KeysPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt, policy, providerConnectionIds: newKeyProviderConnectionIds, isAdmin: newKeyIsAdmin }),
       });
-      const data = await res.json();
+      const data = res.ok ? await res.json() : await res.json().catch(() => ({}));
 
       if (res.ok) {
         setOneTimeSecret({ secret: data.key, title: "API Key Created", expiresAt: data.expiresAt || null });
@@ -475,7 +475,7 @@ export default function KeysPageClient() {
   const revealAndCopyKey = async (id) => {
     try {
       const res = await fetch(`/api/keys/${id}/reveal`);
-      const data = await res.json();
+      const data = res.ok ? await res.json() : await res.json().catch(() => ({}));
       if (res.ok && data.key) {
         copy(data.key, `reveal_${id}`);
       } else {
@@ -578,7 +578,7 @@ export default function KeysPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = res.ok ? await res.json() : await res.json().catch(() => ({}));
       if (res.ok) {
         setKeys((prev) => prev.map((k) => (k.id === id ? data.key : k)));
         return true;

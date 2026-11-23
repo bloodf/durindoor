@@ -81,6 +81,7 @@ async function handleSearchHandler(request) {
     if (route.error) return route.error;
     usageContext.comboName = defaultRouteComboOptions("webSearch").comboName;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings),
@@ -129,6 +130,7 @@ async function handleSearchHandler(request) {
     const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("SEARCH", `Combo "${comboName}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings, comboRouting),

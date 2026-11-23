@@ -1,5 +1,6 @@
 ---
 title: "HuggingChat"
+description: Connect a signed-in HuggingChat session, separate from Hugging Face inference tokens.
 ---
 
 HuggingChat (`huggingchat`) uses a session from your own signed-in `huggingface.co/chat` account. It is not a Hugging Face inference token; those belong to the separate `huggingface` provider.
@@ -54,10 +55,6 @@ The model list is the static catalog in the provider registry. DurinDoor does no
 
 ## Sources
 
-Contract read at OmniRoute `4265bb2ad5477450a07d3a43ea33a62c6c874878` (MIT):
 
-- [Executor](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/huggingchat.ts)
-- [JSONL stream translator](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/huggingchat/jsonlStream.ts)
-- [Registry](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/config/providers/registry/huggingchat/index.ts)
 
 The contract is verified only against closed mocks in `tests/unit/huggingchat-guarded-dispatch.test.js`. No live Hugging Face request has been made.

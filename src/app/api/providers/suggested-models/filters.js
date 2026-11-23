@@ -18,6 +18,13 @@ const hubSuggestions = (models) => (Array.isArray(models) ? models : [])
   .map((m) => ({ id: m.id, name: m.name || m.id }));
 
 export const FILTERS = {
+  "chutes-all": (models) => [...new Map((Array.isArray(models) ? models : [])
+    .filter((model) => isString(model?.id) && model.id.trim())
+    .map((model) => {
+      const entry = { id: model.id, name: model.name || model.id };
+      if (model.context_length) entry.contextLength = model.context_length;
+      return [model.id, entry];
+    })).values()].sort((a, b) => a.id.localeCompare(b.id)),
   "huggingface-image": (models) => hubSuggestions(models).filter(({ id }) => {
     const map = huggingface.imageConfig.modelMap;
     return Object.hasOwn(map, id) && (isString(map[id]) || map[id].task === "text-to-image");

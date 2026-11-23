@@ -16,6 +16,9 @@ export default {
       apiKeyUrl: "https://chutes.ai/app/api",
     },
   },
+  category: "apikey",
+  authType: "apikey",
+  modelsFetcher: { url: "https://llm.chutes.ai/v1/models", type: "chutes-all" },
   serviceKinds: ["llm", "imageToText"],
   transport: {
     baseUrl: "https://llm.chutes.ai/v1/chat/completions",

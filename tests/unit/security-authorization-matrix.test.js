@@ -57,6 +57,7 @@ vi.mock("@/lib/localDb", () => ({
   createProviderNode: async (node) => { fixture.writes.push("createProviderNode"); return node; },
   updateProviderNode: async (id, patch) => { fixture.writes.push("updateProviderNode"); return { id, ...patch }; },
   deleteProviderNode: async () => { fixture.writes.push("deleteProviderNode"); return true; },
+  deleteProviderNodeWithConnections: async () => { fixture.writes.push("deleteProviderNodeWithConnections"); return true; },
   deleteProviderConnectionsByProvider: async () => { fixture.writes.push("deleteProviderConnectionsByProvider"); },
 }));
 // Keep actual key authentication and account scope selection; exclude live quota

@@ -1,3 +1,4 @@
+import useSettingsStore from "@/store/settingsStore";
 "use client";
 
 import { useState, useEffect, useEffectEvent, useRef } from "react";
@@ -39,12 +40,10 @@ const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 export default function CombosPage() {
   const v5 = useUiV5();
+  const settingsError = useSettingsStore((state) => state.error);
   const [strategyQueue] = useState(() => createSettingsQueue({}, async (updated) => {
-    const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comboStrategies: updated }) });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || translate("Could not save routing strategy. Retry."));
-    }
+    const saved = await useSettingsStore.getState().patchSettings({ comboStrategies: updated });
+    if (!saved) throw new Error(useSettingsStore.getState().error || translate("Could not save routing strategy. Retry."));
     setComboStrategies(updated);
   }));
   const [combos, setCombos] = useState([]);
@@ -170,13 +169,13 @@ export default function CombosPage() {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
-        fetch("/api/settings"),
+        useSettingsStore.getState().fetchSettings(),
         fetch("/api/connection-groups"),
       ]);
       const combosData = combosRes.ok ? await combosRes.json() : await combosRes.json().catch(() => ({}));
       if (!combosRes.ok) throw new Error(combosData?.error || `Failed to load combos (${combosRes.status})`);
       const providersData = providersRes.ok ? await providersRes.json() : await providersRes.json().catch(() => ({}));
-      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const settingsData = settingsRes || {};
       const groupsData = groupsRes.ok ? await groupsRes.json() : {};
 
       if (!isCurrent()) return;
@@ -278,15 +277,8 @@ export default function CombosPage() {
       }
     }
     const updated = change(comboStrategies);
-    const res = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboStrategies: updated }),
-    });
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `Failed to save combo strategy (${res.status})`);
-    }
+    const saved = await useSettingsStore.getState().patchSettings({ comboStrategies: updated });
+    if (!saved) throw new Error(useSettingsStore.getState().error || "Failed to save combo strategy");
     setComboStrategies(updated);
   };
 
@@ -356,12 +348,8 @@ export default function CombosPage() {
             if (v5) {
               await persistComboStrategies((current) => pruneStrategiesForNames([...deletedNames], current));
             } else {
-              const response = await fetch("/api/settings", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ comboStrategies: strategies }),
-              });
-              if (!response.ok) throw new Error("Failed to update combo strategies");
+              const saved = await useSettingsStore.getState().patchSettings({ comboStrategies: strategies });
+              if (!saved) throw new Error(useSettingsStore.getState().error || "Failed to update combo strategies");
               setComboStrategies(strategies);
             }
           }
@@ -456,6 +444,7 @@ export default function CombosPage() {
 
   return (
     <div className={`${v5 ? "v5-combos-page " : ""}flex min-w-0 flex-col gap-6 px-1 sm:px-0`}>
+      {settingsError && <p role="alert" className="text-dd-danger">{settingsError}</p>}
       <PageHeader
         className={v5 ? "v5-combo-page-heading" : undefined}
         icon="layers"

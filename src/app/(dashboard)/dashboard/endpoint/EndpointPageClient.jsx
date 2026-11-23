@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import useSettingsStore from "@/store/settingsStore";
 import { requestJSON } from "../providers/workflowRequests.js";
 import PropTypes from "prop-types";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -266,10 +267,10 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     setTunnelChecking(true);
     try {
       const [settings, status] = await Promise.all([
-        requestJSON("/api/settings"),
+        useSettingsStore.getState().fetchSettings(),
         requestJSON("/api/tunnel/status", { cache: "no-store" }),
       ]);
-      if (!isBoolean(settings.requireApiKey) || !isBoolean(settings.requireLogin) || !status?.tunnel || !status?.tailscale) throw new Error("Endpoint configuration is incomplete. Retry.");
+      if (!settings || !isBoolean(settings.requireApiKey) || !isBoolean(settings.requireLogin) || !status?.tunnel || !status?.tailscale) throw new Error("Endpoint configuration is incomplete. Retry.");
       {
         const data = settings;
         setRequireApiKey(data.requireApiKey || false);
@@ -308,7 +309,8 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     if (!settingsKnown || loadError || securityPending.current) return;
     securityPending.current = true; setSecuritySaving(true); setSecurityError(null);
     try {
-      await requestJSON("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
+      const saved = await useSettingsStore.getState().patchSettings({ [field]: value });
+      if (!saved) throw new Error(useSettingsStore.getState().error);
       apply(value);
     } catch (error) { setSecurityError({ message: error.message || "Security setting could not be saved.", retry: () => saveSecuritySetting(field, value, apply) }); }
     finally { securityPending.current = false; setSecuritySaving(false); }

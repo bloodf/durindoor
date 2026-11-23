@@ -3,6 +3,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readProviderStream } from "@/app/(dashboard)/dashboard/translator/readProviderStream.js";
+import useSettingsStore from "@/store/settingsStore";
 import { loadToolConfiguration } from "@/app/(dashboard)/dashboard/cli-tools/toolConfiguration.js";
 import Button from "@/shared/components/Button.js";
 import { inferredButtonIcon, ReviewNativeLink } from "@/shared/ui/v5/motion/ReviewNativeButton.jsx";
@@ -39,14 +40,17 @@ describe("Visant shared-system regressions", () => {
     expect(ReviewNativeLink({ href: "/dashboard/headroom" }).type).toBe("a");
   });
   it("rejects absent tool settings and transports instead of treating them as disabled", async () => {
-    const payloads = [{ connections: [] }, {}, {}, { keys: [] }];
+    const payloads = [{ connections: [] }, {}, { keys: [] }];
+    let settings = {};
+    const getSettings = vi.spyOn(useSettingsStore.getState(), "fetchSettings").mockImplementation(async () => settings);
     let i = 0;
     await expect(loadToolConfiguration(async () => new Response(JSON.stringify(payloads[i++])))).rejects.toThrow("incomplete");
-    i = 0; payloads[1] = { cloudEnabled: false }; payloads[2] = { tunnel: null, tailscale: null };
+    i = 0; settings = { cloudEnabled: false }; payloads[1] = { tunnel: null, tailscale: null };
     await expect(loadToolConfiguration(async () => new Response(JSON.stringify(payloads[i++])))).rejects.toThrow("incomplete");
-    const valid = [{ connections: [] }, { cloudEnabled: false }, { tunnel: { enabled: false }, tailscale: { settingsEnabled: false } }, { keys: [] }];
+    payloads[1] = { tunnel: { enabled: false }, tailscale: { settingsEnabled: false } };
     i = 0;
-    await expect(loadToolConfiguration(async () => new Response(JSON.stringify(valid[i++])))).resolves.toMatchObject({ settings: { cloudEnabled: false } });
+    await expect(loadToolConfiguration(async () => new Response(JSON.stringify(payloads[i++])))).resolves.toMatchObject({ settings: { cloudEnabled: false } });
+    expect(getSettings).toHaveBeenCalledTimes(3);
   });
   it("renders provider chunks before completion, including split UTF-8 characters", async () => {
     let stream;

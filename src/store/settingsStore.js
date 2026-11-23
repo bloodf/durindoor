@@ -39,6 +39,7 @@ const useSettingsStore = create((set, get) => ({
   // PATCH server + merge into local cache (no extra fetch needed)
   patchSettings: async (patch) => {
     const sequence = ++patchSequence;
+    set({ error: null });
     try {
       const res = await fetch("/api/settings", {
         method: "PATCH",

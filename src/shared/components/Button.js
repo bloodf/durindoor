@@ -1,6 +1,11 @@
 "use client";
 
 /**
+ * The UI Button changes classes and icon DOM, and its V5 branch infers icons;
+ * it cannot preserve this legacy surface with its current props.
+ */
+
+/**
  * Durin DS — Button (production lane: shared-actions).
  *
  * Backwards-compatible surface: variant ∈ {primary, secondary, outline, ghost,

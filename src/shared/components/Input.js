@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * The UI Input uses different Field wrappers and control classes, so its
+ * current props cannot preserve this legacy DOM and styling.
+ */
+
 import { useId } from "react";
 import { cn } from "@/shared/utils/cn";
 

@@ -10,7 +10,7 @@ const os = require("os");
 const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
 const { waitServerReady } = require("./src/cli/waitServerReady");
-const { getProbeHost, getDisplayHost, getDisplayUrl } = require("./src/cli/host");
+const { getProbeHost, getDisplayHost } = require("./src/cli/host");
 const { canBindLauncherPort } = require("./src/cli/utils/launcherProcess");
 const { collectAppPids, killAppPids, portOccupantToKill } = require("./src/lib/processScan");
 
@@ -588,7 +588,8 @@ function startServer(updatePromise) {
   // surface an unhandled rejection; the existing update menu simply sees null.
   const latestVersionPromise = Promise.resolve(updatePromise).catch(() => null);
   const displayHost = getDisplayHost(host);
-  const url = getDisplayUrl(host, port, "/dashboard");
+  // getDisplayHost formats wildcard and IPv6 addresses for URLs.
+  const url = `http://${displayHost}:${port}/dashboard`;
   // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
   if (host === DEFAULT_HOST) {
     const lanIp = getLanIp();
@@ -934,7 +935,9 @@ function startServer(updatePromise) {
       server = spawnServer({ DURINDOOR_WORKER_NONCE: nonce });
       attachServerEvents();
       await waitForWorkerIdentity(server, nonce);
-      if (!stopMitmViaManagerSync(port, { preserveDesiredState: false, host })) {
+      const cleanupOptions = { preserveDesiredState: false };
+      if (host !== "127.0.0.1") cleanupOptions.host = host;
+      if (!stopMitmViaManagerSync(port, cleanupOptions)) {
         throw new Error("MITM manager cleanup could not be confirmed on the recovery worker");
       }
       console.error("MITM system state was cleaned and disabled; exiting instead of continuing the crash loop.");

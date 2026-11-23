@@ -146,7 +146,7 @@ export default function ProviderIcon({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={candidates[stage]}
+      src={candidates[stage].startsWith("/providers/") ? `${process.env.NEXT_PUBLIC_BASE_PATH || ""}${candidates[stage]}` : candidates[stage]}
       alt={alt}
       width={size}
       height={size}

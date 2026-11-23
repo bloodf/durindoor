@@ -24,13 +24,13 @@ export async function GET(request) {
   const url = new URL(request.url);
   const error = url.searchParams.get("error");
   if (error) {
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error)}`, getPublicOrigin(request)));
+    return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=${encodeURIComponent(error)}`, getPublicOrigin(request)));
   }
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/login?error=oidc_missing_code", getPublicOrigin(request)));
+    return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=oidc_missing_code`, getPublicOrigin(request)));
   }
 
   const cookieStore = await cookies();
@@ -40,19 +40,19 @@ export async function GET(request) {
 
   if (!storedState || !storedNonce || !codeVerifier || !timingSafeCompare(storedState, state)) {
     clearOidcCookies(cookieStore);
-    return NextResponse.redirect(new URL("/login?error=oidc_invalid_state", getPublicOrigin(request)));
+    return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=oidc_invalid_state`, getPublicOrigin(request)));
   }
 
   try {
     const config = await getOidcRuntimeConfig();
     if (!config) {
       clearOidcCookies(cookieStore);
-      return NextResponse.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(request)));
+      return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=oidc_not_configured`, getPublicOrigin(request)));
     }
 
     const discovery = await fetchOidcDiscovery(config.issuerUrl);
     const discoveredIssuer = discovery.issuer || config.issuerUrl;
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(request)}${request.nextUrl?.basePath || ""}/api/auth/oidc/callback`;
     const tokenData = await exchangeOidcCode({
       tokenEndpoint: discovery.token_endpoint,
       clientId: config.clientId,
@@ -79,7 +79,7 @@ export async function GET(request) {
     const settings = await getSettings();
     const access = checkOidcIdentityAllowed(payload, settings);
     if (!access.allowed) {
-      return NextResponse.redirect(new URL(`/login?error=${access.reason}`, getPublicOrigin(request)));
+      return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=${access.reason}`, getPublicOrigin(request)));
     }
     await setDashboardAuthCookie(cookieStore, request, {
       oidc: true,
@@ -88,9 +88,9 @@ export async function GET(request) {
       oidcName: pickOidcDisplayName(payload),
     });
 
-    return NextResponse.redirect(new URL("/dashboard", getPublicOrigin(request)));
+    return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/dashboard`, getPublicOrigin(request)));
   } catch (error) {
     clearOidcCookies(cookieStore);
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_callback_failed")}`, getPublicOrigin(request)));
+    return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=${encodeURIComponent(error.message || "oidc_callback_failed")}`, getPublicOrigin(request)));
   }
 }

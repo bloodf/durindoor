@@ -96,7 +96,7 @@ async function guardedApiDispatch(request) {
   }
   if (destination === pathname) return response;
   const url = new URL(request.url);
-  url.pathname = destination;
+  url.pathname = `${request.nextUrl.basePath || ""}${destination}`;
   const headers = new Headers(response.headers);
   headers.delete("x-middleware-next");
   // Internal rewrite retains the original method, headers and unread body. Do
@@ -172,7 +172,7 @@ export default async function proxy(request) {
   const pathname = request.nextUrl.pathname;
   if (pathname.length > 1 && pathname.endsWith("/")) {
     const canonical = new URL(request.url);
-    canonical.pathname = pathname.slice(0, -1);
+    canonical.pathname = `${request.nextUrl.basePath || ""}${pathname.slice(0, -1)}`;
     return new Response(null, { status: 308, headers: { Location: canonical.href } });
   }
   if (request.cookies?.get?.(SESSION_COOKIE)) return mimoLoginProxy(request);

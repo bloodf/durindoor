@@ -186,7 +186,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (isBrowser()) {
-      setOidcRedirectUri(`${window.location.origin}/api/auth/oidc/callback`);
+      setOidcRedirectUri(`${window.location.origin}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth/oidc/callback`);
     }
   }, []);
 
@@ -344,7 +344,7 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (res.ok && data?.reauthenticate) {
-        window.location.assign("/login");
+        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
         return;
       }
       if (res.ok) {
@@ -918,7 +918,7 @@ export default function ProfilePage() {
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
       if (res.ok) {
-        window.location.assign("/login");
+        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
       }
     } catch (err) {
       console.error("Failed to logout:", err);

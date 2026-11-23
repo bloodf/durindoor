@@ -60,7 +60,7 @@ export async function POST(request) {
     }
 
     const discovery = await fetchOidcDiscovery(issuerUrl);
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(request)}${request.nextUrl?.basePath || ""}/api/auth/oidc/callback`;
     const secretProbe = await probeOidcClientSecret({
       tokenEndpoint: discovery.token_endpoint,
       clientId,

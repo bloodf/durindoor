@@ -1,8 +1,9 @@
+import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { withRequestCorrelation, getRequestId } from "../utils/requestCorrelation.js";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
-import { getProviderCredentialsWithQuotaPreflight, resolveClientApiKey, markAccountUnavailable } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable } from "../services/auth.js";
 import { getSettings, getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
@@ -10,7 +11,6 @@ import { sanitizeSecrets } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import * as log from "../utils/logger.js";
 import { handleComboChat } from "open-sse/services/combo.js";
@@ -58,14 +58,8 @@ async function handleMusicGenerationHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
-  });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "music" });
+  if (admissionError) return admissionError;
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   if (wantsDefaultRoute(body.model)) {
@@ -153,11 +147,8 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
  * no usage event; durable terminal evidence replays one idempotent ledger event.
  */
 async function handleMusicGetHandler(request, requestId) {
-  const settings = await getSettings();
-  const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
-  if (!auth.ok) return annotateClientAdmissionFailure(
-    errorResponse(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key"),
-    auth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { apiKey, auth, error: admissionError } = await admit(request, { kind: "music" });
+  if (admissionError) return admissionError;
   const connectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id");
   if (!auth.apiKeyId || !connectionId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Music polling requires durable ownership and x-9router-connection-id");
   if (!isString(requestId) || !/^[\w-]+(?:,[\w-]+)*$/.test(requestId)) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid music request id");

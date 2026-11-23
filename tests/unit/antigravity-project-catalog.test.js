@@ -59,7 +59,8 @@ beforeAll(async () => {
   route = await import("@/app/api/providers/[id]/models/route.js");
   db = await import("@/lib/localDb");
   catalog = await import("open-sse/services/antigravityCatalog.js");
-});
+  // The models route pulls in most of the app; a cold import exceeds the 10s default hook timeout under parallel load.
+}, 60_000);
 
 beforeEach(() => {
   providerFetch.mockReset();

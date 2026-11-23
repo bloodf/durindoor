@@ -6,7 +6,8 @@ import {
 
 // Fingerprint pin. Port of 9router #3320 originally pinned 2.5.5; later ports
 // bumped it to 2.11.0 (70f15aa5) and then to the Hub 2.24.0 client identity
-// (cff2b1d9 2.22.0, f172c3c4 hub/2.24.0, superseded by master 6b8b7ceb9f hub/2.33.0).
+// (cff2b1d9 2.22.0, f172c3c4 hub/2.24.0, superseded by master 6b8b7ceb9f hub/2.33.0,
+// the same bump as 05fa58b8ce).
 describe("Antigravity Hub fingerprint pin (2.33.0, supersedes 2.24.0)", () => {
   it("exports the 2.33.0 client version constant", () => {
     expect(ANTIGRAVITY_IDE_VERSION).toBe("2.33.0");

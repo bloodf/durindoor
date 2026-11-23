@@ -4,7 +4,8 @@ import { BaseExecutor } from "./base.js";
 import { GEMINI_LONG_DECODE_MAX_OUTPUT, supportsGeminiLongDecode, wantsGeminiLongDecode, withGeminiLongDecode } from "../utils/geminiLongDecode.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS, ANTIGRAVITY_DEFAULT_SYSTEM } from "../config/appConstants.js";
+import { GEMINI_ROLE } from "../translator/schema/roles.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
@@ -613,6 +614,10 @@ export class AntigravityExecutor extends BaseExecutor {
         }
       }
     }
+    // The real client always opens the system prompt with the Antigravity identity (upstream
+    // 9router e37cb78e16). Skip it when the prompt already carries one, e.g. AG MITM traffic.
+    const needsAgIdentity = !(requestWithoutTools.systemInstruction?.parts || []).some(
+      (part) => isString(part?.text) && part.text.includes("You are Antigravity"));
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
     if (isString(generationConfig.thinkingConfig?.thinkingLevel)) {
       generationConfig.thinkingConfig = { ...generationConfig.thinkingConfig, thinkingLevel: generationConfig.thinkingConfig.thinkingLevel.trim().toUpperCase() };
@@ -687,6 +692,16 @@ export class AntigravityExecutor extends BaseExecutor {
         delete transformedRequest.systemInstruction;
         dbg("TOOLS", `Embedded ${sysText.length} char system prompt into user content (exceeds ${SYSTEM_INSTRUCTION_CHAR_LIMIT} limit)`);
       }
+    }
+
+    // Added after the fold above so the identity always stays the leading systemInstruction and
+    // only the client's own prompt counts toward SYSTEM_INSTRUCTION_CHAR_LIMIT.
+    if (needsAgIdentity) {
+      const clientParts = transformedRequest.systemInstruction?.parts || [];
+      transformedRequest.systemInstruction = {
+        ...(transformedRequest.systemInstruction || { role: GEMINI_ROLE.USER }),
+        parts: [{ text: ANTIGRAVITY_DEFAULT_SYSTEM }, ...clientParts]
+      };
     }
 
     // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)

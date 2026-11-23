@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../open-sse/config/appConstants.js";
 
 describe("Antigravity OMP request normalization", () => {
   it("normalizes harness markers only in system instructions and removes harness metadata", () => {
@@ -14,7 +15,8 @@ describe("Antigravity OMP request normalization", () => {
     };
     const original = structuredClone(body);
     const output = new AntigravityExecutor().transformRequest("gemini-3.8-flash-medium", body, true, {});
-    const system = output.request.systemInstruction.parts[0].text;
+    expect(output.request.systemInstruction.parts[0].text).toBe(ANTIGRAVITY_DEFAULT_SYSTEM);
+    const system = output.request.systemInstruction.parts[1].text;
     expect(system).toContain("<conventions>MUST</conventions>");
     expect(system).toContain("<important>keep</important>");
     expect(system).toContain("AI coding assistant");

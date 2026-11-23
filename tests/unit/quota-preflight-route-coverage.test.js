@@ -20,12 +20,18 @@ const QUOTA_PREFLIGHT_ROUTES = [
   "music.js",
   "rerank.js",
   "search.js",
-  "stt.js",
-  "tts.js",
   "video.js",
 ];
 
 describe("quota preflight route coverage (OmniRoute #6742)", () => {
+  for (const file of ["stt.js", "tts.js"]) {
+    it(`${file} delegates account selection to the shared media pipeline`, () => {
+      const source = readFileSync(join(handlersDir, file), "utf8");
+      expect(source).toMatch(/runMediaAccounts\s*\(/);
+      expect(source).not.toMatch(/getProviderCredentials(?!WithQuotaPreflight)\s*\(/);
+    });
+  }
+
   for (const file of ["imageEdit.js", "imageGeneration.js"]) {
     it(`${file} delegates account selection to the shared media pipeline`, () => {
       const source = readFileSync(join(handlersDir, file), "utf8");

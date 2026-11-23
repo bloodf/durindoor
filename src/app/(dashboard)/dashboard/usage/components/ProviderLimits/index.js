@@ -26,7 +26,7 @@ import {
 "./grouping";
 import {
   parseQuotaData,
-  calculatePercentage,
+  isQuotaCollectionDepleted,
   filterQuotasByVisibility,
   getHiddenQuotaRows,
   getQuotaVisibilityKey,
@@ -1419,14 +1419,9 @@ export default function ProviderLimits() {
     [sortedConnections]
   );
 
-  // Connection is depleted when any quota entry hit the threshold
+  // A connection remains available while a reported pool has capacity.
   const isConnectionDepleted = (conn) => {
-    const quotas = quotaData[conn.id]?.quotas;
-    if (!quotas?.length) return false;
-    return quotas.some((q) => {
-      if (!q.total || q.total <= 0) return false;
-      return calculatePercentage(q.used, q.total) <= DEPLETED_QUOTA_THRESHOLD;
-    });
+    return isQuotaCollectionDepleted(quotaData[conn.id]?.quotas, DEPLETED_QUOTA_THRESHOLD);
   };
 
   const bulkSetActive = useCallback(

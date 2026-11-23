@@ -118,3 +118,12 @@ export function upsertUsageLastSeen(db, rows) {
     rows.flatMap((row) => [...LAST_SEEN_DIMENSIONS.map((field) => row[field]), row.lastUsed])
   );
 }
+
+export function usageHistoryKeyColumnsSql(db) {
+  const keyId = usageHistoryKeyIdSql(db);
+  return `${keyId} AS usageKeyId, CASE WHEN ${keyId} IS NULL THEN h.apiKey END AS legacyKey`;
+}
+
+export function usageKeyStatsKey(identity, model, provider) {
+  return `${identity || "local-no-key"}|${model}|${provider || "unknown"}`;
+}

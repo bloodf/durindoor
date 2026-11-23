@@ -1,6 +1,7 @@
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
+import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
@@ -704,6 +705,9 @@ export async function POST(request) {
             break;
           }
 
+        case "assemblyai":
+          return NextResponse.json(await probeAssemblyAiKey(apiKey, fetchValidationProbe));
+
         case "deepseek":
         case "groq":
         case "xai":
@@ -721,7 +725,6 @@ export async function POST(request) {
         case "paraloncloud":
         case "ollama":
         case "ollama-local":
-        case "assemblyai":
         case "nanobanana":
         case "chutes":
         case "xiaomi-mimo":

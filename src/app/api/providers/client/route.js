@@ -8,6 +8,7 @@ import { backfillClaudeProfiles, backfillCodexEmails } from "@/lib/oauth/provide
 import { backfillCursorEmails } from "@/lib/oauth/services/cursorLocalStore.js";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
+import { isBigInt } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 500;
@@ -43,6 +44,23 @@ function sortablePriority(value) {
 
 function sortConnections(connections, sort) {
   const list = [...connections];
+
+  if (sort === "expiring") {
+    const expiry = (connection) => Math.min(...[connection.expiresAt, connection.rateLimitedUntil].map((value) => {
+      if (value == null || value === "" || isBigInt(value)) return Infinity;
+      const time = new Date(value).getTime();
+      return Number.isFinite(time) && time > 0 ? time : Infinity;
+    }));
+    return list.sort((a, b) => {
+      const timeA = expiry(a);
+      const timeB = expiry(b);
+      if (timeA !== timeB) return timeA - timeB;
+      const priorityA = sortablePriority(a.priority);
+      const priorityB = sortablePriority(b.priority);
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return (a.provider || "").localeCompare(b.provider || "");
+    });
+  }
 
   if (sort === "provider") {
     return list.sort((a, b) => {
@@ -105,7 +123,8 @@ export async function GET(request) {
 
     const savedProviderOrder = await readQuotaProviderOrderSetting();
     const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), savedProviderOrder);
-    const sortedConnections = applyQuotaProviderOrder(sortConnections(accountFilteredConnections, sort), savedProviderOrder);
+    const sorted = sortConnections(accountFilteredConnections, sort);
+    const sortedConnections = sort === "expiring" ? sorted : applyQuotaProviderOrder(sorted, savedProviderOrder);
     const total = sortedConnections.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
@@ -131,7 +150,7 @@ export async function GET(request) {
       return safe;
     }));
 
-    return NextResponse.json({
+    const response = {
       connections: pageConnections,
       providerOptions,
       providerOrder: providerOrder.filter((id) => providerOptions.includes(id)),
@@ -145,7 +164,13 @@ export async function GET(request) {
         eligibleConnections: eligibleConnections.length,
         providerFilteredConnections: providerFilteredConnections.length,
       },
-    });
+    };
+    // Only serialize the sanitized response; database values can contain BigInts.
+    return NextResponse.json(JSON.parse(JSON.stringify(response, (_key, value) => {
+      if (!isBigInt(value)) return value;
+      const number = Number(value);
+      return Number.isSafeInteger(number) ? number : value.toString();
+    })));
   } catch (error) {
     console.log("Error fetching providers for client:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });

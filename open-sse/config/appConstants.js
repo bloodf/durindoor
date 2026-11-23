@@ -173,7 +173,8 @@ export const LOAD_CODE_ASSIST_METADATA = {
 
 // System prompts
 export const CLAUDE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
-export const ANTIGRAVITY_DEFAULT_SYSTEM = "You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.**Absolute paths only****Proactiveness**";
+// Official Antigravity 2.33.0 identity, sent ahead of every generation request (upstream 9router e37cb78e16).
+export const ANTIGRAVITY_DEFAULT_SYSTEM = "You are Antigravity Agent, a powerful agentic AI coding assistant designed by the Google engineering team.\nYou are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.\nThe USER will send you requests, which you must always prioritize addressing. User requests are enclosed within <USER_REQUEST> tags.";
 
 // Antigravity's backend flags a system prompt that exposes a competitor identity and
 // answers with a fake 429 RESOURCE_EXHAUSTED. rewriteOpenCodeBranding (antigravity.js)

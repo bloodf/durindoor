@@ -7,7 +7,7 @@ import { dbg } from "../utils/debugLog.js";
 
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
-import { findOffendingField } from "../config/providerFieldStrips.js";
+import { findOffendingField, findRejected422Field } from "../config/providerFieldStrips.js";
 import { parseRateLimitEvidence, readBoundedResponseText } from "../utils/error.js";
 import {
   prepareProviderAttemptDispatch,
@@ -552,11 +552,12 @@ export class BaseExecutor {
             }
           }
         }
-        if (!claudeFast && response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
+        for (let round = 0; !claudeFast && [400, 422].includes(response.status) && round < 4 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex); round++) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
           const errorText = await readOptionalProbeText(response, { signal });
-          const field = findOffendingField(errorText);
+          const field = response.status === 422 && requestBody && isObject(requestBody) && !Array.isArray(requestBody) ?
+            findRejected422Field(errorText, requestBody) : response.status === 400 ? findOffendingField(errorText) : null;
           if (
           field &&
           // Azure and OpenAI negotiate token-limit spellings. Dropping a
@@ -571,7 +572,7 @@ export class BaseExecutor {
             delete requestBody[field];
             strippedFields.add(field);
             bodyStr = JSON.stringify(requestBody);
-            log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
+            log?.debug?.("RETRY", `Provider rejected field ${field}; stripping and retrying`);
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
             // Reset the connect timeout for the new upstream request.
@@ -584,7 +585,7 @@ export class BaseExecutor {
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
               ...fetchOptions, body: bodyStr, signal: mergedSignal
             }), proxyOptions));
-          }
+          } else break;
         }
         if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
           evictResponseDispatcher(response);

@@ -193,6 +193,17 @@ export class VertexExecutor extends BaseExecutor {
       requestContext
     );
 
+    // Gemini 3/4 chat rejects trailing model turns. Preserve image models,
+    // older Gemini families, partner requests, and at least one content turn.
+    const baseModel = model.toLowerCase().split("/").pop();
+    if (this.provider === "vertex" && !/(?:^|-)image(?:-|$)/.test(baseModel) &&
+        /^gemini-(?:[34](?:\.\d+)?(?:-[a-z0-9-]+)?|pro-agent)$/.test(baseModel) &&
+        Array.isArray(transformedBody.contents)) {
+      const contents = [...transformedBody.contents];
+      while (contents.length > 1 && contents.at(-1)?.role === "model") contents.pop();
+      transformedBody.contents = contents;
+    }
+
     const connectController = new AbortController();
     const mergedSignal = signal ? AbortSignal.any([signal, connectController.signal]) : connectController.signal;
     const connectTimer = setTimeout(() => connectController.abort(new Error("Vertex connect timeout")), this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS);

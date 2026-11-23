@@ -1,9 +1,11 @@
 import { renameGeminiProperties } from "../translator/concerns/geminiPlaceholderArgs.js";
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
+import { GEMINI_LONG_DECODE_MAX_OUTPUT, supportsGeminiLongDecode, wantsGeminiLongDecode, withGeminiLongDecode } from "../utils/geminiLongDecode.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS, ANTIGRAVITY_DEFAULT_SYSTEM } from "../config/appConstants.js";
+import { GEMINI_ROLE } from "../translator/schema/roles.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
@@ -317,7 +319,7 @@ export class AntigravityExecutor extends BaseExecutor {
         transformedBody: null
       };
     }
-    const result = await super.execute(options);
+    let result = await super.execute(options);
     // A bare detail-free 429 means systemInstruction carries text Google fingerprints that the rewrite
     // list does not cover yet. Retry once with that text moved into the first user turn. Image models
     // never send systemInstruction, so there is nothing to move.
@@ -332,11 +334,22 @@ export class AntigravityExecutor extends BaseExecutor {
         }
         if (isAntigravityPromptRejection(result.response.status, bodyText)) {
           options.log?.warn?.("ANTIGRAVITY", "System prompt rejected (fingerprinted text not in ANTIGRAVITY_PROMPT_REWRITES); retrying with it in the first user turn");
-          return super.execute({ ...options, body: moved });
+          options = { ...options, body: moved };
+          result = await super.execute(options);
         }
       }
     }
-    return result;
+    return this.continueLongDecode(result, options);
+  }
+  // Gemini 4 long decode (upstream 9router 109e4816e3): Cloud Code takes the continuation token
+  // inside the envelope (request.continuationToken) and every hop re-sends the same request.
+  continueLongDecode(result, options) {
+    if (!result?.response?.ok) return result;
+    const finalBody = result.transformedBody;
+    if (!wantsGeminiLongDecode(this.provider, finalBody?.model || options.model, finalBody?.request?.generationConfig)) return result;
+    const nextHop = async (continuationToken) =>
+      (await super.execute({ ...options, body: { ...options.body, request: { ...options.body?.request, continuationToken } } })).response;
+    return withGeminiLongDecode(result, { stream: options.stream, nextHop, signal: options.signal, log: options.log });
   }
   buildUrl(model, stream, urlIndex = 0) {
     const baseUrls = this.getBaseUrls();
@@ -350,11 +363,13 @@ export class AntigravityExecutor extends BaseExecutor {
   // sessionId comes from transformRequest output; base.execute runs transformRequest before
   // buildHeaders, so we read it from instance state cached there (fallback: explicit arg).
   buildHeaders(credentials, stream = true, sessionId = null) {
-    return {
+    const headers = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
       "User-Agent": antigravityCatalogUserAgent(credentials, this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"])
     };
+    if (stream) headers.Accept = "text/event-stream";
+    return headers;
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -599,12 +614,19 @@ export class AntigravityExecutor extends BaseExecutor {
         }
       }
     }
+    // The real client always opens the system prompt with the Antigravity identity (upstream
+    // 9router e37cb78e16). Skip it when the prompt already carries one, e.g. AG MITM traffic.
+    const needsAgIdentity = !(requestWithoutTools.systemInstruction?.parts || []).some(
+      (part) => isString(part?.text) && part.text.includes("You are Antigravity"));
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
     if (isString(generationConfig.thinkingConfig?.thinkingLevel)) {
       generationConfig.thinkingConfig = { ...generationConfig.thinkingConfig, thinkingLevel: generationConfig.thinkingConfig.thinkingLevel.trim().toUpperCase() };
     }
-    if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
-      generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+    // Long-decode models (Hydrogen) keep the client's budget up to 1M; others stay capped per request.
+    const outputCap = supportsGeminiLongDecode(this.provider, body.model || model) ?
+      GEMINI_LONG_DECODE_MAX_OUTPUT : MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+    if (generationConfig.maxOutputTokens > outputCap) {
+      generationConfig.maxOutputTokens = outputCap;
     }
     if (signatureFamily(model) === "claude") {
       const thinking = generationConfig.thinkingConfig || generationConfig.thinking_config;
@@ -670,6 +692,16 @@ export class AntigravityExecutor extends BaseExecutor {
         delete transformedRequest.systemInstruction;
         dbg("TOOLS", `Embedded ${sysText.length} char system prompt into user content (exceeds ${SYSTEM_INSTRUCTION_CHAR_LIMIT} limit)`);
       }
+    }
+
+    // Added after the fold above so the identity always stays the leading systemInstruction and
+    // only the client's own prompt counts toward SYSTEM_INSTRUCTION_CHAR_LIMIT.
+    if (needsAgIdentity) {
+      const clientParts = transformedRequest.systemInstruction?.parts || [];
+      transformedRequest.systemInstruction = {
+        ...(transformedRequest.systemInstruction || { role: GEMINI_ROLE.USER }),
+        parts: [{ text: ANTIGRAVITY_DEFAULT_SYSTEM }, ...clientParts]
+      };
     }
 
     // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)

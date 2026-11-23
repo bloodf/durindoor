@@ -49,6 +49,7 @@ export const SENSITIVE_PSD_KEYS = Object.freeze([
 "refresh_token",
 "password",
 "secret",
+"opendesignControlKey",
 "qwenCloudCookie",
 "alibabaConsoleCookie",
 "QWEN_CLOUD_COOKIE"]

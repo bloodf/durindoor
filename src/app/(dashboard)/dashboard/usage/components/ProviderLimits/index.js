@@ -811,7 +811,7 @@ export default function ProviderLimits() {
           page: String(targetPage),
           pageSize: String(pageSize),
           accountStatus: accountFilter,
-          sort: "priority"
+          sort: expiringFirst ? "expiring" : "priority"
         });
 
         if (providerFilter !== "all") {
@@ -845,7 +845,7 @@ export default function ProviderLimits() {
         return connectionsSnapshot.current;
       }
     },
-    [accountFilter, page, pageSize, providerFilter]
+    [accountFilter, expiringFirst, page, pageSize, providerFilter]
   );
 
   const moveProvider = useCallback(async (provider, target) => {
@@ -1534,7 +1534,7 @@ export default function ProviderLimits() {
             className={refreshingAll ? "[&_span]:animate-spin" : ""}
           />
         </div>
-      {expiringFirst ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">Expiring-first currently reorders accounts inside current page. Cross-page ordering still follows backend pagination.</div> : null}
+      {expiringFirst ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">Pages follow saved token expiry and rate-limit times. Accounts remain grouped by provider; live quota resets reorder only the current page.</div> : null}
 
       {connectionsError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger p-3 text-sm text-dd-danger"><p>Provider connections could not be loaded. {connectionsError}{connections.length ? " Last received accounts remain visible and may be stale." : " Retry to load your connections."}</p><Button icon="refresh" variant="secondary" disabled={refreshingAll} onClick={refreshAll}>Retry connections</Button></div> : null}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>

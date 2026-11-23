@@ -182,7 +182,7 @@ function budgetTier(budget) {
  */
 export function resolveRequestedModelTier(thinkingIntent, body = null, provider = null) {
   // Hydrogen has a registered Antigravity xhigh row; keep other providers unchanged.
-  const tier = (value) => value?.toLowerCase?.().trim() === "xhigh" && ["ag", "agy", "antigravity"].includes(provider) ? "xhigh" : normalizeTier(value);
+  const tier = (value) => ["xhigh", "max"].includes(value?.toLowerCase?.().trim()) && ["ag", "agy", "antigravity"].includes(provider) ? value.toLowerCase().trim() : normalizeTier(value);
   if (thinkingIntent?.mode === "level") return tier(thinkingIntent.level);
   if (thinkingIntent?.mode === "budget") return budgetTier(thinkingIntent.budget);
   if (thinkingIntent) return null;
@@ -230,7 +230,7 @@ function findUpstreamModel(aliasOrId, modelId, tier) {
   // other catalogs (codex, grok) `<model>-<level>` ids are distinct models.
   const tieredRow = requestedTier && isString(baseId) ?
     findModel(models, `${baseId}-${requestedTier}`, aliasOrId) ||
-      (requestedTier === "xhigh" && ["ag", "agy", "antigravity"].includes(aliasOrId) ? findModel(models, `${baseId}-high`, aliasOrId) : null) : null;
+      (["xhigh", "max"].includes(requestedTier) && ["ag", "agy", "antigravity"].includes(aliasOrId) ? findModel(models, `${baseId}-high`, aliasOrId) : null) : null;
   const tiered = tieredRow && models.some((row) => parseSuffix(row.upstreamModelId).override) ? tieredRow : null;
   return { baseId, found: tiered || findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId) };
 }

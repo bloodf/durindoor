@@ -2,6 +2,7 @@
  * OpenAI to Kiro Request Translator
  * Converts OpenAI Chat Completions format to Kiro/AWS CodeWhisperer format
  */
+import { createKiroToolNames } from "../../utils/kiroToolNames.js";
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { v4 as uuidv4 } from "uuid";
@@ -95,6 +96,7 @@ function flattenToolInteractions(messages) {
       const parts = [];
       if (Array.isArray(msg.content)) {
         for (const c of msg.content) {
+          if (c == null) continue;
           if (c.type === CLAUDE_BLOCK.TOOL_USE) {
             parts.push(toolCallToText(c.name, c.input));
           } else if (c.type === OPENAI_BLOCK.TEXT || c.text) {
@@ -114,7 +116,7 @@ function flattenToolInteractions(messages) {
     // User messages: replace tool_result blocks with text, keep text + images.
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((c) =>
-      c.type === CLAUDE_BLOCK.TOOL_RESULT ?
+      c?.type === CLAUDE_BLOCK.TOOL_RESULT ?
       { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content, c.is_error === true) } :
       c
       );
@@ -193,20 +195,6 @@ function safeJSONParse(str, fallback) {
 }
 
 /**
- * Kiro's CodeWhisperer API rejects tool names with characters outside
- * `[a-zA-Z0-9_-]`, so a dotted/slashed MCP alias like `my.tool/search` 400s.
- * Replace only the illegal characters with `_` — consecutive underscores are
- * legal and must survive intact, since MCP-style names like
- * `mcp__server__tool` rely on the double underscore as a separator; collapsing
- * them lost the separator and could collide two distinct tool names into one.
- * The caller records the original name so the response translators can hand
- * the client back the name it sent.
- */
-function sanitizeKiroToolName(name) {
-  return isString(name) ? name.replace(/[^a-zA-Z0-9_-]/g, "_") : name;
-}
-
-/**
  * Build the Kiro `toolSpecification` entries for the caller's declared tools.
  *
  * This is the single place where a declared tool becomes a Kiro tool spec, so
@@ -220,17 +208,13 @@ function sanitizeKiroToolName(name) {
  * provoke a phantom tool call on an otherwise plain turn.
  *
  * @param {Array} tools - the caller's declared tools (OpenAI function shape).
- * @param {Map<string,string>} toolNameMap - populated with sanitized→original
- *   tool names for any name Kiro would have rejected.
+ * @param {Function} toolName - assigns a reversible Kiro-safe name.
  */
-function buildKiroToolSpecs(tools, toolNameMap) {
+function buildKiroToolSpecs(tools, toolName) {
   return tools.map((t) => {
     const originalName = t.function?.name || t.name;
-    // Kiro rejects consecutive underscores in a tool name. Collapse them
-    // and remember the original so response translators can restore the
-    // name the client actually asked for.
-    const name = sanitizeKiroToolName(originalName);
-    if (name !== originalName) toolNameMap.set(name, originalName);
+    // Use the same name for the specification and historical tool calls.
+    const name = toolName(originalName);
     const rawDescription = t.function?.description || t.description || "";
     // Clients may send object/number descriptions; Kiro needs a string (#1333).
     let description = isString(rawDescription) ? rawDescription : JSON.stringify(rawDescription);
@@ -271,10 +255,9 @@ const KIRO_CONTINUATION_CONTENT = "Continue";
  *
  * Returns { history, currentMessage }.
  *
- * @param {Map<string,string>} toolNameMap - populated with sanitized→original
- *   tool names for any name Kiro would have rejected.
+ * @param {Function} toolName - assigns a reversible Kiro-safe name.
  */
-function convertMessages(messages, tools, model, toolNameMap = new Map()) {
+function convertMessages(messages, tools, model, toolName) {
   let history = [];
   let currentMessage = null;
 
@@ -334,7 +317,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
         userMsg.userInputMessage.userInputMessageContext.tools =
-        buildKiroToolSpecs(tools, toolNameMap);
+        buildKiroToolSpecs(tools, toolName);
         toolsInjectedToFirstUserMsg = true;
       }
 
@@ -382,6 +365,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         // model does not answer as if none was sent.
         let omittedImages = 0;
         for (const c of msg.content) {
+          if (c == null) continue;
           if (c.type === OPENAI_BLOCK.TEXT || c.text) {
             textParts.push(c.text || "");
           } else if (c.type === OPENAI_BLOCK.IMAGE_URL) {
@@ -421,7 +405,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         content = textParts.join("\n");
 
         // Check for tool_result blocks
-        const toolResultBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_RESULT);
+        const toolResultBlocks = msg.content.filter((c) => c?.type === CLAUDE_BLOCK.TOOL_RESULT);
         if (toolResultBlocks.length > 0) {
           toolResultBlocks.forEach((block) => {
             const text = serializeToolResultContent(block.content);
@@ -455,10 +439,10 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
       let toolUses = [];
 
       if (Array.isArray(msg.content)) {
-        const textBlocks = msg.content.filter((c) => c.type === OPENAI_BLOCK.TEXT);
+        const textBlocks = msg.content.filter((c) => c?.type === OPENAI_BLOCK.TEXT);
         textContent = textBlocks.map((b) => b.text).join("\n").trim();
 
-        const toolUseBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_USE);
+        const toolUseBlocks = msg.content.filter((c) => c?.type === CLAUDE_BLOCK.TOOL_USE);
         toolUses = toolUseBlocks;
       } else if (isString(msg.content)) {
         textContent = msg.content.trim();
@@ -483,13 +467,13 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
             if (tc.function) {
               return {
                 toolUseId: tc.id || uuidv4(),
-                name: tc.function.name,
+                name: toolName(tc.function.name),
                 input: safeJSONParse(tc.function.arguments, {})
               };
             } else {
               return {
                 toolUseId: tc.id || uuidv4(),
-                name: tc.name,
+                name: toolName(tc.name),
                 input: tc.input || {}
               };
             }
@@ -616,7 +600,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   const resolvedTools = carriedTools?.length > 0
   ? carriedTools
   : (clientProvidedTools && Array.isArray(tools)
-    ? buildKiroToolSpecs(tools, toolNameMap)
+    ? buildKiroToolSpecs(tools, toolName)
     : null);
 
   if (resolvedTools?.length > 0 &&
@@ -688,7 +672,8 @@ export function openaiToKiroRequest(model, body, stream, credentials, translatio
   );
 
   const toolNameMap = new Map();
-  const { history, currentMessage } = convertMessages(messages, tools, kiroModelId, toolNameMap);
+  const toolName = createKiroToolNames((tools || []).map((t) => t.function?.name || t.name), toolNameMap);
+  const { history, currentMessage } = convertMessages(messages, tools, kiroModelId, toolName);
 
   // Resolve the profileArn (region-aligned) via the single source of truth.
   // Handles api_key (never the shared default), us-east-1 default fallback, and

@@ -171,7 +171,8 @@ export function extractApiCapabilities(raw, options) {
  * max_model_len/context_length and limits.max_output_tokens; its current
  * decoder does not consume every capability extension advertised here.
  * When total context is unknown, keep maxInput in canonical capabilities only:
- * emitting a nested input/output pair would make OMP invent their summed window.
+ * emitting an input/output pair at the root or in limits would make generic
+ * decoders invent their summed window.
  * Preserve bounded thinking budgets and provider attribution as data, never
  * provider headers, endpoints, credentials or executable config.
  */
@@ -213,6 +214,7 @@ export function projectDiscoveryMetadata(model) {
     ...(isBoolean(caps.structuredOutput) ? { structured_output: caps.structuredOutput } : null),
     ...(isBoolean(caps.promptCaching) ? { prompt_caching: caps.promptCaching } : null),
     ...(contextWindow !== undefined ? { context_length: contextWindow, max_model_len: contextWindow } : null),
+    ...(maxInput !== undefined && contextWindow !== undefined ? { max_input_tokens: maxInput } : null),
     ...(maxOutput !== undefined ? { max_output_tokens: maxOutput, max_completion_tokens: maxOutput } : null),
     ...(Object.keys(limits).length ? { limits } : null),
   };

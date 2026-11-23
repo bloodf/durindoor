@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
 
 // Extract the persisted invariant shape from a combo payload. Accepts the
@@ -23,29 +24,45 @@ function normalizeInvariant(data) {
 }
 export class ComboMemberError extends Error {}
 
-// Resolve names as routing does (exact first, then case-insensitive) and reject
-// cycles reachable from the proposed row, including newly resolved references.
-function validateComboCycles(db, proposed) {
-  const rows = db.all(`SELECT * FROM combos ORDER BY createdAt ASC, id ASC`)
-    .filter((row) => row.id !== proposed.id).map(rowToCombo);
-  rows.push(proposed);
-  rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  const resolve = (name) => isString(name) && (rows.find((row) => row.name === name) ||
-    rows.find((row) => row.name.toLowerCase() === name.toLowerCase()));
-  const active = new Set();
-  const done = new Set();
-  function visit(combo) {
-    if (active.has(combo.id)) throw new ComboMemberError("Combo cycle detected");
-    if (done.has(combo.id)) return;
-    active.add(combo.id);
-    for (const model of combo.models) {
-      const nested = resolve(model);
-      if (nested) visit(nested);
-    }
-    active.delete(combo.id);
-    done.add(combo.id);
+// Serialize graph reads with all combo writers on shared database engines.
+function lockComboGraph(db) {
+  if (db.driver === "pg") {
+    if (!db.get(QUOTA_WRITE_LOCK_SQL_PG)) throw new Error("Combo storage is not initialized");
+  } else if (db.run(QUOTA_WRITE_LOCK_SQL).changes !== 1) {
+    throw new Error("Combo storage is not initialized");
   }
-  visit(proposed);
+}
+
+// Resolve names as routing does (exact first, then case-insensitive). Scan the
+// whole graph because a rename can change resolution in another component.
+function validateComboCycles(db, proposed) {
+  const existing = db.all(`SELECT * FROM combos ORDER BY createdAt ASC, id ASC`).map(rowToCombo);
+  const next = existing.filter((row) => row.id !== proposed.id).concat(proposed);
+  function cyclicRoots(rows) {
+    rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const resolve = (name) => isString(name) && (rows.find((row) => row.name === name) ||
+      rows.find((row) => row.name.toLowerCase() === name.toLowerCase()));
+    function hasCycle(combo, active, done) {
+      if (active.has(combo.id)) return true;
+      if (done.has(combo.id)) return false;
+      active.add(combo.id);
+      for (const model of combo.models) {
+        const ref = !isString(model) && model?.kind === "combo-ref" ? model : null;
+        const nested = (ref?.comboId && rows.find((row) => row.id === ref.comboId)) ||
+          resolve(isString(model) ? model : ref?.comboName || ref?.model);
+        if (nested && hasCycle(nested, active, done)) return true;
+      }
+      active.delete(combo.id);
+      done.add(combo.id);
+      return false;
+    }
+    return new Set(rows.filter((row) => hasCycle(row, new Set(), new Set())).map((row) => row.id));
+  }
+  const before = cyclicRoots(existing);
+  const after = cyclicRoots(next);
+  if (after.has(proposed.id) || [...after].some((id) => !before.has(id))) {
+    throw new ComboMemberError("Combo cycle detected");
+  }
 }
 
 // Members preserve established string `models` routing while carrying optional
@@ -56,16 +73,17 @@ export function normalizeComboMembers(models, members) {
   if (!Array.isArray(members) || members.length !== ids.length) throw new ComboMemberError("Combo members must match models");
   const saved = new Map();
   for (const member of members) {
-    if (!member || !isString(member.id) || !Number.isFinite(member.weight) || member.weight < 0) {
+    if (!member || !(isString(member.id) || (isObject(member.id) && member.id.kind === "combo-ref")) || !Number.isFinite(member.weight) || member.weight < 0) {
       throw new ComboMemberError("Each combo member weight must be a positive finite number or zero");
     }
-    const occurrences = saved.get(member.id) || [];
+    const key = JSON.stringify(member.id);
+    const occurrences = saved.get(key) || [];
     occurrences.push(member.weight);
-    saved.set(member.id, occurrences);
+    saved.set(key, occurrences);
   }
   if (members.length && !members.some((member) => member.weight > 0)) throw new ComboMemberError("At least one combo member must have positive weight");
   const normalized = ids.map((id) => {
-    const occurrences = saved.get(id);
+    const occurrences = saved.get(JSON.stringify(id));
     if (!occurrences?.length) throw new ComboMemberError("Combo members must match models");
     return { id, weight: occurrences.shift() };
   });
@@ -79,11 +97,11 @@ export function normalizeComboMembers(models, members) {
 function mergeMembersOnModelsPatch(models, priorMembers) {
   const byId = new Map();
   for (const member of priorMembers || []) {
-    const occurrences = byId.get(member.id) || [];
+    const occurrences = byId.get(JSON.stringify(member.id)) || [];
     occurrences.push(member.weight);
-    byId.set(member.id, occurrences);
+    byId.set(JSON.stringify(member.id), occurrences);
   }
-  return models.map((id) => ({ id, weight: byId.get(id)?.shift() ?? 1 }));
+  return models.map((id) => ({ id, weight: byId.get(JSON.stringify(id))?.shift() ?? 1 }));
 }
 
 // Empty / omitted allow-lists mean unrestricted. IDs are de-duplicated so the
@@ -214,8 +232,9 @@ export async function createCombo(data) {
   };
   // Reject a violating combo before the write so nothing is persisted.
   validateComboInvariant({ ...combo, ...(invariant || {}) });
-  validateComboCycles(db, combo);
   db.transaction(() => {
+    lockComboGraph(db);
+    validateComboCycles(db, combo);
     db.run(
       `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.members), invariant ? stringifyJson(invariant) : null, combo.capabilities ? stringifyJson(combo.capabilities) : null, stringifyJson(combo.allowedConnectionIds), combo.createdAt, combo.updatedAt]
@@ -232,6 +251,7 @@ export async function updateCombo(id, data) {
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
+    lockComboGraph(db);
     const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
     if (!row) return;
     // prunedSteps is written only by pruneComboSteps / restorePrunedSteps.
@@ -273,6 +293,7 @@ function persistSteps(db, row, models, members, now) {
   const combo = rowToCombo(row);
   const next = { ...combo, models, members: normalizeComboMembers(models, members), updatedAt: now };
   validateComboInvariant({ ...next, ...(combo.invariant || {}) });
+  validateComboCycles(db, next);
   db.run(`UPDATE combos SET models = ?, members = ?, updatedAt = ? WHERE id = ?`, [stringifyJson(next.models), stringifyJson(next.members), now, row.id]);
   return next;
 }
@@ -288,6 +309,7 @@ export async function pruneComboSteps(id, stale, { reason = "Model no longer in 
   const providerByModel = new Map((Array.isArray(stale) ? stale : []).filter((s) => s && isString(s.model)).map((s) => [s.model, s.provider ?? null]));
   let outcome = { pruned: [], skipped: "not-found" };
   db.transaction(() => {
+    lockComboGraph(db);
     const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
     if (!row) return;
     const combo = rowToCombo(row);
@@ -323,6 +345,7 @@ export async function restorePrunedSteps(id, { models: only = null, now = new Da
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
+    lockComboGraph(db);
     const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
     if (!row) return;
     const combo = rowToCombo(row);

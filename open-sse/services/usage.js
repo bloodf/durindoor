@@ -16,6 +16,8 @@ import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
 import { getClinepassUsage } from "./usage/clinepass.js";
+import { getDeepRelayUsage } from "./usage/deeprelay.js";
+import { getOpenDesignUsage } from "./usage/opendesign.js";
 import { getSyntheticUsage } from "./usage/synthetic.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
@@ -65,6 +67,8 @@ const USAGE_HANDLERS = {
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   clinepass: (c) => getClinepassUsage(c.accessToken, c.apiKey, c.proxyOptions),
   synthetic: (c) => getSyntheticUsage(c.apiKey, c.proxyOptions),
+  deeprelay: (c) => getDeepRelayUsage(c.apiKey, c.proxyOptions),
+  "opendesign-go": (c) => getOpenDesignUsage(c),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   gemini: () => fetchGeminiApiKeyQuota(),
   xai: async (c) => {

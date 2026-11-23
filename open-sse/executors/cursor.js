@@ -650,6 +650,13 @@ function createCursorStreamErrorResponse(message, status = HTTP_STATUS.BAD_GATEW
   });
 }
 
+// A complete protobuf stream with no visible answer or tool call is a failed turn.
+function createEmptyCompletionError() {
+  return new Response(JSON.stringify({ error: { message: "Cursor returned an empty completion", type: "api_error", code: "empty_completion" } }), {
+    status: HTTP_STATUS.BAD_GATEWAY, headers: { "Content-Type": "application/json" }
+  });
+}
+
 function cursorAbortError(reason) {
   if (reason instanceof Error && reason.name === "AbortError") return reason;
   return new DOMException("Cursor request aborted", "AbortError");
@@ -1723,6 +1730,8 @@ export class CursorExecutor extends BaseExecutor {
       }
     }
 
+    if (!finalContent && toolCalls.length === 0) return createEmptyCompletionError();
+
     const message = {
       role: "assistant",
       content: finalContent || null
@@ -1962,9 +1971,7 @@ export class CursorExecutor extends BaseExecutor {
       }
     }
 
-    if (chunks.length === 0 && toolCalls.length === 0) {
-      chunks.push(chatChunkSse({ id: responseId, created, model, delta: { role: "assistant", content: "" } }));
-    }
+    if (!totalContent && toolCalls.length === 0) return createEmptyCompletionError();
 
     const usage = estimateUsage(body, totalContent.length, FORMATS.OPENAI);
 

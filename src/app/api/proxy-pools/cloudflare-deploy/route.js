@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildCloudflareWorkerUploadRequest } from "@/lib/cloudflare-worker-upload";
 import { createProxyPool } from "@/models";
 import {
   buildRelayWorkerCode,
@@ -28,21 +29,14 @@ export async function POST(request) {
     // 1. Upload Worker Script
     const workerScriptUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${projectName}`;
     
-    // Cloudflare requires multipart/form-data for worker script upload
-    const formData = new FormData();
-    formData.append("index.js", new Blob([workerCode], { type: "application/javascript+module" }), "index.js");
-    formData.append("metadata", new Blob([JSON.stringify({
-      main_module: "index.js",
-      compatibility_date: "2024-03-20",
-      observability: { enabled: true }
-    })], { type: "application/json" }), "metadata.json");
-
+    const { body: uploadBody, contentType } = buildCloudflareWorkerUploadRequest(workerCode);
     const uploadRes = await fetch(workerScriptUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${apiToken}`,
+        "Content-Type": contentType,
       },
-      body: formData,
+      body: uploadBody,
     });
 
     if (!uploadRes.ok) {

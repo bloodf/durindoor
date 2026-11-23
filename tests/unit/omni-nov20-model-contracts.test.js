@@ -14,6 +14,7 @@ describe("November OmniRoute existing model contracts", () => {
 
   it("preserves explicitly declared Antigravity efforts and Hydrogen alias", () => {
     expect(getThinkingLevelsFromCapabilities({ reasoning: true, thinkingEfforts: ["high"] }, "antigravity", "gemini-3.8-flash-high")).toEqual(["high"]);
-    expect(getModelUpstreamId("antigravity", "gemini-4-hydrogen")).toBe("gemini-4-hydrogen-medium");
+    // Upstream 9router 767d7aeb0b defaults the Hydrogen alias to its high tier.
+    expect(getModelUpstreamId("antigravity", "gemini-4-hydrogen")).toBe("gemini-4-hydrogen-high");
   });
 });

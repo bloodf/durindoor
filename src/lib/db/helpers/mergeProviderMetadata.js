@@ -35,6 +35,12 @@ export function mergeProviderConnection(existing, patch) {
     mergeProviderSpecificData(existing?.providerSpecificData, value) :
     value;
   }
+  // Only errors recorded during the current disabled period are current.
+  if (patch?.isActive !== undefined && patch.isActive !== existing?.isActive) {
+    result.disabledErrorAt = null;
+  } else if (Object.hasOwn(patch || {}, "lastError")) {
+    result.disabledErrorAt = existing?.isActive === false && patch.lastError && patch.lastErrorAt ? patch.lastErrorAt : null;
+  }
   if (
   existing?.isActive === false &&
   patch?.isActive === true &&

@@ -180,6 +180,7 @@ describe("rich compatible model metadata", () => {
     const projected = projectDiscoveryMetadata(model);
     expect(projected.capabilities).toMatchObject({ maxInput: 1000000, maxOutput: 128000, defaultOutput: 32000 });
     expect(projected).not.toHaveProperty("max_model_len");
+    expect(projected).not.toHaveProperty("max_input_tokens");
     expect(projected.limits).toEqual({ max_output_tokens: 128000 });
     expect(extractLiveModelLimits(projected)).toEqual({ maxInput: 1000000, maxOutput: 128000, defaultOutput: 32000 });
     const native = await buildModelsResponse(new Request("http://localhost/v1/models", {

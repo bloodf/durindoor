@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../open-sse/config/appConstants.js";
 
 const credentials = { projectId: "test-project", connectionId: "test-connection" };
 const transform = (model, request) => new AntigravityExecutor().transformRequest(model, { request }, false, credentials).request;
@@ -16,7 +17,7 @@ describe("Antigravity Claude request shape", () => {
       internalMarker: "omit", messages: [{ role: "user", content: "omit" }],
     });
     expect(request.contents).toEqual([{ role: "user", parts: [{ text: "hello" }] }]);
-    expect(request.systemInstruction.parts[0].text).toBe("Be concise");
+    expect(request.systemInstruction.parts.map((part) => part.text)).toEqual([ANTIGRAVITY_DEFAULT_SYSTEM, "Be concise"]);
     expect(request.generationConfig).toMatchObject({ temperature: 0.5, maxOutputTokens: 1234 });
     expect(request.tools[0].functionDeclarations[0].name).toBe("lookup");
     expect(request.toolConfig.functionCallingConfig).toEqual({ mode: "ANY", allowedFunctionNames: ["lookup"] });

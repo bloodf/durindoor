@@ -86,6 +86,7 @@ const MITM_RESTART_RESET_MS = 60000;
 let mitmRestartCount = 0;
 let mitmLastStartTime = 0;
 let mitmIsRestarting = false;
+let mitmRestartGeneration = 0;
 
 const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 
@@ -924,15 +925,16 @@ async function scheduleMitmRestart(apiKey) {
   // Set guard synchronously before any await to prevent concurrent calls
   // from passing the check above.
   mitmIsRestarting = true;
+  const generation = mitmRestartGeneration;
 
   const aliveMs = Date.now() - mitmLastStartTime;
   if (aliveMs >= MITM_RESTART_RESET_MS) mitmRestartCount = 0;
 
   if (mitmRestartCount >= MITM_MAX_RESTARTS) {
     err("Max restart attempts reached. Giving up.");
-    try {await cleanupRestartTerminalState("restart attempts exhausted");}
+    try {await cleanupRestartTerminalState("restart attempts exhausted", generation);}
     catch (error) {err(`Terminal restart cleanup failed; ownership state was retained: ${error.message}`);}
-    mitmIsRestarting = false;
+    if (generation === mitmRestartGeneration) mitmIsRestarting = false;
     return;
   }
 
@@ -944,31 +946,35 @@ async function scheduleMitmRestart(apiKey) {
   await new Promise((r) => setTimeout(r, delay));
 
   try {
+    if (generation !== mitmRestartGeneration) return;
     const settings = _getSettings ? await _getSettings() : null;
+    if (generation !== mitmRestartGeneration) return;
     if (settings && !settings.mitmEnabled) {
       log("MITM disabled, skipping restart");
-      await cleanupRestartTerminalState("MITM disabled during restart");
-      mitmIsRestarting = false;
+      await cleanupRestartTerminalState("MITM disabled during restart", generation);
+      if (generation === mitmRestartGeneration) mitmIsRestarting = false;
       return;
     }
     const password = getCachedPassword();
     if (IS_WIN && !serverRedirectOwned) {
       err("MITM isolation is no longer owned; a fresh user-approved Windows start is required");
-      await cleanupRestartTerminalState("Windows redirect ownership lost");
-      mitmIsRestarting = false;
+      await cleanupRestartTerminalState("Windows redirect ownership lost", generation);
+      if (generation === mitmRestartGeneration) mitmIsRestarting = false;
       return;
     }
     if (!serverRedirectOwned && !password && !IS_WIN && isSudoPasswordRequired()) {
       err("No in-memory sudo credential is available to restore the MITM redirect");
-      await cleanupRestartTerminalState("sudo credential unavailable");
-      mitmIsRestarting = false;
+      await cleanupRestartTerminalState("sudo credential unavailable", generation);
+      if (generation === mitmRestartGeneration) mitmIsRestarting = false;
       return;
     }
-    await startServer(apiKey, password);
+    await startServer(apiKey, password, false, generation);
+    if (generation !== mitmRestartGeneration) return;
     log("🔄 Restarted successfully");
     mitmRestartCount = 0;
     mitmIsRestarting = false;
   } catch (e) {
+    if (generation !== mitmRestartGeneration) return;
     err(`Restart attempt ${mitmRestartCount}/${MITM_MAX_RESTARTS} failed: ${e.message}`);
     mitmIsRestarting = false;
     // Schedule next retry
@@ -997,8 +1003,9 @@ async function removeTrustOnFeatureDisable(sudoPassword = null) {
   }
 }
 
-async function cleanupRestartTerminalState(reason) {
+async function cleanupRestartTerminalState(reason, generation) {
   return startGate.runAfterIdle(async () => {
+    if (generation !== mitmRestartGeneration) return;
     // Persist the terminal state before removing the live recovery surface.
     // If persistence fails, retain every ownership artifact for a safe retry.
     await saveMitmSettings(false);
@@ -1212,8 +1219,11 @@ async function removePortRedirect(sudoPassword) {
   }
 }
 
-async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
+async function startServer(apiKey, sudoPassword, forceKillPort443 = false, restartGeneration = null) {
   return startGate.run(async () => {
+    if (restartGeneration !== null && restartGeneration !== mitmRestartGeneration) {
+      throw new Error("MITM restart was cancelled");
+    }
     // The full proxy and all user-owned files must stay unprivileged. Refuse an
     // elevated parent before reading or mutating PID, CA, trust, DNS, redirect,
     // or process state.
@@ -1223,7 +1233,9 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       throw error;
     }
 
-    if (!serverProcess || serverProcess.killed) {
+    // Restart recovery reuses the same authenticated PID and redirect path as
+    // adoption, even when this manager still tracks the launcher.
+    if (!serverProcess || serverProcess.killed || restartGeneration !== null) {
       try {
         if (fs.existsSync(PID_FILE)) {
           const { snapshot, record } = readPidRecord();
@@ -1254,6 +1266,10 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
               if (startingMatches && !replacePidFileIfMatches(record, reusableRecord)) {
                 throw new Error("Recovered MITM server PID could not be recorded safely");
               }
+              if (restartGeneration !== null && serverProcess && !serverProcess.killed &&
+              (!serverRedirectOwned || reusableRecord.pid !== serverPid || reusableRecord.nonce !== serverInstanceNonce)) {
+                throw new Error("MITM restart ownership changed");
+              }
               let installedHere = false;
               try {
                 if (!serverRedirectOwned) {
@@ -1272,6 +1288,13 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
                   catch (cleanupError) {error.cleanupError = cleanupError;}
                 }
                 throw error;
+              }
+              if (restartGeneration !== null && restartGeneration !== mitmRestartGeneration) {
+                throw new Error("MITM restart was cancelled");
+              }
+              const settings = restartGeneration !== null && _getSettings ? await _getSettings() : null;
+              if (restartGeneration !== null && (restartGeneration !== mitmRestartGeneration || settings && !settings.mitmEnabled)) {
+                throw new Error("MITM restart was cancelled");
               }
               serverPid = reusableRecord.pid;
               serverLauncherPid = reusableRecord.launcherPid;
@@ -1710,7 +1733,8 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
  * Stop MITM server — removes ALL tool DNS entries first, then kills server
  */
 async function stopServer(sudoPassword, { preserveDesiredState = false } = {}) {
-  // Prevent auto-restart from triggering on intentional stop
+  // Invalidate delayed restarts before waiting for the lifecycle gate.
+  mitmRestartGeneration++;
   mitmIsRestarting = true;
   mitmRestartCount = 0;
   try {

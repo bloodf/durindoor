@@ -212,3 +212,5 @@ Omit `stream` or set it to `false` for JSON. In SSE, read text from `step.delta`
 The same provider-qualified model works on `POST /v1/chat/completions` with one text-only user message. DurinDoor always sends `store: false`. Interaction IDs identify the current response only. This integration supports foreground creation with text input and output. The existing **Gemini** connection still serves GenerateContent and the Gemini media endpoints.
 
 See the [Google Interactions overview](https://aistudio.google.com/docs/interactions-overview) and [streaming guide](https://aistudio.google.com/docs/streaming).
+
+Mistral Chat requests map `seed` to `random_seed` and `max_completion_tokens` to `max_tokens`, remove unsupported OpenAI-only fields, and cap temperature at 1.5. Explicit Mistral field values take precedence. Unsupported `service_tier` values are normalized or omitted; Responses requests retain their own schema.

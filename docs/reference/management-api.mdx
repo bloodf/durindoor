@@ -19,6 +19,8 @@ Authentication applies to the decoded route path. Individual handlers can requir
 | gw | MCP gateway key, not a DurinDoor API key |
 | local | Local-only gate first. Remote callers without CLI get HTTP 403 `Local only: CLI token required` |
 
+Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
+
 Loopback identity comes from wrapper-stamped peer headers, not from `Host` alone. A request through `x-9r-via-proxy` is never loopback. Management routes accept session, CLI, key, or loop. Reveal paths reject a key. Always-protected paths (`/api/shutdown`, `/api/settings/database`, `/api/version/shutdown`, `/api/version/update`, OAuth auto-import) accept session or CLI only. Other protected routes fall through to session, CLI, or loop. `POST /api/mcp/control` is a separate branch: session, CLI, or key, plus loopback with no credential when `requireApiKey` is off and `Origin` is absent or same-origin. Gateway protocol surfaces (`/api/mcp-gateway`, `/sse`, `/message`) take a gateway key, CLI, or loopback, not a DurinDoor API key. Details: [MCP control](../features/mcp-control.mdx).
 
 <Callout type="warn">

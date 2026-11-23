@@ -89,14 +89,14 @@ provider's own id, on both the added and the done item.
 **The local allocator is a single shared monotonic counter, not a formula.**
 
 - The counter is created per response state at
-  [open-sse/translator/index.js:537](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/index.js:537)
+  [open-sse/translator/index.js:537](../../../open-sse/translator/index.js)
   (`nextOutputIndex: 0`).
 - The reasoning item takes the next slot at
-  [open-sse/translator/response/openai-responses.js:233](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:233).
+  [open-sse/translator/response/openai-responses.js:233](../../../open-sse/translator/response/openai-responses.js).
 - The message item takes the next slot at
-  [open-sse/translator/response/openai-responses.js:300](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:300).
+  [open-sse/translator/response/openai-responses.js:300](../../../open-sse/translator/response/openai-responses.js).
 - The tool-call item takes the next slot at
-  [open-sse/translator/response/openai-responses.js:476](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:476).
+  [open-sse/translator/response/openai-responses.js:476](../../../open-sse/translator/response/openai-responses.js).
 
 Each site allocates **once**, at first announcement, and stores the value (`state.reasoningIndex`,
 `state.msgOutputIndexes[idx]`, `state.funcOutputIndexes[tcIdx]`). Every later delta and every close reads the
@@ -105,7 +105,7 @@ formula: a tool call can never collide with a reasoning item, with a message ite
 regardless of the order in which they arrive.
 
 The local translator's own header already names this contract
-([open-sse/translator/response/openai-responses.js:5](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:5)):
+([open-sse/translator/response/openai-responses.js:5](../../../open-sse/translator/response/openai-responses.js)):
 *"Tool-call shape follows the Responses API spec (OmniRoute #6937): function and custom tool items carry
 status in_progress/completed, custom tools (apply_patch) stream via custom_tool_call_input.* events, and
 output_index is offset past a preceding reasoning item so items never collide at 0."*
@@ -113,39 +113,39 @@ output_index is offset past a preceding reasoning item so items never collide at
 **Added/done statuses are present on both item kinds.**
 
 - `status: "in_progress"` on the `custom_tool_call` announcement at
-  [open-sse/translator/response/openai-responses.js:487](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:487),
+  [open-sse/translator/response/openai-responses.js:487](../../../open-sse/translator/response/openai-responses.js),
   and on the `function_call` announcement at
-  [open-sse/translator/response/openai-responses.js:498](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:498).
+  [open-sse/translator/response/openai-responses.js:498](../../../open-sse/translator/response/openai-responses.js).
 - `status: "completed"` on the `custom_tool_call` completion at
-  [open-sse/translator/response/openai-responses.js:620](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:620),
+  [open-sse/translator/response/openai-responses.js:620](../../../open-sse/translator/response/openai-responses.js),
   and on the `function_call` completion at
-  [open-sse/translator/response/openai-responses.js:643](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:643).
+  [open-sse/translator/response/openai-responses.js:643](../../../open-sse/translator/response/openai-responses.js).
 
 This matches upstream's two added fields exactly, on both branches, and upstream's third field (`status` on the
 done item) is present on both branches as well.
 
 **Call identity is preserved across reasoning and custom tools.** The local announcement uses
 `id: \`fc_${refCallId}\`` with `call_id: refCallId`
-([open-sse/translator/response/openai-responses.js:482](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:482)),
+([open-sse/translator/response/openai-responses.js:482](../../../open-sse/translator/response/openai-responses.js)),
 the completion uses the same pair
-([open-sse/translator/response/openai-responses.js:615](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:615)),
+([open-sse/translator/response/openai-responses.js:615](../../../open-sse/translator/response/openai-responses.js)),
 and every argument or custom-input delta and completion event carries `item_id: \`fc_${callId}\`` with the
 same allocated `output_index`
-([open-sse/translator/response/openai-responses.js:598](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:598),
-[open-sse/translator/response/openai-responses.js:626](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:626)).
+([open-sse/translator/response/openai-responses.js:598](../../../open-sse/translator/response/openai-responses.js),
+[open-sse/translator/response/openai-responses.js:626](../../../open-sse/translator/response/openai-responses.js)).
 The reasoning item carries a distinct id namespace — `rs_${state.responseId}_${idx}` at
-[open-sse/translator/response/openai-responses.js:234](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:234)
+[open-sse/translator/response/openai-responses.js:234](../../../open-sse/translator/response/openai-responses.js)
 — so a reasoning item and a tool call never share an identity.
 
 ### Fixture coverage
 
 | Local fixture | Coverage that matters for #6937 |
 | --- | --- |
-| [tests/translator/port-6937-responses-toolcall-shape.test.js:26](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/translator/port-6937-responses-toolcall-shape.test.js:26) | Eight cases over function calls, custom tool calls, declared-vs-name tool-type precedence, deferred announcements, fragmented arguments, and the output-index offset. The offset case is *"offsets tool-call output_index past a preceding reasoning item"* (:81), asserting the reasoning item at index `0` and the `function_call` at index `1` — the upstream assertion. |
-| [tests/translator/responses-output-index.test.js:10](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/translator/responses-output-index.test.js:10) | *"does not collide a tool call's output_index with a preceding reasoning item"* — through the legacy Responses transform stream, asserting the reasoning item at `0` and that the tool call's index differs, and that the tool call's announcement, argument delta, argument done and item done all share one index. |
-| [tests/unit/omni-responses-output-index-stability.test.js:35](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/omni-responses-output-index-stability.test.js:35) | *"keeps unique ordered indexes across tool, text, tool segments with reasoning first"* (:73) — the monotonic allocator across reasoning, message and tool items. |
-| [tests/unit/openai-responses-stream-tool-identity.test.js:57](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/openai-responses-stream-tool-identity.test.js:57) | Call-identity preservation for custom, namespaced and plain function tools, including parallel indexes and out-of-order deltas. |
-| [tests/unit/omni-responses-mixed-reasoning.test.js:12](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/omni-responses-mixed-reasoning.test.js:12) | Mixed reasoning-plus-tool-call streams through the translator and the stream transformer. |
+| [tests/translator/port-6937-responses-toolcall-shape.test.js:26](../../../tests/translator/port-6937-responses-toolcall-shape.test.js) | Eight cases over function calls, custom tool calls, declared-vs-name tool-type precedence, deferred announcements, fragmented arguments, and the output-index offset. The offset case is *"offsets tool-call output_index past a preceding reasoning item"* (:81), asserting the reasoning item at index `0` and the `function_call` at index `1` — the upstream assertion. |
+| [tests/translator/responses-output-index.test.js:10](../../../tests/translator/responses-output-index.test.js) | *"does not collide a tool call's output_index with a preceding reasoning item"* — through the legacy Responses transform stream, asserting the reasoning item at `0` and that the tool call's index differs, and that the tool call's announcement, argument delta, argument done and item done all share one index. |
+| [tests/unit/omni-responses-output-index-stability.test.js:35](../../../tests/unit/omni-responses-output-index-stability.test.js) | *"keeps unique ordered indexes across tool, text, tool segments with reasoning first"* (:73) — the monotonic allocator across reasoning, message and tool items. |
+| [tests/unit/openai-responses-stream-tool-identity.test.js:57](../../../tests/unit/openai-responses-stream-tool-identity.test.js) | Call-identity preservation for custom, namespaced and plain function tools, including parallel indexes and out-of-order deltas. |
+| [tests/unit/omni-responses-mixed-reasoning.test.js:12](../../../tests/unit/omni-responses-mixed-reasoning.test.js) | Mixed reasoning-plus-tool-call streams through the translator and the stream transformer. |
 
 The upstream fixture file `tests/unit/responses-translation-fixes.test.ts` has no local counterpart **by
 name**; the local equivalents are the two files above. The local fixtures assert strictly more than the
@@ -183,12 +183,12 @@ item and a *tool call* collide when both follow a reasoning item: upstream alloc
 branches) while the tool call takes `state.reasoningIndex + 1 + tcIdx` — both `1` for the first tool call.
 The local monotonic counter removes that collision entirely (`0`, `1`, `2` in the probe above). This is a
 local superset, not a gap, and it is already recorded for the sibling upstream change in
-[internal/docs/port-reports/1073-responses-output-index-stability.md](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/internal/docs/port-reports/1073-responses-output-index-stability.md).
+[internal/docs/port-reports/1073-responses-output-index-stability.md](../../../internal/docs/port-reports/1073-responses-output-index-stability.md).
 
 **A second divergence, outside the #6937 hunks.** Upstream's merged tree contains a "T37" rule: when a
 provider reuses a tool-call index with a *different* call id, upstream closes the superseded call, deletes
 its recorded state and starts a new item. The local translator keeps the **first** id seen at an index and
-never supersedes it ([open-sse/translator/response/openai-responses.js:467](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/translator/response/openai-responses.js:467)
+never supersedes it ([open-sse/translator/response/openai-responses.js:467](../../../open-sse/translator/response/openai-responses.js)
 — `if (newCallId && !state.funcCallIds[tcIdx]) { state.funcCallIds[tcIdx] = newCallId; }`). This rule was
 not introduced by #6937 and is not part of the #6937 contract; it is recorded here so that the difference is
 not mistaken for parity. Closing it would change call identity, which this inventory does not touch.
@@ -249,21 +249,21 @@ here — `open-sse/services/combo/` contains only `contextRequirements.js`. A wh
 **A different mechanism occupies the same boundary: a bounded, pre-exposure SSE prefix peek.**
 
 - The peek is `peekStreamForContent` at
-  [open-sse/utils/streamContentPeek.js:153](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:153).
+  [open-sse/utils/streamContentPeek.js:153](../../../open-sse/utils/streamContentPeek.js).
 - Its contract is stated at
-  [open-sse/utils/streamContentPeek.js:5](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:5):
+  [open-sse/utils/streamContentPeek.js:5](../../../open-sse/utils/streamContentPeek.js):
   *"The peek reads the client-facing stream until the first frame that carries output. Every consumed byte is
   kept so the caller can replay it unchanged ahead of the unread live body. Nothing reaches the client during
   the peek, which is what makes a retry on another connection safe."*
 - Its verdict is `hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop"`
-  ([open-sse/utils/streamContentPeek.js:170](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:170)).
+  ([open-sse/utils/streamContentPeek.js:170](../../../open-sse/utils/streamContentPeek.js)).
 - The frame classifier is `frameCarriesContent`
-  ([open-sse/utils/streamContentPeek.js:23](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:23)).
+  ([open-sse/utils/streamContentPeek.js:23](../../../open-sse/utils/streamContentPeek.js)).
   It has **no `finish_reason` branch and no `stop_reason` branch** — verified by reading the whole function
   and by grepping the file for both identifiers (zero hits).
 
 **The combo calls the peek at its pre-exposure failover boundary.**
-[open-sse/services/combo.js:1697](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/combo.js:1697)
+[open-sse/services/combo.js:1697](../../../open-sse/services/combo.js)
 reads the content type and, for `text/event-stream`, calls the peek:
 
 ```js
@@ -281,18 +281,18 @@ if (contentType.includes(SSE_CONTENT_TYPE)) {
 
 The `continue` is the failover: the loop proceeds to the next combo member. The attempt's result reaches the
 client only on the success exit at
-[open-sse/services/combo.js:1751](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/combo.js:1751),
+[open-sse/services/combo.js:1751](../../../open-sse/services/combo.js),
 and `handleComboChat` returns that `Response` object unchanged to
-[src/sse/handlers/chat.js:684](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/sse/handlers/chat.js:684).
+[src/sse/handlers/chat.js:684](../../../src/sse/handlers/chat.js).
 **No byte of an attempt is written to the client before the fallback decision is taken**, so the retry the
 upstream PR is about is safe here by construction.
 
 **The exact upstream scenario fails over locally.** For a 200 response whose body is bytes with no
 terminator and no structured SSE frame: `frameCarriesContent` returns `false` (the line does not start with
-`data:`, or the JSON payload does not parse — [open-sse/utils/streamContentPeek.js:24](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:24)
-and [open-sse/utils/streamContentPeek.js:29](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:29));
+`data:`, or the JSON payload does not parse — [open-sse/utils/streamContentPeek.js:24](../../../open-sse/utils/streamContentPeek.js)
+and [open-sse/utils/streamContentPeek.js:29](../../../open-sse/utils/streamContentPeek.js));
 the reader reaches EOF and the peek returns `outcome: "empty"`
-([open-sse/utils/streamContentPeek.js:198](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:198));
+([open-sse/utils/streamContentPeek.js:198](../../../open-sse/utils/streamContentPeek.js));
 `hasContent` is `false`; the combo falls over. The upstream premise — "any byte satisfied the gate" — does
 not describe this tree.
 
@@ -302,14 +302,14 @@ not describe this tree.
    decision is always taken pre-exposure. Once content has been seen the peek returns `outcome: "content"`
    and the attempt passes through untouched; a later truncation is surfaced to the client, never retried.
 2. *Single-model path.* `holdForEarlyEof` at
-   [src/sse/handlers/chat.js:723](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/sse/handlers/chat.js:723)
+   [src/sse/handlers/chat.js:723](../../../src/sse/handlers/chat.js)
    states the rule explicitly at
-   [src/sse/handlers/chat.js:712](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/sse/handlers/chat.js:712):
+   [src/sse/handlers/chat.js:712](../../../src/sse/handlers/chat.js):
    *"Content already sent is never retried: nothing is forwarded until the peek settles."* The sibling hop is
    bounded to one attempt per request
-   ([src/sse/handlers/chat.js:1076](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/sse/handlers/chat.js:1076)),
+   ([src/sse/handlers/chat.js:1076](../../../src/sse/handlers/chat.js)),
    and the regression case is
-   [tests/unit/stream-early-eof-failover.test.js:267](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/stream-early-eof-failover.test.js:267)
+   [tests/unit/stream-early-eof-failover.test.js:267](../../../tests/unit/stream-early-eof-failover.test.js)
    — *"never retries once content has started, even if the stream then fails"* — which asserts
    `attempted()` is `["conn-one"]` only.
 
@@ -317,18 +317,18 @@ not describe this tree.
 
 | Local fixture | What it asserts about a truncated or empty upstream stream |
 | --- | --- |
-| [tests/unit/combo-empty-stream-3463.test.js:47](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js:47) | `it.each` over *"no bytes"*, *"keepalives only"*, *"a DONE sentinel only"*, *"usage without output frames"* and *"usage without output tokens"* — each must fall through to the next member (`expect(attempted).toEqual(["p1/first", "p2/second"])`). |
-| [tests/unit/combo-empty-stream-3463.test.js:100](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js:100) | *"replays invalid UTF-8 preamble bytes without rewriting them"* — garbage bytes followed by a content frame do **not** fail over, and the bytes are replayed verbatim. This is the closest local coverage of "bytes present but unparseable". |
-| [tests/unit/combo-empty-stream-3463.test.js:122](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js:122) | *"returns 503 when every combo member has an empty stream"*. |
-| [tests/unit/combo-precontent-error-2068.test.js:57](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-precontent-error-2068.test.js:57) | *"keeps genuine empty streams as 503"*. |
-| [tests/unit/stream-early-eof-failover.test.js:136](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/stream-early-eof-failover.test.js:136) | Direct coverage of the peek's `content` / `empty` / `error` / `timeout` outcomes and byte-exact replay. |
-| [tests/unit/omni-first-party-complete-empty-turn.test.js:12](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/omni-first-party-complete-empty-turn.test.js:12) | A complete Claude lifecycle with zero content blocks is classified `outcome: "empty"` and still replayed byte-exact. |
+| [tests/unit/combo-empty-stream-3463.test.js:47](../../../tests/unit/combo-empty-stream-3463.test.js) | `it.each` over *"no bytes"*, *"keepalives only"*, *"a DONE sentinel only"*, *"usage without output frames"* and *"usage without output tokens"* — each must fall through to the next member (`expect(attempted).toEqual(["p1/first", "p2/second"])`). |
+| [tests/unit/combo-empty-stream-3463.test.js:100](../../../tests/unit/combo-empty-stream-3463.test.js) | *"replays invalid UTF-8 preamble bytes without rewriting them"* — garbage bytes followed by a content frame do **not** fail over, and the bytes are replayed verbatim. This is the closest local coverage of "bytes present but unparseable". |
+| [tests/unit/combo-empty-stream-3463.test.js:122](../../../tests/unit/combo-empty-stream-3463.test.js) | *"returns 503 when every combo member has an empty stream"*. |
+| [tests/unit/combo-precontent-error-2068.test.js:57](../../../tests/unit/combo-precontent-error-2068.test.js) | *"keeps genuine empty streams as 503"*. |
+| [tests/unit/stream-early-eof-failover.test.js:136](../../../tests/unit/stream-early-eof-failover.test.js) | Direct coverage of the peek's `content` / `empty` / `error` / `timeout` outcomes and byte-exact replay. |
+| [tests/unit/omni-first-party-complete-empty-turn.test.js:12](../../../tests/unit/omni-first-party-complete-empty-turn.test.js) | A complete Claude lifecycle with zero content blocks is classified `outcome: "empty"` and still replayed byte-exact. |
 
 The upstream fixture file `tests/unit/validate-response-quality.test.ts` does not exist locally, and neither
 does upstream's `open-sse/utils/streamReadiness.ts` / `streamReadinessPolicy.ts` readiness module that
 upstream #7545 names as the mechanism handling truncated-but-structured streams. Locally that role is filled
 by the content-based peek plus `STREAM_FIRST_CHUNK_TIMEOUT_MS`
-([open-sse/config/runtimeConfig.js:101](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/config/runtimeConfig.js:101)),
+([open-sse/config/runtimeConfig.js:101](../../../open-sse/config/runtimeConfig.js)),
 which bounds a *slow* stream rather than a *truncated* one.
 
 ### Divergence: the local gate is content-based, not terminator-based
@@ -339,10 +339,10 @@ five cases upstream protects therefore behave differently locally:
 
 | Upstream #7545 case (asserted **valid**) | Local outcome | Local evidence |
 | --- | --- | --- |
-| `data: [DONE]` only, no content | `outcome: "empty"` → **fails over** | `frameCarriesContent` returns `false` for `[DONE]` ([streamContentPeek.js:26](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/utils/streamContentPeek.js:26)); pinned by [tests/unit/combo-empty-stream-3463.test.js:44](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js:44) |
-| Terminal `usage`-only chunk, no content | `outcome: "empty"` → **fails over** | no usage branch in `frameCarriesContent`; pinned by [tests/unit/combo-empty-stream-3463.test.js:45](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js:45) |
+| `data: [DONE]` only, no content | `outcome: "empty"` → **fails over** | `frameCarriesContent` returns `false` for `[DONE]` ([streamContentPeek.js:26](../../../open-sse/utils/streamContentPeek.js)); pinned by [tests/unit/combo-empty-stream-3463.test.js:44](../../../tests/unit/combo-empty-stream-3463.test.js) |
+| Terminal `usage`-only chunk, no content | `outcome: "empty"` → **fails over** | no usage branch in `frameCarriesContent`; pinned by [tests/unit/combo-empty-stream-3463.test.js:45](../../../tests/unit/combo-empty-stream-3463.test.js) |
 | OpenAI `finish_reason`-only chunk, no content delta | `outcome: "empty"` → **fails over** | no `finish_reason` branch in `frameCarriesContent` |
-| Claude `message_stop` / `message_delta` with `stop_reason`, no content block | `outcome: "empty"` → **fails over** | no `stop_reason` branch in `frameCarriesContent`; pinned by [tests/unit/omni-first-party-complete-empty-turn.test.js:12](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/omni-first-party-complete-empty-turn.test.js:12) |
+| Claude `message_stop` / `message_delta` with `stop_reason`, no content block | `outcome: "empty"` → **fails over** | no `stop_reason` branch in `frameCarriesContent`; pinned by [tests/unit/omni-first-party-complete-empty-turn.test.js:12](../../../tests/unit/omni-first-party-complete-empty-turn.test.js) |
 | `event: ping` only (structured SSE, no content) | `outcome: "empty"` → **fails over** | `event:` lines are not inspected at all by the local peek |
 
 Direction of the divergence matters: local is **stricter**, not looser. The upstream change #7545 made was a
@@ -366,7 +366,7 @@ should be pinned rather than left implicit. A bounded, ordinary, offline accepta
 this; it is specified here and **not** added by this change:
 
 - **Fixture scope.** One new file under `tests/unit/`, modelled on
-  [tests/unit/combo-empty-stream-3463.test.js](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js),
+  [tests/unit/combo-empty-stream-3463.test.js](../../../tests/unit/combo-empty-stream-3463.test.js),
   driving `handleComboChat` with an in-memory fake upstream. No network, no provider, no credential, no
   browser, no e2e.
 - **Case 1 — the upstream #7545 scenario.** A 200 `text/event-stream` body carrying
@@ -379,14 +379,14 @@ this; it is specified here and **not** added by this change:
   (`expect(attempted).toEqual(["p1/first"]`) and that the client receives the first member's partial output.
   This pins the "no retry after client-visible data" rule at the combo boundary itself, complementing the
   single-model case already covered by
-  [tests/unit/stream-early-eof-failover.test.js:267](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/stream-early-eof-failover.test.js:267).
+  [tests/unit/stream-early-eof-failover.test.js:267](../../../tests/unit/stream-early-eof-failover.test.js).
 - **Case 3 — the five divergence cases.** Parameterize the five terminator-only bodies (`[DONE]` only, usage
   only, `finish_reason` only, `message_stop` with `stop_reason`, `event: ping` only) and assert the **current**
   local behavior: each fails over to the next member. Pinning the current behavior is the point — it makes
   the difference from upstream explicit and prevents it from drifting silently.
 - **Case 4 — replay fidelity.** A member whose stream carries a content frame after an unparseable preamble
   must not fail over, and the preamble bytes must be replayed byte-for-byte. This is already covered by
-  [tests/unit/combo-empty-stream-3463.test.js:100](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-empty-stream-3463.test.js:100)
+  [tests/unit/combo-empty-stream-3463.test.js:100](../../../tests/unit/combo-empty-stream-3463.test.js)
   and is listed here only so the fixture is self-contained if it is added.
 
 **What remains needed.** Nothing for the upstream #7545 *changed lines* — they are already satisfied. For
@@ -445,48 +445,48 @@ plus a rebaseline note for the `chatHelpers.ts` growth; it has no runtime behavi
 compression-combo resolution.**
 
 - The operator settings are the master switch and a per-engine toggle map, at
-  [src/lib/db/repos/settingsRepo.js:137](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/lib/db/repos/settingsRepo.js:137)
+  [src/lib/db/repos/settingsRepo.js:137](../../../src/lib/db/repos/settingsRepo.js)
   (`compressionEnabled: false`, `compressionEngines: {}`), read into the request at
-  [src/sse/handlers/chat.js:1350](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/sse/handlers/chat.js:1350).
+  [src/sse/handlers/chat.js:1350](../../../src/sse/handlers/chat.js).
 - The seam runs only inside `if (tokenSaverEnabled && compressionEnabled)` at
-  [open-sse/handlers/chatCore.js:961](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/handlers/chatCore.js:961),
+  [open-sse/handlers/chatCore.js:961](../../../open-sse/handlers/chatCore.js),
   and it is handed only the global engine map
-  ([open-sse/handlers/chatCore.js:967](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/handlers/chatCore.js:967)).
+  ([open-sse/handlers/chatCore.js:967](../../../open-sse/handlers/chatCore.js)).
 - The seam's own config contract lists no combo field
-  ([open-sse/handlers/chatCore/compressionHook.js:76](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/handlers/chatCore/compressionHook.js:76):
+  ([open-sse/handlers/chatCore/compressionHook.js:76](../../../open-sse/handlers/chatCore/compressionHook.js):
   `{ enabled, engines, applyOpts, adaptive, fidelityGate, log }`).
 - Plan derivation reads only the master flag and the per-engine map, never a combo name or id
-  ([open-sse/services/compression/deriveDefaultPlan.js:20](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/compression/deriveDefaultPlan.js:20),
+  ([open-sse/services/compression/deriveDefaultPlan.js:20](../../../open-sse/services/compression/deriveDefaultPlan.js),
   first rule `if (!masterEnabled) return { mode: "off", stackedPipeline: [] };`).
 - The only compression-combo-shaped configuration in the tree is vestigial and unread: `comboOverrides: {}`,
   `compressionComboId: null` and `activeComboId: null` at
-  [open-sse/services/compression/types.js:30](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/compression/types.js:30).
+  [open-sse/services/compression/types.js:30](../../../open-sse/services/compression/types.js).
   A whole-tree search for `compressionComboId` returns exactly that one hit; `comboOverrides` and
   `activeComboId` are likewise never read. This was already recorded for a sibling upstream change in
-  [internal/docs/port-reports/1073-may-streaming-boundaries.md](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/internal/docs/port-reports/1073-may-streaming-boundaries.md).
+  [internal/docs/port-reports/1073-may-streaming-boundaries.md](../../../internal/docs/port-reports/1073-may-streaming-boundaries.md).
 - `handleChatCore` does accept `comboId` / `comboName`, but they are used only for usage attribution
-  ([open-sse/handlers/chatCore/requestDetail.js:196](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/handlers/chatCore/requestDetail.js:196)),
+  ([open-sse/handlers/chatCore/requestDetail.js:196](../../../open-sse/handlers/chatCore/requestDetail.js)),
   never for compression.
 
 **The local tree has no routing-combo concept, and refuses provider-prefix combo resolution by design.**
 
 - The resolution rule is stated in the code at
-  [src/sse/services/model.js:471](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/sse/services/model.js:471):
+  [src/sse/services/model.js:471](../../../src/sse/services/model.js):
   *"Resolve a combo by its stored name only. A request containing a slash is a real provider/model call —
   slash-basename lookup previously shadowed genuine `provider/model` routing whenever a saved combo happened
   to share the basename. Callers that still want provider-prefixed combo resolution must save the combo under
   the full `provider/name` form."*
 - The lookup itself is an exact-name query at
-  [src/lib/db/repos/combosRepo.js:110](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/lib/db/repos/combosRepo.js:110),
+  [src/lib/db/repos/combosRepo.js:110](../../../src/lib/db/repos/combosRepo.js),
   with a case-insensitive exact-name second attempt and no basename or prefix fallback.
 - The behavior is pinned by
-  [tests/unit/combo-prefix-resolve.test.js:51](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-prefix-resolve.test.js:51)
+  [tests/unit/combo-prefix-resolve.test.js:51](../../../tests/unit/combo-prefix-resolve.test.js)
   — *"does not resolve a provider/model basename to an exactly cased saved combo"* — and
-  [tests/unit/combo-prefix-resolve.test.js:71](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/tests/unit/combo-prefix-resolve.test.js:71)
+  [tests/unit/combo-prefix-resolve.test.js:71](../../../tests/unit/combo-prefix-resolve.test.js)
   — *"gives a real provider/model precedence over a same-named combo"*.
 - No `routingComboId` symbol exists anywhere in `src/`, `open-sse/` or `tests/`. The only `auto/` namespace
   is the fixed family set resolved by family name
-  ([open-sse/services/autoComboResolver.js:32](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/autoComboResolver.js:32)),
+  ([open-sse/services/autoComboResolver.js:32](../../../open-sse/services/autoComboResolver.js)),
   never by a request's model prefix.
 
 **The upstream advertised-limit fallback has no local counterpart either.**
@@ -495,21 +495,21 @@ compression-combo resolution.**
   anywhere in the tree, and there is no `open-sse/services/autoCombo/` directory at all — the fork has
   `autoComboFamilies.js` and `autoComboResolver.js` only, and neither computes limits.
 - Unknown output limits stay unknown locally:
-  [open-sse/providers/capabilities.js:1473](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/providers/capabilities.js:1473)
+  [open-sse/providers/capabilities.js:1473](../../../open-sse/providers/capabilities.js)
   computes `const maxOutput = !unpublishedOutput && positive(caps?.maxOutput) ? caps.maxOutput : undefined;`
   and returns `null` when neither limit is known
-  ([open-sse/providers/capabilities.js:1474](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/providers/capabilities.js:1474)).
+  ([open-sse/providers/capabilities.js:1474](../../../open-sse/providers/capabilities.js)).
   The module states the intent at
-  [open-sse/providers/capabilities.js:31](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/providers/capabilities.js:31):
+  [open-sse/providers/capabilities.js:31](../../../open-sse/providers/capabilities.js):
   *"Safe feature floor — every resolved result is merged over this. Unknown token limits remain unknown, not a
   200K/64K provider guarantee."*
 - Combo catalog entries carry **no** limit fields at all:
-  [src/app/api/v1/models/buildModelsList.js:489](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/src/app/api/v1/models/buildModelsList.js:489)
+  [src/app/api/v1/models/buildModelsList.js:489](../../../src/app/api/v1/models/buildModelsList.js)
   builds `{ id, object, owned_by, kind }` only. There is therefore no advertised `maxOutputTokens` value that
   could be `null` and need a floor.
 - The only `8192` literals under `open-sse/services/` are combo **scoring** heuristics
-  ([open-sse/services/combo.js:877](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/combo.js:877)
-  and [open-sse/services/combo.js:921](../../../orq-tornf6-audit-omni-j-f126261df533f0b8/open-sse/services/combo.js:921)),
+  ([open-sse/services/combo.js:877](../../../open-sse/services/combo.js)
+  and [open-sse/services/combo.js:921](../../../open-sse/services/combo.js)),
   where an unknown `maxOutput` is neither credited nor penalized.
 
 **Local compression tests assert engine-level behavior only.** The compression fixtures are

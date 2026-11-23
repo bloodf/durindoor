@@ -1,5 +1,6 @@
 ---
 title: "DeepSeek Web"
+description: Connect DeepSeek Chat with its browser session token.
 ---
 
 DeepSeek Web connects to the first-party chat API at [chat.deepseek.com](https://chat.deepseek.com). The connection authenticates with the `userToken` held in browser local storage. A browser Cookie header alone is not a supported credential; the API exchanges the userToken for a short-lived access token.

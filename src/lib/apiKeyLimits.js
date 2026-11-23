@@ -264,14 +264,10 @@ export async function enforceApiKeyLimits(request, record) {
   }
   let limited;
   try {
-    limited = await checkDailyTokenCap(record).catch((error) => {
-      console.warn("[apiKeyLimits] daily cap check failed:", error?.message);
-      return null;
-    }) || await checkApiKeyLimits(record);
+    limited = await checkDailyTokenCap(record) || await checkApiKeyLimits(record);
   } catch (error) {
-    // Fail open: a broken usage query must not take the gateway down.
     console.warn("[apiKeyLimits] check failed:", error?.message);
-    return null;
+    return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "API key usage temporarily unavailable");
   }
   if (!limited) return null;
   return annotateClientAdmissionFailure(

@@ -76,11 +76,11 @@ Neither is the smallest coherent local change.
 All local paths below describe the pinned local head, not newer integration work.
 Existing tests were inspected as source only.
 
-The main local evidence is [model/account lock precedence](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/services/accountFallback.js#L384-L422),
-[selection and its mutex](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js#L562-L583),
-[selection release](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js#L961-L966),
-[monitor deduplication](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/healthMonitor.js#L250-L289),
-and [manual clear fields](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/app/api/providers/%5Bid%5D/route.js#L328-L331).
+The main local evidence is [model/account lock precedence](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/services/accountFallback.js),
+[selection and its mutex](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js),
+[selection release](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js),
+[monitor deduplication](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/healthMonitor.js),
+and [manual clear fields](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/app/api/providers/%5Bid%5D/route.js).
 
 | Requirement | Existing local behavior | Remaining work |
 | --- | --- | --- |
@@ -98,17 +98,17 @@ does not cover the subsequent provider request. Sequential selection turns can
 therefore admit several callers after expiry while the first request is pending.
 This is a source-derived reproduction hypothesis, not an executed reproduction.
 
-Existing cross-model cleanup also matters: [connectionsRepo.js](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/db/repos/connectionsRepo.js#L633-L637)
-and the [auth compatibility path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js#L1563-L1571)
+Existing cross-model cleanup also matters: [connectionsRepo.js](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/db/repos/connectionsRepo.js)
+and the [auth compatibility path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js)
 can remove an expired failed-model lock when another model succeeds. A future
 per-model recovery claim needs evidence that survives that cleanup, if the
 integration owner adopts the proposed model-specific policy below. This is a
 source-derived gap, not an executed reproduction or an approved storage change.
 
 Coherent refusals are distinct from request errors. The existing [nonstreaming
-native refusal path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/handlers/chatCore/nonStreamingHandler.js#L648-L687)
+native refusal path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/handlers/chatCore/nonStreamingHandler.js)
 accepts a finished turn and reaches the trusted success callback and
-[`clearAccountError()`](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/handlers/chat.js#L1330-L1338).
+[`clearAccountError()`](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/handlers/chat.js).
 This draft proposes preserving that success
 lifecycle when it is reached; it does not require every refusal to remain neutral.
 Streaming refusal completion still needs verification against its actual trusted

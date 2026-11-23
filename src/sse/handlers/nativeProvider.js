@@ -1,8 +1,9 @@
-import { getSettings, getApiKeyById } from "@/lib/localDb";
+import { admit } from "../services/admission.js";
+import { getApiKeyById } from "@/lib/localDb";
 import { errorResponse, readBoundedResponseText, sanitizeErrorMessageWithSecrets } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
-import { getProviderCredentialsWithQuotaPreflight, resolveClientApiKey } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight } from "../services/auth.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import { nativeDirectSessionAllowed, nativeUsageAdmission, observeNativeResponse } from "../services/nativeUsage.js";
 import { getModelInfo } from "../services/model.js";
@@ -56,11 +57,8 @@ export async function handleNativeProvider(request, provider, path) {
   const origin = nativeOrigin(provider);
   if (!origin) return fail(HTTP_STATUS.BAD_REQUEST, "Unknown provider");
 
-  const settings = await getSettings();
-  const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
-  if (!auth.ok) return annotateClientAdmissionFailure(
-    fail(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key"),
-    auth.reason === "missing" ? "auth_missing" : "auth_invalid");
+  const { apiKey, auth, error: admissionError } = await admit(request, { kind: "nativeProvider" });
+  if (admissionError) return admissionError;
   const billingEpoch = auth.billingEpoch;
 
   const url = new URL(request.url);

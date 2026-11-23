@@ -441,6 +441,33 @@ export function hasValidUsage(usage) {
 /**
  * Extract usage from any format (Claude, OpenAI, Gemini, Responses API)
  */
+// Claude message_start can carry a positive output count before any output is
+// produced. It is provisional until a message_delta receipt reports the final
+// cumulative count. Markers live outside the usage object so they never reach
+// clients or persisted logs.
+const provisionalOutputUsage = new WeakSet();
+const finalOutputReceipts = new WeakSet();
+const mark = (set, usage) => {
+  if (usage) set.add(usage);
+  return usage;
+};
+
+/** True while the output count is still the Claude message_start placeholder. */
+export function isProvisionalOutput(usage) {
+  return Boolean(usage) && isObject(usage) && provisionalOutputUsage.has(usage);
+}
+
+/**
+ * Raise a provisional output count to the estimate of the output already
+ * received, so an interrupted stream is not billed at the placeholder.
+ */
+export function refreshProvisionalOutput(usage, outputChars) {
+  if (!isProvisionalOutput(usage)) return usage;
+  const estimate = estimateOutputTokens(outputChars);
+  if (estimate <= (Number(usage.completion_tokens) || 0)) return usage;
+  return mark(provisionalOutputUsage, { ...usage, completion_tokens: estimate });
+}
+
 export function extractUsage(chunk) {
   if (!chunk || !isObject(chunk)) return null;
 
@@ -449,23 +476,27 @@ export function extractUsage(chunk) {
   // so callers must MERGE (mergeUsage), not overwrite, to keep cache counts.
   if (chunk.type === "message_start" && chunk.message?.usage && isObject(chunk.message.usage)) {
     const u = chunk.message.usage;
-    return normalizeUsage({
+    const provisional = Number(u.output_tokens) > 0;
+    const extracted = normalizeUsage({
       prompt_tokens: u.input_tokens || 0,
       completion_tokens: u.output_tokens || 0,
       cache_read_input_tokens: u.cache_read_input_tokens,
       cache_creation_input_tokens: u.cache_creation_input_tokens
     });
+    return provisional ? mark(provisionalOutputUsage, extracted) : extracted;
   }
   // Claude format (message_delta event). Anthropic reports thinking as a
   // subset of output_tokens, so preserve the detail without inflating output.
   if (chunk.type === "message_delta" && chunk.usage && isObject(chunk.usage)) {
-    return normalizeUsage({
+    const hasFinalOutput = chunk.usage.output_tokens != null && Number.isFinite(Number(chunk.usage.output_tokens));
+    const extracted = normalizeUsage({
       prompt_tokens: chunk.usage.input_tokens || 0,
       completion_tokens: chunk.usage.output_tokens || 0,
       cache_read_input_tokens: chunk.usage.cache_read_input_tokens,
       cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
       output_tokens_details: chunk.usage.output_tokens_details
     });
+    return hasFinalOutput ? mark(finalOutputReceipts, extracted) : extracted;
   }
 
   // OpenAI Responses API terminal usage, including reported incomplete responses.
@@ -666,6 +697,7 @@ export function mergeUsage(prev, next) {
   }
 
   const merged = { ...prev };
+  const prevProvisional = isProvisionalOutput(prev);
   for (const [k, v] of Object.entries(next)) {
     // typeof NaN === "number" — guard with Number.isFinite so one malformed
     // chunk can't poison the whole accumulation (Math.max(x, NaN) is NaN).
@@ -681,7 +713,12 @@ export function mergeUsage(prev, next) {
       merged[k] = v; // Kiro credit unit label: take latest
     }
   }
-  return merged;
+  if (prevProvisional && finalOutputReceipts.has(next)) {
+    // The final receipt replaces the placeholder, even when it is lower.
+    merged.completion_tokens = next.completion_tokens;
+    return merged;
+  }
+  return prevProvisional || isProvisionalOutput(next) ? mark(provisionalOutputUsage, merged) : merged;
 }
 
 /**

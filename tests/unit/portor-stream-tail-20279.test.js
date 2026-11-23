@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
-import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
-import { extractUsage } from "../../open-sse/utils/usageTracking.js";
+import { createPassthroughStreamWithLogger, createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { extractUsage, mergeUsage, isProvisionalOutput } from "../../open-sse/utils/usageTracking.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 vi.mock("@/lib/usageDb.js", () => ({ appendRequestLog: vi.fn(async () => {}), trackPendingRequest: vi.fn() }));
 const frame = (v) => `data: ${JSON.stringify(v)}\n\n`;
@@ -48,4 +48,26 @@ it("keeps provider usage in an interrupted stream snapshot", async () => {
 
 it("uses valid Gemini cache evidence when the primary alias is invalid", () => {
   expect(extractUsage({ usageMetadata: { promptTokenCount: 10, cachedContentTokenCount: -1, cached_content_token_count: "0" } }).cached_tokens).toBe(0);
+});
+
+const claudeStart = (output_tokens) => ({ type: "message_start", message: { id: "m", role: "assistant", content: [], usage: { input_tokens: 10, output_tokens } } });
+const claudeText = (text) => ({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } });
+
+it("replaces a positive Claude message_start output with the lower final receipt", () => {
+  const start = extractUsage(claudeStart(5));
+  const final = extractUsage({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3 } });
+  expect(mergeUsage(start, final)).toMatchObject({ prompt_tokens: 10, completion_tokens: 3 });
+  expect(isProvisionalOutput(mergeUsage(start, final))).toBe(false);
+  expect(isProvisionalOutput(mergeUsage(start, extractUsage({ type: "message_delta", usage: {} })))).toBe(true);
+});
+
+it("refreshes provisional Claude output from content in an interrupted passthrough snapshot", async () => {
+  const transform = createPassthroughStreamWithLogger("anthropic", null, null, "test", "connection", { messages: [] }, vi.fn(), null, FORMATS.CLAUDE);
+  const input = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(`event: message_start\n${frame(claudeStart(1))}event: content_block_delta\n${frame(claudeText("x".repeat(80)))}`));
+  } });
+  const reader = input.pipeThrough(transform).getReader();
+  await reader.read();
+  expect(transform.getStreamSnapshot().usage).toMatchObject({ prompt_tokens: 10, completion_tokens: 20 });
+  void reader.cancel();
 });

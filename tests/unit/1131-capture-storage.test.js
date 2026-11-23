@@ -9,7 +9,8 @@ const session = "550e8400-e29b-41d4-a716-446655440000";
 const otherSession = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
 // Default parity runs exercise the real PG SQL rewrite and the PG lock path
 // with an in-process fixture. The same cases can also run against a disposable
-// PostgreSQL database initialized by this suite.
+// PostgreSQL database initialized by this suite. Column introspection maps to
+// SQLite PRAGMA because the fixture has no PostgreSQL information_schema.
 function postgresFixture(sqlite, prepareSql) {
   const sqlForFixture = (sql) => prepareSql(sql).finalSql
     .replace(/\$\d+/g, "?")
@@ -20,7 +21,9 @@ function postgresFixture(sqlite, prepareSql) {
     driver: "pg",
     get: (sql, params) => sqlite.get(sqlForFixture(sql), params),
     run: (sql, params) => sqlite.run(sqlForFixture(sql), params),
-    all: (sql, params) => sqlite.all(sqlForFixture(sql), params),
+    all: (sql, params) => sql.includes("information_schema.columns")
+      ? sqlite.all(`PRAGMA table_info(${params[0]})`)
+      : sqlite.all(sqlForFixture(sql), params),
   };
 }
 
@@ -91,8 +94,8 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
   it("registers capture migration 032 in SQLite and PostgreSQL", async () => {
     const { MIGRATIONS, latestVersion } = await import("@/lib/db/migrations/index.js");
     const { PG_MIGRATIONS, pgLatestVersion } = await import("@/lib/db/migrations/postgres/index.js");
-    expect(latestVersion()).toBe(36);
-    expect(pgLatestVersion()).toBe(36);
+    expect(latestVersion()).toBe(37);
+    expect(pgLatestVersion()).toBe(37);
     expect(PG_MIGRATIONS.at(-1)).toBe(MIGRATIONS.at(-1));
     const captureMigration = MIGRATIONS.find(({ version }) => version === 32);
     expect(captureMigration).toMatchObject({ version: 32, name: "session-capture" });

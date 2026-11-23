@@ -1,3 +1,4 @@
+import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { summarizeToolSources } from "../utils/toolSources.js";
 import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
@@ -579,7 +580,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   }
 
   if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
-    const comboName = await getComboCanonicalName(modelStr);
+    const comboName = await getComboCanonicalName(modelStr) || parseAutoModel(modelStr)?.name;
     if (comboName && !authenticatedKeyRecord.allowedCombos.includes(comboName)) {
       log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${comboName}"`);
       return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${comboName}" is not allowed for this API key`);
@@ -594,7 +595,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // to one narrow lane can't reach every model on the gateway through
   // `auto/best-coding`. Absent/undefined defaults to allowed (existing keys
   // keep working); only an explicit `false` denies.
-  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+  if (authenticatedKeyRecord && authenticatedKeyRecord.policy?.allowAutoCombos === false && (isAutoComboId(modelStr) || (parseAutoModel(modelStr) && !(await getComboForModel(modelStr))))) {
     log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to use auto combos`);
     return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: auto combos are not allowed for this API key`);
   }
@@ -664,7 +665,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
   // above intentionally calls getComboModels without the flag so combo
   // existence/ACL still see the real, unfiltered member list.
-  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
+  const savedComboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
+  const selector = savedComboModels ? null : await getAutoModelCandidates(modelStr, "llm", request, apiKeyAuth.apiKeyId);
+  const comboModels = savedComboModels || selector?.models;
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global. Auto-combo
     // ids (`auto/<family>`) honor the F-2 `comboStrategies[modelStr].strategy`
@@ -684,7 +687,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     const comboSpecificStrategy = isAutoComboId(modelStr) ?
     perCombo.strategy ?? perCombo.fallbackStrategy :
     perCombo.fallbackStrategy;
-    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = selector ? "fallback" : comboSpecificStrategy || settings.comboStrategy || "fallback";
 
     // Combo names are intentionally excluded from the model allowlist; the allowlist
     // is enforced against each concrete underlying model during expansion. Combo-level

@@ -1,3 +1,4 @@
+import { addAutoModelSelectors } from "@/shared/utils/autoModelSelectors.js";
 import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { LLM_KIND, buildModelsList } from "../buildModelsList.js";
@@ -84,7 +85,8 @@ async function GETHandler(request, { params }) {
     const kindFilter = path.length === 1 ? KIND_SLUG_MAP[identifier] : null;
 
     if (kindFilter) {
-      const data = await filterModelsForRequest(request, await buildModelsList(kindFilter, getProviderValidationGuard(), await getRequestModelDiscoveryOptions(request)));
+      const models = await filterModelsForRequest(request, await buildModelsList(kindFilter, getProviderValidationGuard(), await getRequestModelDiscoveryOptions(request)));
+      const data = await filterModelsForRequest(request, kindFilter.length === 1 ? addAutoModelSelectors(models, kindFilter[0]) : models);
       return buildModelsResponse(request, data);
     }
 

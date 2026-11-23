@@ -38,6 +38,7 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
     model,
     messages,
     stream,
+    ...(geminiBody.reasoning_effort && { reasoning_effort: geminiBody.reasoning_effort }),
     max_tokens: geminiBody.generationConfig?.maxOutputTokens,
     temperature: geminiBody.generationConfig?.temperature,
     top_p: geminiBody.generationConfig?.topP

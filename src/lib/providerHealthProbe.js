@@ -51,9 +51,8 @@ const usesSignedAwsAuth = (connection) =>
   detectBedrockCredentialMode(connection) !== BEDROCK_CREDENTIAL_MODE.API_KEY;
 
 /**
- * Fetch through the DNS-pinned guard on every route. Saved proxies and relays
- * fail closed because their remote DNS cannot compose with this dispatcher;
- * direct probes retain injected fetchers and the existing option contract.
+ * Guard provider targets before dispatch. Direct probes use the DNS-pinned
+ * guard; saved proxies and relays resolve the provider at their egress hop.
  */
 async function proxyAware(url, options, effectiveProxy, fetcher) {
   const opts = { ...options, redirect: "manual" };
@@ -70,6 +69,17 @@ async function proxyAware(url, options, effectiveProxy, fetcher) {
       connectionProxyUrl: effectiveProxy.connectionProxyUrl,
       connectionNoProxy: effectiveProxy.connectionNoProxy || "",
     });
+  }
+  // A real configured proxy resolves the provider host at its egress hop, so
+  // the local DNS-pinning dispatcher cannot be attached to that request.
+  // Keep the URL policy check above each probe, then let proxyAwareFetch route
+  // it. Injected fetchers remain guarded for deterministic tests and callers.
+  const hasConfiguredProxy = Boolean(
+    effectiveProxy?.vercelRelayUrl ||
+    effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl
+  );
+  if (hasConfiguredProxy && routedFetcher === fetch && (!fetcher || fetcher === fetch)) {
+    return routedFetcher(url, opts);
   }
   return guardedProbeFetch(url, opts, getProviderValidationGuard(), routedFetcher);
 }

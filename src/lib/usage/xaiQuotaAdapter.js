@@ -1,5 +1,6 @@
 import { isString } from "../../shared/utils/typeChecks.js";
 import { connectionData, createProviderRequest, providerFailure } from "../../../open-sse/services/quota/providerHelpers.js";
+import { parseGrokCliBilling } from "../../../open-sse/services/usage/grok-cli.js";
 
 const SOURCE_ID = "xai:management-prepaid:v1";
 
@@ -44,4 +45,18 @@ export async function fetchXaiQuota(context) {
       }
     }
   };
+}
+
+/** Read the OAuth connection's weekly credit pool without using API-key credentials. */
+export async function fetchXaiOAuthQuota(context) {
+  const token = context.connection?.accessToken;
+  const sourceId = "xai:oauth-billing:v1";
+  if (!isString(token) || !token.trim()) return { outcome: "unknown", sourceId, quotas: {} };
+  const result = await createProviderRequest(context)("https://cli-chat-proxy.grok.com/v1/billing?format=credits", {
+    method: "GET", headers: { Authorization: `Bearer ${token.trim()}`, Accept: "application/json" }
+  });
+  if (!result.ok) return { ...providerFailure({ sourceId }, result), quotas: {} };
+  const parsed = parseGrokCliBilling(result.data);
+  if (!Object.keys(parsed.quotas || {}).length) return { outcome: "malformed", sourceId, quotas: {} };
+  return { outcome: "success", sourceId, plan: parsed.plan, quotas: parsed.quotas };
 }

@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File detail — metadata + delete.
 import { getFile, deleteFile } from "open-sse/services/localFilesBatches.js";
@@ -7,9 +8,7 @@ import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  ...corsHeaders(["GET", "DELETE", "HEAD", "OPTIONS"]),
 };
 
 const json = (body, status = 200) =>

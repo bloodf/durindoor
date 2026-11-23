@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { transformToOllama } from "open-sse/utils/ollamaTransform.js";
@@ -7,9 +8,7 @@ import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "OPTIONS"]),
     }
   });
 }

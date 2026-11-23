@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { getSettings } from "@/lib/localDb";
 import { enforceApiKeyModelPolicy } from "@/sse/services/apiKeyPolicy";
 import { isNativeTerminalUsageEvent, nativeUsageAdmission, nativeUsageFromValue, recordNativeUsage } from "@/sse/services/nativeUsage.js";
@@ -143,4 +144,8 @@ export async function POST(request) {
     onProviderClose: protocol.geminiLive ? settleGeminiUsage : null
   });
   return Response.json({ handoffId }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export function OPTIONS() {
+  return new Response(null, { headers: corsHeaders(["POST", "OPTIONS"]) });
 }

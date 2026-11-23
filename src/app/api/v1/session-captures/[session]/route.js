@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { resolveClientApiKey } from "@/sse/services/auth.js";
 import { withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { deleteSessionTurns, normalizeCaptureSessionId, readSessionTurns } from "@/lib/db/repos/sessionCaptureRepo.js";
@@ -35,3 +36,7 @@ async function sessionCapture(request, { params }, remove) {
 
 export const GET = withHttpRequestCorrelation((request, context) => sessionCapture(request, context, false));
 export const DELETE = withHttpRequestCorrelation((request, context) => sessionCapture(request, context, true));
+
+export function OPTIONS() {
+  return new Response(null, { headers: corsHeaders(["GET", "DELETE", "OPTIONS"]) });
+}

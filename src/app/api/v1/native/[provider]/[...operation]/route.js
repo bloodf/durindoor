@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { handleNativeProvider } from "@/sse/handlers/nativeProvider.js";
 import { observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 
@@ -21,5 +22,5 @@ export const POST = observedDispatch;
 export const DELETE = observedDispatch;
 
 export async function OPTIONS() {
-  return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type, x-connection-id" } });
+  return new Response(null, { headers: { ...corsHeaders(["GET", "POST", "DELETE", "OPTIONS"]), } });
 }

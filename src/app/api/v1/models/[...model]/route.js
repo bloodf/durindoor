@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { LLM_KIND, buildModelsList } from "../buildModelsList.js";
 import { buildModelsResponse } from "../_shared.js";
@@ -26,7 +27,7 @@ const KIND_SLUG_MAP = {
   "document-parsing": ["documentParsing"],
 };
 
-const CORS_HEADERS = { "Access-Control-Allow-Origin": "*" };
+const CORS_HEADERS = { ...corsHeaders(["GET", "HEAD", "OPTIONS"]) };
 
 function json(data, init = {}) {
   return Response.json(data, {
@@ -63,9 +64,7 @@ function modelNotFoundResponse(model) {
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
-      ...CORS_HEADERS,
-      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
+      ...corsHeaders(["GET", "HEAD", "OPTIONS"]),
     },
   });
 }

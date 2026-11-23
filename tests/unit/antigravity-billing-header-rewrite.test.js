@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
 import { openaiToAntigravityRequest } from "../../open-sse/translator/request/openai-to-gemini.js";
+import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../open-sse/config/appConstants.js";
 
 const HEADER = "x-anthropic-billing-header: cc_version=2.1.275.f15; cc_entrypoint=cli;";
 
@@ -14,7 +15,10 @@ function systemTextSentToAntigravity(systemContent) {
     ],
   }, true);
   const finalBody = new AntigravityExecutor().transformRequest("gemini-3.8-flash-tiered", body, true, {});
-  return finalBody.request.systemInstruction.parts.map((p) => p.text).join("\n");
+  const [identity, ...clientParts] = finalBody.request.systemInstruction.parts;
+  // 9router e37cb78e16: the Antigravity identity always leads the system prompt.
+  expect(identity.text).toBe(ANTIGRAVITY_DEFAULT_SYSTEM);
+  return clientParts.map((p) => p.text).join("\n");
 }
 
 describe("Antigravity strips the Claude Code billing header from system prompts", () => {

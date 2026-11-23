@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../open-sse/config/appConstants.js";
 import {
   openaiToAntigravityRequest,
   openaiToGeminiCLIRequest,
@@ -46,6 +47,7 @@ describe("Antigravity system prompt sanitization", () => {
     const result = transformAntigravity("gemini-test", messages);
 
     expect(result.request.systemInstruction.parts).toEqual([
+      { text: ANTIGRAVITY_DEFAULT_SYSTEM },
       { text: "Antigravity, antigravity, ANTIGRAVITY. Keep this." },
     ]);
     expectConversationUnchanged(result.request);
@@ -55,6 +57,7 @@ describe("Antigravity system prompt sanitization", () => {
     const result = transformAntigravity("claude-opus-test", messages);
 
     expect(result.request.systemInstruction.parts).toEqual([
+      { text: ANTIGRAVITY_DEFAULT_SYSTEM },
       { text: "Antigravity, antigravity, ANTIGRAVITY. Keep this." },
     ]);
     expectConversationUnchanged(result.request);
@@ -65,7 +68,7 @@ describe("Antigravity system prompt sanitization", () => {
     (model) => {
       const result = transformAntigravity(model, [{ role: "system", content: "OpenCode only" }]);
 
-      expect(result.request.systemInstruction.parts).toEqual([{ text: "Antigravity only" }]);
+      expect(result.request.systemInstruction.parts).toEqual([{ text: ANTIGRAVITY_DEFAULT_SYSTEM }, { text: "Antigravity only" }]);
     },
   );
 

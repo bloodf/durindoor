@@ -78,7 +78,7 @@ export function completionToStream(completion) {
  *
  * @returns {{stream: TransformStream, emittedFormat: string}}
  */
-export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials }) {
+export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials, nativeGemini = false }) {
   // `\bdroid\b`: a bare substring test also matched "Android" (Dalvik, mobile browsers).
   const isDroidCLI = /\bdroid\b/i.test(userAgent ?? "") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
@@ -95,8 +95,8 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 
   if (needsTranslation(targetFormat, sourceFormat) || targetFormat === FORMATS.OPENAI && isDeepSeekFamilyModel(providerBody?.model || model, provider)) {
     return {
-      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked),
-      emittedFormat: sourceFormat
+      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked, nativeGemini),
+      emittedFormat: nativeGemini ? FORMATS.GEMINI : sourceFormat
     };
   }
 
@@ -188,12 +188,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
+  const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
   let emptyVerdict = null;
   const observeCompletion = (...args) => {
     emptyVerdict = isEmptyCompletion(args[0], args[1], args[3]);
     onStreamComplete?.(...args);
   };
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials, nativeGemini });
   const emptyTerminalGuard = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(emittedFormat)
     ? createEmptyTerminalGuard(emittedFormat, () => emptyVerdict, () => transformStream.getEmptyStreamSnapshot?.())
     : null;
@@ -260,10 +261,12 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
 
+  const responseHeaders = { ...SSE_HEADERS, ...resolvedModelHeaders(provider, model) };
+  if (nativeGemini) responseHeaders["x-durindoor-internal-gemini-native"] = "1";
   return {
     success: true,
     response: new Response(transformedBody, {
-      headers: { ...SSE_HEADERS, ...resolvedModelHeaders(provider, model) }
+      headers: responseHeaders
     })
   };
 }

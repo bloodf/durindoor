@@ -72,6 +72,7 @@ async function handleMusicGenerationHandler(request) {
     const route = await resolveMediaRoute("music", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleModelMusic(b, m, request, apiKey, apiKeyAuth.apiKeyId, preferredConnectionId, apiKeyAuth.billingEpoch),

@@ -2,6 +2,7 @@ import { getExecutor } from "../executors/index.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { countAntigravityTokens } from "../executors/antigravity-count-tokens.js";
 
 function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
@@ -127,6 +128,17 @@ export function estimateTokens(body) {
  */
 export async function countInputTokens({ body, modelInfo, credentials = null, log = null, signal = null }) {
   const { provider, model } = modelInfo ?? {};
+  if (provider === "antigravity" || provider === "agy") {
+    try {
+      const result = await countAntigravityTokens({ body, model, credentials, signal });
+      if (result.tokens !== undefined) return { tokens: result.tokens, approximate: false };
+      if (result.status === 401 || result.status === 403 || result.status === 429) return { tokens: null, approximate: false, status: result.status };
+      log?.debug?.("COUNT-TOKENS", `Antigravity native failed (${result.status}), falling back to estimate`);
+    } catch (err) {
+      log?.debug?.("COUNT-TOKENS", `Antigravity native threw: ${err?.message}, falling back to estimate`);
+    }
+    return { tokens: estimateTokens(body), approximate: true };
+  }
   // The selected transport owns the wire format. A multi-endpoint provider's
   // default Messages endpoint cannot count a Chat Completions request body.
   const url = deriveCountTokensUrl(credentials?.runtimeTransport || PROVIDERS[provider]);
@@ -182,7 +194,8 @@ export async function handleCountTokensCore({
   if (deriveCountTokensUrl(PROVIDERS[provider])) {
     log?.debug?.("COUNT-TOKENS", `${provider} | ${model} | native`);
   }
-  const { tokens, approximate } = await countInputTokens({ body, modelInfo, credentials, log });
+  const { tokens, approximate, status } = await countInputTokens({ body, modelInfo, credentials, log });
+  if (status) return { success: false, status, error: `Antigravity CountTokens failed (${status})` };
   return {
     success: true,
     status: 200,

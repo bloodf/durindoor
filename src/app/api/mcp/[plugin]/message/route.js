@@ -24,7 +24,9 @@ export async function POST(request, { params }) {
   }
   try {
     const body = await request.json();
-    sendToChild(plugin, body);
+    const sessionId = request.nextUrl?.searchParams?.get("sessionId");
+    if (sessionId) sendToChild(plugin, body, sessionId);
+    else sendToChild(plugin, body);
     return new Response(null, { status: 202 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });

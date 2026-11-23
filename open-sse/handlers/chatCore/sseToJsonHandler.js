@@ -1,3 +1,4 @@
+import { collectAntigravityGeminiSSE } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
@@ -564,6 +565,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         providerBody: finalBody || translatedBody,
         provider
       });
+      if (!parsed && clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY) {
+        const native = collectAntigravityGeminiSSE(sseText, toolNameMap);
+        if (native.candidates?.length) {
+          parsed = parseGeminiSSEToOpenAIResponse(`data: ${JSON.stringify(native)}\n\n`, model, finalBody || translatedBody, toolNameMap);
+        }
+      }
       // A forced-streaming upstream can answer with one complete JSON response
       // document under the event-stream media type (OmniRoute #18377). The
       // document is the response it describes, so read it as one instead of
@@ -678,7 +685,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
       const resolveToolName = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ? createResponsesToolNameResolver(body, toolNameMap) : undefined;
       const projected = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
-      const finalResp = claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
+      const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
+      const finalResp = nativeGemini ? collectAntigravityGeminiSSE(sseText, toolNameMap) : claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
       if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
@@ -691,7 +699,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         try {Promise.resolve(onEmptyStream()).catch(() => console.error("[ChatCore] empty-stream cooldown failed"));}
         catch {console.error("[ChatCore] empty-stream cooldown failed");}
       }
-      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
+      const responseHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) };
+      if (nativeGemini) responseHeaders["x-durindoor-internal-gemini-native"] = "1";
+      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: responseHeaders }) };
     } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);
       const status = err?.name === "AbortError" ?

@@ -69,11 +69,15 @@ export function getConcurrencyLimit(provider, limitsMap) {
  *
  * @param {string} provider - Provider id
  * @param {number} limit - Max concurrent slots (0 = unlimited)
+ * Queue depth is limited to 1024 per provider and 32 per caller. Waiters
+ * alternate callers where possible while retaining FIFO order within a caller.
  * @param {number} [timeoutMs] - Max wait time (default 120 000 ms)
+ * @param {AbortSignal|null} [signal]
+ * @param {string|null} [apiKeyId] - Authenticated caller, or null for local callers
  * @returns {Promise<void>}
  * @throws {ConcurrencyGateTimeoutError}
  */
-export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null) {
+export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null, apiKeyId = null) {
   if (signal?.aborted) {
     recordAdmissionFailure("aborted");
     return Promise.reject(new DOMException("Concurrency wait aborted", "AbortError"));
@@ -85,12 +89,20 @@ export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, sig
   // Fast path: slot available
   if (gate.current < limit) {
     gate.current++;
+    gate.lastKey = apiKeyId;
     return Promise.resolve();
+  }
+
+  // Bound both total waiters and each caller's share; rejection uses the
+  // existing 503 timeout handling in the gateway.
+  if (gate.queue.length >= 1024 || gate.queue.filter((entry) => entry.apiKeyId === apiKeyId).length >= 32) {
+    recordAdmissionFailure("timeout");
+    return Promise.reject(new ConcurrencyGateTimeoutError(provider, limit, 0, true));
   }
 
   // Slow path: queue and wait
   return new Promise((resolve, reject) => {
-    const entry = { resolve, reject, timer: null, onAbort: null, signal };
+    const entry = { resolve, reject, timer: null, onAbort: null, signal, apiKeyId };
 
     const cleanup = () => {
       clearTimeout(entry.timer);
@@ -135,7 +147,10 @@ export function releaseSlot(provider) {
 
   // If there's a waiter, transfer the slot instead of decrementing
   if (gate.queue.length > 0) {
-    const next = gate.queue.shift();
+    // Rotate between callers when possible, preserving FIFO within each key.
+    const nextIndex = gate.queue.findIndex((entry) => entry.apiKeyId !== gate.lastKey);
+    const [next] = gate.queue.splice(nextIndex < 0 ? 0 : nextIndex, 1);
+    gate.lastKey = next.apiKeyId;
     clearTimeout(next.timer);
     next.onAbort && next.signal?.removeEventListener?.("abort", next.onAbort);
     // current stays the same — slot is handed off
@@ -180,10 +195,11 @@ export function _resetGates() {
  * Error thrown when a request waited too long for a concurrency slot.
  */
 export class ConcurrencyGateTimeoutError extends Error {
-  constructor(provider, limit, timeoutMs) {
+  constructor(provider, limit, timeoutMs, queueFull = false) {
     super(
       `Concurrency limit reached for provider "${provider}" ` +
-      `(${limit} concurrent). Request timed out after ${timeoutMs}ms waiting for a slot.`
+      (queueFull ? `(${limit} concurrent). Concurrency queue is full.` :
+        `(${limit} concurrent). Request timed out after ${timeoutMs}ms waiting for a slot.`)
     );
     this.name = "ConcurrencyGateTimeoutError";
     this.provider = provider;
@@ -234,7 +250,7 @@ export async function acquireMany(tiers, timeoutMs = DEFAULT_TIMEOUT_MS, signal 
     }
     for (const tier of tiers) {
       if (!tier.limit || tier.limit <= 0) continue;
-      await acquireSlot(tier.key, tier.limit, timeoutMs, signal);
+      await acquireSlot(tier.key, tier.limit, timeoutMs, signal, payloadOptions?.apiKeyId ?? null);
       acquiredKeys.push(tier.key);
       if (signal?.aborted) {
         recordAdmissionFailure("aborted");

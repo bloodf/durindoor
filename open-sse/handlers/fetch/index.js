@@ -9,6 +9,7 @@ import {
 } from "../../utils/outboundUrlGuard.js";
 import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { mediaAccounting } from "../mediaAccounting.js";
+import { assertPublicUrlResolved } from "../../../src/shared/utils/ssrfGuard.js";
 
 // Re-exported so the offline Context7 parser tests can assert that the fetch
 // path and the search path share one library-id grammar.
@@ -139,7 +140,11 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   // target even when a third-party fetch provider receives it in a JSON body.
   try {
     assertOutboundUrlAllowed(url, "public-only");
+    if (provider === "firecrawl_custom") await assertPublicUrlResolved(url);
   } catch (error) {
+    if (provider === "firecrawl_custom" && error?.message?.includes("resolves to an internal host")) {
+      return { success: false, status: 403, error: error.message };
+    }
     if (error instanceof OutboundUrlGuardError) {
       return {
         success: false,

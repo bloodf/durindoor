@@ -27,3 +27,25 @@ it("keeps valid zero and numeric-string cache evidence", () => {
   expect(extractUsage({ usage: { prompt_tokens: 10, prompt_tokens_details: { cached_tokens: -1 }, prompt_cache_hit_tokens: "0" } }).cached_tokens).toBe(0);
   expect(extractUsage({ usageMetadata: { promptTokenCount: 10, cached_content_token_count: "3" } }).cached_tokens).toBe(3);
 });
+
+it("retains an output-only provider receipt", () => {
+  expect(extractUsage({ usage: { completion_tokens: 7 } })).toMatchObject({ completion_tokens: 7 });
+});
+
+it("records content in an unterminated translated tail", async () => {
+  const { complete } = await run([`data: ${JSON.stringify(part({ content: "tail text" }))}`]);
+  expect(complete.mock.calls[0][0].content).toBe("tail text");
+});
+
+it("keeps provider usage in an interrupted stream snapshot", async () => {
+  const transform = createSSETransformStreamWithLogger(FORMATS.OPENAI, FORMATS.CLAUDE, "openai", null, null, "test", "connection", { messages: [] }, vi.fn());
+  const input = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(frame({ ...part({ content: "answer" }), usage: { prompt_tokens: 12, completion_tokens: 7 } }))); } });
+  const reader = input.pipeThrough(transform).getReader();
+  await reader.read();
+  expect(transform.getStreamSnapshot().usage).toMatchObject({ input_tokens: 12, output_tokens: 7 });
+  void reader.cancel();
+});
+
+it("uses valid Gemini cache evidence when the primary alias is invalid", () => {
+  expect(extractUsage({ usageMetadata: { promptTokenCount: 10, cachedContentTokenCount: -1, cached_content_token_count: "0" } }).cached_tokens).toBe(0);
+});

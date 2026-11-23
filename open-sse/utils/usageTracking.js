@@ -496,7 +496,8 @@ export function extractUsage(chunk) {
   // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens).
   // Kiro can attach credit-only metering without token counts.
   if (chunk.usage && isObject(chunk.usage) && (
-  chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
+  chunk.usage.prompt_tokens !== undefined || chunk.usage.completion_tokens !== undefined ||
+  chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
     const reasoningTokens = Number(chunk.usage.completion_tokens_details?.reasoning_tokens) || 0;
     // 9router #3945: fold reasoning into a zero/undercounted completion only when
@@ -544,7 +545,8 @@ export function extractUsage(chunk) {
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
-      cached_tokens: usageMeta.cachedContentTokenCount ?? usageMeta.cached_content_token_count,
+      cached_tokens: [usageMeta.cachedContentTokenCount, usageMeta.cached_content_token_count]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: usageMeta.thoughtsTokenCount
     }));
   }

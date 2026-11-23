@@ -1,4 +1,5 @@
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
+import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
@@ -999,8 +1000,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
         }
       case "assemblyai":{
-          const res = await fetchWithConnectionProxy("https://api.assemblyai.com/v1/account", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+          return probeAssemblyAiKey(connection.apiKey, (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy));
         }
       case "nanobanana":{
           const res = await fetchWithConnectionProxy("https://api.nanobananaapi.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);

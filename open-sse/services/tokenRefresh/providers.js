@@ -405,7 +405,7 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       if (!response.ok) {
         const errorText = await response.text();
         const failure = classifyOAuthRefreshError(errorText, response.status);
-        if (failure.permanent) {
+        if (failure.permanent || /token_revoked|invalid_client/i.test(errorText)) {
           log?.error?.("TOKEN_REFRESH", "Codex refresh token already used or invalid. Re-auth required.", {
             status: response.status,
             code: safeRefreshError(failure.code)

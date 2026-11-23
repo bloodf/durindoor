@@ -198,3 +198,11 @@ cd tests && timeout 300 node node_modules/vitest/vitest.mjs run \
   unit/codex-signin-parity.test.js unit/codex-refresh-token.test.js \
   unit/codex-models.test.js --maxWorkers=2
 ```
+
+## Pinned follow-up: usage reset envelopes
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Usage-limit reset timing in standard, top-level, or nested error envelopes | CLIProxyAPI `6eb8554f0ede`, `internal/runtime/executor/codex_executor_terminal.go`, `parseCodexRetryAfter` | Ported here for HTTP 429; generic rate limits do not acquire a usage reset. |
+| Refresh revoked or invalid client | CLIProxyAPI `6eb8554f0ede`, `internal/auth/codex/openai_auth.go`, `isNonRetryableRefreshErr` | Ported here: reject these grants without retry. |
+| Responses Lite tool-call parallelism | OmniRoute `5ffa68e83544`, `open-sse/executors/codex.ts`, `enforceCodexResponsesLiteParallelToolCalls` | Ported here, preserving delegation model exceptions. |

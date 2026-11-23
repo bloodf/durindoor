@@ -24,7 +24,7 @@ import OAuthModal from "@/shared/components/OAuthModal.js";
 const state = "generated-state";
 const redirectUri = "https://platform.claude.com/oauth/code/callback";
 const authUrl = `https://claude.ai/oauth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-const response = (data) => ({ ok: true, status: 200, json: async () => data });
+const response = (data) => ({ ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) });
 let container;
 let root;
 let fetchMock;

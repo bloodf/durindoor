@@ -49313,7 +49313,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
             "src/app/api/oauth/[provider]/[action]/route.js": "ee2337bcc2d284a1017b9dc5d1104c557fd840bbd00c166593d717a6cb0e8427"
           },
@@ -49337,7 +49337,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
             "src/app/api/oauth/[provider]/[action]/route.js": "ee2337bcc2d284a1017b9dc5d1104c557fd840bbd00c166593d717a6cb0e8427"
           },
@@ -53130,7 +53130,7 @@
       "id": "src/shared/components/OAuthModal.js#OAuthModal",
       "sourcePath": "src/shared/components/OAuthModal.js",
       "symbol": "OAuthModal",
-      "sourceSha256": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+      "sourceSha256": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -53155,7 +53155,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
@@ -53171,7 +53171,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
@@ -53187,7 +53187,7 @@
             "fingerprint"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53204,7 +53204,7 @@
             "device-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
@@ -53219,7 +53219,7 @@
             "manual-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
@@ -53234,7 +53234,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "6c0d77ab6739ab7e655d278b3f005342a735a3cbf2dadd25ebab2dacf5a56d83",
+            "src/shared/components/OAuthModal.js": "61ec0e267e7327c54378ec19b85f1c258309224a00f349b64541b3d6aaeffa4d",
             "src/shared/components/OAuthModal.stories.jsx": "8d64be2b5c894805bf684eec9c1aa9c0d7bcf741f78ab8ba8a98ed7c3862775c"
           },
           "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
@@ -102715,7 +102715,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "b430a5c01511d3c7b5c19217ca869033d19ea4de587bc795727dce1c88b332d5",
-    "sourceCensusSha256": "2369f55d3b4e30b69f174bb0e004b106589e85fe011658639e338f48d4ed546c",
+    "sourceCensusSha256": "f3831f50addf3088d937548ba814501606732ee46dc0ced618255f73ebfb14ad",
     "pendingRows": 433,
     "retainedApprovedRows": 207,
     "pendingReferences": 1486,

@@ -6,7 +6,7 @@ import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -404,6 +404,33 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_capture_key_session ON sessionCaptureTurns(apiKeyId, sessionId, createdAt, id)",
       "CREATE INDEX IF NOT EXISTS idx_capture_expiry ON sessionCaptureTurns(expiresAt)",
     ],
+  },
+  antigravityRefreshLeases: {
+    columns: {
+      connectionId: "TEXT PRIMARY KEY",
+      generation: "INTEGER NOT NULL",
+      owner: "TEXT",
+      fencingToken: "TEXT",
+      leaseExpiresAt: "INTEGER",
+      attemptState: "TEXT NOT NULL CHECK (attemptState IN ('idle', 'claimed', 'dispatched', 'uncertain', 'reauth'))",
+      attemptId: "TEXT",
+      credentialRevision: "TEXT",
+      subject: "TEXT",
+      recoveryEnabled: "INTEGER NOT NULL DEFAULT 0",
+      consentRecordedAt: "TEXT",
+      errorCategory: "TEXT",
+      retryCount: "INTEGER NOT NULL DEFAULT 0",
+      nextRetryAt: "INTEGER",
+      updatedAt: "INTEGER NOT NULL",
+    },
+  },
+  antigravityRecoveryCredentials: {
+    columns: {
+      connectionId: "TEXT PRIMARY KEY",
+      ciphertext: "TEXT NOT NULL",
+      fieldName: "TEXT NOT NULL",
+      updatedAt: "INTEGER NOT NULL",
+    },
   },
   // ─── Opt-in PostgreSQL engine: cutover event log ──────────────────
   // Records every `cutover` / `rollback` / `test` event. The PG side

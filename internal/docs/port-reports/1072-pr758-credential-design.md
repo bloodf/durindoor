@@ -1,6 +1,6 @@
 # PR 758 credential rotation design
 
-Status: proposed for independent security and integration review. No port is implemented or approved. Product development remains on hold. This document does not authorize a browser, provider login, host service, or gateway change.
+Status: reviewed design. The port is recorded in [1072-pr758-port.md](./1072-pr758-port.md). Browser recovery and the scheduler stay disabled until the gates in that report are demonstrated. This document does not authorize a browser launch, a provider login, a host-service change, or a production gateway change.
 
 ## Source and local boundary
 

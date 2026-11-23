@@ -310,8 +310,17 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = 
   }, log, proxyOptions);
 }
 
-export async function refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxyOptions = null) {
-  if (!refreshToken) return null;
+function googleRetryAfterMs(headers) {
+  const raw = headers?.get?.("retry-after");
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const when = Date.parse(raw);
+  return Number.isFinite(when) ? Math.max(0, when - Date.now()) : null;
+}
+
+export async function refreshGoogleTokenDetailed(refreshToken, clientId, clientSecret, log, proxyOptions = null) {
+  if (!refreshToken) return { ok: false, category: "pre_dispatch_failure" };
   return dedupRefresh(`google:${clientId}`, refreshToken, async () => {
     try {
       const response = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
@@ -330,32 +339,44 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
 
       if (!response.ok) {
         const errorText = await response.text();
-        // Google answers a revoked or expired refresh token with invalid_grant;
-        // retrying cannot recover it, so surface the durable re-auth signal
-        // (9router #900). invalid_client and transient errors stay retryable.
         const failure = classifyOAuthRefreshError(errorText, response.status);
         if (String(failure.code).toLowerCase() === "invalid_grant") {
           log?.error?.("TOKEN_REFRESH", "Google refresh token revoked or expired. Re-auth required.", {
             status: response.status,
             code: "invalid_grant"
           });
-          return { error: "invalid_grant" };
+          return { ok: false, category: "invalid_grant" };
         }
-        log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", {
-          status: response.status,
-          error: safeRefreshError(errorText)
-        });
-        return null;
+        if (response.status === 429) {
+          log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", { status: response.status, code: "rate_limit" });
+          return { ok: false, category: "rate_limit", retryAfterMs: googleRetryAfterMs(response.headers) };
+        }
+        log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", { status: response.status, code: "uncertain" });
+        return { ok: false, category: "uncertain", status: response.status };
       }
 
       const tokens = await response.json();
-      log?.info?.("TOKEN_REFRESH", "Successfully refreshed Google token", { hasNewAccessToken: !!tokens.access_token, expiresIn: tokens.expires_in });
-      return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };
-    } catch (error) {
-      log?.error?.("TOKEN_REFRESH", `Network error refreshing Google token: ${safeRefreshError(error)}`);
-      return null;
+      if (!tokens?.access_token) return { ok: false, category: "uncertain" };
+      log?.info?.("TOKEN_REFRESH", "Successfully refreshed Google token", { hasNewAccessToken: true, expiresIn: tokens.expires_in });
+      return {
+        ok: true,
+        tokens: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token || refreshToken,
+          expiresIn: tokens.expires_in
+        }
+      };
+    } catch {
+      log?.error?.("TOKEN_REFRESH", "Network error refreshing Google token");
+      return { ok: false, category: "uncertain" };
     }
   }, log, proxyOptions);
+}
+
+export async function refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxyOptions = null) {
+  const detailed = await refreshGoogleTokenDetailed(refreshToken, clientId, clientSecret, log, proxyOptions);
+  if (!detailed?.ok) return detailed?.category === "invalid_grant" ? { error: "invalid_grant" } : null;
+  return detailed.tokens;
 }
 
 export async function refreshQwenToken(refreshToken, log, proxyOptions = null) {

@@ -310,6 +310,11 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
   if (!isString(userInfo.email) || !userInfo.email.trim()) {
     throw new Error("Antigravity user info did not return an email");
   }
+  const subject = isString(userInfo.sub) && userInfo.sub.trim()
+    ? userInfo.sub.trim()
+    : isString(userInfo.id) && userInfo.id.trim()
+      ? userInfo.id.trim()
+      : null;
 
   const loadSignal = antigravityRequestSignal(signal);
   const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
@@ -357,7 +362,9 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
     if (!projectId) throw new Error("Antigravity onboarding did not return a project ID");
   }
 
-  return { userInfo: { email: userInfo.email.trim() }, projectId };
+  const userInfoOut = { email: userInfo.email.trim() };
+  if (subject) userInfoOut.subject = subject;
+  return { userInfo: userInfoOut, projectId };
 }
 
 function kimiDeviceProvider(config, fallbackVerificationUrl) {
@@ -1086,8 +1093,11 @@ const PROVIDERS = {
 
   antigravity: {
     config: ANTIGRAVITY_CONFIG,
-    flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri, state) => {
+    flowType: "authorization_code_pkce",
+    buildAuthUrl: (config, redirectUri, state, codeChallenge) => {
+      if (!isString(codeChallenge) || !codeChallenge) {
+        throw new Error("Antigravity authorization requires a PKCE challenge");
+      }
       const params = new URLSearchParams({
         client_id: config.clientId,
         response_type: "code",
@@ -1095,11 +1105,16 @@ const PROVIDERS = {
         scope: config.scopes.join(" "),
         state: state,
         access_type: "offline",
-        prompt: "consent"
+        prompt: "consent",
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256"
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, _verifier, _state, _meta, proxyOptions, signal) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, _state, _meta, proxyOptions, signal) => {
+      if (!isString(codeVerifier) || !codeVerifier) {
+        throw new Error("Antigravity token exchange requires a PKCE verifier");
+      }
       const requestSignal = antigravityRequestSignal(signal);
       try {
         const response = await fetch(config.tokenUrl, {
@@ -1113,7 +1128,8 @@ const PROVIDERS = {
             client_id: config.clientId,
             client_secret: config.clientSecret,
             code,
-            redirect_uri: redirectUri
+            redirect_uri: redirectUri,
+            code_verifier: codeVerifier
           }),
           proxyOptions,
           signal: requestSignal
@@ -1140,14 +1156,20 @@ const PROVIDERS = {
         throw error;
       }
     },
-    mapTokens: (tokens, extra) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-      scope: tokens.scope,
-      email: extra?.userInfo?.email,
-      projectId: extra?.projectId
-    })
+    mapTokens: (tokens, extra) => {
+      const mapped = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        email: extra?.userInfo?.email,
+        projectId: extra?.projectId,
+      };
+      if (extra?.userInfo?.subject) {
+        mapped.providerSpecificData = { antigravitySubject: extra.userInfo.subject };
+      }
+      return mapped;
+    }
   },
 
   iflow: {

@@ -54,6 +54,11 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "outboundProxyEnabled",
   "outboundProxyUrl",
   "outboundNoProxy",
+  /** Request-routing endpoints that can receive user prompts or traffic. */
+  "headroomEnabled",
+  "headroomUrl",
+  "headroomCompressUserMessages",
+  "mitmRouterBaseUrl",
   /**
    * Gates a default-allow short-circuit for Claude Code's auto-permission
    * classifier (see open-sse/handlers/chatCore.js). An unproved caller must

@@ -7,6 +7,7 @@ import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExtern
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { getClineAccessToken } from "../../shared/clineAuth.js";
+import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 function safeRefreshError(value) {
   if (isString(value)) return sanitizeErrorMessage(value);
@@ -46,6 +47,9 @@ export async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
 }
 
 export async function refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions = null) {
+  if (provider === "codex") {
+    return refreshCodexToken(refreshToken, log, proxyOptions, credentials?._connection?.id ?? credentials?.id);
+  }
   const config = PROVIDERS[provider];
 
   if (!config || !config.refreshUrl) {
@@ -385,12 +389,26 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   return { status, code, description, permanent };
 }
 
-export async function refreshCodexToken(refreshToken, log, proxyOptions = null) {
+export async function refreshCodexToken(refreshToken, log, proxyOptions = null, connectionId = null) {
   if (!refreshToken) return null;
-  return dedupRefresh("codex", refreshToken, async () => {
+  try {
+    if (connectionId) {
+      const { claimCodexRefreshAttempt } = await import("../../../src/lib/db/repos/connectionsRepo.js");
+      const fingerprint = digestMemoryKey("codex-refresh-attempt", PROVIDERS.codex.clientId, refreshToken);
+      if (!await claimCodexRefreshAttempt(connectionId, refreshToken, fingerprint)) return null;
+    }
+  } catch {
+    log?.error?.("TOKEN_REFRESH", "Could not record Codex refresh attempt");
+    return null;
+  }
+
+  async function exchange() {
     try {
       const response = await proxyAwareFetch(OAUTH_ENDPOINTS.openai.token, {
         method: "POST",
+        redirect: "error",
+        noTransportReplay: true,
+        signal: AbortSignal.timeout(30_000),
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json"
@@ -405,7 +423,7 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       if (!response.ok) {
         const errorText = await response.text();
         const failure = classifyOAuthRefreshError(errorText, response.status);
-        if (failure.permanent || /token_revoked|invalid_client/i.test(errorText)) {
+        if (failure.permanent || failure.code === "invalid_token" || /token_revoked|invalid_client/i.test(errorText)) {
           log?.error?.("TOKEN_REFRESH", "Codex refresh token already used or invalid. Re-auth required.", {
             status: response.status,
             code: safeRefreshError(failure.code)
@@ -423,6 +441,14 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       }
 
       const tokens = await response.json();
+      if (connectionId && (
+        !isString(tokens?.access_token) || !tokens.access_token.trim() ||
+        !isString(tokens.refresh_token) || !tokens.refresh_token.trim() || tokens.refresh_token === refreshToken ||
+        !Number.isSafeInteger(tokens.expires_in) || tokens.expires_in <= 0
+      )) {
+        log?.warn?.("TOKEN_REFRESH", "Codex refresh returned an ambiguous token response");
+        return null;
+      }
 
       log?.info?.("TOKEN_REFRESH", "Successfully refreshed Codex token", {
         hasNewAccessToken: !!tokens.access_token,
@@ -441,7 +467,9 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
       log?.error?.("TOKEN_REFRESH", `Network error refreshing Codex token: ${safeRefreshError(error)}`);
       return null;
     }
-  }, log, proxyOptions);
+  }
+  // A persisted grant uses its database claim instead of replaying a cached result.
+  return connectionId ? exchange() : dedupRefresh("codex", refreshToken, exchange, log, proxyOptions);
 }
 
 async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn, proxyOptions) {

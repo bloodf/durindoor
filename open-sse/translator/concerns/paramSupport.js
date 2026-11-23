@@ -186,6 +186,19 @@ export function stripUnsupportedChatExtensions(body, transport, defaultTransport
  */
 export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES, credentials = null) {
   if (!model || !body || !isObject(body)) return body;
+  // Mistral Chat validates a closed schema; Responses requests use a different schema.
+  if (provider === "mistral" && Array.isArray(body.messages)) {
+    for (const [from, to] of [["seed", "random_seed"], ["max_completion_tokens", "max_tokens"]]) {
+      if (body[to] === undefined && body[from] != null) body[to] = body[from];
+      delete body[from];
+    }
+    for (const field of ["user", "logit_bias", "store", "verbosity"]) delete body[field];
+    if (typeof body.temperature === "number" && body.temperature > 1.5) body.temperature = 1.5;
+    if (Object.hasOwn(body, "service_tier")) {
+      if (["default", "flex", "scale"].includes(body.service_tier)) body.service_tier = "standard_only";
+      else if (!["auto", "standard_only"].includes(body.service_tier)) delete body.service_tier;
+    }
+  }
   // LLMTR rejects Responses-style reasoning objects on its Chat endpoint.
   if (provider === "llmtr" && body.reasoning != null && !isBoolean(body.reasoning)) {
     const value = body.reasoning;

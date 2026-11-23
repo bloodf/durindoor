@@ -151,6 +151,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `byteplus` |  | freeTier | `https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions` |
 | `bytez` |  | apikey | `https://api.bytez.com/models/v2/openai/v1/chat/completions` |
 | `cablyai` |  | apikey | `https://api.cablyai.com/v1/chat/completions` |
+| `canopywave` |  | apikey | `https://inference.canopywave.io/v1/chat/completions` |
 | `cartesia` |  | apikey | `` |
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
 | `cerebrium` | openai | apikey | `` |
@@ -163,7 +164,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cheaperinference` |  | apikey | `https://api.cheaperinference.com/v1/chat/completions` |
 | `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
-| `chutes` |  |  | `https://llm.chutes.ai/v1/chat/completions` |
+| `chutes` |  | apikey | `https://llm.chutes.ai/v1/chat/completions` |
 | `clarifai` |  | apikey | `https://api.clarifai.com/v2/ext/openai/v1/chat/completions` |
 | `claude` | claude | oauth | `https://api.anthropic.com/v1/messages` |
 | `claude-web` | openai | webCookie | `https://claude.ai/api` |
@@ -439,6 +440,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `subq` |  | apikey | `` |
 | `sumopod` |  | apikey | `https://ai.sumopod.com/v1/chat/completions` |
 | `suno` | openai | webCookie | `https://studio-api.suno.ai/api/generate/v2/` |
+| `swiftrouter` |  | apikey | `https://api.swiftrouter.com/v1/chat/completions` |
 | `synthetic` |  | apikey | `https://api.synthetic.new/openai/v1/chat/completions` |
 | `t3-web` | openai | webCookie | `https://t3.chat/api/chat` |
 | `tabitoken` | claude | apikey | `https://tabitoken.com/v1/messages` |

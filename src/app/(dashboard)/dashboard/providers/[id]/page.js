@@ -207,6 +207,7 @@ function ProviderDetail({ providerId }) {
     }
   }));
   const [suggestedModels, setSuggestedModels] = useState([]);
+  const [chutesCatalog, setChutesCatalog] = useState({ provider: "", status: "idle", models: [] });
   const [catalogEvidence, setCatalogEvidence] = useState(null);
   const [syncingModels, setSyncingModels] = useState(false);
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
@@ -846,6 +847,21 @@ function ProviderDetail({ providerId }) {
     fetchDisabledModels();
     fetchEnabledModels();
   }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels, fetchEnabledModels]);
+
+  useEffect(() => {
+    if (providerId !== "chutes") return;
+    let active = true;
+    setChutesCatalog({ provider: providerId, status: "loading", models: [] });
+    const params = new URLSearchParams({ url: "https://llm.chutes.ai/v1/models", type: "chutes-all" });
+    fetch(`/api/providers/suggested-models?${params}`).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error("Catalog unavailable");
+      if (active) setChutesCatalog({ provider: providerId, status: data.data?.length ? "loaded" : "empty", models: data.data || [] });
+    }).catch(() => {
+      if (active) setChutesCatalog({ provider: providerId, status: "error", models: [] });
+    });
+    return () => { active = false; };
+  }, [providerId]);
 
   const handleSyncModels = async () => {
     const requestGeneration = providerGenerationRef.current;
@@ -1921,16 +1937,19 @@ function ProviderDetail({ providerId }) {
         }
 
         {/* Suggested models from provider API — show only models not yet added */}
-        {suggestedModels.length > 0 && (() => {
+        {providerId === "chutes" && chutesCatalog.provider === providerId && chutesCatalog.status !== "loaded" &&
+          <p role="status" className="w-full text-xs text-dd-muted">{chutesCatalog.status === "loading" ? "Loading Chutes models…" : chutesCatalog.status === "empty" ? "No Chutes models returned. You can add a model manually." : "Could not load Chutes models. You can add a model manually."}</p>
+        }
+        {(providerId === "chutes" ? chutesCatalog.provider === providerId && chutesCatalog.models.length > 0 : suggestedModels.length > 0) && (() => {
           const addedFullModels = new Set([
           ...Object.values(modelAliases),
           ...customModelRows.map((model) => model.fullModel)]
           );
           const hardcodedIds = new Set(models.map((m) => m.id));
-          const notAdded = suggestedModels.filter(
-            (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
+          const notAdded = (providerId === "chutes" ? chutesCatalog.models : suggestedModels).filter(
+            (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id) && !disabledModelIds.includes(m.id)
           );
-          if (notAdded.length === 0) return null;
+          if (notAdded.length === 0) return providerId === "chutes" ? <p role="status" className="w-full text-xs text-dd-muted">All available Chutes models are already added or disabled.</p> : null;
           return (
             <div className="w-full mt-2">
               <p className="text-xs text-dd-muted mb-2">Suggested free models (≥200k context):</p>
@@ -1942,10 +1961,10 @@ function ProviderDetail({ providerId }) {
                     await handleAddCustomModel(m.id, "llm", providerStorageAlias);
                   }}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 hover:bg-dd-accent-soft transition-colors"
-                  title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}>
+                  title={`${m.name}${m.contextLength ? ` · ${(m.contextLength / 1000).toFixed(0)}k ctx` : ""}`}>
 
                     <span className="material-symbols-outlined text-[13px]">add</span>
-                    {m.id.split("/").pop()}
+                    <span className="min-w-0 break-all">{providerId === "chutes" ? m.id : m.id.split("/").pop()}</span>
                   </button>
                 )}
               </div>

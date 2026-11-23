@@ -38,6 +38,7 @@ export const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "anthropic",
 "claude",
 "cline",
+"chutes",
 "codex",
 "groq",
 "minimax",
@@ -182,6 +183,9 @@ export async function resolveCompatibleCatalog(conn, guard) {
 
 export const LIVE_MODEL_RESOLVERS = {
   compatible: resolveCompatibleCatalog,
+  chutes: async (conn, guard) => resolveLiveOpenAIModels(conn, {
+    ...(await liveResolverOptions(conn)), guard, endpoint: "https://llm.chutes.ai/v1/models"
+  }),
   anthropic: async (conn, guard) => resolveLiveAnthropicModels(conn, {
     ...(await liveResolverOptions(conn)),
     guard

@@ -566,7 +566,7 @@ const PROVIDERS = {
     flowType: "authorization_code_pkce",
     fixedPort: CODEX_CONFIG.fixedPort,
     callbackPath: CODEX_CONFIG.callbackPath,
-    buildAuthUrl: (config, redirectUri, state, codeChallenge) => {
+    buildAuthUrl: (config, redirectUri, state, codeChallenge, meta) => {
       const params = {
         response_type: "code",
         client_id: config.clientId,
@@ -575,6 +575,7 @@ const PROVIDERS = {
         code_challenge: codeChallenge,
         code_challenge_method: config.codeChallengeMethod,
         ...config.extraParams,
+        ...(meta?.allowed_workspace_id ? { allowed_workspace_id: meta.allowed_workspace_id } : null),
         state: state
       };
       const queryString = Object.entries(params).

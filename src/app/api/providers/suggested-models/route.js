@@ -43,13 +43,13 @@ export async function GET(request) {
     // Never follow a registry target's redirect to a private/internal host.
     const res = await fetch(url, { redirect: "error" });
     if (!res.ok) {
-      return NextResponse.json({ data: [] });
+      return NextResponse.json({ data: [], error: `Failed to fetch provider models: ${res.status}` });
     }
     const json = await res.json();
     const raw = json.data ?? json.models ?? json;
     const data = filter(Array.isArray(raw) ? raw : []);
     return NextResponse.json({ data });
   } catch {
-    return NextResponse.json({ data: [] });
+    return NextResponse.json({ data: [], error: "Failed to fetch provider models" });
   }
 }

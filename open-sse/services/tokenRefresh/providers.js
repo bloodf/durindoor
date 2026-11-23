@@ -9,6 +9,7 @@ import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { getClineAccessToken } from "../../shared/clineAuth.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
+import { resolveCodexAccountId } from "../../shared/codexAccountId.js";
 
 function safeRefreshError(value) {
   if (isString(value)) return sanitizeErrorMessage(value);
@@ -49,7 +50,7 @@ export async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
 
 export async function refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions = null) {
   if (provider === "codex") {
-    return refreshCodexToken(refreshToken, log, proxyOptions, credentials?._connection?.id ?? credentials?.id);
+    return refreshCodexToken(refreshToken, log, proxyOptions, credentials?._connection?.id ?? credentials?.id, resolveCodexAccountId(credentials?.providerSpecificData ?? credentials?._connection?.providerSpecificData, credentials?.idToken ?? credentials?._connection?.idToken));
   }
   const config = PROVIDERS[provider];
 
@@ -439,7 +440,7 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   return { status, code, description, permanent };
 }
 
-export async function refreshCodexToken(refreshToken, log, proxyOptions = null, connectionId = null) {
+export async function refreshCodexToken(refreshToken, log, proxyOptions = null, connectionId = null, selectedWorkspaceId = null) {
   if (!refreshToken) return null;
   try {
     if (connectionId) {
@@ -519,7 +520,14 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null, 
     }
   }
   // A persisted grant uses its database claim instead of replaying a cached result.
-  return connectionId ? exchange() : dedupRefresh("codex", refreshToken, exchange, log, proxyOptions);
+  const result = await (connectionId ? exchange() : dedupRefresh("codex", refreshToken, exchange, log, proxyOptions));
+  // Validate after deduplication: each caller owns its own workspace binding.
+  // An omitted ID token retains the existing binding; a supplied token must match.
+  if (selectedWorkspaceId && result?.idToken !== undefined && resolveCodexAccountId({}, result.idToken) !== selectedWorkspaceId) {
+    log?.error?.("TOKEN_REFRESH", "Codex refresh returned a different or missing workspace claim");
+    return { error: "unrecoverable_refresh_error", code: "workspace_mismatch" };
+  }
+  return result;
 }
 
 async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn, proxyOptions) {

@@ -1,11 +1,15 @@
 import { isObject } from "./typeChecks.js";
 const PROVIDER_REFRESH_CONTEXT_FIELDS = Object.freeze([
+"accountId",
 "authKind",
 "authMethod",
 "baseUrl",
 "clientId",
 "client_id",
 "clientSecret",
+"codexSelectedWorkspaceId",
+"chatgptAccountId",
+"chatgptWorkspaceId",
 "copilotToken",
 "profileArn",
 "provider",
@@ -14,7 +18,8 @@ const PROVIDER_REFRESH_CONTEXT_FIELDS = Object.freeze([
 "scope",
 "scopes",
 "tokenEndpoint",
-"token_endpoint"]
+"token_endpoint",
+"workspaceId"]
 );
 
 function providerData(connection) {

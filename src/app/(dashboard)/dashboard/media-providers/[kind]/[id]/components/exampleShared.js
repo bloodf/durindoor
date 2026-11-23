@@ -43,6 +43,13 @@ export const KIND_EXAMPLE_CONFIG = {
     extraFields: [
       { key: "n", label: "n", type: "number", default: 1, min: 1, max: 4 },
       { key: "size", label: "Size", type: "select", default: "auto", options: ["auto", "1024x1024", "1024x1536", "1536x1024", "1024x1792", "1792x1024"] },
+      { key: "width", label: "Width", type: "number", default: "", min: 1 },
+      { key: "height", label: "Height", type: "number", default: "", min: 1 },
+      { key: "aspect_ratio", label: "Aspect ratio", type: "select", default: "", options: ["", "match_input_image", "9:21", "5:11", "1:2", "7:13", "3:5", "2:3", "3:4", "6:7", "1:1", "7:6", "4:3", "3:2", "5:3", "13:7", "2:1", "11:5", "21:9"] },
+      { key: "mode", label: "Mode", type: "select", default: "base", options: ["base", "depth", "canny"] },
+      { key: "cfg_scale", label: "CFG scale", type: "number", default: "", min: 1.01, step: 0.1 },
+      { key: "seed", label: "Seed", type: "number", default: "", min: 0 },
+      { key: "steps", label: "Steps", type: "number", default: "", min: 1 },
       { key: "quality", label: "Quality", type: "select", default: "auto", options: ["auto", "low", "medium", "high", "standard", "hd"] },
       { key: "background", label: "Background", type: "select", default: "auto", options: ["auto", "transparent", "opaque"] },
       { key: "style", label: "Style", type: "select", default: "", options: ["", "vivid", "natural"] },

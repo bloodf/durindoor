@@ -26,3 +26,19 @@ export function findOffendingField(errorText = "") {
     return re.test(text) && !isNestedPathError(text, field);
   }) || null;
 }
+// A 422 may echo user content. Only trust structured top-level validation paths.
+export function findRejected422Field(errorText, body) {
+  let payload;
+  try { payload = JSON.parse(errorText); } catch { return null; }
+  const details = payload?.detail ?? payload?.error?.detail ?? payload?.message?.detail;
+  if (!Array.isArray(details)) return null;
+  const protectedFields = new Set(["model", "messages", "input", "contents", "system", "stream", "tools", "tool_choice"]);
+  for (const detail of details) {
+    const path = detail?.loc;
+    if (!Array.isArray(path) || path.length !== 2 || path[0] !== "body" || !isString(path[1])) continue;
+    const field = path[1];
+    if (protectedFields.has(field) || !Object.hasOwn(body, field)) continue;
+    if (detail.type === "extra_forbidden" || (field === "service_tier" && ["enum", "literal_error"].includes(detail.type))) return field;
+  }
+  return null;
+}

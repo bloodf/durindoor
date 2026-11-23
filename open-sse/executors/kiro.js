@@ -1181,10 +1181,12 @@ export class KiroExecutor extends BaseExecutor {
               Math.max(1, Math.floor(state.totalContentLength / 4)) :
               0;
 
-              // Estimate input tokens from contextUsagePercentage
-              const estimatedInputTokens = state.contextUsagePercentage > 0 ?
+              // The context percentage includes the response, so split its total
+              // rather than adding the estimated completion a second time.
+              const estimatedTotalTokens = state.contextUsagePercentage > 0 ?
               Math.floor(state.contextUsagePercentage * contextWindow / 100) :
               0;
+              const estimatedInputTokens = Math.max(0, estimatedTotalTokens - estimatedOutputTokens);
 
               state.usage = {
                 ...(state.usage || {}),
@@ -1249,9 +1251,10 @@ export class KiroExecutor extends BaseExecutor {
           Number.isFinite(Number(state.usage?.completion_tokens));
           if (!hasTokenUsage && state.totalContentLength > 0) {
             const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
-            const promptTokens = state.contextUsagePercentage > 0 ?
+            const totalTokens = state.contextUsagePercentage > 0 ?
             Math.floor(state.contextUsagePercentage * contextWindow / 100) :
             0;
+            const promptTokens = Math.max(0, totalTokens - completionTokens);
             state.usage = {
               ...(state.usage || {}),
               prompt_tokens: promptTokens,

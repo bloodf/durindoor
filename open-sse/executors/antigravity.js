@@ -1,3 +1,4 @@
+import { renameGeminiProperties } from "../translator/concerns/geminiPlaceholderArgs.js";
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
@@ -99,10 +100,17 @@ const MAX_ANTIGRAVITY_TOOL_COUNT = 40;
 const MAX_TOOL_DESC_CHARS = 200;
 const MAX_SCHEMA_DESC_CHARS = 150;
 
+// Preserve conflicting branches so responses retain their structured arguments.
+function hasPropertiesParameter(schema) {
+  if (!schema || !isObject(schema)) return false;
+  if (schema.properties && Object.prototype.hasOwnProperty.call(schema.properties, "properties")) return true;
+  return Object.values(schema.properties || {}).some(hasPropertiesParameter) || hasPropertiesParameter(schema.items);
+}
+
 function compressToolSchema(schema, depth) {
   if (!schema || !isObject(schema)) return schema;
 
-  if (depth >= MAX_SCHEMA_DEPTH) {
+  if (depth >= MAX_SCHEMA_DEPTH && !hasPropertiesParameter(schema)) {
     if (schema.type === "object" && schema.properties) {
       const propNames = Object.keys(schema.properties);
       return {
@@ -518,6 +526,7 @@ export class AntigravityExecutor extends BaseExecutor {
           }
           normalizeAntigravityBounds(cleanedParams);
           cleanedParams = compressToolSchema(cleanedParams, 0);
+          renameGeminiProperties(cleanedParams);
           allDeclarations.push({
             ...fn,
             name,
@@ -961,21 +970,31 @@ export class AntigravityExecutor extends BaseExecutor {
     if (isAntigravityPromptRejection(response.status, bodyText)) {
       return { status: HTTP_STATUS.BAD_REQUEST, message: ANTIGRAVITY_PROMPT_REJECTED_MESSAGE };
     }
-    if (response.status !== 429) return super.parseError(response, bodyText);
+    if (response.status !== 429 && response.status !== 409) return super.parseError(response, bodyText);
 
     try {
       const errorJson = JSON.parse(bodyText);
-      const details = errorJson?.error?.details || [];
+      const error = errorJson?.error;
+      if (!error || !isObject(error) || Array.isArray(error)) return super.parseError(response, bodyText);
+      const details = Array.isArray(error.details) ? error.details : [];
 
       for (const detail of details) {
         const meta = detail?.metadata || {};
+        if (isString(detail?.["@type"]) && detail["@type"].includes("RetryInfo") &&
+            isString(detail.retryDelay)) {
+          const match = /^(\d+(?:\.\d+)?)s$/.exec(detail.retryDelay);
+          const delayMs = match ? Number(match[1]) * 1000 : 0;
+          if (Number.isFinite(delayMs) && delayMs > 0) {
+            return { status: response.status, message: error.message || bodyText, resetsAtMs: Date.now() + delayMs };
+          }
+        }
 
         // quotaResetTimeStamp: ISO string — most precise
         if (meta.quotaResetTimeStamp) {
           const ms = new Date(meta.quotaResetTimeStamp).getTime();
           if (ms > Date.now()) {
             return {
-              status: 429,
+              status: response.status,
               message: errorJson?.error?.message || bodyText,
               resetsAtMs: ms
             };
@@ -992,7 +1011,7 @@ export class AntigravityExecutor extends BaseExecutor {
             const delayMs = (h * 3600 + m * 60 + s) * 1000;
             if (delayMs > 0) {
               return {
-                status: 429,
+                status: response.status,
                 message: errorJson?.error?.message || bodyText,
                 resetsAtMs: Date.now() + delayMs
               };
@@ -1000,6 +1019,7 @@ export class AntigravityExecutor extends BaseExecutor {
           }
         }
       }
+      return { status: response.status, message: error.message || bodyText, noQuotaMetadata: true };
     } catch {
 
       // fall through to base

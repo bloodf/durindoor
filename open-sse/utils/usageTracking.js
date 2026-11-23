@@ -281,10 +281,16 @@ export function canonicalizeUsage(usage) {
   if (!usage || !isObject(usage) || Array.isArray(usage)) return null;
 
   const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
-  const completion = num(usage.completion_tokens ?? usage.output_tokens);
   const inputDetails = usage.prompt_tokens_details ?? usage.input_tokens_details;
   const outputDetails = usage.completion_tokens_details ?? usage.output_tokens_details;
   const reasoning = num(usage.reasoning_tokens ?? outputDetails?.reasoning_tokens);
+  const reportedCompletion = num(usage.completion_tokens ?? usage.output_tokens);
+  // 9router #3945: when reasoning sits inside the output count, an upstream
+  // that reports completion 0 (or below its own reasoning slice) undercounts.
+  // Additive families (reasoning_included_in_output === 0) bill it on top.
+  const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
+    reasoningIsSubsetOfOutput(usage);
+  const completion = foldReasoning ? reasoning : reportedCompletion;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
   usage.cache_creation_input_tokens !== undefined &&
@@ -317,7 +323,7 @@ export function canonicalizeUsage(usage) {
     completion_tokens: completion,
     // Exclusive cache normalization changes the component sum, so its incoming
     // total becomes stale. Inclusive providers' explicit totals stay authoritative.
-    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? explicitTotal : componentTotal,
+    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? Math.max(explicitTotal, foldReasoning ? componentTotal : 0) : componentTotal,
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation
   };
@@ -492,11 +498,19 @@ export function extractUsage(chunk) {
   if (chunk.usage && isObject(chunk.usage) && (
   chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
+    const reasoningTokens = Number(chunk.usage.completion_tokens_details?.reasoning_tokens) || 0;
+    // 9router #3945: fold reasoning into a zero/undercounted completion only when
+    // it is a subset of the output count; additive upstreams are marked below.
+    const foldReasoning = reasoningTokens > (Number(chunk.usage.completion_tokens) || 0) &&
+      reasoningIsSubsetOfOutput(chunk.usage);
     const normalized = normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
-      completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
+      completion_tokens: foldReasoning ? reasoningTokens :
+        hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
-      cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
+      cached_tokens: [chunk.usage.prompt_tokens_details?.cached_tokens, chunk.usage.input_tokens_details?.cached_tokens,
+        chunk.usage.cache_read_input_tokens, chunk.usage.prompt_cache_hit_tokens, chunk.usage.cached_tokens]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
       // OpenRouter reports cost as a bare USD number on usage; same unit as cost_usd.
       cost_usd: isUsdReceipt(chunk.usage.cost) ? chunk.usage.cost : chunk.usage.cost_usd,
@@ -530,7 +544,7 @@ export function extractUsage(chunk) {
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
-      cached_tokens: usageMeta.cachedContentTokenCount,
+      cached_tokens: usageMeta.cachedContentTokenCount ?? usageMeta.cached_content_token_count,
       reasoning_tokens: usageMeta.thoughtsTokenCount
     }));
   }

@@ -11,7 +11,7 @@ import { resolveFallbackModelScope } from "./fallbackScope.js";
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
  */
-import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isString, isObject } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
@@ -572,6 +572,40 @@ export function durableCredentialReauthFields(conn, usedCredential, status, erro
   };
 }
 
+/** Account-wide quota lockouts are independent of manual account enablement. */
+export function isQuotaLockoutActive(connection, now = Date.now()) {
+  const lock = connection?.quotaLockout;
+  if (!lock?.status) return false;
+  const deadline = Date.parse(lock.reactivateAt);
+  return lock.reactivateAt == null || !Number.isFinite(deadline) || deadline > now;
+}
+
+/** Inspect only an upstream error message, never arbitrary response/request fields. */
+export function detectQuotaExhaustion(error, now = Date.now()) {
+  let value = error;
+  if (isString(value) && /^[\s]*[\[{]/.test(value)) {
+    try { value = JSON.parse(value); } catch { return { exhausted: false, resetAtMs: null }; }
+  }
+  const envelope = isObject(value) ? (value.error ?? value) : null;
+  const message = isString(envelope) ? envelope : isString(envelope?.message) ? envelope.message : isString(value) ? value : "";
+  if (!/^(?:your |the |provider )?(?:free usage limit reached|daily free quota exceeded|(?:free )?quota (?:has been |is )?(?:exhausted|exceeded)|quota limit exceeded|usage limit (?:reached|exceeded)|quota resets? at)\b/i.test(message)) return { exhausted: false, resetAtMs: null };
+  const candidates = [];
+  const collectResets = (node, depth = 0) => {
+    if (!node || depth > 6 || (!isObject(node) && !Array.isArray(node))) return;
+    for (const [key, child] of Object.entries(node)) {
+      if (["resetsAtMs", "resetAt", "reset_at", "resets_at", "resetsAt", "resetTime", "reset_time"].includes(key)) candidates.push(child);
+      else if (!["request", "messages", "prompt"].includes(key)) collectResets(child, depth + 1);
+    }
+  };
+  collectResets(envelope);
+  if (isObject(value) && value.error) {
+    for (const key of ["resetsAtMs", "resetAt", "reset_at", "resets_at", "resetsAt"]) candidates.push(value[key]);
+  }
+  candidates.push(message.match(/\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)/)?.[0]);
+  const resetAtMs = candidates.map((v) => isNumber(v) ? v : Date.parse(v)).find((v) => Number.isFinite(v) && v > now) ?? null;
+  return { exhausted: true, resetAtMs };
+}
+
 /**
  * Check if account is currently unavailable (cooldown not expired)
  */
@@ -756,6 +790,7 @@ export function filterAvailableAccounts(accounts, excludeId = null) {
   const now = Date.now();
   return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
+    if (isQuotaLockoutActive(acc, now)) return false;
     if (acc.rateLimitedUntil) {
       const until = new Date(acc.rateLimitedUntil).getTime();
       if (until > now) return false;

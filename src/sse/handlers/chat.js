@@ -1,3 +1,6 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { summarizeToolSources } from "../utils/toolSources.js";
+import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
 import { CAPTURE_CONSENT_HEADER, CAPTURE_SESSION_HEADER, prepareMessageCapture } from "../utils/messageCapture.js";
 import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
 import { normalizeModelReference } from "open-sse/services/model.js";
@@ -75,6 +78,7 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { holdReservationForResponse, releaseLifetimeTokens, reserveLifetimeTokens } from "@/lib/apiKeyTokenReservations.js";
 import { getBatchRequestKeyId } from "../services/batchKeyIdentity.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { modelKindError } from "./modelKind.js";
@@ -248,6 +252,25 @@ const resolveQuotaModelInfo = getModelInfo;
 function leastHealthy(...states) {
   const rank = { unhealthy: 0, open: 0, degraded: 1, "half-open": 1, healthy: 2, closed: 2 };
   return states.filter(Boolean).sort((left, right) => (rank[left] ?? 2) - (rank[right] ?? 2))[0] || "healthy";
+}
+
+// Read live per-connection locks on every request. A model is unavailable only
+// when every eligible credential is locked; no shared model cooldown is stored.
+export async function rankComboModelsByLocks(models, now = Date.now(), dependencies = {}, comboRouting = null) {
+  const resolveModel = dependencies.getModelInfo || resolveQuotaModelInfo;
+  const loadConnections = dependencies.getProviderConnections || getProviderConnections;
+  const isLocked = dependencies.isProviderConnectionModelLocked || isProviderConnectionModelLocked;
+  const allowsPublic = dependencies.providerAllowsPublicNoAuthFallback || providerAllowsPublicNoAuthFallback;
+  const availability = await Promise.all(models.map(async (value) => {
+    const { provider, model } = await resolveModel(value);
+    if (!provider) return { value, locked: false };
+    const all = await loadConnections({ provider, isActive: true });
+    const restricted = comboRouting?.restrictionApplied === true;
+    const connections = restricted ? all.filter((connection) => comboRouting.allowedConnectionIds?.includes(connection.id)) : all;
+    const locked = connections.length > 0 && connections.every((connection) => isLocked(connection, provider, model, now));
+    return { value, locked: locked && (restricted || !allowsPublic(provider)) };
+  }));
+  return [...availability.filter((entry) => !entry.locked), ...availability.filter((entry) => entry.locked)].map((entry) => entry.value);
 }
 
 export async function rankComboModelsByQuota(
@@ -486,6 +509,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     log.warn("AUTH", "Invalid API key");
     return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
   }
+  const toolSummary = summarizeToolSources(body.tools, settings.logToolSources);
+  if (toolSummary) log.debug("TOOLS", toolSummary);
+
   // Use only the admitted stored key and the original request headers.
   clientRawRequest.usageAttribution = apiKeyAuth.stored && apiKeyAuth.apiKeyId ?
     usageAttributionFromHeaders(request.headers) : null;
@@ -533,6 +559,18 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // The per-model policy checks below skip this step for the same request.
     const windowedLimit = await enforceApiKeyLimits(request, authenticatedKeyRecord);
     if (windowedLimit) return windowedLimit;
+
+    // Reserve the lifetime token allowance (#2833) once per request, before any
+    // combo or retry dispatch; handleChat releases it when the response ends.
+    if (authenticatedKeyRecord?.isActive) {
+      const reservation = reserveLifetimeTokens(request, authenticatedKeyRecord, body);
+      if (!reservation.ok) {
+        log.warn("AUTH", `API key lifetime token limit reached (${reservation.used}/${reservation.limit})`);
+        return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.RATE_LIMITED,
+          `API key token limit reached (${Math.round(reservation.used)}/${reservation.limit} tokens)`), "client_limit");
+      }
+      body = reservation.body;
+    }
   }
 
   if (sourceFormat === FORMATS.CLAUDE) {
@@ -730,6 +768,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboRouting,
         body
       ),
+      lockRanker: (ordered) => rankComboModelsByLocks(ordered, Date.now(), {}, comboRouting),
       jevClassify: true,
       decisionBackend: resolveDecisionBackend,
       signal: request?.signal || null
@@ -954,6 +993,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           mergedRouting,
           body
         ),
+        lockRanker: (ordered) => rankComboModelsByLocks(ordered, Date.now(), {}, mergedRouting),
         jevClassify: true,
         decisionBackend: resolveDecisionBackend,
         signal: requestSignal
@@ -1159,8 +1199,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       billingEpoch,
       comboId: comboRouting?.id,
       comboName: comboRouting?.name,
+      comboNoLog: comboRouting?.noLog === true,
       comboPrompts,
       log,
+      routingPolicy: settings?.openrouterRouting,
       providerConcurrencyLimit: settings?.providerConcurrencyLimits,
       globalConcurrentRequests: settings?.globalConcurrentRequests,
       sourceFormatOverride: detectFormatByEndpoint(pathname, body),
@@ -1212,6 +1254,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           connectionRecovery: true,
           signal: requestSignal,
           modelCandidates,
+          healthModel: upstreamModel || model,
           quotaFamily,
           resourceKeys: quotaResourceKeys,
           sessionId: routingSessionId,
@@ -1382,6 +1425,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
       warmRequestModelLimits(provider, refreshedCredentials);
+      // Bind later outcome writes to the stored credential this attempt sends.
+      const { credentialFingerprint: dispatchedCredential } = credentialDispatchSnapshot(refreshedCredentials);
 
       // Use shared chatCore
       const chatSettings = await getSettings();
@@ -1406,7 +1451,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           providerSpecificData: refreshedCredentials.providerSpecificData
         })
         : null;
-      const result = await runWithConnectionRecovery(handleChatCore, {
+      const healthAttempt = model && healthEnabled(provider, chatSettings) ? antigravityHealth.begin(credentials.connectionId, upstreamModel || model, true) : null;
+      if (model && healthEnabled(provider, chatSettings) && !healthAttempt) {
+        if (preferredConnectionId) return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
+        excludeConnectionIds.add(credentials.connectionId);
+        continue;
+      }
+      const cancelHealthAttempt = () => healthAttempt?.finish("ignored");
+      requestSignal?.addEventListener("abort", cancelHealthAttempt, { once: true });
+      if (requestSignal?.aborted) cancelHealthAttempt();
+      let result;
+      try {
+        result = await runWithConnectionRecovery(handleChatCore, {
         body: { ...structuredClone(body), model: `${provider}/${model}` },
         modelInfo: { provider, model },
         modelCapabilities: resolvedModelCapabilities,
@@ -1424,6 +1480,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // (comboRouting.allowedConnectionIds) without changing attribution.
         comboId: comboRouting?.id || null,
         comboName: comboRouting?.name || null,
+        comboNoLog: comboRouting?.noLog === true,
         quotaReservation,
         onProviderAttempt: () => {
           accountAttempts++;
@@ -1458,6 +1515,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           }
         },
         providerThinking,
+        routingPolicy: chatSettings.openrouterRouting,
         providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
         globalConcurrentRequests: chatSettings.globalConcurrentRequests,
         claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat) ?
@@ -1524,6 +1582,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           await clearAccountError(credentials.connectionId, refreshedCredentials, model, {
             provider,
             attemptStartedAt,
+            credentialFingerprint: dispatchedCredential,
             signal: requestSignal
           });
         },
@@ -1538,7 +1597,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             provider,
             model,
             Date.now() + EMPTY_CONTENT_COOLDOWN_MS,
-            { attemptStartedAt: latestAttemptStartedAt, signal: requestSignal }
+            { attemptStartedAt: latestAttemptStartedAt, credentialFingerprint: dispatchedCredential, signal: requestSignal }
           );
         },
         // Empty-stream retries exhausted mid-stream (headers already sent, so no
@@ -1549,10 +1608,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           if (!Number.isSafeInteger(latestAttemptStartedAt) || latestAttemptStartedAt <= 0) return;
           await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs, {
             attemptStartedAt: latestAttemptStartedAt,
+            credentialFingerprint: dispatchedCredential,
             signal: requestSignal
           });
         }
       }, activeConnection, model, resolveFallbackModelScope(provider, model), requestSignal);
+      } catch (error) {
+        cancelHealthAttempt();
+        throw error;
+      } finally {
+        requestSignal?.removeEventListener("abort", cancelHealthAttempt);
+      }
+      if (result.success) result.response = trackHealthResponse(result.response, healthAttempt, requestSignal);
+      else healthAttempt?.finish(!requestAborted(request, requestSignal) && result.antigravityPreResponseTimeout === true ? "timeout" : "ignored");
 
       if (result.connectionRecoveryBusy) {
         if (preferredConnectionId) {
@@ -1575,6 +1643,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       // Process-local admission pressure is terminal for this request. Retrying a
       // sibling would hit the same queue and must not cool a healthy account.
+      if (result.localSchemaError === true) return result.response;
       if (result.localAdmissionRejected === true) {
         // Keep explicit locality on the Response across the outer transient retry.
         result.response.localAdmissionRejected = true;
@@ -1654,8 +1723,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
        * exact model quota. Refresh the shared repository before creating any
        * legacy lock; only a fresh exact-source blocker owns the reselect.
        */
+      // A parsed detail-free response is request-scoped; keep the account selectable.
+      const requestScopedAntigravity = antigravityProvider && result.noQuotaMetadata === true && !authoritativeReset && !result.antigravityQuotaSignal;
       const shouldRefreshAntigravityQuota =
-        antigravityProvider &&
+        antigravityProvider && !requestScopedAntigravity &&
         (result.status === 409 || (result.status === 429 && !authoritativeReset)) &&
         activeConnection &&
         !refreshedQuotaConnectionIds.has(credentials.connectionId);
@@ -1702,6 +1773,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       result.rateLimitEvidence || null :
       { state: result.rateLimitEvidence?.state === "exhausted" ? "exhausted" : "cooldown", resetAtMs: strikeBreakerResetAt, source: "antigravity_strike_breaker" };
 
+      if (requestScopedAntigravity) return result.response;
+
       const fallbackState = await markAccountUnavailable(
         credentials.connectionId,
         result.status,
@@ -1717,6 +1790,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           // The credential this attempt actually presented, so a durable-key
           // provider can mark exactly the generation that was rejected.
           usedCredential: credentials.accessToken || credentials.apiKey || null,
+          credentialFingerprint: dispatchedCredential,
           // Proven relay/hop provenance from the fork's own transport layer.
           // Null for an ordinary upstream HTTP response, which is a provider
           // answer rather than a hop failure.
@@ -1753,4 +1827,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (lastTokenSaverEvent && !tokenSaverCollector) await recordTokenSaverEvent(lastTokenSaverEvent);
   }
 }
-export const handleChat = withRequestCorrelation(handleChatHandler);
+async function handleChatWithTokenReservation(request, ...rest) {
+  try {
+    return holdReservationForResponse(request, await handleChatHandler(request, ...rest));
+  } catch (error) {
+    releaseLifetimeTokens(request);
+    throw error;
+  }
+}
+
+export const handleChat = withRequestCorrelation(handleChatWithTokenReservation);

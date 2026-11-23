@@ -87,6 +87,9 @@ These fields also live in `policy`. Empty, `null` or `0` means no limit.
 | `rpmLimit` | Requests in a sliding 60 seconds |
 | `tpmLimit` | Input plus output tokens in a sliding 60 seconds |
 | `dailyInputTokenLimit`, `dailyOutputTokenLimit` | Input or output tokens since local midnight |
+| `dailyBudget` | Estimated cost in USD since local midnight |
+| `weeklyTokenLimit`, `weeklyInputTokenLimit`, `weeklyOutputTokenLimit` | Tokens since local midnight on Monday |
+| `weeklyBudget` | Estimated cost in USD since local midnight on Monday |
 | `monthlyTokenLimit`, `monthlyInputTokenLimit`, `monthlyOutputTokenLimit` | Tokens since the 1st of the month |
 | `monthlyRequestLimit` | Requests since the 1st of the month |
 | `monthlyBudget` | Estimated cost in USD since the 1st of the month |

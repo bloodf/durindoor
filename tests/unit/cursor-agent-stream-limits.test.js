@@ -34,7 +34,7 @@ describe("Cursor AgentService stream limits", () => {
   it("rejects response headers with AbortError when aborted before headers", async () => {
     ({ restore } = installFakeHttp2());
     const controller = new AbortController();
-    const session = new CursorExecutor().openAgentHttp2Stream(url, {}, controller.signal);
+    const session = await new CursorExecutor().openAgentHttp2Stream(url, {}, controller.signal, { disableEnvProxy: true });
     controller.abort();
     await expect(session.responseHeaders).rejects.toMatchObject({ name: "AbortError" });
   });
@@ -42,7 +42,7 @@ describe("Cursor AgentService stream limits", () => {
   it("rejects response headers when the stream closes before a response", async () => {
     const fake = installFakeHttp2();
     restore = fake.restore;
-    const session = new CursorExecutor().openAgentHttp2Stream(url, {}, undefined);
+    const session = await new CursorExecutor().openAgentHttp2Stream(url, {}, undefined, { disableEnvProxy: true });
     fake.req.emit("close");
     await expect(session.responseHeaders).rejects.toMatchObject({ name: "AbortError" });
   });
@@ -52,7 +52,7 @@ describe("Cursor AgentService stream limits", () => {
     ({ restore } = installFakeHttp2());
     const executor = new CursorExecutor();
     executor.config = { timeoutMs: 1000 };
-    const session = executor.openAgentHttp2Stream(url, {}, undefined);
+    const session = await executor.openAgentHttp2Stream(url, {}, undefined, { disableEnvProxy: true });
     const read = session.read();
     const assertion = expect(read).rejects.toThrow(/idle timed out/);
     await vi.advanceTimersByTimeAsync(1001);

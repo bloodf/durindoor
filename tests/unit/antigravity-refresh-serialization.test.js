@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { antigravityHealth } from "../../open-sse/services/antigravityHealth.js";
 import { refreshAndUpdateCredentials } from "../../src/shared/services/providerCredentials.js";
 import { getProviderCredentials, markAccountUnavailable } from "../../src/sse/services/auth.js";
 import { getProjectIdForConnection, removeConnection } from "../../open-sse/services/projectId.js";
@@ -20,6 +21,16 @@ const account = (id) => ({ id, provider: "antigravity", authType: "oauth", isAct
 describe("Antigravity credential isolation", () => {
   beforeEach(() => { db.rows = [account("a"), account("b")]; db.getSettings.mockResolvedValue({}); });
   afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+  it("applies health only within the eligible pool and preserves an explicit pin", async () => {
+    const model = "health-selection-test";
+    db.getSettings.mockResolvedValue({ antigravityAdaptiveHealth: { enabled: true } });
+    for (let i = 0; i < 8; i++) antigravityHealth.begin("a", model).finish("timeout");
+    expect((await getProviderCredentials("antigravity", null, model)).connectionId).toBe("b");
+    expect((await getProviderCredentials("antigravity", null, model, { preferredConnectionId: "a" })).connectionId).toBe("a");
+    expect((await getProviderCredentials("antigravity", null, model, { allowedConnectionIds: ["a"] })).connectionId).toBe("a");
+    db.getSettings.mockResolvedValue({ antigravityAdaptiveHealth: { enabled: false } });
+    expect((await getProviderCredentials("antigravity", null, model)).connectionId).toBe("a");
+  });
   it("shares one refresh and persists only the selected connection", async () => {
     let release;
     const refresh = vi.fn(() => new Promise((resolve) => { release = resolve; }));

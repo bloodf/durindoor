@@ -1,3 +1,4 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { randomUUID } from "node:crypto";
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -134,6 +135,7 @@ async function handleSystemoneHandler(request) {
     }
     const result = toCoreResult(
       await handleSystemoneCore({
+        routingPolicy: (await getSettings()).openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials,
@@ -181,8 +183,10 @@ async function handleSystemoneHandler(request) {
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
+    const dispatch = credentialDispatchSnapshot(credentials);
     const result = toCoreResult(
       await handleSystemoneCore({
+        routingPolicy: (await getSettings()).openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),
@@ -190,7 +194,7 @@ async function handleSystemoneHandler(request) {
         signal: request.signal,
         proxyOptions: proxyOptionsFromCredentials(credentials),
         onRequestSuccess: async () => {
-          await clearAccountError(credentials.connectionId, credentials, model);
+          await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         },
       }),
       "System One request failed",
@@ -203,7 +207,8 @@ async function handleSystemoneHandler(request) {
     if (result.status === 499) return result.response;
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

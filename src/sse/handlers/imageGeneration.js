@@ -1,3 +1,5 @@
+import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
@@ -133,6 +135,11 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  if (provider === "openrouter") {
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, "image"); }
+    catch (error) { return errorResponse(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
+
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
   // Shut-down image ids answer 410 with their replacement before any account
@@ -216,6 +223,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
     const result = await handleImageGenerationCore({
       body,
@@ -238,7 +246,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       }
     });
 
@@ -254,7 +262,8 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     const accountFailureContext = {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     };
     if (result.rateLimitEvidence) {
       accountFailureContext.rateLimitEvidence = result.rateLimitEvidence;

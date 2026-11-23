@@ -896,14 +896,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
     const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
     const transport = PROVIDERS[providerId];
-    if (!registryFetcher || !OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type)) {
+    const isOpenCodeFree = providerId === "opencode" && registryFetcher?.type === "opencode-free";
+    if (!registryFetcher || (!OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type) && !isOpenCodeFree)) {
       addStaticProviderModels(providerId, alias);
       return;
     }
 
     const authorization = transport?.headers?.Authorization;
     const token = isString(authorization) && authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-    if (!token) {
+    if (!token && !isOpenCodeFree) {
       addStaticProviderModels(providerId, alias);
       return;
     }
@@ -926,6 +927,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         guard,
         endpoint: registryFetcher.url,
         headers: transport.headers,
+        allowNoAuth: isOpenCodeFree,
+        cacheVariant: isOpenCodeFree ? "opencode-free" : undefined,
+        selectModels: isOpenCodeFree ? (body) => {
+          const entries = Array.isArray(body) ? body : body?.data ?? body?.models;
+          return Array.isArray(entries) ? entries.filter((entry) =>
+            isString(entry?.id) && (entry.id.endsWith("-free") || entry.id === "big-pickle")
+          ) : [];
+        } : undefined,
       });
       if (!live?.models?.length) {
         addStaticProviderModels(providerId, alias);
@@ -1483,6 +1492,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       const modelId = model.id.slice(slash + 1);
       if (!isModelExposureAllowed(provider, modelId, settings, (p) => aliasToProviderId[p])) continue;
       enforceCursorCapabilities(aliasToProviderId[provider] ?? provider, model.capabilities);
+    }
+    // Codex clients consume effort objects; advertise only the levels already
+    // resolved for this model rather than a provider-wide guessed list.
+    if ((aliasToProviderId[prefix] ?? prefix) === "codex" && model.thinking_levels?.length) {
+      model.supported_reasoning_levels = model.thinking_levels.map((effort) => ({
+        effort,
+        description: effort === "none" ? "Disable Thinking" : effort === "xhigh" ? "Extra High" : effort.charAt(0).toUpperCase() + effort.slice(1),
+      }));
     }
     dedupedModels.push(model);
   }

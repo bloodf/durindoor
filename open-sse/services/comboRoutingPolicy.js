@@ -19,13 +19,15 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
  */
 export async function getComboRoutingPolicy(name) {
   if (!isString(name) || name.length === 0) return null;
-  const combo = await getComboByName(name).catch(() => null);
+  // A failed policy lookup must not silently enable payload logging.
+  const combo = await getComboByName(name);
   if (!combo) return null;
   const hasIds = Array.isArray(combo.allowedConnectionIds) && combo.allowedConnectionIds.length > 0;
   return {
     id: combo.id,
     name: combo.name,
     allowedConnectionIds: hasIds ? combo.allowedConnectionIds.slice() : null,
+    noLog: combo.noLog === true,
     restrictionApplied: hasIds
   };
 }
@@ -67,6 +69,7 @@ export function mergeComboRouting(outer, inner) {
     id: attribution.id,
     name: attribution.name,
     allowedConnectionIds,
-    restrictionApplied
+    restrictionApplied,
+    noLog: outer?.noLog === true || inner?.noLog === true
   };
 }

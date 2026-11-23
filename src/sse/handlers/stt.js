@@ -1,3 +1,4 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
@@ -184,14 +185,19 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
 
     const isCodex = provider === "codex";
     let result;
+    let dispatch = credentialDispatchSnapshot(credentials);
     try {
       const attemptCredentials = isCodex ? await checkAndRefreshToken(provider, credentials) : credentials;
+      dispatch = credentialDispatchSnapshot(attemptCredentials);
       const args = { provider, model, formData, kind, credentials: attemptCredentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig, signal: request.signal, log };
       result = await handleSttCore(args);
       // One forced refresh when a Codex token is rejected mid-validity.
       if (isCodex && result.status === 401 && attemptCredentials.refreshToken && !request.signal.aborted) {
         const refreshed = await checkAndRefreshToken(provider, attemptCredentials, null, { force: true });
-        if (refreshed.accessToken !== attemptCredentials.accessToken) result = await handleSttCore({ ...args, credentials: refreshed });
+        if (refreshed.accessToken !== attemptCredentials.accessToken) {
+          dispatch = credentialDispatchSnapshot(refreshed);
+          result = await handleSttCore({ ...args, credentials: refreshed });
+        }
       }
     } catch (error) {
       if (!isCodex) throw error;
@@ -199,7 +205,7 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     }
 
     if (result.success) {
-      if (isCodex) await clearAccountError(credentials.connectionId, credentials, model);
+      if (isCodex) await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       return recordSuccess(result, credentials);
     }
     if (isCodex) {
@@ -211,7 +217,8 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
+      usedCredential: credentials.accessToken || credentials.apiKey || null,
+      ...dispatch
     });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);

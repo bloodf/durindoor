@@ -8,7 +8,7 @@
 //   row per request with its cost, so it doubles as the per-request cost
 //   ledger. It is written after a response completes, so requests already in
 //   flight can overshoot these limits and TPM.
-// - Day and month follow server local time, like usageDaily and the
+// - Day, week (Monday start) and month follow server local time, like usageDaily and the
 //   existing daily token limit.
 //
 // Every window belongs to the key's stable id, not to the secret it stores.
@@ -44,6 +44,11 @@ export const USAGE_LIMITS = [
   { field: "dailyLimitTokens", period: "day", metric: "tokens", label: "Tokens today", always: true, enforce: false },
   { field: "dailyInputTokenLimit", period: "day", metric: "inputTokens", label: "Input tokens today" },
   { field: "dailyOutputTokenLimit", period: "day", metric: "outputTokens", label: "Output tokens today" },
+  { field: "dailyBudget", period: "day", metric: "cost", label: "Cost today", always: true },
+  { field: "weeklyTokenLimit", period: "week", metric: "tokens", label: "Tokens this week" },
+  { field: "weeklyInputTokenLimit", period: "week", metric: "inputTokens", label: "Input tokens this week" },
+  { field: "weeklyOutputTokenLimit", period: "week", metric: "outputTokens", label: "Output tokens this week" },
+  { field: "weeklyBudget", period: "week", metric: "cost", label: "Cost this week", always: true },
   { field: "monthlyTokenLimit", period: "month", metric: "tokens", label: "Tokens this month" },
   { field: "monthlyInputTokenLimit", period: "month", metric: "inputTokens", label: "Input tokens this month" },
   { field: "monthlyOutputTokenLimit", period: "month", metric: "outputTokens", label: "Output tokens this month" },
@@ -51,8 +56,12 @@ export const USAGE_LIMITS = [
   { field: "monthlyBudget", period: "month", metric: "cost", label: "Cost this month", always: true },
 ];
 
-const PERIOD_TEXT = { day: "daily", month: "monthly" };
-const RESET_TEXT = { day: "Resets at local midnight.", month: "Resets on the 1st of next month." };
+const PERIOD_TEXT = { day: "daily", week: "weekly", month: "monthly" };
+const RESET_TEXT = {
+  day: "Resets at local midnight.",
+  week: "Resets at local midnight on Monday.",
+  month: "Resets on the 1st of next month.",
+};
 
 // Shared across Next.js module instances, like usageRepo's emitter.
 if (!global._apiKeyLimitState) {
@@ -143,22 +152,26 @@ function limitOf(record, field) {
 }
 
 function periodBounds(now = new Date()) {
+  // The week starts on Monday (ISO-8601): Sunday is 6 days in, Monday is 0.
+  const daysIntoWeek = (now.getDay() + 6) % 7;
   return {
     day: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
     nextDay: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
+    week: new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysIntoWeek),
+    nextWeek: new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysIntoWeek + 7),
     month: new Date(now.getFullYear(), now.getMonth(), 1),
     nextMonth: new Date(now.getFullYear(), now.getMonth() + 1, 1),
   };
 }
 
-const resetOf = (period, bounds) => (period === "day" ? bounds.nextDay : bounds.nextMonth);
+const resetOf = (period, bounds) => (period === "day" ? bounds.nextDay : period === "week" ? bounds.nextWeek : bounds.nextMonth);
 
 async function getUsage(record, scope, apiKeyId, bounds, { fresh = false } = {}) {
   const dayKey = bounds.day.toISOString();
   const cached = state.usage.get(scope);
-  if (!fresh && cached && cached.dayKey === dayKey && Date.now() - cached.ts < USAGE_CACHE_TTL_MS) return cached.totals;
-  const totals = await getApiKeyWindowUsageTotals(record.key, dayKey, bounds.month.toISOString(), apiKeyId);
-  state.usage.set(scope, { totals, dayKey, ts: Date.now() });
+  if (!fresh && cached && cached.dayKey === dayKey && cached.week && Date.now() - cached.ts < USAGE_CACHE_TTL_MS) return cached.totals;
+  const totals = await getApiKeyWindowUsageTotals(record.key, dayKey, bounds.month.toISOString(), apiKeyId, bounds.week.toISOString());
+  state.usage.set(scope, { totals, dayKey, week: true, ts: Date.now() });
   return totals;
 }
 
@@ -292,6 +305,7 @@ export async function getApiKeyLimitStatus(record, now = new Date()) {
       resetAt: resetOf(def.period, bounds).toISOString(),
     })),
     today: usage.day,
+    week: usage.week,
     month: usage.month,
   };
 }

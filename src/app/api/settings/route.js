@@ -121,12 +121,20 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
+    if (Object.hasOwn(body, "quotaProviderOrder")) {
+      return NextResponse.json({ error: "Provider order must be updated through its dedicated endpoint" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+
     if (SCOPED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
       return NextResponse.json({
         error: "Auto-ping must be updated through the connection-scoped endpoint"
       }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
+    if (Object.hasOwn(body, "antigravityAdaptiveHealth") &&
+        (!isRecord(body.antigravityAdaptiveHealth) || Object.keys(body.antigravityAdaptiveHealth).some((key) => key !== "enabled") || !isBoolean(body.antigravityAdaptiveHealth.enabled))) {
+      return NextResponse.json({ error: "antigravityAdaptiveHealth.enabled must be a boolean" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
     // CWE-915: never mass-assign secrets; auth-critical keys need JWT/CLI proof.
     stripSettingKeys(body, SECRET_SETTING_KEYS);
     const mayModifySecurityCritical = await canModifySecurityCriticalSettings(request);

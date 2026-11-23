@@ -1,5 +1,9 @@
+import { resolveQuotaRoutingFloor } from "open-sse/config/quotaSelection.js";
+import { evaluateProviderQuotaPreflight } from "@/shared/services/providerQuotaPreflight.js";
+import { rankQuotaConnections } from "@/shared/services/quotaSelection.js";
+import { applyQuotaProviderOrder, quotaProviderOrder } from "@/shared/utils/quotaProviderOrder";
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/lib/localDb";
+import { getProviderConnections, getSettings, listProviderQuotaSnapshots } from "@/lib/localDb";
 import { backfillClaudeProfiles, backfillCodexEmails } from "@/lib/oauth/providers";
 import { backfillCursorEmails } from "@/lib/oauth/services/cursorLocalStore.js";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
@@ -50,6 +54,18 @@ function sortConnections(connections, sort) {
   });
 }
 
+// Provider ordering is cosmetic: a settings read failure must not break the
+// quota connection listing, so fall back to the default order.
+async function readQuotaProviderOrderSetting() {
+  try {
+    const settings = await getSettings();
+    return Array.isArray(settings?.quotaProviderOrder) ? settings.quotaProviderOrder : [];
+  } catch (error) {
+    console.log("Error reading quota provider order:", error);
+    return [];
+  }
+}
+
 export async function GET(request) {
   try {
     await backfillCodexEmails();
@@ -80,16 +96,38 @@ export async function GET(request) {
       return true;
     });
 
-    const sortedConnections = sortConnections(accountFilteredConnections, sort);
+    const savedProviderOrder = await readQuotaProviderOrderSetting();
+    const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), savedProviderOrder);
+    const sortedConnections = applyQuotaProviderOrder(sortConnections(accountFilteredConnections, sort), savedProviderOrder);
     const total = sortedConnections.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * pageSize;
-    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitizeProviderConnectionForClient);
+    const pageConnections = await Promise.all(sortedConnections.slice(offset, offset + pageSize).map(async (connection) => {
+      const safe = sanitizeProviderConnectionForClient(connection);
+      try {
+        const snapshots = await listProviderQuotaSnapshots({ connectionId: connection.id, includeStale: true });
+        const config = settings.quotaSelection || {};
+        const dimensions = config.connections?.[connection.id]?.dimensions || {};
+        safe.quotaWindows = [...new Set(snapshots.map((row) => row.identity.dimensionKey))].map((key) => {
+          const floor = resolveQuotaRoutingFloor(config, { connectionId: connection.id, provider: connection.provider, dimensionKey: key });
+          const own = dimensions[key];
+          return { key, percent: own?.routingFloorEnabled === true ? own.routingFloorRatio * 100 : null, effectivePercent: floor.enabled ? floor.ratio * 100 : null };
+        });
+        const decision = evaluateProviderQuotaPreflight(snapshots, { connectionId: connection.id, provider: connection.provider, connectionWide: true });
+        const ranked = rankQuotaConnections([connection], new Map([[connection.id, decision]]), new Map(), { config });
+        safe.quotaPaused = ranked[0]?.quotaDecision?.reasons?.includes("below_routing_floor") === true;
+      } catch {
+        safe.quotaWindows = [];
+        safe.quotaPaused = false;
+      }
+      return safe;
+    }));
 
     return NextResponse.json({
       connections: pageConnections,
       providerOptions,
+      providerOrder: providerOrder.filter((id) => providerOptions.includes(id)),
       pagination: {
         page: currentPage,
         pageSize,

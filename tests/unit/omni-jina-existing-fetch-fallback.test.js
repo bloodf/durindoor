@@ -166,7 +166,7 @@ describe("existing fallback after Jina insufficient balance (OmniRoute #18455)",
     expect(state.mark).toHaveBeenCalledTimes(1);
     expect(state.mark).toHaveBeenCalledWith(
       "jina-reader-account", 402, expect.stringContaining("InsufficientBalanceError"),
-      "jina-reader", null, null, { webFetch: true },
+      "jina-reader", null, null, { webFetch: true, credentialFingerprint: null, dispatchedAt: expect.any(Number) },
     );
     // The loop asked for a second Jina account (excluding the first) and found none;
     // it never re-dialled Jina with the same credential.

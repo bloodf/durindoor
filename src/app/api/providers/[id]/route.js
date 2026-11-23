@@ -381,6 +381,17 @@ export async function PUT(request, { params }) {
       }
     }
     const updateData = {};
+    // A manual schedule does not change the user's isActive setting.
+    if (body.quotaLockout !== undefined) {
+      if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Quota scheduling requires an operator" }, { status: 403 });
+      const input = body.quotaLockout;
+      if (input === null) updateData.quotaLockout = null;
+      else {
+        if (!isObject(input) || !Object.hasOwn(input, "reactivateAt") || (input.reactivateAt !== null && (!isString(input.reactivateAt) || !Number.isFinite(Date.parse(input.reactivateAt)) || Date.parse(input.reactivateAt) <= Date.now()))) return invalidRequest("quotaLockout.reactivateAt");
+        updateData.quotaLockout = { status: "quota_exhausted", source: "manual", message: "Manually scheduled", detectedAt: new Date().toISOString(), reactivateAt: input.reactivateAt === null ? null : new Date(input.reactivateAt).toISOString() };
+      }
+    }
+
     if (existing.provider === "xai" && isString(body.managementApiKey)) updateData.managementApiKey = body.managementApiKey.trim();
     if (name !== undefined) updateData.name = name;
     if (priority !== undefined) updateData.priority = coercedPriority;

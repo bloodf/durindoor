@@ -83,6 +83,7 @@ const DEFAULT_SETTINGS = {
   mfaBackupCodes: [],
   passwordSessionEpoch: "initial",
   enableObservability: true,
+  logToolSources: false,
   enableProxyTimeline: false,
   proxyTimelineRetentionDays: 1,
   /** Automatic cleanup of usage, request details, timeline and quota history older than N days. */

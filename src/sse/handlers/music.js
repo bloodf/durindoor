@@ -1,3 +1,4 @@
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { withRequestCorrelation, getRequestId } from "../utils/requestCorrelation.js";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
@@ -119,6 +120,7 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
       const { state, ...receipt } = accounting;
       return { ...receipt, billingEpoch, usageEventId, provider, model, connectionId: credentials.connectionId ?? null, endpoint, modality: "music" };
     };
+    const dispatch = credentialDispatchSnapshot(credentials);
     const result = await handleMusicGenerationCore({
       provider, model, body, credentials, signal: request.signal,
       onComplete: (accounting) => recordApiKeyUsage(apiKey, { ...usage(accounting), apiKeyId }),
@@ -135,7 +137,7 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
       return result.response;
     }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;

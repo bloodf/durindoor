@@ -230,7 +230,7 @@ describe("E-12 selected search credential boundaries", () => {
     const response = await handleSearch(req);
     expect(response.status).toBe(200);
     expect(captured.map((call) => call.authorization)).toEqual([`Bearer ${REFRESHED}`, `Bearer ${REFRESHED}`]);
-    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith("e12-account", credentials, "websearch:perplexity", { provider: "perplexity", webSearch: true });
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith("e12-account", credentials, "websearch:perplexity", { provider: "perplexity", webSearch: true, credentialFingerprint: null, dispatchedAt: expect.any(Number) });
     expect(mocks.unavailable).not.toHaveBeenCalled();
     expect(mocks.record).toHaveBeenCalledTimes(1);
     const [key, recordedResponse, accounting] = mocks.record.mock.calls[0];

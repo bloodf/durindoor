@@ -79,6 +79,12 @@ export const THINKING_CONFIG = {
 export const OAUTH_PROVIDERS = byCategory("oauth");
 export const APIKEY_PROVIDERS = byCategory("apikey");
 
+// Hub discovery is restricted to these registered URLs by the server proxy.
+APIKEY_PROVIDERS.huggingface.modelsFetchers = {
+  image: { url: "https://huggingface.co/api/models?inference_provider=fal-ai&pipeline_tag=text-to-image&limit=30", type: "huggingface-image" },
+  stt: { url: "https://huggingface.co/api/models?inference_provider=hf-inference&pipeline_tag=automatic-speech-recognition&limit=30", type: "huggingface-stt" },
+};
+
 // Web Cookie Providers (use browser session cookie instead of API key)
 export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");
 
@@ -137,6 +143,11 @@ export function classifyFreeProvider(providerId) {
 
 // All providers (combined)
 export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUTH_PROVIDERS, ...APIKEY_PROVIDERS, ...WEB_COOKIE_PROVIDERS };
+
+export function getProviderModelsFetcher(providerId, kind) {
+  const provider = AI_PROVIDERS[providerId];
+  return provider?.modelsFetchers?.[kind] || provider?.modelsFetcher || null;
+}
 
 // Auth methods
 export const AUTH_METHODS = {

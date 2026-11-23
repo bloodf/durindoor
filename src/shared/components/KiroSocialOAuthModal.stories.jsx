@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, spyOn, waitFor, within } from "storybook/test";
 import KiroSocialOAuthModal from "./KiroSocialOAuthModal";
 
 function mockPopup() {
@@ -8,10 +8,9 @@ function mockPopup() {
   return () => open.mockRestore();
 }
 
-const callback = "kiro://kiro.kiroAgent/authenticate-success?code=abc&state=state-1";
 const authorize = {
   status: 200,
-  body: { flowId: "flow-1", state: "state-1", authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=state-1" },
+  body: { flowId: "flow-1", state: "state-1", authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=state-1", userCode: "ABCD", interval: 1, expiresAt: Date.now() + 300000 },
 };
 const cancel = { status: 200, body: { ok: true } };
 const baseRoutes = { "POST /api/oauth/kiro/social-authorize": authorize, "POST /api/oauth/kiro/cancel": cancel };
@@ -38,16 +37,6 @@ async function getVisibleDialog(canvasElement, name = "Connect Kiro via Google")
   return dialog;
 }
 
-// Connect is the primary action that becomes enabled only after the user
-// pastes a callback URL. Wait on its real enabled state instead of asserting
-// immediately after paste; paste may not commit on the controlled input
-// before the assertion runs.
-async function waitEnabledConnect(canvas) {
-  const connect = await canvas.findByRole("button", { name: /^connect$/i });
-  await waitFor(() => expect(connect).toBeEnabled());
-  return connect;
-}
-
 export const Initializing = {
   beforeEach: mockPopup,
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "POST /api/oauth/kiro/social-authorize": () => new Promise(() => {}), "POST /api/oauth/kiro/cancel": cancel } } },
@@ -70,8 +59,7 @@ export const GoogleInput = {
   beforeEach: mockPopup,
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Kiro via Google"));
-    await waitFor(() => expect(canvas.getByLabelText(/2. paste callback url/i)).toBeVisible());
-    await waitFor(() => expect(canvas.getByRole("button", { name: /^connect$/i })).toBeDisabled());
+    await waitFor(() => expect(canvas.getByText(/using code ABCD/i)).toBeVisible());
   },
 };
 
@@ -95,14 +83,10 @@ export const GitHubInput = {
 
 export const ManualCallbackSuccess = {
   beforeEach: mockPopup,
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { ...baseRoutes, "POST /api/oauth/kiro/social-exchange": { status: 200, body: { ok: true } } } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { ...baseRoutes, "POST /api/oauth/kiro/social-exchange": { status: 200, body: { success: true } } } } },
   play: async ({ canvasElement, args }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Kiro via Google"));
-    const input = await canvas.findByLabelText(/2. paste callback url/i);
-    await userEvent.click(input);
-    await userEvent.paste(callback);
-    await userEvent.click(await waitEnabledConnect(canvas));
-    await waitFor(() => expect(canvas.getByText(/connected successfully/i)).toBeVisible());
+    await waitFor(() => expect(canvas.getByText(/connected successfully/i)).toBeVisible(), { timeout: 4000 });
     await expect(args.onSuccess).toHaveBeenCalled();
   },
 };
@@ -112,11 +96,7 @@ export const ManualCallbackFailure = {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { ...baseRoutes, "POST /api/oauth/kiro/social-exchange": { status: 400, body: { error: "Invalid authorization code" } } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Kiro via Google"));
-    const input = await canvas.findByLabelText(/2. paste callback url/i);
-    await userEvent.click(input);
-    await userEvent.paste(callback);
-    await userEvent.click(await waitEnabledConnect(canvas));
-    await waitFor(() => expect(canvas.getByRole("alert")).toHaveTextContent(/invalid authorization code/i));
+    await waitFor(() => expect(canvas.getByRole("alert")).toHaveTextContent(/invalid authorization code/i), { timeout: 4000 });
     await waitFor(() => expect(canvas.getByRole("button", { name: /try again/i })).toBeVisible());
   },
 };
@@ -126,11 +106,6 @@ export const Exchanging = {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { ...baseRoutes, "POST /api/oauth/kiro/social-exchange": () => new Promise(() => {}) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Kiro via Google"));
-    const input = await canvas.findByLabelText(/2. paste callback url/i);
-    await userEvent.click(input);
-    await userEvent.paste(callback);
-    const connect = await waitEnabledConnect(canvas);
-    await userEvent.click(connect);
-    await waitFor(() => expect(canvas.getByRole("button", { name: /^connect$/i })).toHaveAttribute("aria-busy", "true"));
+    await waitFor(() => expect(canvas.getByText(/waiting for authorization/i)).toBeVisible());
   },
 };

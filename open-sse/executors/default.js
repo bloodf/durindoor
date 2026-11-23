@@ -31,6 +31,23 @@ function isOfficialAnthropicApiKey(provider, credentials) {
   return isOfficialAnthropicBaseUrl(url);
 }
 
+// Kimi's Chat endpoint requires tool results to name the originating function.
+function completeKimiToolNames(body) {
+  if (!Array.isArray(body.messages)) return;
+  const names = new Map();
+  for (const message of body.messages) {
+    if (message?.role !== "assistant" || !Array.isArray(message.tool_calls)) continue;
+    for (const call of message.tool_calls) {
+      if (isString(call?.id) && isString(call.function?.name)) names.set(call.id, call.function.name);
+    }
+  }
+  for (const message of body.messages) {
+    if (message?.role === "tool" && !isString(message.name) && names.has(message.tool_call_id)) {
+      message.name = names.get(message.tool_call_id);
+    }
+  }
+}
+
 function stripClaudeIdentity(body) {
   const strip = (text) => {
     const lines = text.match(/[^\n]*\n|[^\n]+$/g) || [];
@@ -502,8 +519,14 @@ export class DefaultExecutor extends BaseExecutor {
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
+      if (["kimi", "kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider) && transportFormat === FORMATS.OPENAI) {
+        completeKimiToolNames(transformed);
+        if (stream === true) {
+          transformed.stream_options = { ...transformed.stream_options, include_usage: true };
+        }
+      }
       // Messages always uses max_tokens, independently of OpenAI model-name rules.
-      if (this.provider === "kimi" && transportFormat === FORMATS.OPENAI) {
+      if (["kimi", "kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider) && transportFormat === FORMATS.OPENAI) {
         // Moonshot Chat uses max_completion_tokens and fixed sampling on these models.
         if (transformed.max_tokens !== undefined) {
           transformed.max_completion_tokens ??= transformed.max_tokens;

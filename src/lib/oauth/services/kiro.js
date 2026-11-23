@@ -1,6 +1,6 @@
 import { buildKiroIdentityHeaders } from "../../../../open-sse/shared/kiroHeaders.js";
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
-import { buildKiroProfileEndpoint } from "../../../../open-sse/config/kiroRegions.js";
+import { buildKiroProfileEndpoint, regionFromProfileArn } from "../../../../open-sse/config/kiroRegions.js";
 import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
 
 /**
@@ -14,8 +14,37 @@ import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
 import { isString } from "../../../shared/utils/typeChecks.js";
 
 const KIRO_AUTH_SERVICE = "https://prod.us-east-1.auth.desktop.kiro.dev";
+const KIRO_SOCIAL_CLIENT_ID = "kiro-cli";
 
 export class KiroService {
+  /** Start social device authorization; retain the device code server-side. */
+  async startSocialDevice(provider, proxyOptions = null) {
+    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/device/authorization`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: KIRO_SOCIAL_CLIENT_ID, loginProvider: provider === "google" ? "Google" : "Github" }),
+      proxyOptions
+    });
+    if (!response.ok) throw new Error("Social device authorization failed");
+    const data = await response.json();
+    if (!data.deviceCode || !data.verificationUriComplete) throw new Error("Invalid social device authorization response");
+    return data;
+  }
+
+  /** Poll a server-bound social device code, preserving pending and slow_down. */
+  async pollSocialDevice(deviceCode, proxyOptions = null) {
+    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/device/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceCode, clientId: KIRO_SOCIAL_CLIENT_ID }),
+      proxyOptions
+    });
+    const data = await response.json();
+    const progress = data.error ?? data.status;
+    if (progress === "authorization_pending" || progress === "slow_down") return { pending: true, error: progress };
+    if (!response.ok || data.error || (!data.accessToken && !data.refreshToken)) throw new Error("Social device authorization failed");
+    return { ...data, pending: false };
+  }
   /**
    * Register OIDC client with AWS SSO
    * Returns clientId and clientSecret for device code flow
@@ -225,7 +254,8 @@ export class KiroService {
     }
 
     // AWS SSO OIDC refresh (Builder ID or IDC)
-    if (clientId && clientSecret) {
+    // Imported social refresh tokens can carry an unrelated OIDC registration.
+    if (clientId && clientSecret && authMethod !== "imported") {
       const safeRegion = region || "us-east-1";
       assertValidAwsRegion(safeRegion);
       const endpoint = `https://oidc.${safeRegion}.amazonaws.com/token`;
@@ -254,7 +284,7 @@ export class KiroService {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken || refreshToken,
         profileArn: data.profileArn,
-        expiresIn: data.expiresIn
+        expiresIn: data.expiresIn || 3600
       };
     }
 
@@ -322,7 +352,7 @@ export class KiroService {
    * regions, and return the first profile found (preferring one whose region
    * matches the queried region). port(upstream): #2355.
    */
-  async listAvailableProfiles(accessToken, region = "us-east-1", proxyOptions = null) {
+  async listAvailableProfiles(accessToken, region = "us-east-1", proxyOptions = null, isApiKey = false) {
     // Trust boundary: the requested region is interpolated into the control-plane
     // host. Reject anything that is not a valid AWS region id (SSRF guard).
     assertValidAwsRegion(region);
@@ -337,10 +367,12 @@ export class KiroService {
             ...buildKiroIdentityHeaders({ accessToken }),
             "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
             "Authorization": `Bearer ${accessToken}`,
+            ...(isApiKey ? { tokentype: "API_KEY" } : null),
             "Accept": "application/json"
           },
           body: JSON.stringify({ maxResults: 10 }),
-          proxyOptions
+          proxyOptions,
+          ...(isApiKey ? { signal: AbortSignal.timeout(10000) } : null)
         });
         if (!response.ok) {
           lastError = new Error(`ListAvailableProfiles ${r} failed: ${await response.text()}`);
@@ -362,29 +394,51 @@ export class KiroService {
   }
 
   /**
-   * Validate an API-key credential by listing profiles with it. API keys are
-   * long-lived bearer tokens (no refresh), so the only way to validate one is
-   * to make an authenticated CodeWhisperer call. Returns a credential object
-   * ready to persist as a "kiro" connection with authMethod="api_key".
+   * Validate API keys on the Amazon Q model surface; profile discovery is
+   * optional because valid keys can be denied ListAvailableProfiles.
    */
-  async validateApiKey(apiKey, region = "us-east-1") {
+  async validateApiKey(apiKey, region = "auto") {
     if (!apiKey || !isString(apiKey) || !apiKey.trim()) {
       throw new Error("API key is required");
     }
     const trimmed = apiKey.trim();
 
-    let profileArn = null;
-    try {
-      profileArn = await this.listAvailableProfiles(trimmed, region);
-    } catch (error) {
-      throw new Error(`API key validation failed: ${error.message}`);
+    const requested = isString(region) ? region.trim().toLowerCase() : "";
+    if (!["auto", "us-east-1", "eu-central-1"].includes(requested)) {
+      throw new Error("Invalid region for Kiro API key");
     }
+    const candidates = requested === "auto" ? ["us-east-1", "eu-central-1"] : [requested];
+    let selectedRegion = null;
+    for (const candidate of candidates) {
+      let response;
+      try {
+        response = await fetch(`https://q.${candidate}.amazonaws.com/ListAvailableModels?origin=AI_EDITOR`, {
+          method: "GET",
+          headers: {
+            ...buildKiroIdentityHeaders({ accessToken: trimmed }),
+            Authorization: `Bearer ${trimmed}`,
+            tokentype: "API_KEY",
+            Accept: "application/json"
+          },
+          signal: AbortSignal.timeout(10000)
+        });
+      } catch {
+        continue;
+      }
+      await response.body?.cancel().catch(() => {});
+      if (response.ok) { selectedRegion = candidate; break; }
+    }
+    if (!selectedRegion) throw new Error("API key validation failed: Amazon Q rejected the key or was unavailable");
+
+    let profileArn = null;
+    try { profileArn = await this.listAvailableProfiles(trimmed, selectedRegion, null, true); } catch { /* optional */ }
+    if (profileArn && regionFromProfileArn(profileArn) !== selectedRegion) profileArn = null;
 
     return {
       accessToken: trimmed,
       refreshToken: null,
       profileArn,
-      region,
+      region: selectedRegion,
       authMethod: "api_key"
     };
   }

@@ -7,7 +7,7 @@ import {
   resolveFlowProxySelection,
   saveOAuthConnection } from
 "@/lib/oauth/flowCompletion.js";
-import { claimOAuthFlow, consumeOAuthFlow } from "@/lib/oauth/flowStore.js";
+import { claimOAuthFlow, settleOAuthFlowClaim } from "@/lib/oauth/flowStore.js";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 
@@ -15,25 +15,28 @@ import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy"
 import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   let claim = null;
+  let pending = false;
   try {
     await ensureOutboundProxyInitialized();
     const body = await request.json();
     const code = isString(body?.code) ? body.code.trim() : "";
     const state = isString(body?.state) ? body.state.trim() : "";
     const flowId = isString(body?.flowId) ? body.flowId.trim() : "";
-    if (!code || !state || !flowId) throw new Error("Missing required fields");
+    if (!state || !flowId) throw new Error("Missing required fields");
 
     claim = claimOAuthFlow({ flowId, state, provider: "kiro" });
-    if (!claim || claim.kind !== "authorization" || !claim.payload.socialProvider) {
+    if (!claim || !claim.payload.socialProvider || (claim.kind === "authorization" && !code)) {
       throw new Error("OAuth session expired, was cancelled, or was already used");
     }
     const resolvedProxy = await resolveFlowProxySelection(claim);
     const service = new KiroService();
-    const tokens = await service.exchangeSocialCode(
-      code,
-      claim.payload.codeVerifier,
-      resolvedProxy.proxyOptions
-    );
+    const tokens = claim.kind === "device" ?
+      await service.pollSocialDevice(claim.payload.deviceCode, resolvedProxy.proxyOptions) :
+      await service.exchangeSocialCode(code, claim.payload.codeVerifier, resolvedProxy.proxyOptions);
+    if (tokens.pending) {
+      pending = true;
+      return NextResponse.json({ success: false, pending: true, error: tokens.error });
+    }
     const email = service.extractEmailFromJWT(tokens.accessToken);
     const socialProvider = claim.payload.socialProvider;
     const connection = await saveOAuthConnection(
@@ -67,6 +70,6 @@ export async function POST(request) {
     console.error(`[OAuth] kiro/social-exchange failed: ${message}`);
     return NextResponse.json({ error: message }, { status: 400 });
   } finally {
-    if (claim) consumeOAuthFlow(claim);
+    if (claim) settleOAuthFlowClaim(claim, { pending });
   }
 }

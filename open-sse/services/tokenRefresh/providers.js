@@ -130,10 +130,18 @@ export async function refreshKimiToken(provider, credentials, log, proxyOptions 
         }),
         redirect: "error"
       }, proxyOptions);
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        if (failure?.error === "invalid_grant" || failure?.error === "invalid_request") {
+          return { error: "unrecoverable_refresh_error", code: failure.error };
+        }
+        return null;
+      }
 
       const tokens = await response.json();
-      if (!tokens?.access_token) return null;
+      if (!isString(tokens?.access_token) || !tokens.access_token.trim() ||
+          (tokens.refresh_token !== undefined &&
+            (!isString(tokens.refresh_token) || !tokens.refresh_token.trim()))) return null;
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || refreshToken,
@@ -580,9 +588,10 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       };
     }
 
-    if (clientId && clientSecret) {
-      const isIDC = authMethod === "idc";
-      const endpoint = buildKiroOidcEndpoint(isIDC ? region : KIRO_DEFAULT_REGION);
+    // Social imports may carry a separate OIDC registration, which cannot
+    // refresh their social token. OIDC credentials use their registered region.
+    if (clientId && clientSecret && authMethod !== "imported") {
+      const endpoint = buildKiroOidcEndpoint(region || KIRO_DEFAULT_REGION);
 
       const response = await proxyAwareFetch(endpoint, {
         method: "POST",
@@ -617,7 +626,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || refreshToken,
-        expiresIn: tokens.expiresIn,
+        expiresIn: tokens.expiresIn || 3600,
         ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn, proxyOptions))
       };
     }

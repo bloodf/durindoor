@@ -618,16 +618,25 @@ function createErrorResponse(jsonError) {
   jsonError?.error?.message ||
   "API Error";
 
-  const isRateLimit = jsonError?.error?.code === "resource_exhausted";
+  // Connect uses resource_exhausted for both quota and oversized requests.
+  const details = jsonError?.error?.details?.[0]?.debug?.details;
+  const text = [jsonError?.error?.code, jsonError?.error?.message, details?.title, details?.detail].filter(isString).join(" ").toLowerCase();
+  const quota = /too many requests|quota|rate.limit|throttl|out of usage|increase limits|actionrequired/.test(text);
+  const tooLarge = /tool catalog too large|tool registration too large|too many tools|message too large|payload too large|request too large|request exceeds .*size|request (?:body|size) exceeds .*(?:size|limit)|maximum allowed size/.test(text);
+  const entitlement = /\S{1,100} is not included in your weekly usage\b/.test(text);
+  const notFound = entitlement || (!quota && /model not found|not_found/.test(text) && !text.includes("reset after"));
+  const isRateLimit = !entitlement && (quota || /resource[_ ]exhausted/.test(text) && !tooLarge || text.includes("model not found") && text.includes("reset after"));
+  const auth = /unauthenticated|unauthorized|permission.denied|forbidden|invalid token|expired token|authentication|access denied/.test(text);
+  const status = isRateLimit ? HTTP_STATUS.RATE_LIMITED : notFound ? HTTP_STATUS.NOT_FOUND : auth ? HTTP_STATUS.UNAUTHORIZED : HTTP_STATUS.BAD_REQUEST;
 
   return new Response(JSON.stringify({
     error: {
       message: errorMsg,
-      type: isRateLimit ? "rate_limit_error" : "api_error",
+      type: isRateLimit ? "rate_limit_error" : auth ? "authentication_error" : notFound || tooLarge ? "invalid_request_error" : "api_error",
       code: jsonError?.error?.details?.[0]?.debug?.error || "unknown"
     }
   }), {
-    status: isRateLimit ? HTTP_STATUS.RATE_LIMITED : HTTP_STATUS.BAD_REQUEST,
+    status,
     headers: { "Content-Type": "application/json" }
   });
 }

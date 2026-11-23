@@ -18,8 +18,8 @@ const getHermesDir = () => path.join(os.homedir(), ".hermes");
 const getHermesConfigPath = () => path.join(getHermesDir(), "config.yaml");
 const getHermesEnvPath = () => path.join(getHermesDir(), ".env");
 
-// Match top-level "model:" block (until next non-indented, non-empty line)
-const MODEL_BLOCK_RE = /^model:[ \t]*\r?\n((?:[ \t]+.*\r?\n?|[ \t]*\r?\n)*)/m;
+// Include unindented comments only when followed by another model field.
+const MODEL_BLOCK_RE = /^model:[ \t]*\r?\n((?:[ \t]+[^ \t\r\n][^\r\n]*(?:\r?\n|$)|[ \t]*\r?\n|(?:#[^\r\n]*\r?\n(?:[ \t]*\r?\n)*)+(?=[ \t]+[^ \t\r\n]))*)/m;
 
 const escapeYamlString = (value) => String(value).
 replace(/\\/g, "\\\\").

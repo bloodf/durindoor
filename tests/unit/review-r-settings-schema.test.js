@@ -23,20 +23,20 @@ describe("settings schema regression (#2306)", () => {
   it("pins the existing authority, scope, and redaction lists", () => {
     expect([...SECRET_SETTING_KEYS].sort()).toEqual([
       "password", "passwordSessionEpoch", "mitmSudoEncrypted", "postgresUrl",
-      "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks",
+      "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting",
     ].sort());
     expect([...AUTH_CRITICAL_SETTING_KEYS].sort()).toEqual([
       "comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode",
       "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel",
       "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess",
-      "enableObservability", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl",
+      "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl",
       "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages",
       "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled",
     ].sort());
     expect([...SCOPED_SETTING_KEYS].sort()).toEqual(["claudeAutoPing", "codexAutoPing"].sort());
     expect([...REDACT_ON_GET_SETTING_KEYS].sort()).toEqual([
       "password", "passwordSessionEpoch", "oidcClientSecret", "mitmSudoEncrypted", "postgresUrl",
-      "mfaSecret", "mfaBackupCodes", "operatorWebhooks",
+      "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting",
     ].sort());
   });
 

@@ -46596,7 +46596,7 @@
       "id": "src/shared/components/Badge.js#Badge",
       "sourcePath": "src/shared/components/Badge.js",
       "symbol": "Badge",
-      "sourceSha256": "2ec26669527b4571efd4ce68d8ed0761a7558476b6f43b027f60141d64bf7585",
+      "sourceSha256": "eebedd59cb46c73444e30a6845f314ea6eeec6892e073c781f85674e5e0c653b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -46619,7 +46619,7 @@
             "default"
           ],
           "sourceHashes": {
-            "src/shared/components/Badge.js": "2ec26669527b4571efd4ce68d8ed0761a7558476b6f43b027f60141d64bf7585",
+            "src/shared/components/Badge.js": "eebedd59cb46c73444e30a6845f314ea6eeec6892e073c781f85674e5e0c653b",
             "src/shared/components/Badge.stories.jsx": "2190210edf2cbe52254a84b01b82df48bc1bacf1bf372eb9bca3cb4f81d6820e"
           },
           "proposedSourceEvidence": "Playground args children Badge and play finds Badge.",
@@ -46634,7 +46634,7 @@
             "dots"
           ],
           "sourceHashes": {
-            "src/shared/components/Badge.js": "2ec26669527b4571efd4ce68d8ed0761a7558476b6f43b027f60141d64bf7585",
+            "src/shared/components/Badge.js": "eebedd59cb46c73444e30a6845f314ea6eeec6892e073c781f85674e5e0c653b",
             "src/shared/components/Badge.stories.jsx": "2190210edf2cbe52254a84b01b82df48bc1bacf1bf372eb9bca3cb4f81d6820e"
           },
           "proposedSourceEvidence": "AllVariants renders Default, Primary, Success, Warning, Error, and Info twice with dot variants.",
@@ -46649,7 +46649,7 @@
             "icons"
           ],
           "sourceHashes": {
-            "src/shared/components/Badge.js": "2ec26669527b4571efd4ce68d8ed0761a7558476b6f43b027f60141d64bf7585",
+            "src/shared/components/Badge.js": "eebedd59cb46c73444e30a6845f314ea6eeec6892e073c781f85674e5e0c653b",
             "src/shared/components/Badge.stories.jsx": "2190210edf2cbe52254a84b01b82df48bc1bacf1bf372eb9bca3cb4f81d6820e"
           },
           "proposedSourceEvidence": "Sizes renders sm, md, lg text and icon-bearing badges.",
@@ -46664,7 +46664,7 @@
             "icon"
           ],
           "sourceHashes": {
-            "src/shared/components/Badge.js": "2ec26669527b4571efd4ce68d8ed0761a7558476b6f43b027f60141d64bf7585",
+            "src/shared/components/Badge.js": "eebedd59cb46c73444e30a6845f314ea6eeec6892e073c781f85674e5e0c653b",
             "src/shared/components/Badge.stories.jsx": "2190210edf2cbe52254a84b01b82df48bc1bacf1bf372eb9bca3cb4f81d6820e"
           },
           "proposedSourceEvidence": "WithDotAndIcon renders Healthy, Degraded, Offline, Beta, and Featured; play finds Healthy.",
@@ -46678,7 +46678,7 @@
             "status list"
           ],
           "sourceHashes": {
-            "src/shared/components/Badge.js": "2ec26669527b4571efd4ce68d8ed0761a7558476b6f43b027f60141d64bf7585",
+            "src/shared/components/Badge.js": "eebedd59cb46c73444e30a6845f314ea6eeec6892e073c781f85674e5e0c653b",
             "src/shared/components/Badge.stories.jsx": "2190210edf2cbe52254a84b01b82df48bc1bacf1bf372eb9bca3cb4f81d6820e"
           },
           "proposedSourceEvidence": "StatusInList renders anthropic/claude-sonnet-4.5 with Rate limited; play asserts both.",
@@ -46795,7 +46795,7 @@
       "id": "src/shared/components/Button.js#Button",
       "sourcePath": "src/shared/components/Button.js",
       "symbol": "Button",
-      "sourceSha256": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+      "sourceSha256": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -46818,7 +46818,7 @@
             "variants"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "Variants renders Apply, Cancel, Preview, More, Delete, and Complete.",
@@ -46833,7 +46833,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "SizesAndLoading renders Small, Default, Continue, and disabled loading Saving.",
@@ -46848,7 +46848,7 @@
             "full width"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "ModalAndAuthActions renders Save changes, Delete connection, and Sign in.",
@@ -46862,7 +46862,7 @@
             "tool-card actions"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "ToolCard story renders Apply, Reset, and Manual Config.",
@@ -46876,7 +46876,7 @@
             "click transition"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "WorkingAction clicks Save settings and asserts output changes to Saved.",
@@ -46992,7 +46992,7 @@
       "id": "src/shared/components/Button.js#ButtonIcon",
       "sourcePath": "src/shared/components/Button.js",
       "symbol": "ButtonIcon",
-      "sourceSha256": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+      "sourceSha256": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -47012,7 +47012,7 @@
             "leading icon geometry"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "Variants passes leading icons to Apply, Delete, and Complete; ButtonIcon is aria-hidden Material Symbol content. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -47030,7 +47030,7 @@
             "loading spinner"
           ],
           "sourceHashes": {
-            "src/shared/components/Button.js": "a7fb55913a16389a3fb29b44d3f2d427105b586cbbd18bdf2e6b133ae3a4be26",
+            "src/shared/components/Button.js": "04a42c070abfaf3dc0f6dc87603b5ca92b387b8e07e19005f5e1f651434b67d2",
             "src/shared/components/Button.stories.jsx": "d3b0f9cbb5c936ea8e94132a2a8b46b4839021a396141736f840c74eb4702cd5"
           },
           "proposedSourceEvidence": "SizesAndLoading gives Continue iconRight and Saving loading, whose ButtonIcon is aria-hidden. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50528,12 +50528,12 @@
       "id": "src/shared/components/Input.js#Input",
       "sourcePath": "src/shared/components/Input.js",
       "symbol": "Input",
-      "sourceSha256": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+      "sourceSha256": "402cddd03b02d19ed6141d6d2e7807c8112258b8fb949979d6a70e9c6376d3ae",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Current source/CSF audit: Input maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-shared-actions-input--form-states",
         "production-shared-actions-input--edit-connection-modal-fields",
@@ -50541,13 +50541,7 @@
         "production-shared-actions-input--numeric-policy-limits",
         "production-shared-actions-input--working-value"
       ],
-      "approvedScenarioIds": [
-        "production-shared-actions-input--form-states",
-        "production-shared-actions-input--edit-connection-modal-fields",
-        "production-shared-actions-input--read-only-auth-url",
-        "production-shared-actions-input--numeric-policy-limits",
-        "production-shared-actions-input--working-value"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-actions-input--form-states",
@@ -50561,7 +50555,7 @@
             "disabled"
           ],
           "sourceHashes": {
-            "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+            "src/shared/components/Input.js": "402cddd03b02d19ed6141d6d2e7807c8112258b8fb949979d6a70e9c6376d3ae",
             "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
           },
           "proposedSourceEvidence": "FormStates renders Search models hint, API key validation error, Read-only endpoint, and Disabled key.",
@@ -50576,7 +50570,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+            "src/shared/components/Input.js": "402cddd03b02d19ed6141d6d2e7807c8112258b8fb949979d6a70e9c6376d3ae",
             "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
           },
           "proposedSourceEvidence": "EditConnectionModalFields renders Base URL error and API key placeholder.",
@@ -50590,7 +50584,7 @@
             "read-only URL"
           ],
           "sourceHashes": {
-            "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+            "src/shared/components/Input.js": "402cddd03b02d19ed6141d6d2e7807c8112258b8fb949979d6a70e9c6376d3ae",
             "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
           },
           "proposedSourceEvidence": "ReadOnlyAuthUrl renders labeled Authorization URL native input with supplied value. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50607,7 +50601,7 @@
             "number inputs"
           ],
           "sourceHashes": {
-            "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+            "src/shared/components/Input.js": "402cddd03b02d19ed6141d6d2e7807c8112258b8fb949979d6a70e9c6376d3ae",
             "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
           },
           "proposedSourceEvidence": "NumericPolicyLimits renders lifetime token and USD number inputs. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50624,7 +50618,7 @@
             "controlled input"
           ],
           "sourceHashes": {
-            "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+            "src/shared/components/Input.js": "402cddd03b02d19ed6141d6d2e7807c8112258b8fb949979d6a70e9c6376d3ae",
             "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
           },
           "proposedSourceEvidence": "WorkingValue types claude into Filter and asserts output claude.",
@@ -50632,16 +50626,118 @@
         }
       ],
       "approvedException": null,
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: Input maps through colocated production stories.",
-        "runtimeStatus": "pending"
-      },
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Current source/CSF audit: Input maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-actions-input--form-states",
+            "production-shared-actions-input--edit-connection-modal-fields",
+            "production-shared-actions-input--read-only-auth-url",
+            "production-shared-actions-input--numeric-policy-limits",
+            "production-shared-actions-input--working-value"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-shared-actions-input--form-states",
+              "storyId": "production-shared-actions-input--form-states",
+              "runtimeArtifactId": "production-shared-actions-input--form-states",
+              "axes": [
+                "label",
+                "error",
+                "hint",
+                "read-only",
+                "disabled"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+                "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
+              },
+              "proposedSourceEvidence": "FormStates renders Search models hint, API key validation error, Read-only endpoint, and Disabled key.",
+              "expectedVisibleText": "This key failed validation."
+            },
+            {
+              "id": "production-shared-actions-input--edit-connection-modal-fields",
+              "storyId": "production-shared-actions-input--edit-connection-modal-fields",
+              "runtimeArtifactId": "production-shared-actions-input--edit-connection-modal-fields",
+              "axes": [
+                "required",
+                "validation"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+                "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
+              },
+              "proposedSourceEvidence": "EditConnectionModalFields renders Base URL error and API key placeholder.",
+              "expectedVisibleText": "Must start with https://"
+            },
+            {
+              "id": "production-shared-actions-input--read-only-auth-url",
+              "storyId": "production-shared-actions-input--read-only-auth-url",
+              "runtimeArtifactId": "production-shared-actions-input--read-only-auth-url",
+              "axes": [
+                "read-only URL"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+                "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
+              },
+              "proposedSourceEvidence": "ReadOnlyAuthUrl renders labeled Authorization URL native input with supplied value. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "textbox",
+                "name": "Authorization URL"
+              }
+            },
+            {
+              "id": "production-shared-actions-input--numeric-policy-limits",
+              "storyId": "production-shared-actions-input--numeric-policy-limits",
+              "runtimeArtifactId": "production-shared-actions-input--numeric-policy-limits",
+              "axes": [
+                "number inputs"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+                "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
+              },
+              "proposedSourceEvidence": "NumericPolicyLimits renders lifetime token and USD number inputs. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
+              "expectedControl": {
+                "role": "spinbutton",
+                "name": "Lifetime token limit"
+              }
+            },
+            {
+              "id": "production-shared-actions-input--working-value",
+              "storyId": "production-shared-actions-input--working-value",
+              "runtimeArtifactId": "production-shared-actions-input--working-value",
+              "axes": [
+                "controlled input"
+              ],
+              "sourceHashes": {
+                "src/shared/components/Input.js": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
+                "src/shared/components/Input.stories.jsx": "aaf70c615c53a0202b7fc48d6bf41c229aa83c255b3d32652a5c2b43daadb955"
+              },
+              "proposedSourceEvidence": "WorkingValue types claude into Filter and asserts output claude.",
+              "expectedVisibleText": "claude"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: Input maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/KiroAuthModal.js#KiroAuthModal",
@@ -103145,9 +103241,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "83962cfb40892c171deeb71e1a6339232323ad54dcc644c46946b5a4c7703fc1",
-    "sourceCensusSha256": "c7eafae08b3963ed911c3fa5c8480c14bf826b365ba2b9ed3769ac5c03e0ca8d",
-    "pendingRows": 441,
-    "retainedApprovedRows": 200,
+    "sourceCensusSha256": "04cecc7a44f0b346f6df778ef97c5090b50cbc480ece65c34a6ee08c1e6efe83",
+    "pendingRows": 442,
+    "retainedApprovedRows": 199,
     "pendingReferences": 1488,
     "runtimeStatus": "pending"
   }

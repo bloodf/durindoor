@@ -12,7 +12,10 @@
 //   - A row is counted once. New rows match on the id, legacy rows match on
 //     the secret they already carry, and the two branches are disjoint.
 
-import { tableColumnNames } from "./apiKeyUsageTotals.js";
+import { tableColumnNames } from "./tableColumns.js";
+import { usageKeyDigest } from "../../crypto/columnCrypto.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "../repos/quotaSql.js";
 
 const columnsCache = new WeakMap();
 
@@ -84,6 +87,51 @@ export function apiKeyUsageScope(db, { apiKeyId = null, apiKey = null } = {}) {
     }
     return { clause: "apiKeyId = ?", params: [apiKeyId] };
   }
-  if (hasSecret && apiKey) return { clause: "apiKey = ?", params: [apiKey] };
+  if (hasSecret && apiKey) {
+    const legacyOnly = columns.has("apiKeyId") ? "apiKeyId IS NULL AND " : "";
+    return { clause: `(${legacyOnly}apiKey = ?)`, params: [apiKey] };
+  }
   return { clause: "1 = 0", params: [] };
+}
+
+// MCP gateway credentials have a separate namespace from ordinary API keys.
+export function usageKeyIdentity(apiKeyId, apiKey, provider) {
+  if (apiKeyId && provider !== "mcp-gateway") return apiKeyId;
+  return apiKey && isString(apiKey) ? `hmac:${usageKeyDigest(apiKey)}` : "";
+}
+
+// The joined key is only a fallback for history without a recorded id.
+export function usageHistoryKeyIdSql(db, alias = "h") {
+  const legacy = `(SELECT k.id FROM apiKeys k WHERE k.key = ${alias}.apiKey)`;
+  const attributed = hasStableApiKeyIdColumn(db) ? `COALESCE(${alias}.apiKeyId, ${legacy})` : legacy;
+  return `CASE WHEN COALESCE(${alias}.provider, '') <> 'mcp-gateway' THEN ${attributed} END`;
+}
+
+export const LAST_SEEN_DIMENSIONS = ["dateKey", "provider", "model", "connectionId", "apiKey", "endpoint"];
+
+export function upsertUsageLastSeen(db, rows) {
+  if (!rows.length) return;
+  const dims = LAST_SEEN_DIMENSIONS.join(", ");
+  db.run(
+    `INSERT INTO usageLastSeen(${dims}, lastUsed)
+     VALUES ${rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(", ")}
+     ON CONFLICT (${dims}) DO UPDATE SET
+       lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`,
+    rows.flatMap((row) => [...LAST_SEEN_DIMENSIONS.map((field) => row[field]), row.lastUsed])
+  );
+}
+
+export function usageHistoryKeyColumnsSql(db) {
+  const keyId = usageHistoryKeyIdSql(db);
+  return `${keyId} AS usageKeyId, CASE WHEN ${keyId} IS NULL THEN h.apiKey END AS legacyKey`;
+}
+
+export function usageKeyStatsKey(identity, model, provider) {
+  return `${identity || "local-no-key"}|${model}|${provider || "unknown"}`;
+}
+
+// Versioned migrations call this inside their transaction, before reading a rollup.
+export function lockUsageIdentityRewrite(db) {
+  if (db.driver === "pg") db.get(QUOTA_WRITE_LOCK_SQL_PG);
+  else db.run(QUOTA_WRITE_LOCK_SQL);
 }

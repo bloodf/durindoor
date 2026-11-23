@@ -1794,6 +1794,11 @@ export async function handleComboChat({
         return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
       }
 
+      if (result[Symbol.for("durindoor.localSchemaError")]) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
+      }
+
       if (result.headers?.get?.(ACCEPTED_JOB_HEADER)) {
         releaseFailedAffinity(modelStr, i);
         log.warn("COMBO", `Model ${modelStr} failed after the provider accepted the job; not trying other models`, { status: result.status });

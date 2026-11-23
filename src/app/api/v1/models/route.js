@@ -1,3 +1,4 @@
+import { addAutoModelSelectors } from "@/shared/utils/autoModelSelectors.js";
 import { corsHeaders } from "@/lib/http/cors.js";
 import { LLM_KIND, buildModelsList } from "./buildModelsList.js";
 import { buildModelsResponse } from "./_shared.js";
@@ -28,7 +29,8 @@ export async function GET(request) {
     // (e.g. LM Studio) list models under the default settings while
     // cloud-metadata endpoints stay blocked. See buildModelsList.js JSDoc.
     // Keys with a model access rule only see the models they may call.
-    const data = await filterModelsForRequest(request, await buildModelsList([LLM_KIND], getProviderValidationGuard(), await getRequestModelDiscoveryOptions(request)));
+    const models = await filterModelsForRequest(request, await buildModelsList([LLM_KIND], getProviderValidationGuard(), await getRequestModelDiscoveryOptions(request)));
+    const data = await filterModelsForRequest(request, addAutoModelSelectors(models, LLM_KIND));
     return buildModelsResponse(request, data);
   } catch (error) {
     console.log("Error fetching models:", error);

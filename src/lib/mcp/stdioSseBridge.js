@@ -5,7 +5,7 @@ const { isString, isObject } = require("../../shared/utils/typeChecks.cjs");
 
 const { spawn } = require("child_process");
 const crypto = require("crypto");
-const { LOCAL_STDIO_PLUGINS } = require("@/shared/constants/coworkPlugins");
+const { LOCAL_STDIO_PLUGINS } = require("../../shared/constants/coworkPlugins");
 
 // Child processes receive only basic execution, locale and proxy settings.
 function childEnv() {

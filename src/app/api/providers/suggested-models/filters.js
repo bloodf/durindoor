@@ -1,3 +1,4 @@
+import huggingface from "../../../../../open-sse/providers/registry/huggingface.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 import { isOpenRouterFreeModel, mapOpenRouterModel } from "open-sse/services/openrouterCatalog.js";
 const KNOWN_FREE_OPENCODE_MODELS = [
@@ -11,7 +12,17 @@ const KNOWN_FREE_OPENCODE_MODELS = [
 // ID remains selectable so providers such as B.ai do not render an empty list.
 const NON_CHAT_MODEL_RE = /(?:dall-e|whisper|text-embedding|tts(?:-|$)|moderation|rerank|embed|image|audio|speech|(?:^|[/_-])bge(?:[/_-]|$))/i;
 
+const hubSuggestions = (models) => (Array.isArray(models) ? models : [])
+  .filter((m) => isString(m?.id) && /^[\w.-]+\/[\w.-]+$/.test(m.id) && !m.id.includes(".."))
+  .sort((a, b) => (Number(b.downloads) || 0) - (Number(a.downloads) || 0) || (Number(b.likes) || 0) - (Number(a.likes) || 0))
+  .map((m) => ({ id: m.id, name: m.name || m.id }));
+
 export const FILTERS = {
+  "huggingface-image": (models) => hubSuggestions(models).filter(({ id }) => {
+    const map = huggingface.imageConfig.modelMap;
+    return Object.hasOwn(map, id) && (isString(map[id]) || map[id].task === "text-to-image");
+  }),
+  "huggingface-stt": hubSuggestions,
   // OpenRouter /api/v1/models: keep free models (`:free` id and zero pricing,
   // see isOpenRouterFreeModel) and carry the published context window.
   "openrouter-free": (models) =>

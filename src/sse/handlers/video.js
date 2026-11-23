@@ -1,3 +1,5 @@
+import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
+import { getApiKeyByKey } from "@/lib/localDb";
 import { admit } from "../services/admission.js";
 import { applyOpenRouterRouting } from "open-sse/services/openrouterRouting.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
@@ -82,6 +84,20 @@ async function handleVideoGenerationHandler(request) {
 
   const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "video" });
   if (admissionError) return admissionError;
+
+  const selector = parseAutoModel(body.model, "video");
+  if (selector && selector.kind === "video") {
+    const key = apiKey ? await getApiKeyByKey(apiKey) : null;
+    if (key?.policy?.allowAutoCombos === false || (key?.allowedCombos?.length && !key.allowedCombos.includes(selector.name))) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combo is not allowed for this API key");
+    }
+    const candidates = await getAutoModelCandidates(body.model, "video", request, apiKeyAuth.apiKeyId);
+    return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId, body, models: candidates.models,
+      handleSingleModel: (b, m) => handleSingleModelVideo(b, m, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, selector.name),
+      log, signal: request.signal, ...defaultRouteComboOptions("video"), comboName: selector.name
+    });
+  }
 
   if (wantsDefaultRoute(body.model)) {
     const route = await resolveMediaRoute("video", { settings, supports: supportsVideoGeneration, apiKeyId: apiKeyAuth.apiKeyId });

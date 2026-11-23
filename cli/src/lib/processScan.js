@@ -394,6 +394,12 @@ function portOccupantToKill(candidate, chain = ownProcessChain()) {
 
 /** SIGKILL (or `taskkill /F`), best effort — a pid that vanished is not an error. */
 function killAppPids(pids) {
+  // Freeze all verified targets before killing any, so a parent cannot restart a child.
+  if (process.platform !== "win32") {
+    for (const pid of pids) {
+      try { process.kill(pid, "SIGSTOP"); } catch { /* already dead */ }
+    }
+  }
   for (const pid of pids) {
     try {
       if (process.platform === "win32") {
@@ -402,7 +408,10 @@ function killAppPids(pids) {
         execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: "ignore", timeout: 3000 });
       }
     } catch {
-      /* already dead */
+      // Do not leave a still-live process suspended if the kill failed.
+      if (process.platform !== "win32") {
+        try { process.kill(pid, "SIGCONT"); } catch { /* already dead */ }
+      }
     }
   }
   return pids.length;

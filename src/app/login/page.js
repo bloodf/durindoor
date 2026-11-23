@@ -5,6 +5,11 @@ import { safeNextPath } from "@/lib/auth/safeNextPath";
 import { isBrowser } from "../../shared/utils/typeChecks.js";
 import { LoginView } from "./LoginView.js";
 
+function loginDestination(path) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  return basePath && (path === basePath || path.startsWith(`${basePath}/`) || path.startsWith(`${basePath}?`)) ? path : basePath + path;
+}
+
 // Login-page copy for OIDC callback/start refusals (#2195).
 const OIDC_LOGIN_ERRORS = Object.freeze({
   oidc_allowlist_empty:
@@ -59,7 +64,7 @@ export default function LoginPage() {
         clearTimeout(timeoutId);
         const data = await res.json();
         if (data.authenticated === true || data.requireLogin === false) {
-          window.location.assign(redirectPath);
+          window.location.assign(loginDestination(redirectPath));
           return;
         }
         setHasPassword(!!data.hasPassword);
@@ -96,7 +101,7 @@ export default function LoginPage() {
         setPassword("");
         return;
       }
-      if (res.ok) { window.location.assign(nextPath); return; }
+      if (res.ok) { window.location.assign(loginDestination(nextPath)); return; }
       setError(data.error || "Invalid password");
       if (data.resetHint) setResetHint(data.resetHint);
       if (data.retryAfter) setRetryAfter(Number(data.retryAfter));
@@ -115,7 +120,7 @@ export default function LoginPage() {
     try {
       const res = await fetch("/api/auth/mfa/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: mfaCode }) });
       const data = await res.json().catch(() => ({}));
-      if (res.ok) { window.location.assign(nextPath); return; }
+      if (res.ok) { window.location.assign(loginDestination(nextPath)); return; }
       setError(data.error || "Invalid code");
       setMfaCode("");
       if (data.retryAfter) setRetryAfter(Number(data.retryAfter));
@@ -140,7 +145,7 @@ export default function LoginPage() {
         setError("Password updated. Please sign in with your new password.");
         return;
       }
-      if (res.ok) { window.location.assign(nextPath); return; }
+      if (res.ok) { window.location.assign(loginDestination(nextPath)); return; }
       setError(data.error || "Failed to set password");
     } catch (err) {
       setError("An error occurred. Please try again.");
@@ -149,7 +154,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleOidcLogin = () => { window.location.href = "/api/auth/oidc/start"; };
+  const handleOidcLogin = () => { window.location.href = (process.env.NEXT_PUBLIC_BASE_PATH || "") + "/api/auth/oidc/start"; };
 
   const oidcAvailable = oidcConfigured && ["oidc", "both"].includes(authMode);
   const passwordAvailable = authMode !== "oidc" || !oidcConfigured;

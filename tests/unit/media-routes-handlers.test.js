@@ -55,7 +55,8 @@ vi.mock("../../src/sse/services/model.js", async () => {
     }),
     getComboModels: vi.fn(async () => null),
     getComboCanonicalName: vi.fn(async () => null),
-    getAutoComboCatalog: vi.fn(async () => ({}))
+    filterDisabledComboModels: async (models) => models,
+  getAutoComboCatalog: vi.fn(async () => ({}))
   };
 });
 vi.mock("../../src/sse/services/auth.js", () => ({

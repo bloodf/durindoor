@@ -221,7 +221,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
     }
     return (
       <Image
-        src={`/providers/${toolId}.png`}
+        src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/${toolId}.png`}
         alt={tool.name}
         width={32}
         height={32}

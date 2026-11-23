@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { canManageAccessConfig } from "@/dashboardGuard";
-import { deleteCustomModel, deleteProviderConnectionsByProvider, deleteProviderNode, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
+import { deleteProviderNodeWithConnections, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
 import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -143,13 +143,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });
     }
 
-    await deleteProviderConnectionsByProvider(id);
-    if (node.type === "systemone-compatible") {
-      const models = (await getCustomModels()).filter((model) =>
-        (model.providerAlias === node.prefix || model.providerAlias === node.id) && (model.kind || model.type) === "systemone");
-      await Promise.all(models.map((model) => deleteCustomModel({ providerAlias: model.providerAlias, id: model.id, type: model.type || model.kind || "systemone" })));
-    }
-    await deleteProviderNode(id);
+    await deleteProviderNodeWithConnections(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

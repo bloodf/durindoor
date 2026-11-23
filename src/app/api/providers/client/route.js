@@ -34,6 +34,13 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// Numeric database values may arrive as strings or BigInts. Invalid values sort last.
+function sortablePriority(value) {
+  if (value == null || value === "") return Infinity;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : Infinity;
+}
+
 function sortConnections(connections, sort) {
   const list = [...connections];
 
@@ -47,8 +54,8 @@ function sortConnections(connections, sort) {
   }
 
   return list.sort((a, b) => {
-    const priorityA = a.priority ?? Number.MAX_SAFE_INTEGER;
-    const priorityB = b.priority ?? Number.MAX_SAFE_INTEGER;
+    const priorityA = sortablePriority(a.priority);
+    const priorityB = sortablePriority(b.priority);
     if (priorityA !== priorityB) return priorityA - priorityB;
     return (a.provider || "").localeCompare(b.provider || "");
   });

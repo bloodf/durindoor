@@ -81,8 +81,27 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
     const json = JSON.stringify(out);
     expect(toolMsg?.content, "keeps surrounding text").toContain("captured screenshot");
     expect(toolMsg?.content, "image turned into raw JSON").not.toMatch(/^\[/);
+    // 9router #2123: a valid in-budget image is forwarded once, as a typed data URI after the tool turn.
+    expect(toolMsg?.content, "tool text must not carry the bytes").not.toContain(payload);
+    expect(json, "image forwarded with its media type").toContain(`data:image/png;base64,${payload}`);
+    expect(json.split(payload), "image forwarded exactly once").toHaveLength(2);
+  });
+
+  it("over-budget tool_result image becomes a placeholder naming the media", () => {
+    const payload = "A".repeat(1048580);
+    const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "shot", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: [
+          { type: "text", text: "captured screenshot" },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: payload } },
+        ] }] },
+      ],
+    });
+    const toolMsg = out.messages.find((m) => m.role === "tool");
+    expect(toolMsg?.content, "keeps surrounding text").toContain("captured screenshot");
     expect(toolMsg?.content, "placeholder names the media").toContain("image/png");
-    expect(json, "base64 payload leaked into request").not.toContain(payload);
+    expect(JSON.stringify(out), "base64 payload leaked into request").not.toContain(payload);
   });
 
   it("serializes failed tool results without leaking bridge metadata to OpenAI", async () => {

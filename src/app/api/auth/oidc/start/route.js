@@ -15,17 +15,17 @@ export async function GET(request) {
   try {
     const config = await getOidcRuntimeConfig();
     if (!config) {
-      return NextResponse.redirect(new URL("/login?error=oidc_not_configured", getPublicOrigin(request)));
+      return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=oidc_not_configured`, getPublicOrigin(request)));
     }
     if (config.allowlistEmpty === true) {
-      return NextResponse.redirect(new URL("/login?error=oidc_allowlist_empty", getPublicOrigin(request)));
+      return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=oidc_allowlist_empty`, getPublicOrigin(request)));
     }
 
     const discovery = await fetchOidcDiscovery(config.issuerUrl);
     const state = createOidcState();
     const nonce = createOidcNonce();
     const { verifier, challenge } = createPkcePair();
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(request)}${request.nextUrl?.basePath || ""}/api/auth/oidc/callback`;
     const authUrl = buildOidcAuthorizationUrl({
       authorizationEndpoint: discovery.authorization_endpoint,
       clientId: config.clientId,
@@ -50,6 +50,6 @@ export async function GET(request) {
 
     return NextResponse.redirect(authUrl);
   } catch (error) {
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_start_failed")}`, getPublicOrigin(request)));
+    return NextResponse.redirect(new URL(`${request.nextUrl?.basePath || ""}/login?error=${encodeURIComponent(error.message || "oidc_start_failed")}`, getPublicOrigin(request)));
   }
 }

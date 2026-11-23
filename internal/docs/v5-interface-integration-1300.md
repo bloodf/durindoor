@@ -4,11 +4,13 @@ PR #1313 delivered review-only compositions, not production or release acceptanc
 
 This increment carries the provider detail RPM label from the review into the production control at all viewport widths. The existing value, limits, change handler and blur-to-save behavior are retained. The matching Storybook-only override is removed so the review uses the production label.
 
+Recent requests now include a non-secret API key identity and label; the Requests panel displays the label. Deleted keys use installation-scoped identities, while local and MCP requests retain their own labels.
+
 ## Storybook inventory
 
-The rebuilt Storybook catalog contains 2,524 stories, including 1,208 scenarios across 205 generated V5 review compositions. The regenerated compositions add Playground Compare, Network Node Status and LAN Discovery, plus the synced image model, custom speech-to-text model and unavailable batch provider states.
+The rebuilt Storybook catalog contains 2,526 stories, including 1,209 scenarios across 205 generated V5 review compositions. The regenerated compositions add Playground Compare, Network Node Status and LAN Discovery, plus the synced image model, custom speech-to-text model and unavailable batch provider states.
 
-The [surface manifest](../../tests/e2e/storybook-surfaces.json) matches the current source and built catalog. It records 640 source rows, with 433 pending review and 207 retaining prior source approvals. Another 1,486 reference stories are pending review. The manifest preserves prior review records where source changes require another review. Pending entries need independent verification of classification and scenario ownership before they can receive coverage credit.
+The [surface manifest](../../tests/e2e/storybook-surfaces.json) matches the current source and built catalog. It records 640 source rows, with 438 pending review and 202 retaining prior source approvals. Another 1,488 reference stories are pending review. The manifest preserves prior review records where source changes require another review. Pending entries need independent verification of classification and scenario ownership before they can receive coverage credit.
 
 ## Remaining V5 scope
 

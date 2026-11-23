@@ -9,7 +9,7 @@ const MEDIA_ENTRY_KEYS = [
 "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
 "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
 "searchViaChat", "searchConfig", "fetchConfig", "systemoneConfig",
-"modelsFetcher", "mediaPriority", "hiddenKinds"];
+"modelsFetcher", "modelsFetchers", "mediaPriority", "hiddenKinds"];
 
 
 // Build provider UI object from registry entry
@@ -138,6 +138,11 @@ export function classifyFreeProvider(providerId) {
 // All providers (combined)
 export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUTH_PROVIDERS, ...APIKEY_PROVIDERS, ...WEB_COOKIE_PROVIDERS };
 
+export function getProviderModelsFetcher(providerId, kind) {
+  const provider = AI_PROVIDERS[providerId];
+  return provider?.modelsFetchers?.[kind] || provider?.modelsFetcher || null;
+}
+
 // Auth methods
 export const AUTH_METHODS = {
   oauth: { id: "oauth" },
@@ -263,4 +268,4 @@ map((r) => r.id);
 // provider whose live catalog the route serves must be listed here.
 // ChatPlayground ships no static list: its bots come only from the signed-in catalog.
 // WorkBuddy and Zed Hosted ship no static list either: their catalogs come from the signed-in account.
-export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode", "mnn-ai", "chatplayground", "workbuddy", "zed-hosted"];
+export const LIVE_CATALOG_PROVIDERS = ["kilocode", "claude", "commandcode", "mnn-ai", "chatplayground", "workbuddy", "zed-hosted"];

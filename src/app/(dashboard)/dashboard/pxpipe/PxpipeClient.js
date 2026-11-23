@@ -144,7 +144,7 @@ export default function PxpipeClient({ embedded = false }) {
           title="PXPIPE Dashboard"
           subtitle="Compression activity and estimated token savings."
           actions={<>
-            <a href="/dashboard/token-saver/settings" className="inline-flex min-h-11 items-center rounded-dd px-3 text-[13px] font-medium text-dd-accent outline-none hover:bg-dd-accent-soft focus-visible:shadow-dd-focus">Token Saver settings</a>
+            <a href={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/dashboard/token-saver/settings`} className="inline-flex min-h-11 items-center rounded-dd px-3 text-[13px] font-medium text-dd-accent outline-none hover:bg-dd-accent-soft focus-visible:shadow-dd-focus">Token Saver settings</a>
             <Button variant="secondary" icon="refresh" loading={loading} onClick={refresh}>Refresh</Button>
           </>}
         />

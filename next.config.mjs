@@ -11,6 +11,7 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: process.env.DURINDOOR_BASE_PATH || "",
   distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
   // Isolated provider paths retain upstream slash semantics; src/proxy.js
@@ -34,7 +35,7 @@ const nextConfig = {
     // the disk cache is never read or written, so 0 turns it off.
     maximumDiskCacheSize: 0
   },
-  env: {},
+  env: { NEXT_PUBLIC_BASE_PATH: process.env.DURINDOOR_BASE_PATH || "" },
   experimental: {
     // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
     cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),

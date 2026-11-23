@@ -25,16 +25,18 @@ const inter = localFont({
   variable: "--font-inter",
 });
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 export const metadata = {
   title: "DurinDoor - AI Gateway",
   description: "One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.",
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", type: "image/x-icon" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: `${basePath}/favicon.svg`, type: "image/svg+xml" },
+      { url: `${basePath}/favicon.ico`, type: "image/x-icon" },
+      { url: `${basePath}/icons/icon-512.png`, sizes: "512x512", type: "image/png" },
     ],
-    apple: "/icons/icon-512.png",
+    apple: `${basePath}/icons/icon-512.png`,
   },
 };
 
@@ -53,7 +55,9 @@ export default async function RootLayout({ children }) {
             Same-origin file (not inline) so a future nonce/hash CSP can authorize it;
             the baseline CSP omits script-src — Next inline runtime would break. */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts -- must run before first paint */}
-        <script src="/theme-bootstrap.js"></script>
+        <script src={`${basePath}/base-path-bootstrap.js`} data-base-path={basePath}></script>
+        {/* eslint-disable-next-line @next/next/no-sync-scripts -- must run before first paint */}
+        <script src={`${basePath}/theme-bootstrap.js`}></script>
         <script
           dangerouslySetInnerHTML={{
             __html: `if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded')})}else{document.documentElement.classList.add('fonts-loaded')}`,

@@ -157,7 +157,7 @@ export function Sidebar({
           {/* Static public asset required by shell branding. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/icons/icon-512.png"
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/icons/icon-512.png`}
             alt={collapsed ? "DurinDoor" : ""}
             className="h-7 w-7 object-contain"
           />
@@ -320,7 +320,7 @@ export function Sidebar({
 
       <div className="shrink-0 border-t border-dd-border-subtle p-2">
         <a
-          href="/dashboard/profile"
+          href={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/dashboard/profile`}
           title={collapsed ? "Settings" : undefined}
           aria-current={pathMatches(activePath, "/dashboard/profile") ? "page" : undefined}
           onClick={(event) => navigate(event, "/dashboard/profile")}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProxyPoolById, updateProxyPool } from "@/models";
+import { getSettings } from "@/lib/localDb";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -77,7 +78,7 @@ export async function POST(request, { params }) {
 
     const result = isRelayProxyType(proxyPool.type)
       ? await testVercelRelay(proxyPool.proxyUrl, proxyPool.relaySecret || "")
-      : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
+      : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl, testUrl: (await getSettings()).proxyTestUrl });
     const now = new Date().toISOString();
 
     await updateProxyPool(id, {

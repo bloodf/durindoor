@@ -122,10 +122,10 @@ For standalone single-model requests targeting a non-vision model:
 
 While the acceptance criteria for capability admission, authorization preservation, and explicit error responses are satisfied, several concrete architectural boundaries and limitations exist in the merged codebase:
 
-### 1. Cross-Protocol Translation Limits (Claude-to-OpenAI Base64 Omission)
-- **Mechanism**: In [`open-sse/translator/request/claude-to-openai.js:229-234, 360-370`](../../open-sse/translator/request/claude-to-openai.js), Claude tool-result images with URL sources (`{ type: "image", source: { type: "url", url } }`) map directly to OpenAI `image_url` parts in a following user turn. However, base64 images inside Claude `tool_result` blocks are downgraded to a placeholder: `[tool result omitted image: ${mediaType}]`.
-- **Reason**: OpenAI `tool` role messages cannot carry image blocks, and lifting arbitrary base64 binary blocks into user turns risks exceeding upstream payload limits and inflating token consumption.
-- **Impact**: When routing a Claude-format client request to an OpenAI-format provider through capability admission, the router correctly admits an OpenAI vision-capable model, but the request translator omits the raw base64 image data. Native Claude-to-Claude routes (and URL-based images) retain full media end-to-end. This limitation is explicitly documented in [`docs/features/combos.mdx:172`](../../docs/features/combos.mdx).
+### 1. Cross-Protocol Translation Limits (Claude-to-OpenAI Bounded Base64 Forwarding)
+- **Mechanism**: In [`open-sse/translator/request/claude-to-openai.js`](../../open-sse/translator/request/claude-to-openai.js), Claude tool-result images with URL sources map directly to OpenAI `image_url` parts in a following user turn. Since the 9router #2123 port, valid base64 images (`image/png|jpeg|gif|webp`, well-formed base64) are forwarded the same way as data URIs, within a 1 MiB request-wide encoded-data budget. Invalid, non-allowlisted, or over-budget images are downgraded to a placeholder: `[tool result omitted image: ${mediaType}]`.
+- **Reason**: OpenAI `tool` role messages cannot carry image blocks, and unbounded base64 lifting risks exceeding upstream payload limits and inflating token consumption.
+- **Impact**: Claude-format requests routed to OpenAI-format providers keep tool-result images up to the budget; images beyond it are omitted. Native Claude-to-Claude routes retain full media end-to-end. Documented in [`docs/features/combos.mdx`](../../docs/features/combos.mdx).
 
 ### 2. Structured Non-Image Tool Outputs in Fusion Panels
 - **Mechanism**: For CSV-only or complex document tool outputs, fusion panels that do not support tool calling rely on legacy text flattening ([`open-sse/services/combo.js:67-68`](../../open-sse/services/combo.js)).

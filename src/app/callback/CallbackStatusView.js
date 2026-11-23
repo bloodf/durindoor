@@ -23,7 +23,7 @@ export function CallbackStatusView({ status = "processing", failureMessage = "" 
         <Badge tone={success ? "success" : failed ? "danger" : manual ? "warning" : "accent"} size="sm" className="mb-3">OAuth callback</Badge>
         <h1 className="mb-2 text-xl font-semibold text-dd-text">{processing ? "Processing…" : success ? "Authorization successful!" : failed ? "Authorization failed" : "Copy this URL"}</h1>
         <p role={v5 ? (failed ? "alert" : "status") : undefined} className="text-[13px] text-dd-muted">{processing ? "Please wait while we complete the authorization." : success ? (status === "success" ? "This window will close automatically…" : "You can close this tab now.") : failed ? (failureMessage || "The provider rejected this login.") : "Please copy the URL from the address bar and paste it in the application."}</p>
-        {v5 && failed ? <a className="mt-4 inline-flex min-h-11 items-center text-dd-accent underline" href="/login">Return to sign in</a> : null}
+        {v5 && failed ? <a className="mt-4 inline-flex min-h-11 items-center text-dd-accent underline" href={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login`}>Return to sign in</a> : null}
         {manual ? <div className="mt-4 rounded-dd border border-dd-border bg-dd-surface-2 p-3 text-start"><code className="break-all text-xs text-dd-text">{isBrowser() ? window.location.href : ""}</code></div> : null}
       </Card>
     </main>

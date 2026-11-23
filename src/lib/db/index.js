@@ -270,7 +270,7 @@ export {
 // Provider nodes
 export {
   getProviderNodes, getProviderNodeById,
-  createProviderNode, updateProviderNode, deleteProviderNode } from
+  createProviderNode, updateProviderNode, deleteProviderNode, deleteProviderNodeWithConnections } from
 "./repos/nodesRepo.js";
 
 // Proxy pools

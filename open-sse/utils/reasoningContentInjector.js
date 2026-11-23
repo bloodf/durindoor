@@ -96,5 +96,7 @@ export function injectReasoningContent({ provider, model, body }) {
   const modelRule = MODEL_RULES.find((r) => r.match(model));
   const rule = MINIMAX_PROVIDERS.has(provider) && M3_1_FLASH_MODELS.has(model) ? null : providerRule || modelRule;
   const nextBody = applyDeepSeekV4ProAlias({ provider, model, body });
+  // Disabled DeepSeek thinking does not require synthetic reasoning history.
+  if (provider === "deepseek" && (nextBody?.thinking?.type === "disabled" || nextBody?.extra_body?.thinking?.type === "disabled")) return nextBody;
   return applyRule(nextBody, rule);
 }

@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { redactHeaders, redactValue } from "../../src/lib/observability/redact.js";
 
-const { undiciFetchMock, proxyAgentMock } = vi.hoisted(() => ({
+const { undiciFetchMock, proxyAgentMock, socksDispatcherMock } = vi.hoisted(() => ({
   undiciFetchMock: vi.fn(),
+  socksDispatcherMock: vi.fn(() => ({ close: vi.fn() })),
   proxyAgentMock: vi.fn(function ProxyAgentMock() { return { close: vi.fn() }; }),
 }));
 vi.mock("undici", () => ({ ProxyAgent: proxyAgentMock, fetch: (...args) => undiciFetchMock(...args) }));
+vi.mock("../../open-sse/utils/socksDispatcher.js", () => ({
+  createSocksDispatcher: socksDispatcherMock,
+  isSocksDispatcherUrl: (url) => url.startsWith("socks"),
+}));
+
 const { testProxyUrl } = await import("../../src/lib/network/proxyTest.js");
 
 describe("review regressions: redaction and proxy URL parsing", () => {
@@ -27,6 +33,6 @@ describe("review regressions: redaction and proxy URL parsing", () => {
     await testProxyUrl({ proxyUrl: "https://alice:p@ss@proxy.example:8080" });
     expect(proxyAgentMock.mock.calls.at(-1)[0].uri).toMatch(/^https:\/\/alice:p%40ss@proxy\.example:8080\/?$/);
     await testProxyUrl({ proxyUrl: "socks5://alice:secret@proxy.example:1080" });
-    expect(proxyAgentMock.mock.calls.at(-1)[0].uri).toMatch(/^socks5:\/\/alice:secret@proxy\.example:1080\/?$/);
+    expect(socksDispatcherMock.mock.calls.at(-1)[0]).toMatch(/^socks5:\/\/alice:secret@proxy\.example:1080\/?$/);
   });
 });

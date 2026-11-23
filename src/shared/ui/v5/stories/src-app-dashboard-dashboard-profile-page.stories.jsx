@@ -12,3 +12,4 @@ export const DatabaseExportPrompt = { ...reviewStory(original.DatabaseExportProm
 export const SelectiveTransferPreview = { ...reviewStory(original.SelectiveTransferPreview, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
 export const SettingsUnavailable = { ...reviewStory(original.SettingsUnavailable, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
 export const SettingsLoading = { ...reviewStory(original.SettingsLoading, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
+export const ToolSourceDiagnostics = { ...reviewStory(original.ToolSourceDiagnostics, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };

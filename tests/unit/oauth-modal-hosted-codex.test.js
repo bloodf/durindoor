@@ -40,7 +40,7 @@ const redirectUri = "http://localhost:1455/auth/callback";
 const authUrl = `https://auth.openai.com/oauth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 
 function response(data) {
-  return { ok: true, status: 200, json: async () => data };
+  return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
 }
 
 function renderModal(root) {
@@ -88,6 +88,16 @@ describe("OAuthModal hosted Codex flow", () => {
     container.remove();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("shows a non-JSON authorization error", async () => {
+    window.happyDOM.setURL("https://dashboard.example/providers");
+    fetchMock.mockImplementation(async (url) => url === "/api/deployment-mode"
+      ? response({ hosted: true })
+      : { ok: false, status: 503, text: async () => "Service unavailable" });
+    await act(async () => { renderModal(root); });
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    expect(container.textContent).toContain("Service unavailable");
   });
 
   it("uses manual callback immediately on a hosted dashboard", async () => {

@@ -20,9 +20,6 @@ spec:
         app.kubernetes.io/name: durindoor
     spec:
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
@@ -30,16 +27,15 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: durindoor
-          image: ghcr.io/bloodf/durindoor
-          # Bump this tag to the current verified DurinDoor release.
+          image: ghcr.io/bloodf/durindoor:4.9.2
+          # Bump this tag to the current published DurinDoor release.
           imagePullPolicy: IfNotPresent
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+              # The root entrypoint needs these before it drops to node.
+              add: ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE"]
             readOnlyRootFilesystem: true
           ports:
             - name: http

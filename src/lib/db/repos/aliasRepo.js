@@ -17,6 +17,34 @@ export async function setModelAlias(alias, model) {
   await aliasKv.set(alias, model);
 }
 
+/** Add discovered models in one transaction. Existing mappings win; retries are safe. */
+export async function addDiscoveredModelAliases(providerAlias, ids, passthrough = false) {
+  const db = await getAdapter();
+  const added = [];
+  db.transaction(() => {
+    const rows = db.all("SELECT key, value FROM kv WHERE scope = 'modelAliases'");
+    const usedAliases = new Set(rows.map((row) => row.key));
+    const usedModels = new Set(rows.map((row) => {
+      try { return JSON.parse(row.value); } catch { return row.value; }
+    }));
+    for (const id of new Set(ids)) {
+      const model = `${providerAlias}/${id}`;
+      if (usedModels.has(model)) continue;
+      const preferred = (passthrough ? id.split('/').pop() : id) || 'model';
+      let alias = preferred;
+      if (usedAliases.has(alias)) alias = `${providerAlias}-${preferred}`;
+      const base = alias;
+      let suffix = 2;
+      while (usedAliases.has(alias)) alias = `${base}-${suffix++}`;
+      db.run("INSERT INTO kv(scope, key, value) VALUES('modelAliases', ?, ?)", [alias, stringifyJson(model)]);
+      usedAliases.add(alias);
+      usedModels.add(model);
+      added.push({ id, alias });
+    }
+  });
+  return added;
+}
+
 export async function deleteModelAlias(alias) {
   await aliasKv.remove(alias);
 }

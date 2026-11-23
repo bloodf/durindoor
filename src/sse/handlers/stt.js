@@ -1,10 +1,9 @@
-import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getNoAuthProviderCredentials,
-  getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError,
+  clearAccountError,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -19,6 +18,7 @@ import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
 import { MAX_AUDIO_BYTES } from "open-sse/handlers/codexSttAudio.js";
+import { runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 const MAX_UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
 
 async function readBoundedRequest(request, maxBytes) {
@@ -70,10 +70,12 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
   const modelStr = formData.get("model");
   log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);
 
-  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "stt" });
+  return runMediaEndpoint(request, { kind: "stt", pinConnection: true, route: (admission) => handleAdmittedStt(request, formData, kind, modelStr, admission) });
+}
+
+async function handleAdmittedStt(request, formData, kind, modelStr, { settings, apiKey, auth: apiKeyAuth }) {
   // Keep the admission epoch, including null, through combo and account retries.
   const { billingEpoch } = apiKeyAuth;
-  if (admissionError) return admissionError;
 
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
@@ -97,7 +99,6 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
 async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyId, billingEpoch) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
-
   const { provider, model } = modelInfo;
   if (provider === "codex" && model !== "transcribe") return errorResponse(HTTP_STATUS.BAD_REQUEST, "Use model cx/transcribe for Codex STT");
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
@@ -153,14 +154,9 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
   }
 
   // Credentialed — fallback loop
-  const excludeConnectionIds = new Set();
-  let lastError = null;
-  let lastStatus = null;
-
-  while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId });
-
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+  return runMediaAccounts({
+    provider, model, selectionOptions: { ...pinOptions, apiKeyId },
+    buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("STT", `[${provider}/${model}] free no-auth provider disabled by settings`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -170,10 +166,10 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
         return unavailableResponse(status, `[${provider}/${model}] ${msg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+      if (attempted === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
-
+    },
+    async runAttempt(credentials) {
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const isCodex = provider === "codex";
@@ -194,32 +190,21 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
       }
     } catch (error) {
       if (!isCodex) throw error;
-      return errorResponse(HTTP_STATUS.BAD_GATEWAY, "STT credential or transport failure");
+      return { response: errorResponse(HTTP_STATUS.BAD_GATEWAY, "STT credential or transport failure") };
     }
 
     if (result.success) {
       if (isCodex) await clearAccountError(credentials.connectionId, credentials, model, dispatch);
-      return recordSuccess(result, credentials);
+      return { response: await recordSuccess(result, credentials) };
     }
     if (isCodex) {
-      if (request.signal?.aborted) return errorResponse(HTTP_STATUS.GATEWAY_TIMEOUT, "Transcription cancelled");
+      if (request.signal?.aborted) return { response: errorResponse(HTTP_STATUS.GATEWAY_TIMEOUT, "Transcription cancelled") };
     }
     // Bad audio, unsupported options, a missing ffmpeg and local capacity are not account faults.
-    if (result.local) return result.response || errorResponse(result.status, result.error);
-
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
-      // The credential this attempt actually presented, so a durable-key
-      // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null,
-      ...dispatch
-    });
-    if (shouldFallback) {
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
-    }
-    return result.response || errorResponse(result.status, result.error);
-  }
+    if (result.local) return { response: result.response || errorResponse(result.status, result.error) };
+    return { result, dispatch, failureContext: { usedCredential: credentials.accessToken || credentials.apiKey || null } };
+    },
+    buildFailureResponse: (result) => result.response || errorResponse(result.status, result.error),
+  });
 }
 export const handleStt = withRequestCorrelation(handleSttHandler);

@@ -11,6 +11,8 @@ import {
   updateProviderConnection } from
 "@/models";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
+import { requireCodexWorkspace } from "@/lib/oauth/codexWorkspace.js";
+import { resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
 import { resetM365RefreshCircuit } from "open-sse/services/tokenRefresh/copilotM365.js";
 
@@ -69,6 +71,9 @@ flowClaim = null)
       error.code = "OAUTH_RECONNECT_TARGET_MISMATCH";
       throw error;
     }
+    if (provider === "codex") {
+      requireCodexWorkspace(tokenData.idToken, resolveCodexAccountId(existing.providerSpecificData, existing.idToken));
+    }
     // Never let a Microsoft sign-in for another tenant/object replace this account's tokens, even
     // when both accounts share an email address.
     if (provider === "copilot-m365-web" && (
@@ -92,15 +97,22 @@ flowClaim = null)
       errorCode: null,
       lastErrorAt: null
     };
-    const commit = flowClaim ?
-    await updateProviderConnection(connectionId, updateData, {
-      shouldCommit: () => isOAuthFlowClaimActive(flowClaim),
+    const codexAccountId = provider === "codex" ? resolveCodexAccountId(existing.providerSpecificData, existing.idToken) : null;
+    const commit = await updateProviderConnection(connectionId, updateData, {
+      ...(flowClaim ? { shouldCommit: () => isOAuthFlowClaimActive(flowClaim) } : null),
+      ...(provider === "codex" ? { shouldCommitConnection: (current) =>
+        current.provider === provider && current.authType === "oauth" &&
+        resolveCodexAccountId(current.providerSpecificData, current.idToken) === codexAccountId } : null),
       returnCommitResult: true
-    }) :
-    await updateProviderConnection(connectionId, updateData, { returnCommitResult: true });
+    });
     if (commit === null) {
       const error = new Error("Reconnect target connection no longer exists");
       error.code = "OAUTH_RECONNECT_TARGET_MISSING";
+      throw error;
+    }
+    if (provider === "codex" && commit?.applied === false) {
+      const error = new Error("Reconnect target changed during authorization");
+      error.code = "OAUTH_FLOW_CONFLICT";
       throw error;
     }
     const connection = commit && isObject(commit) && Object.hasOwn(commit, "connection") ?
@@ -164,6 +176,13 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
     tokenData.providerSpecificData = {
       ...tokenData.providerSpecificData,
       codexFingerprintMode: payload.codexFingerprintMode
+    };
+  }
+  if (provider === "codex" && payload.codexWorkspaceId) {
+    requireCodexWorkspace(tokenData.idToken, payload.codexWorkspaceId);
+    tokenData.providerSpecificData = {
+      ...tokenData.providerSpecificData,
+      codexSelectedWorkspaceId: payload.codexWorkspaceId
     };
   }
   // A cancelled sign-in saves nothing, even when the exchange finished first.

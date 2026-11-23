@@ -19,6 +19,7 @@ import {
   classifyOAuthRefreshError } from
 "./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveCodexAccountId } from "../shared/codexAccountId.js";
 import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
 import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
@@ -255,7 +256,7 @@ const REFRESH_HANDLERS = {
   antigravity: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log, p),
   agy: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log, p),
   claude: (c, log, p) => refreshClaudeOAuthToken(c.refreshToken, log, p),
-  codex: (c, log, p) => refreshCodexToken(c.refreshToken, log, p, c._connection?.id ?? c.id),
+  codex: (c, log, p) => refreshCodexToken(c.refreshToken, log, p, c._connection?.id ?? c.id, resolveCodexAccountId(c.providerSpecificData ?? c._connection?.providerSpecificData, c.idToken ?? c._connection?.idToken)),
   qwen: (c, log, p) => refreshQwenToken(c.refreshToken, log, p),
   iflow: (c, log, p) => refreshIflowToken(c.refreshToken, log, p),
   github: (c, log, p) => refreshGitHubToken(c.refreshToken, log, p),

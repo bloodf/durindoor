@@ -29,6 +29,7 @@ import {
   requestDeviceCode } from
 "@/lib/oauth/providers.js";
 import { resolveOAuthProxySelection } from "@/lib/oauth/proxySelection.js";
+import { codexWorkspaceFromMeta } from "@/lib/oauth/codexWorkspace.js";
 import { defaultOAuthRedirectUri } from "@/lib/oauth/redirectUri.js";
 import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 import {
@@ -314,9 +315,11 @@ async function beginAuthorization(provider, input) {
   const redirectUri = input.redirectUri || input.redirect_uri ||
   defaultOAuthRedirectUri(provider) ||
   "http://localhost:8080/callback";
-  const meta = provider === "openference" ?
+  let meta = provider === "openference" ?
   { clientId: process.env.OPENFERENCE_OAUTH_CLIENT_ID?.trim() || "" } :
   input.meta && isObject(input.meta) ? input.meta : undefined;
+  const workspaceId = provider === "codex" ? codexWorkspaceFromMeta(meta) : "";
+  if (workspaceId) meta = { ...meta, allowed_workspace_id: workspaceId };
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(
     provider,
@@ -346,6 +349,7 @@ async function beginAuthorization(provider, input) {
       meta: authData.meta ? { ...meta, ...authData.meta } : meta,
       proxySelection: resolvedProxy.selection,
       ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : null),
+      ...(workspaceId ? { codexWorkspaceId: workspaceId } : null),
       ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : null)
     },
     intent
@@ -425,6 +429,9 @@ async function beginDeviceCode(provider, input) {
 }
 
 async function completeAccessToken(provider, code, resolvedProxy, flowClaim) {
+  if (flowClaim?.payload?.codexWorkspaceId) {
+    throw oauthRouteError("OAUTH_VALIDATION_FAILED", "A selected Codex workspace requires an authorization code");
+  }
   const info = extractCodexAccountInfo(code);
   let directPayload = {};
   try {

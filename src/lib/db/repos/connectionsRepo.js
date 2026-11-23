@@ -588,6 +588,17 @@ export async function updateProviderConnection(id, data, {
       throw error;
     }
     const merged = { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: new Date().toISOString() };
+    const selectedWorkspace = existing.provider === "codex" && existing.providerSpecificData?.codexSelectedWorkspaceId;
+    if (selectedWorkspace && (
+      merged.providerSpecificData?.codexSelectedWorkspaceId !== selectedWorkspace ||
+      hasConflictingCodexAccountIds(merged.providerSpecificData) ||
+      resolveCodexAccountId(merged.providerSpecificData, merged.idToken) !== selectedWorkspace ||
+      (data.idToken && resolveCodexAccountId({}, data.idToken) !== selectedWorkspace)
+    )) {
+      const error = new Error("Codex connection workspace cannot be changed");
+      error.code = "PROVIDER_IDENTITY_IMMUTABLE";
+      throw error;
+    }
     upsert(db, merged);
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false, null);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);

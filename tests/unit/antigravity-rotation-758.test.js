@@ -56,6 +56,29 @@ async function revision(token) {
 }
 
 describe("antigravity rotation lease", () => {
+  it.each([false, true])("fences a sent exchange on management action (delete credential: %s)", async (deleteCredential) => {
+    const db = await openDb();
+    const { acquireAntigravityLease, markAntigravityDispatched, clearAntigravityLease,
+      fenceAntigravityRecovery, advanceAntigravityGeneration } = await import("../../src/lib/antigravity/leaseSql.js");
+    insertConnection(db, "fenced", SAME_TOKEN);
+    const first = acquireAntigravityLease(db, { connectionId: "fenced", refreshToken: SAME_TOKEN, owner: "first" });
+    expect(first.ok).toBe(true);
+    expect(markAntigravityDispatched(db, first.lease)).toBe(true);
+    db.run(`INSERT INTO antigravityRecoveryCredentials(connectionId, ciphertext, fieldName, updatedAt) VALUES(?, ?, 'recoveryPassword', ?)`, ["fenced", "synthetic", Date.now()]);
+    db.transaction(() => fenceAntigravityRecovery(db, "fenced", { deleteCredential }));
+    expect(clearAntigravityLease(db, first.lease, NEW_TOKEN)).toBe(false);
+    expect(acquireAntigravityLease(db, { connectionId: "fenced", refreshToken: SAME_TOKEN, owner: "second", force: true }))
+      .toMatchObject({ ok: false, category: "uncertain_dispatch" });
+    expect(Boolean(db.get(`SELECT connectionId FROM antigravityRecoveryCredentials WHERE connectionId = ?`, ["fenced"]))).toBe(!deleteCredential);
+    advanceAntigravityGeneration(db, "fenced", SAME_TOKEN);
+    expect(acquireAntigravityLease(db, { connectionId: "fenced", refreshToken: SAME_TOKEN, owner: "third" }))
+      .toMatchObject({ ok: false, category: "uncertain_dispatch" });
+    advanceAntigravityGeneration(db, "fenced", NEW_TOKEN);
+    expect(acquireAntigravityLease(db, { connectionId: "fenced", refreshToken: SAME_TOKEN, owner: "stale" }))
+      .toMatchObject({ ok: false, category: "reauth_required" });
+    expect(acquireAntigravityLease(db, { connectionId: "fenced", refreshToken: NEW_TOKEN, owner: "fourth" }).ok).toBe(true);
+  });
+
   it("lets one of two blocked workers claim the refresh", async () => {
     const db = await openDb();
     const { currentDataFile } = await import("../../src/lib/db/paths.js");
@@ -167,6 +190,31 @@ describe("antigravity rotation lease", () => {
     expect(expired).toMatchObject({ ok: false, category: "uncertain_dispatch" });
     expect(db.get(`SELECT attemptState FROM antigravityRefreshLeases WHERE connectionId = ?`, ["kill-1"]).attemptState).toBe("uncertain");
   });
+
+  it("retains uncertainty when management fences a dispatched worker that dies", async () => {
+    const db = await openDb();
+    const { currentDataFile } = await import("../../src/lib/db/paths.js");
+    const { acquireAntigravityLease, fenceAntigravityRecovery } = await import("../../src/lib/antigravity/leaseSql.js");
+    const child = fork(fileURLToPath(workerUrl), [], {
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, AGY_HOLD: "1", AGY_DB_FILE: currentDataFile(), AGY_CONNECTION: "fence-crash", AGY_TOKEN: SAME_TOKEN },
+      execArgv: [],
+    });
+    try {
+      const held = await new Promise((resolve, reject) => {
+        child.once("message", resolve);
+        child.once("error", reject);
+        child.once("exit", (code) => reject(new Error(`worker exited before dispatch: ${code}`)));
+      });
+      expect(held).toMatchObject({ phase: "held", ok: true });
+      db.transaction(() => fenceAntigravityRecovery(db, "fence-crash", { deleteCredential: true }));
+      child.kill("SIGKILL");
+      await new Promise((resolve) => child.once("exit", resolve));
+      expect(acquireAntigravityLease(db, { connectionId: "fence-crash", refreshToken: SAME_TOKEN, owner: "survivor", force: true }))
+        .toMatchObject({ ok: false, category: "uncertain_dispatch" });
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
+  }, 20_000);
 });
 
 describe("antigravity rotation storage", () => {
@@ -400,6 +448,21 @@ describe("antigravity rotation route", () => {
     if (connectionId) url.searchParams.set("connectionId", connectionId);
     return new Request(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
   }
+
+  it.each(["disable", "delete"])("keeps a dispatched refresh blocked after %s", async (action) => {
+    const db = await openDb();
+    const { openAntigravityLease } = await import("../../src/lib/antigravity/refreshProtocol.js");
+    const { acquireAntigravityLease } = await import("../../src/lib/antigravity/leaseSql.js");
+    insertConnection(db, "route-fence", SAME_TOKEN);
+    const session = await openAntigravityLease({ id: "route-fence", refreshToken: SAME_TOKEN });
+    expect(session.ok).toBe(true);
+    expect(session.markDispatched()).toBe(true);
+    const { POST } = await route();
+    expect((await POST(request("POST", { body: { action, connectionId: "route-fence" } }))).status).toBe(200);
+    expect(session.commit({ accessToken: "synthetic-access" }, null, NEW_TOKEN)).toBe(false);
+    expect(acquireAntigravityLease(db, { connectionId: "route-fence", refreshToken: SAME_TOKEN, owner: "after-crash", force: true }))
+      .toMatchObject({ ok: false, category: "uncertain_dispatch" });
+  });
 
   it("rejects a missing session, a foreign origin, an oversized body, and the default password", async () => {
     const guard = await import("../../src/dashboardGuard.js");

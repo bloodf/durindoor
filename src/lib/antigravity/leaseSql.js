@@ -79,11 +79,17 @@ export function advanceAntigravityGeneration(db, connectionId, refreshToken = nu
   const revision = refreshToken ? credentialRevision(refreshToken) : null;
   const updated = db.run(
     `UPDATE antigravityRefreshLeases
-     SET generation = generation + 1, attemptState = 'idle', owner = NULL, fencingToken = NULL,
-         leaseExpiresAt = NULL, attemptId = NULL, errorCategory = NULL, retryCount = 0, nextRetryAt = NULL,
+     SET generation = generation + 1,
+         attemptState = CASE WHEN attemptState IN ('dispatched', 'uncertain') AND ( CAST(? AS TEXT) IS NULL OR credentialRevision IS NULL OR credentialRevision = ? )
+                             THEN 'uncertain' ELSE 'idle' END,
+         owner = NULL, fencingToken = NULL,
+         leaseExpiresAt = NULL, attemptId = NULL,
+         errorCategory = CASE WHEN attemptState IN ('dispatched', 'uncertain') AND ( CAST(? AS TEXT) IS NULL OR credentialRevision IS NULL OR credentialRevision = ? )
+                              THEN 'uncertain_dispatch' ELSE NULL END,
+         retryCount = 0, nextRetryAt = NULL,
          credentialRevision = COALESCE(?, credentialRevision), subject = COALESCE(?, subject), updatedAt = ${now}
      WHERE connectionId = ?`,
-    [revision, subject || null, connectionId]
+    [revision, revision, revision, revision, revision, subject || null, connectionId]
   );
   if (oneRow(updated)) return true;
   seedAntigravityLease(db, connectionId, refreshToken, subject);
@@ -112,8 +118,12 @@ export function fenceAntigravityRecovery(db, connectionId, { deleteCredential = 
   if (antigravityLeaseTableReady(db)) {
     db.run(
       `UPDATE antigravityRefreshLeases
-       SET generation = generation + 1, recoveryEnabled = 0, attemptState = 'idle', owner = NULL,
-           fencingToken = NULL, leaseExpiresAt = NULL, attemptId = NULL, errorCategory = NULL,
+       SET generation = generation + 1, recoveryEnabled = 0,
+           attemptState = CASE WHEN attemptState IN ('dispatched', 'uncertain') THEN 'uncertain'
+                               WHEN attemptState = 'reauth' THEN 'reauth' ELSE 'idle' END,
+           owner = NULL, fencingToken = NULL, leaseExpiresAt = NULL, attemptId = NULL,
+           errorCategory = CASE WHEN attemptState IN ('dispatched', 'uncertain') THEN 'uncertain_dispatch'
+                                WHEN attemptState = 'reauth' THEN errorCategory ELSE NULL END,
            retryCount = 0, nextRetryAt = NULL, updatedAt = ${now}
        WHERE connectionId = ?`,
       [connectionId]
@@ -157,6 +167,10 @@ export function acquireAntigravityLease(db, { connectionId, refreshToken, owner,
     }
     if (!row) {
       outcome = { ok: false, category: "pre_dispatch_failure" };
+      return;
+    }
+    if (row.credentialRevision && row.credentialRevision !== credentialRevision(refreshToken)) {
+      outcome = { ok: false, category: "reauth_required" };
       return;
     }
     if (row.attemptState === "dispatched") {

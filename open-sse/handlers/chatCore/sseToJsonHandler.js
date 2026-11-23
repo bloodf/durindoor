@@ -150,6 +150,7 @@ function aggregateParsedChunks(chunks, fallbackModel, {
         if (isString(delta.audio.data)) accumulator.audioParts.push(Buffer.from(delta.audio.data, "base64"));
         if (isString(delta.audio.transcript)) accumulator.transcriptParts.push(delta.audio.transcript);
       }
+      if (delta.reasoning_encrypted_content) accumulator.reasoningEncryptedContent = delta.reasoning_encrypted_content;
       const reasoning = extractReasoningText(delta);
       if (reasoning) accumulator.reasoningParts.push(reasoning);
       if (choice?.finish_reason) accumulator.finishReason = choice.finish_reason;
@@ -193,6 +194,7 @@ function aggregateParsedChunks(chunks, fallbackModel, {
       role: accumulator.role,
       content: text || (accumulator.toolCallMap.size > 0 ? null : "")
     };
+    if (accumulator.reasoningEncryptedContent) message.reasoning_encrypted_content = accumulator.reasoningEncryptedContent;
     if (accumulator.reasoningParts.length > 0) {
       message.reasoning_content = accumulator.reasoningParts.join("");
     }
@@ -378,7 +380,7 @@ function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nati
   if (incomplete.size > 0 && stopReason !== CLAUDE_STOP.MAX_TOKENS) return { completion: null };
   const terminalObservations = parsedEvents.filter(({ chunk }) => !(isClaudeBlockEvent(chunk) && incomplete.has(chunk.index)));
 
-  const state = { toolCalls: new Map(), toolNameMap };
+  const state = { toolCalls: new Map(), toolNameMap, providerBody, requestedModel: fallbackModel };
   const chunks = [];
   for (const { chunk } of terminalObservations) {
     // The converter keeps growing the tool_call it already emitted. A stream

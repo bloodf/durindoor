@@ -318,7 +318,7 @@ export async function getOpenDesignUsage(ctx = {}) {
     }
 
     return { plan: PLAN, quotas };
-  } catch (error) {
-    return { plan: PLAN, message: `OpenDesign error: ${error.message}` };
+  } catch {
+    return { plan: PLAN, message: "OpenDesign request failed." };
   }
 }

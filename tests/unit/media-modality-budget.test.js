@@ -74,7 +74,7 @@ function usage(spec, index, overrides = {}) {
   };
 }
 
-const rows = () => adapter.all("SELECT * FROM usageHistory WHERE apiKey = ? ORDER BY id", [secret]);
+const rows = () => adapter.all("SELECT * FROM usageHistory WHERE apiKeyId = ? ORDER BY id", [keyId]);
 const decision = (model = "media-fixture/paid") =>
   policy.enforceApiKeyModelPolicy(new Request("http://localhost/v1/images/generations"), model, secret);
 const afterCacheTtl = () => vi.setSystemTime(new Date(Date.now() + 11_000));
@@ -91,7 +91,7 @@ describe("paid modality ledger and dollar budgets", () => {
       usage(spec, 2, { cost: null, costStatus: "unknown", costSource: "unavailable" }));
     const [first, zero, unknown] = rows();
     for (const row of [first, zero, unknown]) {
-      expect(row).toMatchObject({ apiKey: secret, provider: "media-fixture", model: spec.model, connectionId: `account-${spec.modality}`, endpoint: spec.endpoint, status: "ok" });
+      expect(row).toMatchObject({ apiKey: null, apiKeyId: keyId, provider: "media-fixture", model: spec.model, connectionId: `account-${spec.modality}`, endpoint: spec.endpoint, status: "ok" });
       expect(JSON.parse(row.meta)).toMatchObject({ modality: spec.modality, nativeUnits: spec.nativeUnits });
     }
     expect(first.cost).toBe(0.25);

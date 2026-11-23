@@ -189,7 +189,7 @@ describe("Gemini native v1beta endpoint", () => {
       expect(rows()).toHaveLength(1);
       expect(rows()[0]).toMatchObject({
         provider: "gemini", model: "gemini-3.1-flash-tts-preview", connectionId: "gemini-conn",
-        apiKey: "router-client-key", status: "ok", promptTokens: 3, completionTokens: 7, cachedTokens: 1, reasoningTokens: 2,
+        apiKey: null, apiKeyId: "gemini-key", status: "ok", promptTokens: 3, completionTokens: 7, cachedTokens: 1, reasoningTokens: 2,
       });
       expect(JSON.parse(rows()[0].tokens)).toMatchObject({
         prompt_tokens: 3, completion_tokens: 7, total_tokens: 10, cached_tokens: 1, reasoning_tokens: 2,

@@ -266,7 +266,7 @@ describe("audio handlers commit normalized native usage", () => {
     fetch.mockResolvedValue(json({ text: "translated", duration: 60 }));
     const response = await handleStt(sttRequest("openai/whisper-1", "translations"), { kind: "translation" });
     expect(await response.json()).toEqual({ text: "translated", duration: 60 });
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, endpoint: "/v1/audio/translations", cost: 0.006, usageEventId: `${response.headers.get("x-request-id")}:stt` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", endpoint: "/v1/audio/translations", cost: 0.006, usageEventId: `${response.headers.get("x-request-id")}:stt` });
     expect(metadata(rows()[0]).costStatus).toBe("estimated");
     expect(String(fetch.mock.calls[0][0])).toContain("/audio/translations");
   });
@@ -293,7 +293,7 @@ describe("audio handlers commit normalized native usage", () => {
     expect(response.bodyUsed).toBe(false);
     expect(rows()).toEqual([]);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(audio);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, provider: "openai", model: "tts-1/alloy", connectionId: "account-a", endpoint: "/v1/audio/speech", promptTokens: 0, completionTokens: 0, usageEventId: `${response.headers.get("x-request-id")}:tts` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", provider: "openai", model: "tts-1/alloy", connectionId: "account-a", endpoint: "/v1/audio/speech", promptTokens: 0, completionTokens: 0, usageEventId: `${response.headers.get("x-request-id")}:tts` });
     expect(rows()[0].cost).toBeCloseTo(7 * 15 / 1_000_000);
     expect(metadata(rows()[0])).toMatchObject({ modality: "tts", nativeUnits: { characters: 7 }, costStatus: "estimated" });
     expect(JSON.parse(fetch.mock.calls[0][1].body).input).toBe("hello 🌍");
@@ -358,7 +358,7 @@ describe("audio handlers commit normalized native usage", () => {
     const response = await handleTts(ttsRequest("openrouter/openai/gpt-4o-mini-tts/alloy"));
     expect(response.bodyUsed).toBe(false);
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, connectionId: "account-a", cost, promptTokens: 3, completionTokens: 5 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", connectionId: "account-a", cost, promptTokens: 3, completionTokens: 5 });
     expect(metadata(rows()[0])).toMatchObject({ costStatus: "known", costSource: "provider:openrouter", providerReceipt: { id: "receipt-id", usage } });
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2]));
   });
@@ -376,7 +376,7 @@ describe("audio handlers commit normalized native usage", () => {
       return;
     }
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, provider: "minimax", model: "speech-2.8-hd/English_expressive_narrator", connectionId: "account-a", endpoint: "/v1/audio/speech", usageEventId: `${response.headers.get("x-request-id")}:tts` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", provider: "minimax", model: "speech-2.8-hd/English_expressive_narrator", connectionId: "account-a", endpoint: "/v1/audio/speech", usageEventId: `${response.headers.get("x-request-id")}:tts` });
     expect(metadata(rows()[0])).toMatchObject({ nativeUnits: { characters: 6, audioSeconds: 1.25 }, providerReceipt: { trace_id: "stream-receipt" } });
   });
 

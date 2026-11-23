@@ -36,7 +36,7 @@ const send = (controller = new AbortController()) => handleImage(new Request("ht
   method: "POST", signal: controller.signal, body: JSON.stringify({ model: "runwayml/gen4_image", prompt: "fixture" }),
 }));
 const expectAcceptedUnknown = (row, connectionId = "account-a") => {
-  expect(row).toMatchObject({ provider: "runwayml", model: "gen4_image", connectionId, apiKey: "job-secret", endpoint: "/v1/images/generations", status: "accepted", cost: null, promptTokens: 0, completionTokens: 0 });
+  expect(row).toMatchObject({ provider: "runwayml", model: "gen4_image", connectionId, apiKey: null, apiKeyId: "job-key", endpoint: "/v1/images/generations", status: "accepted", cost: null, promptTokens: 0, completionTokens: 0 });
   expect(JSON.parse(row.meta)).toMatchObject({ modality: "image", costStatus: "unknown", costSource: "accepted-job", jobState: "accepted", nativeUnits: {} });
 };
 

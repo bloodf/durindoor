@@ -1,7 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { createHash } from "node:crypto";
 
 const XAI_RESPONSE_TOOLS = new Set(["web_search", "x_search", "image_generation", "collections_search", "file_search", "code_execution", "code_interpreter", "mcp", "shell", "tool_search"]);
@@ -98,9 +98,11 @@ export class XaiExecutor extends BaseExecutor {
 
     let out = { ...body };
     // CLIProxyAPI xai_executor_request.go: Responses does not support stop.
-    if (credentials?.runtimeTransport?.format === "openai-responses-oauth" ||
-        getModelTargetFormat("xai", model) === "openai-responses") {
+    const responses = credentials?.runtimeTransport?.format === "openai-responses-oauth" ||
+        getModelTargetFormat("xai", model) === "openai-responses";
+    if (responses) {
       delete out.stop;
+      delete out.stream_options;
       normalizeResponses(out);
     }
     const modelId = (out.model || model || "").toLowerCase();
@@ -126,6 +128,14 @@ export class XaiExecutor extends BaseExecutor {
       out.reasoning_effort = body.reasoning_effort || modelEffort;
     }
 
+    // xAI chat streams report actual usage only when explicitly requested.
+    if (!responses && stream === true && (out.stream === undefined || out.stream === true) &&
+        !credentials?.providerSpecificData?.disableStreamOptions) {
+      out.stream = true;
+      out.stream_options = isRecord(out.stream_options) ? { ...out.stream_options, include_usage: true } : { include_usage: true };
+    } else {
+      delete out.stream_options;
+    }
     return out;
   }
 }

@@ -31,11 +31,11 @@ Execution Result:
 - **Regressions**: 0 failures, 0 skipped
 
 #### Test Breakdown
-1. **[`tests/unit/1129-operational-metrics.test.js`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-operational-metrics.test.js)** (3 tests):
+1. **[`tests/unit/1129-operational-metrics.test.js`](../../tests/unit/1129-operational-metrics.test.js)** (3 tests):
    - `rejects unauthorized scrapes before reading active requests`: Validates that unauthorized requests return HTTP 401 with `Cache-Control: no-store` immediately without invoking `getActiveRequests()` or exposing any `durindoor_` metric lines.
    - `exports observed outcomes, latency, provider snapshot and queue without identifiers`: Verifies HTTP outcomes (`completed`, `http_error`), latency histogram buckets, provider health snapshot (`healthy: 2`, availability gauge `1`), queue depth transitions (`1` while blocked, `0` upon release), and strictly asserts zero leakage of private identifiers (`expect(body).not.toContain("private-")`).
    - `exports bounded stall diagnostics and admission correlation`: Validates simulated stall detection (> 5s drift), counter increments, peak stall duration export (`durindoor_event_loop_stall_max_seconds`), simultaneous admission failure correlation (`durindoor_event_loop_last_stall_admission_failures`), and enforces the 16-event ring buffer capacity cap.
-2. **[`tests/unit/1129-runtime-pressure.test.js`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-runtime-pressure.test.js)** (1 test):
+2. **[`tests/unit/1129-runtime-pressure.test.js`](../../tests/unit/1129-runtime-pressure.test.js)** (1 test):
    - `accepts early timer ticks and correlates a later stall with gate failures`: Proves that a timer firing slightly early (990ms elapsed) is accepted as a usable reading (`durindoor_runtime_sampler_reading_available 1`) without warning, and subsequent stalls correctly record excess drift (6s) and correlate with gate failure counts without console warning spam.
 
 ---
@@ -44,12 +44,12 @@ Execution Result:
 
 | Acceptance Criterion | Implementation Scope & Mechanism | Exact Code Locations | Covering Tests | Status |
 |---|---|---|---|---|
-| **1. Define counters, histograms, gauges and label limits** | Implements standard Prometheus 0.0.4 text export: HTTP request totals and transport outcomes (`completed`, `http_error`, `stream_error`, `cancelled`, `handler_error`); cumulative duration histogram with 12 finite bucket bounds + `+Inf`; concurrency admission rejections (`timeout`, `aborted`); client admission denials (`auth_missing`, `auth_invalid`, `policy`, `client_limit`); in-flight request gauges (`durindoor_active_requests`, `durindoor_http_active_requests`); queue depth (`durindoor_admission_queued_requests`); provider health state snapshot (`healthy`, `degraded`, `down`, `blocked`, `unconfigured`, `unknown`); process metrics (`uptime`, `rss`, `event_loop_delay_p99_seconds`); and stall recorder metrics. All labels are strictly bounded to small frozen sets with zero dynamic user strings. | • [`open-sse/services/operationalMetrics.js:5-8, 243-280`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L5-L8)<br>• [`src/app/api/monitoring/metrics/route.js:29-45`](../../orq-toty04-n1129-audit--8080d2100d6166fb/src/app/api/monitoring/metrics/route.js#L29-L45)<br>• [`docs/operations/operational-metrics.mdx:10-35, 44-48`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L10-L35) | • `tests/unit/1129-operational-metrics.test.js:42-68`<br>• `tests/unit/operational-metrics-http-boundary.test.js`<br>• `tests/unit/operational-metrics-admission.test.js`<br>• `tests/unit/operational-metrics.test.js` | **Met with Route Gaps** |
-| **2. Apply management authorization and document scraping configuration** | Route `GET /api/monitoring/metrics` guards execution via `isAdminScopedKey(request)` (admin API key), `hasValidCliToken(request)` (CLI token), or `hasValidToken(request)` (admin session cookie). Unauthorized callers receive HTTP 401 with `Cache-Control: no-store` without database or metric access. Anonymous loopback requests are explicitly blocked even when dashboard login is disabled. Documentation details scraper configuration, secret handling via bearer token files, TLS requirements, and 503 error semantics. | • [`src/app/api/monitoring/metrics/route.js:11-15`](../../orq-toty04-n1129-audit--8080d2100d6166fb/src/app/api/monitoring/metrics/route.js#L11-L15)<br>• [`docs/operations/operational-metrics.mdx:6-9`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L6-L9) | • `tests/unit/1129-operational-metrics.test.js:33-40`<br>• `tests/unit/operational-metrics-auth.test.js:1-75` | **Met** |
-| **3. Test reset/restart semantics and zero raw credentials/session text** | State is held in-memory in `globalThis.__durindoorOperationalMetrics`. Process restarts clear all counters, active requests, health projections, and stall history. Metrics scraping is read-only and monotonic; usage history resets do not clear operational metrics. HMR/module reloads preserve counters via `??=`. `WeakMap` storage guarantees automatic GC of Request/Response associations. No request paths, URLs, query parameters, prompt/completion text, auth tokens, session cookies, or raw error messages are stored or exported. | • [`open-sse/services/operationalMetrics.js:10-33, 37-48, 160-170, 243-280`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L10-L33)<br>• [`docs/operations/operational-metrics.mdx:44-52`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L44-L52) | • `tests/unit/1129-operational-metrics.test.js:42-68`<br>• `tests/unit/operational-metrics-runtime.test.js` | **Met with Verification Limitations** |
-| **4. Check existing latency probes and sampling overhead** | Event-loop latency sampling reuses Node.js native `perf_hooks.monitorEventLoopDelay({ resolution: 20 })` with process-wide singleton lifecycle. The stall recorder runs an unref'd 1-second `setInterval` timer without per-request timers. HTTP duration tracking records `performance.now()` and uses a zero-highwater-mark `ReadableStream` wrapper (`{ highWaterMark: 0 }`) without intermediate buffering or JSON payload parsing. Scrapes do not trigger upstream provider health checks, reading cached projections only. | • [`open-sse/services/operationalMetrics.js:2, 82-158, 188-195, 201-238`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L82-L158)<br>• [`docs/operations/operational-metrics.mdx:16, 34, 40-42, 50`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L40-L42) | • `tests/unit/1129-operational-metrics.test.js:4-6, 56, 70-84`<br>• `tests/unit/1129-runtime-pressure.test.js:3, 13-29` | **Met with Verification Limitations** |
-| **5. Add bounded diagnostic events and correlate pressure with admission failures** | Diagnostic event ring buffer is capped strictly at 16 entries in `metrics.events` via FIFO eviction. Excess monotonic drift > 5000ms triggers a stall event recording simultaneous metrics: `delaySeconds`, `active` HTTP requests, `admissionFailures` (sum of concurrency gate timeouts and aborts), and process `rss`. Exposes metrics `durindoor_event_loop_stalls_total`, `durindoor_event_loop_stall_max_seconds`, and latest stall gauges. Diagnostic inspection is available via `getOperationalDiagnostics()`. | • [`open-sse/services/operationalMetrics.js:160-170, 201-241, 272-278`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L160-L170)<br>• [`docs/operations/operational-metrics.mdx:40-43, 52`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L40-L43) | • `tests/unit/1129-operational-metrics.test.js:70-84`<br>• `tests/unit/1129-runtime-pressure.test.js:13-29`<br>• `tests/unit/operational-metrics-runtime.test.js` | **Met** |
-| **6. Handle unusable sampler readings without repeated log spam** | Timer drift calculation accepts slightly early timer ticks (elapsed < 1000ms but > 0) as usable. Non-finite or backwards clock values (`elapsed < 0`) mark readings as unavailable (`durindoor_runtime_sampler_reading_available 0`). Emits `console.warn("[metrics] Runtime sampler reading unavailable")` at most once per process lifetime via `warnedSampler` latch. Valid subsequent ticks automatically restore `readingAvailable = 1` without warning or log churn. Unusable RSS leaves memory values omitted. | • [`open-sse/services/operationalMetrics.js:26, 208-231, 271`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L208-L231)<br>• [`docs/operations/operational-metrics.mdx:42-43`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L42-L43) | • `tests/unit/1129-runtime-pressure.test.js:13-29`<br>• `tests/unit/operational-metrics-runtime.test.js` | **Met** |
+| **1. Define counters, histograms, gauges and label limits** | Implements standard Prometheus 0.0.4 text export: HTTP request totals and transport outcomes (`completed`, `http_error`, `stream_error`, `cancelled`, `handler_error`); cumulative duration histogram with 12 finite bucket bounds + `+Inf`; concurrency admission rejections (`timeout`, `aborted`); client admission denials (`auth_missing`, `auth_invalid`, `policy`, `client_limit`); in-flight request gauges (`durindoor_active_requests`, `durindoor_http_active_requests`); queue depth (`durindoor_admission_queued_requests`); provider health state snapshot (`healthy`, `degraded`, `down`, `blocked`, `unconfigured`, `unknown`); process metrics (`uptime`, `rss`, `event_loop_delay_p99_seconds`); and stall recorder metrics. All labels are strictly bounded to small frozen sets with zero dynamic user strings. | • [`open-sse/services/operationalMetrics.js:5-8, 243-280`](../../open-sse/services/operationalMetrics.js)<br>• [`src/app/api/monitoring/metrics/route.js:29-45`](../../src/app/api/monitoring/metrics/route.js)<br>• [`docs/operations/operational-metrics.mdx:10-35, 44-48`](../../docs/operations/operational-metrics.mdx) | • `tests/unit/1129-operational-metrics.test.js:42-68`<br>• `tests/unit/operational-metrics-http-boundary.test.js`<br>• `tests/unit/operational-metrics-admission.test.js`<br>• `tests/unit/operational-metrics.test.js` | **Met with Route Gaps** |
+| **2. Apply management authorization and document scraping configuration** | Route `GET /api/monitoring/metrics` guards execution via `isAdminScopedKey(request)` (admin API key), `hasValidCliToken(request)` (CLI token), or `hasValidToken(request)` (admin session cookie). Unauthorized callers receive HTTP 401 with `Cache-Control: no-store` without database or metric access. Anonymous loopback requests are explicitly blocked even when dashboard login is disabled. Documentation details scraper configuration, secret handling via bearer token files, TLS requirements, and 503 error semantics. | • [`src/app/api/monitoring/metrics/route.js:11-15`](../../src/app/api/monitoring/metrics/route.js)<br>• [`docs/operations/operational-metrics.mdx:6-9`](../../docs/operations/operational-metrics.mdx) | • `tests/unit/1129-operational-metrics.test.js:33-40`<br>• `tests/unit/operational-metrics-auth.test.js:1-75` | **Met** |
+| **3. Test reset/restart semantics and zero raw credentials/session text** | State is held in-memory in `globalThis.__durindoorOperationalMetrics`. Process restarts clear all counters, active requests, health projections, and stall history. Metrics scraping is read-only and monotonic; usage history resets do not clear operational metrics. HMR/module reloads preserve counters via `??=`. `WeakMap` storage guarantees automatic GC of Request/Response associations. No request paths, URLs, query parameters, prompt/completion text, auth tokens, session cookies, or raw error messages are stored or exported. | • [`open-sse/services/operationalMetrics.js:10-33, 37-48, 160-170, 243-280`](../../open-sse/services/operationalMetrics.js)<br>• [`docs/operations/operational-metrics.mdx:44-52`](../../docs/operations/operational-metrics.mdx) | • `tests/unit/1129-operational-metrics.test.js:42-68`<br>• `tests/unit/operational-metrics-runtime.test.js` | **Met with Verification Limitations** |
+| **4. Check existing latency probes and sampling overhead** | Event-loop latency sampling reuses Node.js native `perf_hooks.monitorEventLoopDelay({ resolution: 20 })` with process-wide singleton lifecycle. The stall recorder runs an unref'd 1-second `setInterval` timer without per-request timers. HTTP duration tracking records `performance.now()` and uses a zero-highwater-mark `ReadableStream` wrapper (`{ highWaterMark: 0 }`) without intermediate buffering or JSON payload parsing. Scrapes do not trigger upstream provider health checks, reading cached projections only. | • [`open-sse/services/operationalMetrics.js:2, 82-158, 188-195, 201-238`](../../open-sse/services/operationalMetrics.js)<br>• [`docs/operations/operational-metrics.mdx:16, 34, 40-42, 50`](../../docs/operations/operational-metrics.mdx) | • `tests/unit/1129-operational-metrics.test.js:4-6, 56, 70-84`<br>• `tests/unit/1129-runtime-pressure.test.js:3, 13-29` | **Met with Verification Limitations** |
+| **5. Add bounded diagnostic events and correlate pressure with admission failures** | Diagnostic event ring buffer is capped strictly at 16 entries in `metrics.events` via FIFO eviction. Excess monotonic drift > 5000ms triggers a stall event recording simultaneous metrics: `delaySeconds`, `active` HTTP requests, `admissionFailures` (sum of concurrency gate timeouts and aborts), and process `rss`. Exposes metrics `durindoor_event_loop_stalls_total`, `durindoor_event_loop_stall_max_seconds`, and latest stall gauges. Diagnostic inspection is available via `getOperationalDiagnostics()`. | • [`open-sse/services/operationalMetrics.js:160-170, 201-241, 272-278`](../../open-sse/services/operationalMetrics.js)<br>• [`docs/operations/operational-metrics.mdx:40-43, 52`](../../docs/operations/operational-metrics.mdx) | • `tests/unit/1129-operational-metrics.test.js:70-84`<br>• `tests/unit/1129-runtime-pressure.test.js:13-29`<br>• `tests/unit/operational-metrics-runtime.test.js` | **Met** |
+| **6. Handle unusable sampler readings without repeated log spam** | Timer drift calculation accepts slightly early timer ticks (elapsed < 1000ms but > 0) as usable. Non-finite or backwards clock values (`elapsed < 0`) mark readings as unavailable (`durindoor_runtime_sampler_reading_available 0`). Emits `console.warn("[metrics] Runtime sampler reading unavailable")` at most once per process lifetime via `warnedSampler` latch. Valid subsequent ticks automatically restore `readingAvailable = 1` without warning or log churn. Unusable RSS leaves memory values omitted. | • [`open-sse/services/operationalMetrics.js:26, 208-231, 271`](../../open-sse/services/operationalMetrics.js)<br>• [`docs/operations/operational-metrics.mdx:42-43`](../../docs/operations/operational-metrics.mdx) | • `tests/unit/1129-runtime-pressure.test.js:13-29`<br>• `tests/unit/operational-metrics-runtime.test.js` | **Met** |
 
 ---
 
@@ -76,9 +76,9 @@ Execution Result:
   - **Label Cardinality**:
     Strictly bounded. Only five metrics have labels (`outcome`, `le`, `reason` [concurrency], `reason` [client admission], `state`). No variable or user-controlled label dimensions exist.
 - **Evidence References**:
-  - Implementation: [`open-sse/services/operationalMetrics.js:5-8, 243-280`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L5-L8)
-  - Scrape route: [`src/app/api/monitoring/metrics/route.js:29-45`](../../orq-toty04-n1129-audit--8080d2100d6166fb/src/app/api/monitoring/metrics/route.js#L29-L45)
-  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:42-68`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-operational-metrics.test.js#L42-L68)
+  - Implementation: [`open-sse/services/operationalMetrics.js:5-8, 243-280`](../../open-sse/services/operationalMetrics.js)
+  - Scrape route: [`src/app/api/monitoring/metrics/route.js:29-45`](../../src/app/api/monitoring/metrics/route.js)
+  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:42-68`](../../tests/unit/1129-operational-metrics.test.js)
 - **Status**: **Met with Route Gaps** (see Section 4 for uninstrumented lifecycle routes).
 
 ---
@@ -90,15 +90,15 @@ Execution Result:
     - Standard non-admin API keys fail authorization with HTTP 401.
     - Anonymous access on loopback is rejected even if `REQUIRE_API_KEY=false`.
     - Returns `Cache-Control: no-store` on all responses (401, 200, 503).
-  - Documentation in [`docs/operations/operational-metrics.mdx:6-9`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L6-L9) specifies:
+  - Documentation in [`docs/operations/operational-metrics.mdx:6-9`](../../docs/operations/operational-metrics.mdx) specifies:
     - Scrape endpoint URL and supported credentials.
     - Instruction to keep credentials out of scrape URLs and Prometheus target labels.
     - Error handling: collection errors return HTTP 503 with a fixed message.
 - **Evidence References**:
-  - Route handler: [`src/app/api/monitoring/metrics/route.js:11-15`](../../orq-toty04-n1129-audit--8080d2100d6166fb/src/app/api/monitoring/metrics/route.js#L11-L15)
-  - Documentation: [`docs/operations/operational-metrics.mdx:6-9`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L6-L9)
-  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:33-40`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-operational-metrics.test.js#L33-L40)
-  - Auth test: [`tests/unit/operational-metrics-auth.test.js:1-75`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/operational-metrics-auth.test.js#L1-L75)
+  - Route handler: [`src/app/api/monitoring/metrics/route.js:11-15`](../../src/app/api/monitoring/metrics/route.js)
+  - Documentation: [`docs/operations/operational-metrics.mdx:6-9`](../../docs/operations/operational-metrics.mdx)
+  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:33-40`](../../tests/unit/1129-operational-metrics.test.js)
+  - Auth test: [`tests/unit/operational-metrics-auth.test.js:1-75`](../../tests/unit/operational-metrics-auth.test.js)
 - **Status**: **Met**
 
 ---
@@ -115,9 +115,9 @@ Execution Result:
     - No header values, bearer tokens, cookie strings, prompt text, user IDs, or API key values are copied into metrics or diagnostics.
     - The diagnostic ring buffer records only numeric timestamps, counts, and enum strings.
 - **Evidence References**:
-  - State setup: [`open-sse/services/operationalMetrics.js:10-33`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L10-L33)
-  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:42-68`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-operational-metrics.test.js#L42-L68) (verifies `expect(body).not.toContain("private-")`)
-  - Runtime test: [`tests/unit/operational-metrics-runtime.test.js`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/operational-metrics-runtime.test.js)
+  - State setup: [`open-sse/services/operationalMetrics.js:10-33`](../../open-sse/services/operationalMetrics.js)
+  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:42-68`](../../tests/unit/1129-operational-metrics.test.js) (verifies `expect(body).not.toContain("private-")`)
+  - Runtime test: [`tests/unit/operational-metrics-runtime.test.js`](../../tests/unit/operational-metrics-runtime.test.js)
 - **Status**: **Met with Verification Limitations** (tested in unit environment; live OS daemon restart untested).
 
 ---
@@ -134,9 +134,9 @@ Execution Result:
     - Pure string concatenation of pre-calculated in-memory numbers and cached health projections.
     - Does not trigger database queries or live provider health probes on scrape.
 - **Evidence References**:
-  - Sampler implementation: [`open-sse/services/operationalMetrics.js:188-195, 201-238`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L188-L195)
-  - Documentation statement: [`docs/operations/operational-metrics.mdx:50`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L50)
-  - Focused Tests: [`tests/unit/1129-operational-metrics.test.js`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-operational-metrics.test.js), [`tests/unit/1129-runtime-pressure.test.js`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-runtime-pressure.test.js)
+  - Sampler implementation: [`open-sse/services/operationalMetrics.js:188-195, 201-238`](../../open-sse/services/operationalMetrics.js)
+  - Documentation statement: [`docs/operations/operational-metrics.mdx:50`](../../docs/operations/operational-metrics.mdx)
+  - Focused Tests: [`tests/unit/1129-operational-metrics.test.js`](../../tests/unit/1129-operational-metrics.test.js), [`tests/unit/1129-runtime-pressure.test.js`](../../tests/unit/1129-runtime-pressure.test.js)
 - **Status**: **Met with Verification Limitations** (no formal benchmark profiling under high QPS saturation committed to repo).
 
 ---
@@ -151,9 +151,9 @@ Execution Result:
     - Updates `durindoor_event_loop_stalls_total` (counter) and `durindoor_event_loop_stall_max_seconds` (gauge).
     - Emits snapshot gauges: `durindoor_event_loop_last_stall_active_requests`, `durindoor_event_loop_last_stall_admission_failures`, and `durindoor_event_loop_last_stall_resident_memory_bytes`.
 - **Evidence References**:
-  - Implementation: [`open-sse/services/operationalMetrics.js:160-170, 220-238, 272-278`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L160-L170)
-  - Documentation: [`docs/operations/operational-metrics.mdx:40-43, 52`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L40-L43)
-  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:70-84`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-operational-metrics.test.js#L70-L84)
+  - Implementation: [`open-sse/services/operationalMetrics.js:160-170, 220-238, 272-278`](../../open-sse/services/operationalMetrics.js)
+  - Documentation: [`docs/operations/operational-metrics.mdx:40-43, 52`](../../docs/operations/operational-metrics.mdx)
+  - Focused Test: [`tests/unit/1129-operational-metrics.test.js:70-84`](../../tests/unit/1129-operational-metrics.test.js)
 - **Status**: **Met**
 
 ---
@@ -172,9 +172,9 @@ Execution Result:
     - When the clock returns to valid monotonic progression, `runtime.readingAvailable` is restored to `true` (`durindoor_runtime_sampler_reading_available 1`).
     - No additional logging occurs on recovery or on repeated unavailable readings.
 - **Evidence References**:
-  - Implementation: [`open-sse/services/operationalMetrics.js:26, 208-231`](../../orq-toty04-n1129-audit--8080d2100d6166fb/open-sse/services/operationalMetrics.js#L208-L231)
-  - Focused Test: [`tests/unit/1129-runtime-pressure.test.js:13-29`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/1129-runtime-pressure.test.js#L13-L29)
-  - Runtime Test: [`tests/unit/operational-metrics-runtime.test.js`](../../orq-toty04-n1129-audit--8080d2100d6166fb/tests/unit/operational-metrics-runtime.test.js)
+  - Implementation: [`open-sse/services/operationalMetrics.js:26, 208-231`](../../open-sse/services/operationalMetrics.js)
+  - Focused Test: [`tests/unit/1129-runtime-pressure.test.js:13-29`](../../tests/unit/1129-runtime-pressure.test.js)
+  - Runtime Test: [`tests/unit/operational-metrics-runtime.test.js`](../../tests/unit/operational-metrics-runtime.test.js)
 - **Status**: **Met**
 
 ---
@@ -184,7 +184,7 @@ Execution Result:
 While the core mechanics of all 6 criteria are merged and verified by unit tests, several concrete limitations and remaining gaps prevent marking issue #1129 as fully closed:
 
 1. **Route Lifecycle Coverage Exclusions**:
-   - As documented in [`docs/operations/operational-metrics.mdx:18`](../../orq-toty04-n1129-audit--8080d2100d6166fb/docs/operations/operational-metrics.mdx#L18), observation is explicitly applied to inference routes but excludes:
+   - As documented in [`docs/operations/operational-metrics.mdx:18`](../../docs/operations/operational-metrics.mdx), observation is explicitly applied to inference routes but excludes:
      - Root model listing (`/v1/models` and `/models/info`)
      - Provider plugin manifest (`/v1/provider-plugins`)
      - Image artifact file downloads

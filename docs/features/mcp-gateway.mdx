@@ -58,6 +58,8 @@ Gateway keys are separate secrets; they are not dashboard session cookies.
 
 Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, or `?key=`. A missing or inactive key returns JSON-RPC error `gateway key missing` or `gateway key invalid` with HTTP 401.
 
+Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
+
 `POST /api/mcp-gateway/keys` and `GET /api/mcp-gateway/keys/<id>/reveal` are local-request only (403 otherwise). The list endpoint never returns the raw secret. Create returns it once. Reveal exists for a signed-in local dashboard session, same as DurinDoor API keys.
 
 Grant the key to instances from the Keys page. Clients see tools from enabled, granted instances, filtered by any per-tool allow-list on the grant. Removing a grant revokes access right away. An empty grant list means the key authenticates but sees no tools.

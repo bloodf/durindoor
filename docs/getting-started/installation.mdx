@@ -21,7 +21,7 @@ npm install -g durindoor
 durindoor --host 127.0.0.1
 ```
 
-The CLI binary name is `durindoor`. Default port is 20128. Default bind is `0.0.0.0`. Use `--host 127.0.0.1` for loopback only, `--port` to change the port, `--no-browser` to skip opening the dashboard.
+The CLI binary name is `durindoor`. Default port is 20128. Default bind is `0.0.0.0`, which makes the dashboard and API reachable by other devices on the network. If `requireApiKey` is off, remote clients may reach endpoints that do not require login. Use `--host 127.0.0.1` for loopback only, or configure authentication and a firewall before exposing the CLI on a LAN. Use `--port` to change the port and `--no-browser` to skip opening the dashboard.
 
 </Tab>
 <Tab value="npx">

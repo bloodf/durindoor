@@ -95,6 +95,7 @@ function flattenToolInteractions(messages) {
       const parts = [];
       if (Array.isArray(msg.content)) {
         for (const c of msg.content) {
+          if (c == null) continue;
           if (c.type === CLAUDE_BLOCK.TOOL_USE) {
             parts.push(toolCallToText(c.name, c.input));
           } else if (c.type === OPENAI_BLOCK.TEXT || c.text) {
@@ -114,7 +115,7 @@ function flattenToolInteractions(messages) {
     // User messages: replace tool_result blocks with text, keep text + images.
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((c) =>
-      c.type === CLAUDE_BLOCK.TOOL_RESULT ?
+      c?.type === CLAUDE_BLOCK.TOOL_RESULT ?
       { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content, c.is_error === true) } :
       c
       );
@@ -382,6 +383,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         // model does not answer as if none was sent.
         let omittedImages = 0;
         for (const c of msg.content) {
+          if (c == null) continue;
           if (c.type === OPENAI_BLOCK.TEXT || c.text) {
             textParts.push(c.text || "");
           } else if (c.type === OPENAI_BLOCK.IMAGE_URL) {
@@ -421,7 +423,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         content = textParts.join("\n");
 
         // Check for tool_result blocks
-        const toolResultBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_RESULT);
+        const toolResultBlocks = msg.content.filter((c) => c?.type === CLAUDE_BLOCK.TOOL_RESULT);
         if (toolResultBlocks.length > 0) {
           toolResultBlocks.forEach((block) => {
             const text = serializeToolResultContent(block.content);
@@ -455,10 +457,10 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
       let toolUses = [];
 
       if (Array.isArray(msg.content)) {
-        const textBlocks = msg.content.filter((c) => c.type === OPENAI_BLOCK.TEXT);
+        const textBlocks = msg.content.filter((c) => c?.type === OPENAI_BLOCK.TEXT);
         textContent = textBlocks.map((b) => b.text).join("\n").trim();
 
-        const toolUseBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_USE);
+        const toolUseBlocks = msg.content.filter((c) => c?.type === CLAUDE_BLOCK.TOOL_USE);
         toolUses = toolUseBlocks;
       } else if (isString(msg.content)) {
         textContent = msg.content.trim();

@@ -1,16 +1,18 @@
 const { execFileSync } = require("child_process");
 const { getCliToken } = require("./api/client");
+const { getProbeHost } = require("./host");
 
 const STOP_MANAGER_SCRIPT = String.raw`
 const fs = require("fs");
 const http = require("http");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const port = Number(input.port);
+const host = input.host || "127.0.0.1";
 const token = typeof input.token === "string" ? input.token : "";
 if (!Number.isInteger(port) || port < 1 || port > 65535) process.exit(2);
 const body = JSON.stringify({ preserveDesiredState: input.preserveDesiredState === true });
 const req = http.request({
-  hostname: "127.0.0.1",
+  hostname: host,
   port,
   path: "/api/cli-tools/antigravity-mitm",
   method: "DELETE",
@@ -33,10 +35,13 @@ function stopMitmViaManagerSync(port, {
   nodePath = process.execPath,
   cliToken = getCliToken(),
   preserveDesiredState = true,
+  host = "127.0.0.1",
 } = {}) {
   try {
+    const input = { port, token: cliToken, preserveDesiredState };
+    if (host !== "127.0.0.1") input.host = getProbeHost(host);
     execFile(nodePath, ["-e", STOP_MANAGER_SCRIPT], {
-      input: JSON.stringify({ port, token: cliToken, preserveDesiredState }),
+      input: JSON.stringify(input),
       stdio: ["pipe", "ignore", "ignore"],
       timeout: 370000,
       windowsHide: true,

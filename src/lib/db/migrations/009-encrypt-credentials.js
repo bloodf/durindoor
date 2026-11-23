@@ -1,3 +1,4 @@
+import { encryptConnectionSecret } from "../helpers/connectionSecrets.js";
 // Migration 009 — encrypt plaintext credential fields on providerConnections.
 //
 // SEC-B-02: at-rest encryption for accessToken / refreshToken / apiKey /
@@ -17,7 +18,6 @@
 // db-quota-v8-migration tests seed providerConnections without `data`).
 
 import {
-  encryptField,
   isEncryptedBlob } from
 "../../crypto/columnCrypto.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
@@ -52,7 +52,7 @@ const migration = {
         const value = parsed[field];
         if (!isString(value) || value.length === 0) continue;
         if (isEncryptedBlob(value)) continue;
-        parsed[field] = encryptField(value, row.id);
+        parsed[field] = encryptConnectionSecret(value, row.id, field);
         dirty = true;
       }
       if (dirty) {

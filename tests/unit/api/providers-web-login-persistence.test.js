@@ -123,7 +123,7 @@ describe("web-login real persistence commit fence", () => {
     expect(sessionFromRequest(request("finish", {}, login.cookie))).toBeNull();
     expect(rows()).toHaveLength(1);
     expect(rows()[0].data).not.toContain("session.0=first; session.1=second; cf_clearance=clear");
-    expect(JSON.parse(rows()[0].data).apiKey).toMatchObject({ v: 1 });
+    expect(JSON.parse(rows()[0].data).apiKey).toMatchObject({ v: 2 });
     expect(await getProviderConnectionById(body.connection.id)).toMatchObject({
       name: "Account", authType: "cookie", apiKey: "session.0=first; session.1=second; cf_clearance=clear",
     });

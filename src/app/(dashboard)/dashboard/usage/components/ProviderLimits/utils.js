@@ -142,10 +142,24 @@ export function getConnectionLabel(connection) {
 }
 
 export function getConnectionQuotaRemaining(connection, quotaData) {
-  const quota = quotaData[connection.id]?.quotas?.[0];
-  if (!quota) return Number.POSITIVE_INFINITY;
-  if (isNumber(quota.remaining)) return quota.remaining;
-  return Number.POSITIVE_INFINITY;
+  const values = getUsableQuotaPercentages(quotaData[connection.id]?.quotas);
+  return values.length ? Math.max(...values) : Number.POSITIVE_INFINITY;
+}
+
+// Ignore unreported rows; a zero total alone does not establish depletion.
+function getUsableQuotaPercentages(quotas = []) {
+  return quotas.filter((quota) => quota && !quota.notReported && !quota.unlimited && (
+    Number.isFinite(quota.remainingPercentage) ||
+    (!quota.isCredits && Number.isFinite(quota.remaining)) ||
+    (Number.isFinite(quota.total) && quota.total > 0 && Number.isFinite(quota.used))
+  )).map(getRemainingPercentage).filter(Number.isFinite);
+}
+
+/** A connection is depleted when every reported usable pool is below the threshold. */
+export function isQuotaCollectionDepleted(quotas, threshold = DEPLETED_QUOTA_THRESHOLD) {
+  if (quotas?.some((quota) => quota?.unlimited)) return false;
+  const values = getUsableQuotaPercentages(quotas);
+  return values.length > 0 && values.every((value) => value <= threshold);
 }
 
 export function sortVisibleConnections(

@@ -69334,14 +69334,14 @@
       "reviewStatus": "pending",
       "reviewedBy": null,
       "requiredScenarioIds": [
-        "durin-ds-shell--full-dashboard-shell"
+        "previews-durin-ds-shell--full-dashboard-shell"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
         {
-          "id": "durin-ds-shell--full-dashboard-shell",
-          "storyId": "durin-ds-shell--full-dashboard-shell",
-          "runtimeArtifactId": "durin-ds-shell--full-dashboard-shell",
+          "id": "previews-durin-ds-shell--full-dashboard-shell",
+          "storyId": "previews-durin-ds-shell--full-dashboard-shell",
+          "runtimeArtifactId": "previews-durin-ds-shell--full-dashboard-shell",
           "axes": [
             "expanded",
             "text",
@@ -69349,7 +69349,7 @@
           ],
           "sourceHashes": {
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2",
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
             "src/shared/ui/components/Drawer.jsx": "20e954ee8222dec5fa2dc198a9d6f49e49d6d5427789a77d35bbdf1d956dec31"
@@ -69415,62 +69415,62 @@
       "reviewStatus": "pending",
       "reviewedBy": null,
       "requiredScenarioIds": [
-        "durin-ds-shell--header-with-page-title",
-        "durin-ds-shell--header-bare",
-        "durin-ds-shell--header-with-actions",
-        "durin-ds-shell--header-theme-toggle"
+        "previews-durin-ds-shell--header-with-page-title",
+        "previews-durin-ds-shell--header-bare",
+        "previews-durin-ds-shell--header-with-actions",
+        "previews-durin-ds-shell--header-theme-toggle"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
         {
-          "id": "durin-ds-shell--header-with-page-title",
-          "storyId": "durin-ds-shell--header-with-page-title",
-          "runtimeArtifactId": "durin-ds-shell--header-with-page-title",
+          "id": "previews-durin-ds-shell--header-with-page-title",
+          "storyId": "previews-durin-ds-shell--header-with-page-title",
+          "runtimeArtifactId": "previews-durin-ds-shell--header-with-page-title",
           "axes": [
             "icon"
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53"
           },
           "proposedSourceEvidence": "src/shared/ui/shell/Shell.stories.jsx meta title Durin DS/Shell export HeaderWithPageTitle resolves to durin-ds-shell--header-with-page-title; its actual production component parent reaches src/shared/ui/shell/Header.jsx#Header. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending."
         },
         {
-          "id": "durin-ds-shell--header-bare",
-          "storyId": "durin-ds-shell--header-bare",
-          "runtimeArtifactId": "durin-ds-shell--header-bare",
+          "id": "previews-durin-ds-shell--header-bare",
+          "storyId": "previews-durin-ds-shell--header-bare",
+          "runtimeArtifactId": "previews-durin-ds-shell--header-bare",
           "axes": [
             "graphical-source"
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53"
           },
           "proposedSourceEvidence": "src/shared/ui/shell/Shell.stories.jsx meta title Durin DS/Shell export HeaderBare resolves to durin-ds-shell--header-bare; its actual production component parent reaches src/shared/ui/shell/Header.jsx#Header. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending."
         },
         {
-          "id": "durin-ds-shell--header-with-actions",
-          "storyId": "durin-ds-shell--header-with-actions",
-          "runtimeArtifactId": "durin-ds-shell--header-with-actions",
+          "id": "previews-durin-ds-shell--header-with-actions",
+          "storyId": "previews-durin-ds-shell--header-with-actions",
+          "runtimeArtifactId": "previews-durin-ds-shell--header-with-actions",
           "axes": [
             "graphical-source"
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53"
           },
           "proposedSourceEvidence": "src/shared/ui/shell/Shell.stories.jsx meta title Durin DS/Shell export HeaderWithActions resolves to durin-ds-shell--header-with-actions; its actual production component parent reaches src/shared/ui/shell/Header.jsx#Header. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending."
         },
         {
-          "id": "durin-ds-shell--header-theme-toggle",
-          "storyId": "durin-ds-shell--header-theme-toggle",
-          "runtimeArtifactId": "durin-ds-shell--header-theme-toggle",
+          "id": "previews-durin-ds-shell--header-theme-toggle",
+          "storyId": "previews-durin-ds-shell--header-theme-toggle",
+          "runtimeArtifactId": "previews-durin-ds-shell--header-theme-toggle",
           "axes": [
             "theme-inversion",
             "theme-restoration",
@@ -69478,7 +69478,7 @@
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53"
           },
@@ -69588,14 +69588,14 @@
       "reviewStatus": "pending",
       "reviewedBy": null,
       "requiredScenarioIds": [
-        "durin-ds-shell--sidebar-collapsed"
+        "previews-durin-ds-shell--sidebar-collapsed"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
         {
-          "id": "durin-ds-shell--sidebar-collapsed",
-          "storyId": "durin-ds-shell--sidebar-collapsed",
-          "runtimeArtifactId": "durin-ds-shell--sidebar-collapsed",
+          "id": "previews-durin-ds-shell--sidebar-collapsed",
+          "storyId": "previews-durin-ds-shell--sidebar-collapsed",
+          "runtimeArtifactId": "previews-durin-ds-shell--sidebar-collapsed",
           "axes": [
             "collapsed",
             "icon",
@@ -69603,7 +69603,7 @@
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2"
           },
@@ -69668,18 +69668,18 @@
       "reviewStatus": "pending",
       "reviewedBy": null,
       "requiredScenarioIds": [
-        "durin-ds-shell--sidebar-collapsed",
-        "durin-ds-shell--sidebar-default",
-        "durin-ds-shell--sidebar-providers-active",
-        "durin-ds-shell--sidebar-token-saver-expanded",
-        "durin-ds-shell--sidebar-interactions"
+        "previews-durin-ds-shell--sidebar-collapsed",
+        "previews-durin-ds-shell--sidebar-default",
+        "previews-durin-ds-shell--sidebar-providers-active",
+        "previews-durin-ds-shell--sidebar-token-saver-expanded",
+        "previews-durin-ds-shell--sidebar-interactions"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
         {
-          "id": "durin-ds-shell--sidebar-collapsed",
-          "storyId": "durin-ds-shell--sidebar-collapsed",
-          "runtimeArtifactId": "durin-ds-shell--sidebar-collapsed",
+          "id": "previews-durin-ds-shell--sidebar-collapsed",
+          "storyId": "previews-durin-ds-shell--sidebar-collapsed",
+          "runtimeArtifactId": "previews-durin-ds-shell--sidebar-collapsed",
           "axes": [
             "collapsed",
             "text",
@@ -69687,7 +69687,7 @@
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2"
           },
@@ -69695,15 +69695,15 @@
           "expectedVisibleText": "Collapsed navigation"
         },
         {
-          "id": "durin-ds-shell--sidebar-default",
-          "storyId": "durin-ds-shell--sidebar-default",
-          "runtimeArtifactId": "durin-ds-shell--sidebar-default",
+          "id": "previews-durin-ds-shell--sidebar-default",
+          "storyId": "previews-durin-ds-shell--sidebar-default",
+          "runtimeArtifactId": "previews-durin-ds-shell--sidebar-default",
           "axes": [
             "text"
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2"
           },
@@ -69711,15 +69711,15 @@
           "expectedVisibleText": "Monitor"
         },
         {
-          "id": "durin-ds-shell--sidebar-providers-active",
-          "storyId": "durin-ds-shell--sidebar-providers-active",
-          "runtimeArtifactId": "durin-ds-shell--sidebar-providers-active",
+          "id": "previews-durin-ds-shell--sidebar-providers-active",
+          "storyId": "previews-durin-ds-shell--sidebar-providers-active",
+          "runtimeArtifactId": "previews-durin-ds-shell--sidebar-providers-active",
           "axes": [
             "text"
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2"
           },
@@ -69727,15 +69727,15 @@
           "expectedVisibleText": "Providers"
         },
         {
-          "id": "durin-ds-shell--sidebar-token-saver-expanded",
-          "storyId": "durin-ds-shell--sidebar-token-saver-expanded",
-          "runtimeArtifactId": "durin-ds-shell--sidebar-token-saver-expanded",
+          "id": "previews-durin-ds-shell--sidebar-token-saver-expanded",
+          "storyId": "previews-durin-ds-shell--sidebar-token-saver-expanded",
+          "runtimeArtifactId": "previews-durin-ds-shell--sidebar-token-saver-expanded",
           "axes": [
             "text"
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2"
           },
@@ -69743,9 +69743,9 @@
           "expectedVisibleText": "Token Saver"
         },
         {
-          "id": "durin-ds-shell--sidebar-interactions",
-          "storyId": "durin-ds-shell--sidebar-interactions",
-          "runtimeArtifactId": "durin-ds-shell--sidebar-interactions",
+          "id": "previews-durin-ds-shell--sidebar-interactions",
+          "storyId": "previews-durin-ds-shell--sidebar-interactions",
+          "runtimeArtifactId": "previews-durin-ds-shell--sidebar-interactions",
           "axes": [
             "expanded",
             "collapsed",
@@ -69754,7 +69754,7 @@
           ],
           "sourceHashes": {
             "src/shared/ui/shell/Sidebar.jsx": "67ff581ed577970772c409a06381c109f5d5b355948f976b80a3e6f0f119df53",
-            "src/shared/ui/shell/Shell.stories.jsx": "f8efca2f1a96937459d2eed80db03dd2bd2d020a6e2ab5e673f37f0f641889bc",
+            "src/shared/ui/shell/Shell.stories.jsx": "a5da5f1681f32175b31ba871d5a2a5a970f89bc7bc85547b5486eb0f135782aa",
             "src/shared/ui/shell/DashboardShell.jsx": "cfea8fd231404f64b551f296bed041f6e522e00c60c49ca57a10801777c27bd2",
             "src/shared/ui/shell/Header.jsx": "db0b1ec6281d1e42d4fa762aa14b99a47facc8c0d7ddeb2496b9b5ecd3dba6f2"
           },
@@ -103240,7 +103240,7 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "ffdd1face737b1e8590f2453bd298564381631bf1ee19f2765e5e4f729419767",
+    "builtIndexSha256": "83962cfb40892c171deeb71e1a6339232323ad54dcc644c46946b5a4c7703fc1",
     "sourceCensusSha256": "04cecc7a44f0b346f6df778ef97c5090b50cbc480ece65c34a6ee08c1e6efe83",
     "pendingRows": 442,
     "retainedApprovedRows": 199,

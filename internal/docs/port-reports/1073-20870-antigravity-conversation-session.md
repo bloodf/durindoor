@@ -37,7 +37,7 @@ DurinDoor does not use OmniRoute's `antigravityIdentity.ts` or ad-hoc translator
 
 ### 1. Native Antigravity Route (`FORMATS.ANTIGRAVITY` -> `FORMATS.ANTIGRAVITY`)
 - **Execution Path**:
-  In [chatCore.js](../../../open-sse/handlers/chatCore.js), when source and target formats are both `FORMATS.ANTIGRAVITY`, `passthrough` is true and translation is bypassed. Outbound normalization is performed by [AntigravityExecutor.transformRequest](../../../open-sse/executors/antigravity.js#L328-L329):
+  In [chatCore.js](../../../open-sse/handlers/chatCore.js), when source and target formats are both `FORMATS.ANTIGRAVITY`, `passthrough` is true and translation is bypassed. Outbound normalization is performed by [AntigravityExecutor.transformRequest](../../../open-sse/executors/antigravity.js):
   ```javascript
   const rawSessionId = body.request?.sessionId || resolveSessionId({
     headers: credentials?.rawHeaders,
@@ -55,14 +55,14 @@ DurinDoor does not use OmniRoute's `antigravityIdentity.ts` or ad-hoc translator
 
 ### 2. Translated Routes (OpenAI / Claude -> Antigravity)
 - **Execution Path**:
-  - In [translator/index.js](../../../open-sse/translator/index.js#L164-L179), before format conversion strips envelope fields or client metadata:
+  - In [translator/index.js](../../../open-sse/translator/index.js), before format conversion strips envelope fields or client metadata:
     ```javascript
     const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
     if (credentials) {
       credentials._clientSessionId = clientSessionId;
     }
     ```
-  - In [translator/request/openai-to-gemini.js](../../../open-sse/translator/request/openai-to-gemini.js#L436,L478):
+  - In translator/request/openai-to-gemini.js:
     Both `wrapInCloudCodeEnvelope` (for Gemini-family models) and `wrapInCloudCodeEnvelopeForClaude` (for Claude models on Antigravity) set:
     ```javascript
     sessionId: toNumericSessionId(credentials?._clientSessionId) ||
@@ -72,15 +72,15 @@ DurinDoor does not use OmniRoute's `antigravityIdentity.ts` or ad-hoc translator
   - `captureSessionId` extracts the conversation ID from explicit headers (`x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, `x-client-request-id`), body fields (`prompt_cache_key`, `session_id`, `conversation_id`, `metadata.user_id`), or Claude Code metadata/headers.
   - If no client header/body key exists, `assistantTextSessionId` accumulates assistant content across prior turns and assigns a conversation-stable session.
   - `toNumericSessionId` hashes the string into Google Cloud Code's `-<uint64>` format (`crypto.createHash("sha256").update(v).digest().readBigUInt64BE(0) & 0x7fffffffffffffffn`).
-  - When [AntigravityExecutor.transformRequest](../../../open-sse/executors/antigravity.js#L328) runs, `body.request.sessionId` is already populated; the executor passes it through without re-resolving or falling back to the account. Parallel conversations on the same account produce distinct wire session IDs.
+  - When [AntigravityExecutor.transformRequest](../../../open-sse/executors/antigravity.js) runs, `body.request.sessionId` is already populated; the executor passes it through without re-resolving or falling back to the account. Parallel conversations on the same account produce distinct wire session IDs.
 
 ### 3. Retries and Stream Recovery
 - **In-stream empty retries**:
-  In [chatCore.js](../../../open-sse/handlers/chatCore.js#L1786-L1825), `createEmptyRetryStream` invokes `reexecute()`, which executes the identical `translatedBody`. The `request.sessionId` on `translatedBody` is reused without modification.
+  In [chatCore.js](../../../open-sse/handlers/chatCore.js), `createEmptyRetryStream` invokes `reexecute()`, which executes the identical `translatedBody`. The `request.sessionId` on `translatedBody` is reused without modification.
 - **Credential / token refresh retries**:
-  In [chatCore.js](../../../open-sse/handlers/chatCore.js#L1604-L1635), upon 401 refresh, `executeProvider()` re-runs with the immutable route and existing `translatedBody`. The session ID remains stable across OAuth token rotation.
+  In [chatCore.js](../../../open-sse/handlers/chatCore.js), upon 401 refresh, `executeProvider()` re-runs with the immutable route and existing `translatedBody`. The session ID remains stable across OAuth token rotation.
 - **Historical thinking recovery retries**:
-  In [chatCore.js](../../../open-sse/handlers/chatCore.js#L1670-L1693), recovery re-runs `executeProvider()` with the same `translatedBody` and same session ID.
+  In [chatCore.js](../../../open-sse/handlers/chatCore.js), recovery re-runs `executeProvider()` with the same `translatedBody` and same session ID.
 
 ### 4. Streaming vs. Non-Streaming
 - In DurinDoor, request translation and session binding occur before execution (`chatCore.js` line 1379 `executeProvider()`).
@@ -88,7 +88,7 @@ DurinDoor does not use OmniRoute's `antigravityIdentity.ts` or ad-hoc translator
 - Downstream response processing in [streamingHandler.js](../../../open-sse/handlers/chatCore/streamingHandler.js) and [nonStreamingHandler.js](../../../open-sse/handlers/chatCore/nonStreamingHandler.js) does not run an autonomous server-tool re-dispatch loop (`chatCore/nonStreamingResponse.ts` `followUpLeg` in OmniRoute does not exist in DurinDoor). DurinDoor delivers tool calls to the client directly. Thus, the follow-up re-translation regression present in OmniRoute does not occur here.
 
 ### 5. Locally Pinned Per-Conversation IDs vs. Selected Fallback
-DurinDoor's [resolveSessionIdWithProvenance](../../../open-sse/utils/sessionManager.js#L209-L217) explicitly distinguishes conversation evidence from fallback:
+DurinDoor's [resolveSessionIdWithProvenance](../../../open-sse/utils/sessionManager.js) explicitly distinguishes conversation evidence from fallback:
 1. **Client-Provided Evidence**:
    - Matches client conversation fields (`conversation_id`, `session_id`, `prompt_cache_key`, `metadata.user_id`, or headers).
    - Provenance is marked `{ requestScoped: false }`.

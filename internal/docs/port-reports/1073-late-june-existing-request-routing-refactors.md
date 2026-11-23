@@ -53,16 +53,16 @@ PR `#4477` moved these closures into `open-sse/handlers/chatCore/serviceTier.ts`
 
 DurinDoor does not define inline Codex closures or recursive payload resolvers in `chatCore.js`. Instead, service-tier handling in DurinDoor is model-modifier-driven and provider-scoped:
 
-- **Provider qualification**: [`open-sse/config/serviceTier.js`](../../../open-sse/config/serviceTier.js#L27-L34) exports `supportsServiceTier(providerOrAlias)`, restricting `service_tier` to `SERVICE_TIER_PROVIDER_IDS = new Set(["openai", "codex"])`. For all other providers, parenthesized tier suffixes remain part of the opaque model ID.
-- **Model modifier parsing**: [`open-sse/translator/concerns/thinkingSuffix.js`](../../../open-sse/translator/concerns/thinkingSuffix.js#L63-L77) implements `parseModelModifiers`, parsing `(fast)` to `serviceTier: "priority"` and `(standard)` to `serviceTier: "default"` only when `tierApplies(provider)` is true.
-- **Outbound body assignment**: In [`open-sse/handlers/chatCore.js`](../../../open-sse/handlers/chatCore.js#L864-L867), explicit service tiers are assigned to `translatedBody.service_tier` only on supported transports:
+- **Provider qualification**: [`open-sse/config/serviceTier.js`](../../../open-sse/config/serviceTier.js) exports `supportsServiceTier(providerOrAlias)`, restricting `service_tier` to `SERVICE_TIER_PROVIDER_IDS = new Set(["openai", "codex"])`. For all other providers, parenthesized tier suffixes remain part of the opaque model ID.
+- **Model modifier parsing**: [`open-sse/translator/concerns/thinkingSuffix.js`](../../../open-sse/translator/concerns/thinkingSuffix.js) implements `parseModelModifiers`, parsing `(fast)` to `serviceTier: "priority"` and `(standard)` to `serviceTier: "default"` only when `tierApplies(provider)` is true.
+- **Outbound body assignment**: In [`open-sse/handlers/chatCore.js`](../../../open-sse/handlers/chatCore.js), explicit service tiers are assigned to `translatedBody.service_tier` only on supported transports:
   ```javascript
   if (supportsServiceTier(provider) && parsedModel.serviceTier &&
       (finalFormat === FORMATS.OPENAI || finalFormat === FORMATS.OPENAI_RESPONSES)) {
     translatedBody.service_tier = parsedModel.serviceTier;
   }
   ```
-- **Checked-in fixture evidence**: [`tests/unit/provider-service-tier-suffix-scope.test.js`](../../../tests/unit/provider-service-tier-suffix-scope.test.js#L53-L177) verifies `supportsServiceTier` and `parseModelModifiers`, ensuring `model(fast)` maps `serviceTier: "priority"` for `codex` and `openai` while leaving suffixes on other providers untouched.
+- **Checked-in fixture evidence**: [`tests/unit/provider-service-tier-suffix-scope.test.js`](../../../tests/unit/provider-service-tier-suffix-scope.test.js) verifies `supportsServiceTier` and `parseModelModifiers`, ensuring `model(fast)` maps `serviceTier: "priority"` for `codex` and `openai` while leaving suffixes on other providers untouched.
 
 ### Disposition
 
@@ -117,14 +117,14 @@ Due to merge churn in OmniRoute's `release/v3.8.33` branch, four leaves had been
 ### Current local ownership and fixture evidence
 
 - **Key health / rotation**: DurinDoor does not contain `apiKeyRotator`, multi-key connection arrays, or in-memory key health state machines inside `chatCore.js`. Connection lifecycle and failure recovery in DurinDoor are managed at the connection/account boundary via `open-sse/services/accountFallback.js` and provider executors.
-- **Target format and transport resolution**: In DurinDoor, format resolution is not a detached 3-tier fallback; it is tightly coupled with runtime transport resolution. [`open-sse/handlers/chatCore.js`](../../../open-sse/handlers/chatCore.js#L171-L207) defines `resolveRequestTransport`:
+- **Target format and transport resolution**: In DurinDoor, format resolution is not a detached 3-tier fallback; it is tightly coupled with runtime transport resolution. [`open-sse/handlers/chatCore.js`](../../../open-sse/handlers/chatCore.js) defines `resolveRequestTransport`:
   - Determines `forceOpenCodeMuseResponses` via `isOpenCodeMuse`.
   - Checks `getModelSupportedFormats(alias, model)` and client tool constraints (e.g. `needsNativeServerTools`, `responsesClientsOnly`, `nativeMiniMax`).
-  - Calls `resolveTransport(provider, preferredFormat)` using provider and credential metadata from [`open-sse/services/provider.js`](../../../open-sse/services/provider.js#L135-L157).
+  - Calls `resolveTransport(provider, preferredFormat)` using provider and credential metadata from [`open-sse/services/provider.js`](../../../open-sse/services/provider.js).
   - Synthesizes runtime transports for custom OpenAI-compatible endpoints when needed.
 - **Checked-in fixture evidence**:
-  - [`tests/unit/ollama-claude-regression.test.js`](../../../tests/unit/ollama-claude-regression.test.js#L165-L180) and [`tests/unit/omniroute-missing-api-cloud-providers.test.js`](../../../tests/unit/omniroute-missing-api-cloud-providers.test.js#L170-L175) verify `getTargetFormat` and credential override behavior.
-  - [`tests/unit/public-route-tool-conformance-1089.test.js`](../../../tests/unit/public-route-tool-conformance-1089.test.js#L90-L130) verifies endpoint format detection and tool conformance.
+  - [`tests/unit/ollama-claude-regression.test.js`](../../../tests/unit/ollama-claude-regression.test.js) and [`tests/unit/omniroute-missing-api-cloud-providers.test.js`](../../../tests/unit/omniroute-missing-api-cloud-providers.test.js) verify `getTargetFormat` and credential override behavior.
+  - [`tests/unit/public-route-tool-conformance-1089.test.js`](../../../tests/unit/public-route-tool-conformance-1089.test.js) verifies endpoint format detection and tool conformance.
 
 ### Disposition
 
@@ -155,9 +155,9 @@ PR `#4571` extracted 11 module-scoped functions from OmniRoute's `chatCore.ts` i
 
 DurinDoor already decomposes these responsibilities across focused, cohesive handler modules:
 - **Skills format**: DurinDoor contains no skills injection or skill-provider mapping subsystem.
-- **Non-streaming and SSE response reading**: Owned by [`open-sse/handlers/chatCore/nonStreamingHandler.js`](../../../open-sse/handlers/chatCore/nonStreamingHandler.js#L559) (`handleNonStreamingResponse`) and [`open-sse/handlers/chatCore/sseToJsonHandler.js`](../../../open-sse/handlers/chatCore/sseToJsonHandler.js#L424) (`handleForcedSSEToJson`), covered by [`tests/unit/nonstream-json-contracts-10258.test.js`](../../../tests/unit/nonstream-json-contracts-10258.test.js), [`tests/unit/forced-sse-responses-json.test.js`](../../../tests/unit/forced-sse-responses-json.test.js), and [`tests/unit/sse-to-json-claude-compat.test.js`](../../../tests/unit/sse-to-json-claude-compat.test.js).
-- **Streaming error results**: DurinDoor has no semaphore capacity errors in `chatCore.js`. Error normalization and sanitized error results are owned by [`open-sse/utils/error.js`](../../../open-sse/utils/error.js#L23-L65) (`buildErrorBody`, `createErrorResult`) and streaming handlers, covered by [`tests/unit/error-sanitize.test.js`](../../../tests/unit/error-sanitize.test.js) and [`tests/unit/stream-abort-inband-error.test.js`](../../../tests/unit/stream-abort-inband-error.test.js).
-- **Stream finalization**: Stream controller lifecycle and cancellation cleanup are owned by [`open-sse/utils/streamHandler.js`](../../../open-sse/utils/streamHandler.js) (`createStreamController`) and [`open-sse/handlers/chatCore/streamingHandler.js`](../../../open-sse/handlers/chatCore/streamingHandler.js#L112), covered by [`tests/unit/chat-stream-success-lifecycle.test.js`](../../../tests/unit/chat-stream-success-lifecycle.test.js).
+- **Non-streaming and SSE response reading**: Owned by [`open-sse/handlers/chatCore/nonStreamingHandler.js`](../../../open-sse/handlers/chatCore/nonStreamingHandler.js) (`handleNonStreamingResponse`) and [`open-sse/handlers/chatCore/sseToJsonHandler.js`](../../../open-sse/handlers/chatCore/sseToJsonHandler.js) (`handleForcedSSEToJson`), covered by [`tests/unit/nonstream-json-contracts-10258.test.js`](../../../tests/unit/nonstream-json-contracts-10258.test.js), [`tests/unit/forced-sse-responses-json.test.js`](../../../tests/unit/forced-sse-responses-json.test.js), and [`tests/unit/sse-to-json-claude-compat.test.js`](../../../tests/unit/sse-to-json-claude-compat.test.js).
+- **Streaming error results**: DurinDoor has no semaphore capacity errors in `chatCore.js`. Error normalization and sanitized error results are owned by [`open-sse/utils/error.js`](../../../open-sse/utils/error.js) (`buildErrorBody`, `createErrorResult`) and streaming handlers, covered by [`tests/unit/error-sanitize.test.js`](../../../tests/unit/error-sanitize.test.js) and [`tests/unit/stream-abort-inband-error.test.js`](../../../tests/unit/stream-abort-inband-error.test.js).
+- **Stream finalization**: Stream controller lifecycle and cancellation cleanup are owned by [`open-sse/utils/streamHandler.js`](../../../open-sse/utils/streamHandler.js) (`createStreamController`) and [`open-sse/handlers/chatCore/streamingHandler.js`](../../../open-sse/handlers/chatCore/streamingHandler.js), covered by [`tests/unit/chat-stream-success-lifecycle.test.js`](../../../tests/unit/chat-stream-success-lifecycle.test.js).
 - **Cache usage metadata**: DurinDoor handles token usage logging directly through unified accounting pipelines without wrapping payloads in `_omniroute` metadata.
 - **Executor client headers**: Headers passed to executors are normalized via [`open-sse/utils/clientDetector.js`](../../../open-sse/utils/clientDetector.js) and executor implementations in [`open-sse/executors/base.js`](../../../open-sse/executors/base.js) at the executor boundary.
 

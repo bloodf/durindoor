@@ -1,3 +1,4 @@
+import { invalidClassifierVerdict } from "./classifierVerdict.js";
 import { encodeClaudeThinking } from "../../translator/concerns/claudeThinkingEnvelope.js";
 import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
@@ -763,6 +764,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       );
       if (claudeCompat) translatedResponse = stripClaudeThinking(translatedResponse);
     }
+    if (invalidClassifierVerdict(sourceFormat, body, translatedResponse)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
     // Chat clients get the completion as-is, so restore request-side tool-name
     // aliases the way the streaming and forced-SSE paths do (#1433).
     if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(translatedResponse, toolNameMap);

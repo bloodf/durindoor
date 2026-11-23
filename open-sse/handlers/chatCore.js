@@ -1138,7 +1138,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // token-saver/caveman/ponytail/pxpipe processing, immediately before the
   // upstream call, so low-cost combo fallbacks can't return empty content that
   // breaks the classifier. Only `auto` short-circuits (requires the classifier
-  // marker); `always` widens error-path default-allow + response sanitization
+  // marker); `always` widens response sanitization
   // but still dispatches upstream, so a healthy upstream is not bypassed.
   if (claudeClassifierCompat === "auto" && shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
     const classifierFormat = detectClassifierFormat(body);
@@ -1559,12 +1559,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
     const errMsg = formatProviderError(error, provider, requestedModel, failureStatus);
-    if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
-      log?.warn?.("CHAT", `classifier upstream unavailable, default-allowing: ${errMsg}`);
-      streamController.handleComplete();
-      finishTimeline("ok", "info", "classifier default-allow after upstream error");
-      return buildDefaultAllowClaudeMessage(detectClassifierFormat(body));
-    }
+
     if (log?.errorLine) {
       log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
@@ -1800,12 +1795,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       }
     }
     const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
-    if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
-      log?.warn?.("CHAT", `classifier upstream returned error, default-allowing: ${errMsg}`);
-      streamController.handleComplete();
-      finishTimeline("ok", "info", "classifier default-allow after upstream error");
-      return buildDefaultAllowClaudeMessage(detectClassifierFormat(body));
-    }
+
     if (log?.errorLine) {
       const urlStr = providerUrl ? `\n    URL: ${maskSensitiveUrl(providerUrl)}` : "";
       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
@@ -2072,7 +2062,7 @@ export function detectClassifierFormat(body) {
 // Detect Claude Code auto-mode classifier requests: security-monitor system
 // prompt OR '</block>' stop_sequence. Only honored for Claude clients, and only
 // when the classifier marker is present — `always` widens response sanitization
-// (handled in the stream/non-stream handlers) and the error-path default-allow,
+// (handled in the stream/non-stream handlers),
 // NOT auto-mode short-circuit eligibility.
 export function shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat) {
   if (claudeClassifierCompat === "off") return false;

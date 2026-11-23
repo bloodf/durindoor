@@ -8,6 +8,7 @@ import {
   clearAccountError,
 } from "../services/auth.js";
 import { getModelInfo } from "../services/model.js";
+import { getSettings } from "@/lib/localDb";
 import { handleModerationsCore } from "open-sse/handlers/moderationsCore.js";
 import { runWithModelFallback } from "open-sse/services/modelFallback.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -16,6 +17,8 @@ import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+import { modelKindError } from "./modelKind.js";
 
 /**
  * Handle moderations request — OpenAI-compatible /v1/moderations passthrough.
@@ -72,6 +75,8 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const kindError = await modelKindError(provider, model, await getSettings(), "moderation");
+  if (kindError) return kindError;
   /** Record the core receipt without consuming the response or assuming free service. */
   const recordSuccess = (result, credentials) => recordApiKeyUsageForResponse(apiKey, result.response, {
     ...result.accounting,
@@ -104,7 +109,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log, signal: request.signal });
+    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log, signal: request.signal, onRequestSuccess: async () => clearAccountError(credentials.connectionId, credentials, model) });
     if (result.success) return recordSuccess(result, credentials);
     if (request.signal?.aborted || result.status === 499) {
       return result.response || errorResponse(499, result.error || "Moderation request aborted");
@@ -156,6 +161,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
 
     if (result.success) return recordSuccess(result, credentials);
 
+    if (result.status === HTTP_STATUS.BAD_REQUEST) return result.response;
     // Client abort: return 499 without cooling down the account or trying fallbacks.
     if (request.signal?.aborted || result.status === 499) {
       return result.response || errorResponse(499, result.error || "Moderation request aborted");

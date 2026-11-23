@@ -3,7 +3,7 @@ import { getApiKeyByKey, getSettings, validateApiKey, validateGatewayKey } from 
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
-import { hasExactRequestOrigin as hasTrustedRequestOrigin } from "@/lib/auth/requestOrigin";
+import { originAbsentOrSame } from "@/lib/auth/requestOrigin";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import { checkLock, getClientIp, recordFail, recordSuccess } from "@/lib/auth/loginLimiter.js";
 
@@ -185,7 +185,7 @@ function isLoopbackPeer(request) {
 
 // Share the login/auth routes' explicit public-origin convention for TLS
 // terminators, while retaining an explicit Origin requirement for local proofs.
-export function hasExactRequestOrigin(request) {
+export function originPresentAndSame(request) {
   const rawOrigin = request.headers.get("origin");
   if (!rawOrigin || !request.headers.get("host")) return false;
   try {
@@ -196,13 +196,15 @@ export function hasExactRequestOrigin(request) {
     // Invalid login configuration cannot establish a trusted login origin.
     // The shared helper still rejects malformed request Origins below.
   }
-  return hasTrustedRequestOrigin(request);
+  return Boolean(request.headers.get("origin")) && originAbsentOrSame(request);
 }
+// Kept for existing test fixtures and out-of-scope integrations.
+export const hasExactRequestOrigin = originPresentAndSame;
 
 /**
  * True when the request carries an Origin that is NOT this server's own.
  *
- * The inverse of {@link hasExactRequestOrigin} for the credential-free local
+ * The inverse of {@link originPresentAndSame} for the credential-free local
  * case: a browser always attaches an Origin to a cross-origin POST, while
  * curl, the CLI, and MCP stdio clients attach none. Treating "absent" as
  * foreign would lock out exactly the same-machine agents the no-key path
@@ -211,7 +213,7 @@ export function hasExactRequestOrigin(request) {
  */
 function hasForeignRequestOrigin(request) {
   if (!request.headers.get("origin")) return false;
-  return !hasExactRequestOrigin(request);
+  return !originPresentAndSame(request);
 }
 
 // DNS rebinding keeps the loopback socket (and trusted peer headers) while the
@@ -236,7 +238,7 @@ export function isLocalRequest(request) {
 }
 
 function isPublicLlmApi(pathname) {
-  return pathname === "/backend-api/codex/alpha/search" || PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return pathname === "/backend-api/codex/alpha/search" || PUBLIC_PREFIXES.some((p) => matchesPrefix(pathname, p));
 }
 
 function extractApiKey(request) {
@@ -304,7 +306,7 @@ function isManagementChange(request) {
   if (!isSafeMethod(request)) return true;
   const decodedPathname = decodePathname(request.nextUrl.pathname);
   if (decodedPathname === null) return true;
-  return OAUTH_ACTION_PREFIXES.some((p) => decodedPathname.startsWith(p));
+  return OAUTH_ACTION_PREFIXES.some((p) => matchesPrefix(decodedPathname, p));
 }
 
 async function hasValidGatewayKey(request) {
@@ -329,7 +331,7 @@ async function canAccessPublicLlmApi(request) {
     (method === "GET" || method === "HEAD") &&
     (pathname === "/api/models" ||
       pathname === "/api/v1/models" ||
-      pathname.startsWith("/api/v1/models/"));
+      matchesPrefix(pathname, "/api/v1/models"));
   if (isModelListRead && (await hasValidToken(request))) return true;
   return false;
 }
@@ -350,16 +352,15 @@ export async function canAccessLocalOnlyRoute(request, routePath = decodePathnam
   if (await hasValidCliToken(request)) return true;
   // Tunnel controls accept an authenticated dashboard session on its own origin.
   if (["/api/tunnel/enable", "/api/tunnel/disable"].includes(request.nextUrl.pathname) &&
-      hasExactRequestOrigin(request) && await hasValidToken(request)) return true;
+      originPresentAndSame(request) && await hasValidToken(request)) return true;
   if (!isLocalRequest(request)) return false;
 
   const pathname = routePath;
   const method = String(request.method || "GET").toUpperCase();
   // Loopback identity is not browser authentication. Require the exact request
   // Origin for every unsafe mutation; machine-bound CLI callers passed above.
-  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !hasExactRequestOrigin(request)) return false;
-  const isMitmMutation = (pathname === "/api/cli-tools/antigravity-mitm"
-      || pathname.startsWith("/api/cli-tools/antigravity-mitm/"))
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !originPresentAndSame(request)) return false;
+  const isMitmMutation = matchesPrefix(pathname, "/api/cli-tools/antigravity-mitm")
     && method !== "GET";
   if (isMitmMutation) {
     // Loopback and same-OS-user ownership are not authentication: a local
@@ -428,6 +429,12 @@ function decodePathname(pathname) {
   }
 }
 
+export function matchesPrefix(path, prefix) {
+  if (prefix.endsWith("/")) return path.startsWith(prefix);
+  const normalized = prefix;
+  return path === normalized || path.startsWith(`${normalized}/`);
+}
+
 /**
  * Match exact management leaves as Next resolves them. Decode once so encoded
  * route spellings cannot bypass auth; malformed encoding fails closed.
@@ -441,7 +448,7 @@ function isManagementApi(pathname) {
   const decodedPathname = decodePathname(pathname);
   if (decodedPathname === null) return true;
   if (MANAGEMENT_API_EXACT_PATHS.includes(decodedPathname)) return true;
-  return MANAGEMENT_API_PATHS.some((p) => decodedPathname === p || decodedPathname.startsWith(`${p}/`));
+  return MANAGEMENT_API_PATHS.some((p) => matchesPrefix(decodedPathname, p));
 }
 
 /**
@@ -591,11 +598,11 @@ async function canUseApiKeyForManagement(request) {
 }
 
 function isMcpControlPath(pathname) {
-  return pathname === "/api/mcp/control" || pathname.startsWith("/api/mcp/control/");
+  return matchesPrefix(pathname, "/api/mcp/control");
 }
 
 function isPxpipePath(pathname) {
-  return pathname === "/api/pxpipe" || pathname.startsWith("/api/pxpipe/");
+  return matchesPrefix(pathname, "/api/pxpipe");
 }
 
 async function canAccessPxpipeRoute(request) {
@@ -629,12 +636,28 @@ function isPublicApi(pathname, method = "GET") {
     }
     return true;
   }
-  return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return PUBLIC_API_PATHS.some((p) => matchesPrefix(pathname, p));
+}
+
+function classifyRoutePolicy(pathname, method = "GET") {
+  if (isMcpControlPath(pathname)) return "mcp-control";
+  if (isPxpipePath(pathname)) return "pxpipe";
+  if (isPublicApi(pathname, method)) return "public";
+  if (ALWAYS_PROTECTED.some((prefix) => matchesPrefix(pathname, prefix))) return "always-protected";
+  if (LOCAL_ONLY_PATHS.some((prefix) => matchesPrefix(pathname, prefix))) return "local-only";
+  if (["/api/mcp-gateway", "/api/mcp-gateway/sse", "/api/mcp-gateway/message"].includes(pathname)) return "gateway-key";
+  if (gatewayOauthLeaf(pathname) === "client-metadata") return "public";
+  if (gatewayOauthLeaf(pathname) === "callback") return "session";
+  if (isManagementApi(pathname)) return "management";
+  return "session";
 }
 
 export const __test__ = {
   isLocalRequest,
   hasExactRequestOrigin,
+  originPresentAndSame,
+  matchesPrefix,
+  classifyRoutePolicy,
   isPublicLlmApi,
   extractApiKey,
   extractApiKeyCandidates,
@@ -709,14 +732,14 @@ export async function proxy(request) {
   // Local-only gate for spawn-capable / host-secret routes.
   // /api/mcp/control is exempt: it is an authenticated management MCP endpoint
   // and must use the same dashboard JWT / CLI auth as the other dashboard APIs.
-  if (!isMcpControlPath(routePath) && LOCAL_ONLY_PATHS.some((p) => routePath.startsWith(p))) {
+  if (!isMcpControlPath(routePath) && LOCAL_ONLY_PATHS.some((p) => matchesPrefix(routePath, p))) {
     if (!(await canAccessLocalOnlyRoute(request, routePath))) {
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
     }
   }
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
-  if (ALWAYS_PROTECTED.some((p) => routePath.startsWith(p))) {
+  if (ALWAYS_PROTECTED.some((p) => matchesPrefix(routePath, p))) {
     if (await hasValidCliToken(request) || await hasValidToken(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -742,7 +765,7 @@ export async function proxy(request) {
   if (isPublicLlmApi(routePath)) {
     const method = String(request.method || "GET").toUpperCase();
     const isModelListRead = (method === "GET" || method === "HEAD") &&
-      (routePath === "/api/models" || routePath === "/api/v1/models" || routePath.startsWith("/api/v1/models/"));
+      (routePath === "/api/models" || matchesPrefix(routePath, "/api/v1/models"));
     const hasLegacyKeyCandidate = extractApiKeyCandidates(request)
       .some((apiKey) => /^sk-[0-9a-f]{8}$/i.test(apiKey));
     if (!isLocalRequest(request) && hasLegacyKeyCandidate && !(await hasValidCliToken(request)) &&

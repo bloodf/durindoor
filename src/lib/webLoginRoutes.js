@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { canAccessManagementApi, isOperatorRequest, hasExactRequestOrigin } from "@/dashboardGuard";
+import { requireSameOrigin } from "@/lib/auth/requireSameOrigin";
 import { createProvider } from "./providerRouteHandlers";
 import { isString } from "@/shared/utils/typeChecks";
 import {
@@ -18,7 +19,8 @@ function json(body, status = 200, cookie) {
 export async function handleWebLogin(request, action) {
   if (isIsolatedLoginRequest(request)) return json({ error: "Dashboard origin required" }, 403);
   if (!(await canAccessManagementApi(request)) || !(await isOperatorRequest(request))) return json({ error: "Operator access required" }, 403);
-  if (request.headers.get("origin") && !hasExactRequestOrigin(request)) return json({ error: "Cross-origin request denied" }, 403);
+  const originDenied = await requireSameOrigin(request, { isSameOrigin: hasExactRequestOrigin });
+  if (originDenied) return originDenied;
   const dashboardOrigin = requestOrigin(request);
   const loginOrigin = isolatedOrigin(dashboardOrigin);
   if (!loginOrigin || new URL(dashboardOrigin).hostname === new URL(loginOrigin).hostname) return json({ error: "Configure a distinct DURINDOOR_WEB_LOGIN_ORIGIN hostname" }, 503);

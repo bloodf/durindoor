@@ -12,6 +12,7 @@
 
 import { NextRequest } from "next/server";
 import { canAccessManagementApi, isOperatorRequest, hasExactRequestOrigin } from "@/dashboardGuard";
+import { requireSameOrigin } from "@/lib/auth/requireSameOrigin";
 import { getProviderConnectionById, updateProviderConnection } from "@/models";
 import { createProvider } from "@/lib/providerRouteHandlers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
@@ -90,7 +91,8 @@ async function readJsonObject(request, limit) {
 export async function handleCookieImportPairing(request) {
   if (isIsolatedLoginRequest(request)) return json({ error: "Dashboard origin required" }, 403);
   if (!(await canAccessManagementApi(request)) || !(await isOperatorRequest(request))) return json({ error: "Operator access required" }, 403);
-  if (request.headers.get("origin") && !hasExactRequestOrigin(request)) return json({ error: "Cross-origin request denied" }, 403);
+  const originDenied = await requireSameOrigin(request, { isSameOrigin: hasExactRequestOrigin });
+  if (originDenied) return originDenied;
   if (!hasAcceptableTransport(request)) return json({ error: "HTTPS is required" }, 403);
   const read = await readJsonObject(request, MAX_PAIRING_BODY_BYTES);
   if (read.error) return json({ error: read.error }, read.status);

@@ -1,3 +1,4 @@
+import { renameGeminiProperties } from "../translator/concerns/geminiPlaceholderArgs.js";
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
@@ -518,6 +519,7 @@ export class AntigravityExecutor extends BaseExecutor {
           }
           normalizeAntigravityBounds(cleanedParams);
           cleanedParams = compressToolSchema(cleanedParams, 0);
+          renameGeminiProperties(cleanedParams);
           allDeclarations.push({
             ...fn,
             name,

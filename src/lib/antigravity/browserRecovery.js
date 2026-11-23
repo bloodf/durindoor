@@ -189,9 +189,13 @@ async function runRealBrowser(job, profileDir) {
       args: ["--disable-breakpad", "--disable-crash-reporter", "--disable-dev-shm-usage"],
       timeout: job.deadlineMs || 60_000,
     });
+  } catch {
+    return { ok: false, category: "browser_unavailable" };
+  }
+  let captured = null;
+  try {
     const page = await browser.newPage();
     await page.setRequestInterception(true);
-    let captured = null;
     page.on("request", async (request) => {
       let decision;
       try {
@@ -203,20 +207,30 @@ async function runRealBrowser(job, profileDir) {
       } catch {
         decision = { action: "block", category: "network" };
       }
-      if (decision.action === "intercept") {
-        captured = { code: decision.code, state: decision.state };
-        await request.abort("blockedbyclient");
-        return;
+      try {
+        if (decision.action === "intercept") {
+          captured = { code: decision.code, state: decision.state };
+          await request.abort("blockedbyclient");
+          return;
+        }
+        if (decision.action !== "allow") {
+          await request.abort("blockedbyclient");
+          return;
+        }
+        await request.continue();
+      } catch {
+        // The page can close while the paused request is still settling.
       }
-      if (decision.action !== "allow") {
-        await request.abort("blockedbyclient");
-        return;
-      }
-      await request.continue();
     });
-    await page.goto(job.authorizeUrl, { timeout: job.deadlineMs || 60_000, waitUntil: "domcontentloaded" });
-    if (!captured || captured.state !== job.state) return { ok: false, category: "challenge" };
-    return { ok: true, code: captured.code, state: captured.state };
+    try {
+      await page.goto(job.authorizeUrl, { timeout: job.deadlineMs || 60_000, waitUntil: "domcontentloaded" });
+    } catch {
+      // Aborting the callback rejects navigation. A captured code is still the result.
+    }
+    if (captured?.code && captured.state === job.state) {
+      return { ok: true, code: captured.code, state: captured.state };
+    }
+    return { ok: false, category: "challenge" };
   } catch {
     return { ok: false, category: "browser_unavailable" };
   } finally {

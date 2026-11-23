@@ -138,7 +138,9 @@ export function deleteAntigravityRotationRows(db, connectionIds) {
 function blockCategory(row) {
   if (row.attemptState === "reauth" || row.errorCategory === "invalid_grant") return "reauth_required";
   if (row.errorCategory === "budget_exhausted") return "budget_exhausted";
-  if (row.attemptState === "uncertain" || row.attemptState === "dispatched") return "uncertain_dispatch";
+  if (row.attemptState === "uncertain") return "uncertain_dispatch";
+  // A dispatched lease that has not expired still belongs to its owner.
+  // Expiry rewrites the row to uncertain before this category is chosen.
   return "busy";
 }
 

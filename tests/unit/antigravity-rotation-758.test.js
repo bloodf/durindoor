@@ -1,3 +1,4 @@
+import { fork } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -126,6 +127,44 @@ describe("antigravity rotation lease", () => {
     const afterReset = acquireAntigravityLease(db, { connectionId: "budget-1", refreshToken: SAME_TOKEN, owner: "owner-after" });
     expect(afterReset.ok).toBe(true);
   });
+
+  it("keeps a killed worker's unexpired dispatch busy, then uncertain after expiry", async () => {
+    const db = await openDb();
+    const { currentDataFile } = await import("../../src/lib/db/paths.js");
+    const file = currentDataFile();
+    const child = fork(fileURLToPath(workerUrl), [], {
+      env: {
+        ...process.env,
+        AGY_HOLD: "1",
+        AGY_DB_FILE: file,
+        AGY_CONNECTION: "kill-1",
+        AGY_TOKEN: SAME_TOKEN,
+      },
+      execArgv: [],
+    });
+    const held = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("killed worker did not report the lease")), 15000);
+      child.once("message", (message) => {
+        clearTimeout(timer);
+        resolve(message);
+      });
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+    expect(held).toMatchObject({ phase: "held", ok: true });
+    child.kill("SIGKILL");
+    await new Promise((resolve) => child.once("exit", resolve));
+    const { acquireAntigravityLease } = await import("../../src/lib/antigravity/leaseSql.js");
+    const live = acquireAntigravityLease(db, { connectionId: "kill-1", refreshToken: SAME_TOKEN, owner: "survivor" });
+    expect(live).toMatchObject({ ok: false, category: "busy" });
+    expect(db.get(`SELECT attemptState FROM antigravityRefreshLeases WHERE connectionId = ?`, ["kill-1"]).attemptState).toBe("dispatched");
+    db.run(`UPDATE antigravityRefreshLeases SET leaseExpiresAt = 1 WHERE connectionId = ?`, ["kill-1"]);
+    const expired = acquireAntigravityLease(db, { connectionId: "kill-1", refreshToken: SAME_TOKEN, owner: "survivor-2" });
+    expect(expired).toMatchObject({ ok: false, category: "uncertain_dispatch" });
+    expect(db.get(`SELECT attemptState FROM antigravityRefreshLeases WHERE connectionId = ?`, ["kill-1"]).attemptState).toBe("uncertain");
+  });
 });
 
 describe("antigravity rotation storage", () => {
@@ -212,6 +251,52 @@ describe("antigravity browser boundary", () => {
     delete process.env.DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED;
     const unavailable = await runBrowserRecovery({ redirectUri: redirect, authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth" });
     expect(unavailable).toEqual({ ok: false, category: "browser_unavailable" });
+  });
+
+  it("returns an intercepted callback when the navigation aborts", async () => {
+    const redirect = "http://127.0.0.1:20127/callback";
+    const target = `${redirect}?code=one&state=two`;
+    vi.resetModules();
+    vi.doMock("puppeteer-extra", () => ({
+      default: {
+        use() {},
+        async launch() {
+          return {
+            async newPage() {
+              let handler;
+              return {
+                async setRequestInterception() {},
+                on(_event, next) { handler = next; },
+                async goto() {
+                  await handler({
+                    url: () => target,
+                    abort: async () => {},
+                    continue: async () => {},
+                  });
+                  throw new Error("net::ERR_BLOCKED_BY_CLIENT");
+                },
+              };
+            },
+            async close() {},
+          };
+        },
+      },
+    }));
+    vi.doMock("puppeteer-extra-plugin-stealth", () => ({ default: () => ({}) }));
+    const { runBrowserRecovery } = await import("../../src/lib/antigravity/browserRecovery.js");
+    const result = await runBrowserRecovery({
+      env: {
+        DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY: "1",
+        DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED: "1",
+      },
+      redirectUri: redirect,
+      authorizeUrl: target,
+      state: "two",
+    });
+    expect(result).toEqual({ ok: true, code: "one", state: "two" });
+    expect(JSON.stringify(result)).not.toContain(SECRET);
+    vi.doUnmock("puppeteer-extra");
+    vi.doUnmock("puppeteer-extra-plugin-stealth");
   });
 });
 

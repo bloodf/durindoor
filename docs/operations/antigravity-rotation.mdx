@@ -36,7 +36,7 @@ Sign-in still succeeds when Google omits a subject. Recovery enrollment and enab
 
 ## Scheduler
 
-The scheduler is off until `scheduler-enable`. Boot resumes it only when that flag is stored. One account runs per tick, through the same leased refresh. A missing expiry does not trigger an immediate login. Expired dispatched leases become `uncertain` on acquire and are not replayed.
+The scheduler is off until `scheduler-enable`. Boot resumes it only when that flag is stored. One account runs per tick, through the same leased refresh. A missing expiry does not trigger an immediate login. An unexpired `dispatched` lease stays `busy`, including after the holder process is killed. Expired dispatched leases become `uncertain` on acquire and are not replayed.
 
 ## Browser recovery
 
@@ -45,7 +45,7 @@ Recovery stays disabled unless both of these are set:
 - `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY=1`
 - `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED=1`
 
-Setting the flags is not proof of a sandbox or of egress control. Leave them unset. The real browser path does not type a password and does not click consent or solve a challenge. A callback is accepted only when scheme, host, port, and path match exactly and the URL has one `code` and one `state`. That match happens before DNS or any local connection. Any other host is resolved and allowed only when every address is public HTTPS on port 443 and the hostname is on the reviewed Google list.
+Setting the flags is not proof of a sandbox or of egress control. Leave them unset. The real browser path does not type a password and does not click consent or solve a challenge. A callback is accepted only when scheme, host, port, and path match exactly and the URL has one `code` and one `state`. The classifier makes that decision before DNS. Chrome request interception does not by itself stop a local TCP connection. Any other host is resolved and allowed only when every address is public HTTPS on port 443 and the hostname is on the reviewed Google list. That check is not an operating-system egress boundary.
 
 Chromium is not downloaded at install or at gateway startup. A missing browser disables recovery and does not stop the gateway. The pinned packages are `puppeteer@25.18.1` (Apache-2.0), `puppeteer-extra@3.3.6` (MIT), and `puppeteer-extra-plugin-stealth@2.11.2` (MIT). puppeteer-core records Chrome-for-Testing `157.0.8103.78`. This port does not install that build.
 

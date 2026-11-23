@@ -10,6 +10,7 @@ const os = require("os");
 const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
 const { waitServerReady } = require("./src/cli/waitServerReady");
+const { getProbeHost, getDisplayHost } = require("./src/cli/host");
 const { canBindLauncherPort } = require("./src/cli/utils/launcherProcess");
 const { collectAppPids, killAppPids, portOccupantToKill } = require("./src/lib/processScan");
 
@@ -151,9 +152,6 @@ function getLanIp() {
 }
 
 // Local URL stays "localhost"; warn separately when bound to all interfaces (network-exposed).
-function getDisplayHost() {
-  return host === DEFAULT_HOST ? "localhost" : host;
-}
 const MAX_PORT_ATTEMPTS = 10;
 
 // Parse arguments
@@ -226,7 +224,7 @@ function killAllAppProcesses(appPort, scanProcesses = true) {
     try {
       const dataDir = getAppDataDir();
       const mitmPidFile = path.join(dataDir, "mitm", ".mitm.pid");
-      const managerStopped = stopMitmViaManagerSync(appPort);
+      const managerStopped = stopMitmViaManagerSync(appPort, { host });
       if (!managerStopped && fs.existsSync(mitmPidFile)) {
         reject(new Error("MITM manager cleanup could not be confirmed; refusing to orphan system redirect state"));
         return;
@@ -455,7 +453,7 @@ function waitForWorkerIdentity(child, expectedNonce, timeoutMs = 30000) {
     const attempt = () => {
       if (settled) return;
       const req = http.request({
-        hostname: "127.0.0.1",
+        hostname: getProbeHost(host),
         port,
         path: "/api/health",
         method: "GET",
@@ -484,7 +482,7 @@ function waitForWorkerIdentity(child, expectedNonce, timeoutMs = 30000) {
 
 async function recoverStaleMitmOwnershipBeforeStartup() {
   if (!hasStaleMitmOwnership()) return;
-  if (stopMitmViaManagerSync(port, { preserveDesiredState: true })) return;
+  if (stopMitmViaManagerSync(port, { preserveDesiredState: true, host })) return;
 
   const nonce = crypto.randomBytes(24).toString("hex");
   const child = spawn(RUNTIME, buildNodeArgs(serverPath, process.env), {
@@ -504,7 +502,7 @@ async function recoverStaleMitmOwnershipBeforeStartup() {
   });
   try {
     await waitForWorkerIdentity(child, nonce);
-    if (!stopMitmViaManagerSync(port, { preserveDesiredState: true })) {
+    if (!stopMitmViaManagerSync(port, { preserveDesiredState: true, host })) {
       throw new Error("Recovery worker could not clean stale MITM ownership");
     }
     try { process.kill(child.pid, "SIGTERM"); } catch { /* already stopped */ }
@@ -544,7 +542,7 @@ async function showInterfaceMenu(latestVersion) {
 
   clearScreen();
 
-  const displayHost = getDisplayHost();
+  const displayHost = getDisplayHost(host);
 
   // Detect tunnel/local mode for server URL display
   let serverUrl;
@@ -589,7 +587,8 @@ function startServer(updatePromise) {
   // Swallow update-check failures: a network blip must never crash startup or
   // surface an unhandled rejection; the existing update menu simply sees null.
   const latestVersionPromise = Promise.resolve(updatePromise).catch(() => null);
-  const displayHost = getDisplayHost();
+  const displayHost = getDisplayHost(host);
+  // getDisplayHost formats wildcard and IPv6 addresses for URLs.
   const url = `http://${displayHost}:${port}/dashboard`;
   // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
   if (host === DEFAULT_HOST) {
@@ -638,7 +637,7 @@ function startServer(updatePromise) {
     if (isCleaningUp) return false;
     isCleaningUp = true;
     try {
-      const mitmStopped = stopMitmViaManagerSync(port);
+      const mitmStopped = stopMitmViaManagerSync(port, { host });
       if (!mitmStopped) {
         console.error("MITM manager cleanup could not be confirmed; leaving the app worker alive to preserve system redirect ownership.");
         isCleaningUp = false;
@@ -749,7 +748,7 @@ function startServer(updatePromise) {
     console.log(`\n🚀 ${DISPLAY_NAME} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
-    waitServerReady(port).then((ready) => {
+    waitServerReady(port, { host }).then((ready) => {
       if (recoveryInProgress || isShuttingDown) return;
       if (!ready) console.log("Server readiness could not be confirmed.");
       initTrayIcon({
@@ -762,7 +761,7 @@ function startServer(updatePromise) {
   }
 
   // Wait for server to be ready, then show interface menu loop + tray
-  waitServerReady(port).then(async (ready) => {
+  waitServerReady(port, { host }).then(async (ready) => {
     if (recoveryInProgress) return;
     if (!ready) {
       // Readiness failed after the deadline: the backend may have crashed and
@@ -936,7 +935,9 @@ function startServer(updatePromise) {
       server = spawnServer({ DURINDOOR_WORKER_NONCE: nonce });
       attachServerEvents();
       await waitForWorkerIdentity(server, nonce);
-      if (!stopMitmViaManagerSync(port, { preserveDesiredState: false })) {
+      const cleanupOptions = { preserveDesiredState: false };
+      if (host !== "127.0.0.1") cleanupOptions.host = host;
+      if (!stopMitmViaManagerSync(port, cleanupOptions)) {
         throw new Error("MITM manager cleanup could not be confirmed on the recovery worker");
       }
       console.error("MITM system state was cleaned and disabled; exiting instead of continuing the crash loop.");

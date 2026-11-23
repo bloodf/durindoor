@@ -118,8 +118,10 @@ export class ClaudeWebExecutor extends BaseExecutor {
       const prompt = messages.filter((m) => m.role === "user").map((m) => isString(m.content) ? m.content : Array.isArray(m.content) ? m.content.filter(isRecord).map((p) => isString(p.text) ? p.text : "").join("\n") : "").join("\n\n");
       if (!prompt.trim()) return { response: responseError(400, "No user message found in request"), url: BASE, headers: common, transformedBody: input.body };
       const model = input.model || "claude-sonnet-4-6";
-      const scope = `${input.credentials?.connectionId || cookie}:${orgId}:${model}`;
-      let conversationId = sessions.get(scope);
+      const apiKeyId = input.apiKeyId;
+      const connectionId = input.connectionId || input.credentials?.connectionId;
+      const scope = apiKeyId && connectionId ? JSON.stringify([apiKeyId, connectionId, orgId, model]) : null;
+      let conversationId = scope ? sessions.get(scope) : null;
       const assistantId = randomUUID();
       const payload = {
         prompt, model, timezone: "UTC", locale: "en-US", personalized_styles: [{ type: "default", key: "Default", name: "Normal", nameKey: "normal_style_name", prompt: "Normal\n", summary: "Default responses from Claude", summaryKey: "normal_style_summary", isDefault: true }],
@@ -134,7 +136,7 @@ export class ClaudeWebExecutor extends BaseExecutor {
       if (upstream.status === 429) return { response: responseError(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body };
       if (!upstream.ok || !upstream.body) return { response: responseError(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body };
       const response = await readSse(upstream, model, input.stream === true || input.body?.stream === true);
-      sessions.set(scope, conversationId);
+      if (scope) sessions.set(scope, conversationId);
       return { response, url, headers: common, transformedBody: input.body };
     } catch (error) {
       return { response: responseError(error?.status || 502, error?.message || (error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed")), url: BASE, headers: {}, transformedBody: input.body };

@@ -2241,6 +2241,8 @@ test("Image gen: signed URL bytes are cached and exposed via /v1/chatgpt-web/ima
           body: { messages: [{ role: "user", content: "draw kitten" }] },
           stream: false,
           credentials: { apiKey: "test" },
+          apiKeyId: "key-image-gen",
+          connectionId: "connection-image-gen",
           signal: AbortSignal.timeout(10_000),
           log: null,
         });
@@ -2267,6 +2269,7 @@ test("Image gen: signed URL bytes are cached and exposed via /v1/chatgpt-web/ima
         assert.deepEqual(entry.context, {
           conversationId: "conv-img-1",
           parentMessageId: "msg-1",
+          owner: { apiKeyId: "key-image-gen", connectionId: "connection-image-gen" },
         });
       } finally {
         tls.__setTlsFetchOverrideForTesting(null);
@@ -2319,6 +2322,7 @@ test("Image edit: cached OmniRoute image URL continues the saved ChatGPT convers
   const imageId = storeChatGptImage(Buffer.from([1, 2, 3]), "image/png", 30_000, {
     conversationId: "conv-image-1",
     parentMessageId: "msg-image-1",
+    owner: { apiKeyId: "key-image-edit", connectionId: "connection-image-edit" },
   });
   const imageUrl = `http://192.168.107.55:20128/v1/chatgpt-web/image/${imageId}`;
   const m = installMockFetch();
@@ -2335,6 +2339,8 @@ test("Image edit: cached OmniRoute image URL continues the saved ChatGPT convers
       },
       stream: false,
       credentials: { apiKey: "test" },
+      apiKeyId: "key-image-edit",
+      connectionId: "connection-image-edit",
       signal: AbortSignal.timeout(10_000),
       log: null,
     });

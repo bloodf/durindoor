@@ -2,72 +2,20 @@ import { cookies } from "next/headers";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasValidCliToken } from "@/dashboardGuard";
 import { isFunction } from "@/shared/utils/typeChecks.js";
+import { AUTH_CRITICAL_SETTING_KEYS, SECRET_SETTING_KEYS } from "@/lib/settings/settingsSchema.js";
 
 /**
  * Secrets that must never be mass-assigned from a PATCH body. Password
  * rotation re-injects `password` / `passwordSessionEpoch` only after
  * `currentPassword` verification in the settings route.
  */
-export const SECRET_SETTING_KEYS = Object.freeze([
-  "password",
-  "passwordSessionEpoch",
-  "mitmSudoEncrypted",
-  "postgresUrl",
-  // mfaSecret / mfaBackupCodes / mfaEnabled are managed exclusively by the
-  // /api/auth/mfa/* routes (which require the current password + a valid
-  // code). Allowing them through here would let any authenticated session
-  // silently disable the second factor or swap in an attacker-controlled
-  // secret (decolua/9router#4144).
-  "mfaEnabled",
-  "mfaSecret",
-  "mfaBackupCodes",
-  // Webhook destinations hold signing secrets; managed only via
-  // /api/settings/webhooks (dashboard JWT or CLI token).
-  "operatorWebhooks",
-]);
+export { SECRET_SETTING_KEYS, AUTH_CRITICAL_SETTING_KEYS };
 
 /**
  * Auth, SSO, proxy, and observability settings that must not be writable
  * via mass assignment unless the caller proves dashboard or CLI identity.
  * Keys absent from durindoor settings are intentionally omitted.
  */
-export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
-  /** Operator-authored instructions affect every request routed through a combo. */
-  "comboPrompts",
-  "exposeComboOnly",
-  "requireLogin",
-  /** API-key enforcement cannot be disabled through an unproved settings PATCH. */
-  "requireApiKey",
-  "authMode",
-  "oidcIssuerUrl",
-  "oidcClientId",
-  "oidcClientSecret",
-  "oidcScopes",
-  "oidcLoginLabel",
-  /** Who may become an operator through OIDC login (#2195). */
-  "oidcAllowedSubjects",
-  "oidcAllowedEmails",
-  "oidcAllowedDomains",
-  "tunnelDashboardAccess",
-  "enableObservability",
-  "enableSessionCapture",
-  "outboundProxyEnabled",
-  "outboundProxyUrl",
-  "outboundNoProxy",
-  /** Request-routing endpoints that can receive user prompts or traffic. */
-  "headroomEnabled",
-  "headroomUrl",
-  "headroomCompressUserMessages",
-  "mitmRouterBaseUrl",
-  /**
-   * Gates a default-allow short-circuit for Claude Code's auto-permission
-   * classifier (see open-sse/handlers/chatCore.js). An unproved caller must
-   * not be able to remotely widen what gets auto-approved.
-   */
-  "claudeClassifierCompat",
-  /** Opt-in LAN endpoint scanner (#2025); unproved callers must not enable it. */
-  "lanDiscoveryEnabled",
-]);
 
 /**
  * True when the caller may persist {@link AUTH_CRITICAL_SETTING_KEYS}.

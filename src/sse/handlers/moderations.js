@@ -1,4 +1,5 @@
 import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
@@ -141,6 +142,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
 
     const refreshedCredentials = await checkAndRefreshToken(provider, { ...credentials });
 
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
     const result = await handleModerationsCore({
       body,
       modelInfo: { provider, model },
@@ -148,7 +150,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
       log,
       signal: request.signal,
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       },
     });
 
@@ -159,7 +161,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
       return result.response || errorResponse(499, result.error || "Moderation request aborted");
     }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

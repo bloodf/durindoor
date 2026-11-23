@@ -962,8 +962,9 @@ export class CodexExecutor extends BaseExecutor {
     if (response.status === 429 && bodyText) {
       try {
         const json = JSON.parse(bodyText);
-        const err = json?.error;
-        if (err?.type === "usage_limit_reached") {
+        // CLIProxyAPI also accepts top-level and nested transport envelopes.
+        for (const err of [json?.error, json, json?.body?.error]) {
+          if (!isString(err?.type) || err.type.trim().toLowerCase() !== "usage_limit_reached") continue;
           const now = Date.now();
           let resetsAtMs = null;
           if (isNumber(err.resets_at) && err.resets_at > 0) {
@@ -990,6 +991,11 @@ export class CodexExecutor extends BaseExecutor {
     delete body._compact;
     const isCompact = requestContext?.compact === true;
     const responsesLite = usesResponsesLite(requestContext);
+    // Responses Lite normally serializes tool calls; delegation models need
+    // parallel calls to implement their max/ultra variants (OmniRoute 5ffa68e83544).
+    const delegationModel = /^(?:gpt-6\.1-(?:sol|terra)|gpt-5\.6-(?:sol|terra)|gpt-6-(?:astra|sol))(?:-ultra|\(ultra\))$/.test(model) ||
+      /^gpt-5\.6-luna(?:-max|\(max\))$/.test(model);
+    if (responsesLite && !delegationModel) body.parallel_tool_calls = false;
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)

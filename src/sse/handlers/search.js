@@ -1,4 +1,5 @@
 import { admit } from "../services/admission.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
@@ -268,6 +269,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(providerId, credentials);
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
     const result = await handleSearchCore({
       body: coreBody,
@@ -284,13 +286,13 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, searchLockKey, { provider: providerId, webSearch: true });
+        await clearAccountError(credentials.connectionId, credentials, searchLockKey, { provider: providerId, webSearch: true, ...dispatch });
       }
     });
 
     if (result.success) return recordSuccess(result, credentials);
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, searchLockKey, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, webSearch: true });
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, searchLockKey, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, webSearch: true, ...dispatch });
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

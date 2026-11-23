@@ -167,7 +167,7 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  * @param {string} connectionId
  * @param {object} newCredentials
  * @param {object} [options]
- * @param {object} [options.expectedRefreshContext] Sending session required for cookie rotation
+ * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
  * @returns {Promise<boolean>}
  */
 export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext } = {}) {
@@ -215,12 +215,15 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
-    const result = await updateProviderConnection(connectionId, updates);
+    const result = expectedRefreshContext ?
+    await updateProviderConnection(connectionId, updates, { expectedRefreshContext, returnCommitResult: true }) :
+    await updateProviderConnection(connectionId, updates);
+    const applied = expectedRefreshContext ? result?.applied === true : !!result;
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
-      success: !!result
+      success: applied
     });
-    return !!result;
+    return applied;
   } catch (error) {
     const details = { connectionId };
     if (!rotatedApiKey) details.error = error.message;
@@ -253,7 +256,9 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
   // CAS fingerprint of the credentials we are about to present. Matches the
   // request-path guard in refreshAndUpdateCredentials so a concurrent winner
   // that already rotated is not overwritten with reauth_required.
-  const expectedRefreshContext = providerRefreshContext(credentials);
+  const expectedRefreshContext = providerRefreshContext(
+    provider === "codex" && credentials._connection ? { ...credentials._connection, ...credentials } : credentials
+  );
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
   if (force || _shouldRefreshCredentials(provider, creds)) {
@@ -307,7 +312,10 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       };
 
       // Persist to DB (non-blocking path continues below)
-      await updateProviderCredentials(creds.connectionId, mergedCreds);
+      const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
+      const applied = await updateProviderCredentials(creds.connectionId, mergedCreds,
+        guardedCodex ? { expectedRefreshContext } : undefined);
+      if (guardedCodex && !applied) return creds;
 
       creds = {
         ...creds,

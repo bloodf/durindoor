@@ -11,7 +11,7 @@ import { PROVIDER_OAUTH } from "../providers/index.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { decodeMessage } from "../utils/cursorProtobuf.js";
 import { isNumber } from "../../src/shared/utils/typeChecks.js";
-import { shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -44,10 +44,11 @@ function getCursorModelsUrl() {
   return `${config.agentEndpoint.replace(/\/$/, "")}${config.modelsEndpoint}`;
 }
 
-function cacheKey(credentials) {
+function cacheKey(credentials, proxyUrl) {
   const seed = [
     credentials?.providerSpecificData?.machineId,
     credentials?.accessToken,
+    proxyUrl || "direct",
   ].filter(Boolean).join(":");
   if (!seed) return "cursor-anonymous";
   return crypto.createHash("sha256").update(`cursor:${seed}`).digest("hex");
@@ -96,21 +97,21 @@ export function parseCursorUsableModels(payload) {
  * agent.api5.cursor.sh is HTTP/2-only; Node fetch/undici cannot speak h2.
  * Unary GetUsableModels uses an unframed protobuf body (application/proto).
  */
-async function http2PostProto(url, headers, body, signal, timeoutMs) {
-  // Lazy import keeps this module loadable on runtimes without node:http2.
-  const http2 = (await import("http2")).default;
+async function http2PostProto(url, headers, body, signal, timeoutMs, proxyUrl) {
+  const client = await connectHttp2(url, { proxyUrl, timeoutMs, signal });
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
-    const client = http2.connect(`https://${urlObj.host}`);
     const chunks = [];
     let responseHeaders = {};
     let settled = false;
     let req;
+    let onAbort;
 
     const finish = (fn) => (...args) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
       try { req?.destroy(); } catch {}
       try { client.destroy(); } catch {}
       fn(...args);
@@ -141,7 +142,7 @@ async function http2PostProto(url, headers, body, signal, timeoutMs) {
     req.on("error", finish(reject));
 
     if (signal) {
-      const onAbort = finish(() => reject(new Error("Request aborted")));
+      onAbort = finish(() => reject(new Error("Request aborted")));
       if (signal.aborted) onAbort();
       else signal.addEventListener("abort", onAbort, { once: true });
     }
@@ -155,8 +156,7 @@ async function fetchCursorCatalog(credentials, signal, proxyOptions) {
   const machineId = credentials?.providerSpecificData?.machineId;
   const url = getCursorModelsUrl();
   if (!accessToken || !machineId || !url) return null;
-  // The h2 transport cannot carry a proxy; never open a direct socket when one applies.
-  if (shouldUseProxyAwareTransport(url, proxyOptions)) return null;
+  const proxyUrl = cursorProxyUrl(url, proxyOptions);
 
   const headers = {
     ...buildCursorHeaders(accessToken, machineId, credentials?.providerSpecificData?.ghostMode !== false),
@@ -168,7 +168,7 @@ async function fetchCursorCatalog(credentials, signal, proxyOptions) {
   delete headers["connect-accept-encoding"];
   delete headers["connect-protocol-version"];
 
-  const response = await http2PostProto(url, headers, new Uint8Array(), signal, FETCH_TIMEOUT_MS);
+  const response = await http2PostProto(url, headers, new Uint8Array(), signal, FETCH_TIMEOUT_MS, proxyUrl);
   if (response.status !== 200) {
     const error = new Error(`Cursor GetUsableModels returned ${response.status}`);
     error.status = response.status;
@@ -250,11 +250,18 @@ export async function resolveCursorModels(credentials, options = {}) {
     return null;
   }
 
-  // A proxy-bound lookup must use the static catalog, even if this account has
-  // a cached direct result, and must not poison later direct lookups.
-  if (shouldUseProxyAwareTransport(getCursorModelsUrl(), options.proxyOptions)) return null;
-
-  const key = cacheKey(credentials);
+  const psd = credentials.providerSpecificData;
+  const proxyOptions = options.proxyOptions || {
+    connectionProxyEnabled: psd.connectionProxyEnabled,
+    connectionProxyUrl: psd.connectionProxyUrl,
+    connectionNoProxy: psd.connectionNoProxy,
+    proxyPoolId: psd.connectionProxyPoolId,
+    vercelRelayUrl: psd.vercelRelayUrl,
+    strictProxy: psd.strictProxy,
+  };
+  let proxyUrl;
+  try { proxyUrl = cursorProxyUrl(getCursorModelsUrl(), proxyOptions); } catch { return null; }
+  const key = cacheKey(credentials, proxyUrl);
   const now = Date.now();
   if (!options.forceRefresh) {
     const cached = catalogCache.get(key);
@@ -264,7 +271,7 @@ export async function resolveCursorModels(credentials, options = {}) {
   }
 
   try {
-    const models = await fetchCursorCatalog(credentials, options.signal, options.proxyOptions);
+    const models = await fetchCursorCatalog(credentials, options.signal, proxyOptions);
     if (!models?.length) {
       negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
       return null;

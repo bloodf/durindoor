@@ -1,3 +1,4 @@
+import { encodeClaudeThinking } from "../../translator/concerns/claudeThinkingEnvelope.js";
 import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
@@ -7,6 +8,7 @@ import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, estimateNonStreamingUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { detectQuotaExhaustion } from "../../services/accountFallback.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
@@ -515,6 +517,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const message = { role: "assistant" };
     if (textContent) message.content = textContent;
     if (thinkingContent) message.reasoning_content = thinkingContent;
+    const thinkingBlocks = (responseBody.content || []).filter((block) => block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING);
+    const envelope = encodeClaudeThinking(options.effectiveModel || options.model || responseBody.model, thinkingBlocks);
+    if (envelope) message.reasoning_encrypted_content = envelope;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     // A refusal (stop_reason "refusal") carries no content blocks at all: fall back to
     // Anthropic's own explanation so the client sees why the turn is empty instead of
@@ -561,7 +566,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -619,6 +624,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         if (code === 401 || code === 403) evictResponseDispatcher(providerResponse);
         errorPayload = { ...errorPayload, error: { ...errorPayload.error, status: code } };
       }
+      const quotaError = detectQuotaExhaustion({ error: errorPayload?.error });
+      if (quotaError.exhausted) {
+        appendLog({ status: "FAILED 429" });
+        return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quotaError.resetAtMs, undefined, null, credentials);
+      }
       const sseError = createSSEErrorResult(errorPayload, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
@@ -662,6 +672,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+      }
+      // Inspect only the error envelope, never echoed request content.
+      if (responseBody.error) {
+        const quota = detectQuotaExhaustion({ error: responseBody.error });
+        if (quota.exhausted) {
+          appendLog({ status: "FAILED 429" });
+          return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quota.resetAtMs, undefined, null, credentials);
+        }
       }
       // Cloud Code can return a Google RPC error inside an HTTP 200 response.
       // Preserve its numeric code so account-level authentication handling sees it.
@@ -870,6 +888,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency: { ttft: totalLatency, total: totalLatency },
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },

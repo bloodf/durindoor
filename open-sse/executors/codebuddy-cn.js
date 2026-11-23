@@ -1,4 +1,5 @@
 import { DefaultExecutor } from "./default.js";
+import { normalizeCodeBuddyRequest, normalizeCodeBuddyResponse } from "./codebuddy-protocol.js";
 import { ROLE } from "../translator/schema/index.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -61,22 +62,11 @@ export class CodeBuddyExecutor extends DefaultExecutor {
       });
     }
 
-    // CodeBuddy only surfaces model reasoning when the request carries the CLI's
-    // OpenAI-style params: reasoning_effort + reasoning_summary:"auto". 9router's
-    // thinking pipeline sets reasoning_effort only when the client asks, and never
-    // sets reasoning_summary — so reasoning never shows. Mirror the CLI here.
-    const eff = transformed.reasoning_effort;
-    if (eff === "none" || eff === "off") {
-      delete transformed.reasoning_effort; // gateway has no "none" — just omit
-    } else if (eff) {
-      // Client explicitly asked for reasoning — mirror the CLI's reasoning_summary
-      // so CodeBuddy surfaces the model's reasoning.
-      transformed.reasoning_summary = "auto";
-    }
-    // No reasoning requested: leave both unset. Forcing reasoning_effort:"medium"
-    // + reasoning_summary on plain requests makes CodeBuddy trip its content
-    // filter and return an error (#2071).
-    return transformed;
+    return normalizeCodeBuddyRequest(transformed);
+  }
+
+  async execute(options) {
+    return normalizeCodeBuddyResponse(await super.execute(options));
   }
 }
 

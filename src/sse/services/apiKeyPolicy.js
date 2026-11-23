@@ -9,6 +9,7 @@ import { validateApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { canonicalizePolicyModelIdentity } from "./apiKeyPolicyIdentity.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+import { getReservedTokens } from "@/lib/apiKeyTokenReservations.js";
 
 /**
  * Check if a model is allowed by the API key policy.
@@ -194,12 +195,15 @@ export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limi
 
   if (maxTokens != null || maxCostUsd != null) {
     const usage = await getApiKeyUsageTotals(keyRecord.id);
+    // In-flight chat reservations (#2833) count toward the lifetime cap; the
+    // request's own reservation is excluded so it never blocks itself.
+    const tokensUsed = usage.totalTokens + getReservedTokens(keyRecord.id, { exclude: request });
 
-    if (maxTokens != null && usage.totalTokens >= maxTokens) {
-      log.warn("AUTH", `Token limit reached for API key "${keyRecord.name}" (${usage.totalTokens}/${maxTokens})`);
+    if (maxTokens != null && tokensUsed >= maxTokens) {
+      log.warn("AUTH", `Token limit reached for API key "${keyRecord.name}" (${tokensUsed}/${maxTokens})`);
       return annotateClientAdmissionFailure(errorResponse(
         HTTP_STATUS.RATE_LIMITED,
-        `API key token limit reached (${usage.totalTokens}/${maxTokens} tokens)`
+        `API key token limit reached (${tokensUsed}/${maxTokens} tokens)`
       ), "client_limit");
     }
 

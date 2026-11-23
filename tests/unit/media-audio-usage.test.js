@@ -247,7 +247,7 @@ describe("audio handlers commit normalized native usage", () => {
         "assemblyai", new Set(), "universal-2", { apiKeyId: "audio-key-id" },
       );
       expect(markAccountUnavailable).toHaveBeenCalledExactlyOnceWith(
-        "account-a", 500, body.error.message, "assemblyai", "universal-2", null, { usedCredential: token },
+        "account-a", 500, body.error.message, "assemblyai", "universal-2", null, { usedCredential: token, credentialFingerprint: null, dispatchedAt: expect.any(Number) },
       );
       expect(rows()).toEqual([]);
       expect(responses).toEqual([]);

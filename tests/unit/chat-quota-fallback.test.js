@@ -73,7 +73,7 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
 }));
 
 
-const { handleChat, rankComboModelsByQuota, __resetAntigravity429StrikesForTests } = await import("../../src/sse/handlers/chat.js");
+const { handleChat, rankComboModelsByQuota, rankComboModelsByLocks, __resetAntigravity429StrikesForTests } = await import("../../src/sse/handlers/chat.js");
 
 function request(model = "codex/gpt-5.4", signal = null) {
   return new Request("http://localhost/v1/chat/completions", {
@@ -836,6 +836,26 @@ describe("chat quota fallback orchestration", () => {
     ]);
   });
 
+  it.each([409, 429])("keeps an account selectable after a detail-free %s", async (status) => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-detail-free", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, status, {
+      antigravityQuotaSignal: false, noQuotaMetadata: true,
+    }));
+    for (let i = 0; i < 3; i++) {
+      const response = await handleChat(request(`antigravity/${model}`));
+      expect(response.status).toBe(status);
+    }
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model: "gemini-other" });
+    const otherRoute = await handleChat(request("antigravity/gemini-other"));
+    expect(otherRoute.status).toBe(status);
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    expect(mocks.refreshProviderQuota).not.toHaveBeenCalled();
+    expect(mocks.handleChatCore).toHaveBeenCalledTimes(4);
+  });
+
   it("never strike-breaks on generic content-triggered Antigravity 429s", async () => {
     const model = "claude-opus-4-6-thinking";
     const account = selected("ag-content-429", "antigravity");
@@ -1332,5 +1352,29 @@ describe("chat quota fallback orchestration", () => {
     expect(response.status).toBe(429);
     expect(payload.error.retry_after).toBe(second);
     expect(Number(response.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+});
+
+
+describe("account-aware combo lock ordering", () => {
+  it("uses eligible credentials and live expiry without sharing state across requests", async () => {
+    const rows = { a: [{ id: "one", until: 200 }, { id: "two", until: 0 }], b: [{ id: "three", until: 0 }] };
+    const deps = {
+      getModelInfo: async (name) => { const [provider, model] = name.split("/"); return { provider, model }; },
+      getProviderConnections: async ({ provider }) => rows[provider],
+      isProviderConnectionModelLocked: (row, provider, model, now) => model === "locked" && row.until > now,
+      providerAllowsPublicNoAuthFallback: () => false,
+    };
+    const models = ["a/locked", "b/locked", "a/other"];
+    expect(await rankComboModelsByLocks(models, 100, deps)).toEqual(models);
+    rows.a[1].until = 200;
+    const [locked, expired] = await Promise.all([rankComboModelsByLocks(models, 100, deps), rankComboModelsByLocks(models, 201, deps)]);
+    expect(locked).toEqual(["b/locked", "a/other", "a/locked"]);
+    expect(expired).toEqual(models);
+    rows.a[1].until = 0;
+    expect(await rankComboModelsByLocks(models, 100, deps, { restrictionApplied: true, allowedConnectionIds: ["one", "three"] })).toEqual(["b/locked", "a/other", "a/locked"]);
+    deps.providerAllowsPublicNoAuthFallback = () => true;
+    rows.a[1].until = 200;
+    expect(await rankComboModelsByLocks(models, 100, deps)).toEqual(models);
   });
 });

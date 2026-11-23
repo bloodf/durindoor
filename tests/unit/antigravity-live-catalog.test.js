@@ -7,7 +7,7 @@ describe("Antigravity account catalog", () => {
     const config = PROVIDER_MODELS_CONFIG.antigravity;
     expect(config.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels");
     expect(config.method).toBe("POST");
-    expect(config.headers).toMatchObject({ "User-Agent": "antigravity/hub/2.24.0 darwin/arm64", "X-Client-Name": "antigravity", "X-Client-Version": "2.24.0" });
+    expect(config.headers).toMatchObject({ "User-Agent": "antigravity/hub/2.33.0 darwin/arm64", "X-Client-Name": "antigravity", "X-Client-Version": "2.33.0" });
     expect(config.parseResponse({ models: {
       alpha: { displayName: "Alpha", maxTokens: 100, maxOutputTokens: 20, supportsImages: true, supportsThinking: true },
       internal: { isInternal: true }, "foo-disabled": {}, tab_test: {}, beta: {}

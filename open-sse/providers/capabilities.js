@@ -657,7 +657,8 @@ export const PROVIDER_CAPABILITIES = {
     "nvidia/ising-calibration-1-35b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "nvidia/nemotron-3-nano-30b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": { vision: true, audioInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
-    "nvidia/nemotron-3-ultra-550b-a55b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    /** Upstream ba3bba4709: hosted endpoint accepted 1,000,057 prompt tokens and a streamed tool round (2026-11-13). */
+    "nvidia/nemotron-3-ultra-550b-a55b": { tools: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
     "nvidia/nemotron-nano-12b-v2-vl": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "nvidia/nvidia-nemotron-nano-9b-v2": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "qwen/qwen3-next-80b-a3b-instruct": { reasoning: false, contextWindow: 262144 },

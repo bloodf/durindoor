@@ -6,7 +6,7 @@
 // discovery and other passthrough requests retain the client's current identity
 // (upstream 9router f68d2f5e). Hardcoded MVP — toggle/version configurable later.
 const { isObject, isString } = require("../shared/utils/typeChecks.cjs");
-const ANTIGRAVITY_IDE_VERSION = "2.24.0";
+const ANTIGRAVITY_IDE_VERSION = "2.33.0";
 const ANTIGRAVITY_IDE_VERSION_OVERRIDE_ENABLED = true;
 
 function shouldRewriteMetadata(metadata) {

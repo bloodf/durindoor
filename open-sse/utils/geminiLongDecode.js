@@ -11,6 +11,7 @@
 // report usage as the sum of every hop (what the SDK reports).
 
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 
 export const GEMINI_HOP_OUTPUT_TOKENS = 65536;
 export const GEMINI_LONG_DECODE_MAX_OUTPUT = 1048576;
@@ -31,7 +32,7 @@ export function wantsGeminiLongDecode(provider, model, generationConfig) {
 
 // Antigravity wraps the Gemini response as { response: {...} }; the Gemini API does not.
 function unwrap(obj) {
-  if (obj && typeof obj === "object" && !obj.candidates && obj.response && typeof obj.response === "object") {
+  if (obj && isObject(obj) && !obj.candidates && obj.response && isObject(obj.response)) {
     return obj.response;
   }
   return obj;
@@ -46,10 +47,10 @@ function readContinuation(resp) {
 
 // Sum numeric usage fields across hops (SDK semantics); non-numeric fields keep the latest.
 export function addGeminiUsage(total, usage) {
-  if (!usage || typeof usage !== "object") return total;
+  if (!usage || !isObject(usage)) return total;
   const out = { ...total };
   for (const [key, value] of Object.entries(usage)) {
-    out[key] = typeof value === "number" ? (typeof out[key] === "number" ? out[key] : 0) + value : value;
+    out[key] = isNumber(value) ? (isNumber(out[key]) ? out[key] : 0) + value : value;
   }
   return out;
 }
@@ -139,7 +140,7 @@ export function continueGeminiStream(firstResponse, nextHop, { log, signal } = {
     if (!line.startsWith("data:")) return `${line}\n`;
     let obj;
     try { obj = JSON.parse(line.slice(5).trimStart()); } catch { return `${line}\n`; }
-    if (!obj || typeof obj !== "object") return `${line}\n`;
+    if (!obj || !isObject(obj)) return `${line}\n`;
     const resp = unwrap(obj);
     if (resp !== obj) wrapped = true;
 
@@ -151,7 +152,7 @@ export function continueGeminiStream(firstResponse, nextHop, { log, signal } = {
       cand.finishReason = GEMINI_FINISH_MAX_TOKENS;
     }
     if (cand) delete cand.continuationToken;
-    if (resp && typeof resp === "object") delete resp.continuationToken;
+    if (resp && isObject(resp)) delete resp.continuationToken;
     if (resp?.usageMetadata) {
       hopUsage = resp.usageMetadata;
       resp.usageMetadata = addGeminiUsage(usageBase, resp.usageMetadata);

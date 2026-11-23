@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleFetch } from "@/sse/handlers/fetch.js";
 
@@ -7,9 +8,7 @@ import { handleFetch } from "@/sse/handlers/fetch.js";
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "OPTIONS"]),
     }
   });
 }

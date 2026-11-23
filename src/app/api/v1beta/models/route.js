@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { filterModelsForRequest } from "@/sse/services/modelAccess.js";
 
@@ -7,9 +8,7 @@ import { filterModelsForRequest } from "@/sse/services/modelAccess.js";
 export async function OPTIONS() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["GET", "OPTIONS"]),
     }
   });
 }

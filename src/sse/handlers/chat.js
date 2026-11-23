@@ -87,6 +87,7 @@ import { annotateClientAdmissionFailure } from "open-sse/services/operationalMet
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
+import { initTranslators } from "open-sse/translator/index.js";
 import {
   createQuotaReservationLifecycle,
   rankQuotaConnections } from
@@ -98,6 +99,13 @@ import {
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
 import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
+
+let translatorInitialization;
+
+function initializeTranslators() {
+  translatorInitialization ??= Promise.resolve().then(() => initTranslators());
+  return translatorInitialization;
+}
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -431,6 +439,7 @@ function fixMessageOrdering(messages) {
  * Format detection and translation handled by translator
  */
 async function handleChatHandler(request, clientRawRequest = null, requestId = getRequestId(request)) {
+  await initializeTranslators();
   if (requestAborted(request)) return errorResponse(499, "Request aborted");
   let body;
   try {

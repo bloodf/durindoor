@@ -7,6 +7,7 @@ import {
   hasValidCliToken,
   isOperatorRequest,
 } from "@/dashboardGuard";
+import { requireSameOrigin } from "@/lib/auth/requireSameOrigin";
 
 /** Map SSRF / URL-shape failures from fetchOidcDiscovery to HTTP 400. */
 function isOidcIssuerUrlError(error) {
@@ -19,10 +20,12 @@ export async function POST(request) {
     // This probe can send the stored client secret to the selected issuer.
     // Never let a sibling login page drive it using ambient dashboard cookies,
     // even when invoked without middleware or with login disabled.
-    if (request.headers.get("origin") && !hasExactRequestOrigin(request) &&
-        !(await hasValidCliToken(request))) {
-      return NextResponse.json({ error: "Cross-origin management request denied" }, { status: 403 });
-    }
+    const originDenied = await requireSameOrigin(request, {
+      isSameOrigin: hasExactRequestOrigin,
+      allowCliToken: hasValidCliToken,
+      message: "Cross-origin management request denied",
+    });
+    if (originDenied) return originDenied;
     if (!(await canAccessManagementApi(request)) || !(await isOperatorRequest(request))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

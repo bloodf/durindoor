@@ -1,23 +1,12 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getRequestId, withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { randomUUID } from "node:crypto";
 import { handleChat } from "@/sse/handlers/chat.js";
-import { initTranslators } from "open-sse/translator/index.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
-let initialized = false;
-
-/**
- * Initialize translators once
- */
-async function ensureInitialized() {
-  if (!initialized) {
-    await initTranslators();
-    initialized = true;
-  }
-}
 
 /**
  * Handle CORS preflight
@@ -25,9 +14,7 @@ async function ensureInitialized() {
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS, HEAD",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "HEAD", "OPTIONS"]),
     }
   });
 }
@@ -39,9 +26,7 @@ async function HEADHandler() {
   return new Response(null, {
     status: 200,
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS, HEAD",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "HEAD", "OPTIONS"]),
     }
   });
 }
@@ -251,7 +236,6 @@ export async function mapCompletionResponse(response) {
  * // ponytail: legacy shim over chat core; upgrade path = provider-native completions passthrough when a provider still serves it.
  */
 async function POSTHandler(request) {
-  await ensureInitialized();
 
   let body;
   try {

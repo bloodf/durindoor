@@ -6,8 +6,8 @@ function transform(model, options = {}) {
 }
 
 describe("Codex reasoning default", () => {
-  it.each(["gpt-5.4", "gpt-5.3-codex", "gpt-6.1-terra"])("defaults %s to medium", (model) => {
-    expect(transform(model).reasoning.effort).toBe("medium");
+  it.each(["gpt-5.4", "gpt-5.3-codex", "gpt-6.1-terra"])("keeps upstream master default low for %s", (model) => {
+    expect(transform(model).reasoning.effort).toBe("low");
   });
 
   it("preserves explicit and model-suffix precedence", () => {

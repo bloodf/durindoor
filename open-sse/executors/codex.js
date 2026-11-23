@@ -1103,11 +1103,11 @@ export class CodexExecutor extends BaseExecutor {
     }
 
     const isSpark = isCodexSparkModel(body.model);
-    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
+    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)
     // resolveOpenAiEffort keeps model-aware semantic support; resolveCodexWireEffort maps Ultra→Max for wire.
     if (!body.reasoning) {
       const explicitEffort = body.reasoning_effort;
-      const requestedEffort = explicitEffort || modelEffort || "medium";
+      const requestedEffort = explicitEffort || modelEffort || "low";
       const semantic = explicitEffort === "none" || explicitEffort && !CODEX_EFFORT_LEVELS.includes(explicitEffort) ?
       requestedEffort :
       resolveOpenAiEffort(requestedEffort, "codex", body.model);

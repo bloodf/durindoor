@@ -917,10 +917,7 @@ export async function setProviderConnectionAutoPing(id, enabled, schedule = unde
   return result;
 }
 
-export async function deleteProviderConnectionsByProvider(providerId) {
-  const db = await getAdapter();
-  let count = 0;
-  db.transaction(() => {
+export function deleteProviderConnectionsByProviderInTx(db, providerId) {
     const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
     for (let offset = 0; offset < rows.length; offset += 1024) {
       assertNoActiveQuotaReservationsForTargetSync(db, {
@@ -930,8 +927,13 @@ export async function deleteProviderConnectionsByProvider(providerId) {
     assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
     for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false, null);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-    count = rows.length;
-  });
+    return rows.length;
+}
+
+export async function deleteProviderConnectionsByProvider(providerId) {
+  const db = await getAdapter();
+  let count = 0;
+  db.transaction(() => { count = deleteProviderConnectionsByProviderInTx(db, providerId); });
   return count;
 }
 

@@ -8,7 +8,7 @@ export {
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, cleanupProviderConnections,
   getProviderNodes, getProviderNodeById,
-  createProviderNode, updateProviderNode, deleteProviderNode,
+  createProviderNode, updateProviderNode, deleteProviderNode, deleteProviderNodeWithConnections,
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, rotateApiKey, validateApiKey, getApiKeyUsageLimitStatus,

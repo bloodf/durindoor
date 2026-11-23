@@ -1,3 +1,4 @@
+import { createSocksDispatcher, isSocksDispatcherUrl } from "./socksDispatcher.js";
 import { Readable } from "node:stream";
 import net from "node:net";
 import { Agent, Pool, ProxyAgent, setGlobalDispatcher } from "undici";
@@ -790,7 +791,13 @@ async function getDispatcher(proxyUrl) {
       pipelining: PROXY_FETCH_POOL_CONFIG.pipelining
     };
     if (usesIpHttpsProxy(normalized)) proxyAgentOptions.clientFactory = createIpProxyClient;
-    proxyDispatchers.set(cacheKey, new ProxyAgent(proxyAgentOptions));
+    const protocol = new URL(normalized).protocol;
+    if (!["http:", "https:"].includes(protocol) && !isSocksDispatcherUrl(normalized)) {
+      throw new Error("Unsupported proxy protocol");
+    }
+    proxyDispatchers.set(cacheKey, isSocksDispatcherUrl(normalized)
+      ? createSocksDispatcher(normalized, proxyAgentOptions)
+      : new ProxyAgent(proxyAgentOptions));
   }
 
   return proxyDispatchers.get(cacheKey);

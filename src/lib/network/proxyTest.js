@@ -1,3 +1,4 @@
+import { createSocksDispatcher, isSocksDispatcherUrl } from "../../../open-sse/utils/socksDispatcher.js";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
@@ -35,7 +36,7 @@ function parseProxyUrl(proxyUrl) {
   if (normalizedInput.includes("://")) {
     try {
       const parsed = new URL(normalizedInput);
-      if (!["http:", "https:", "socks:", "socks4:", "socks5:"].includes(parsed.protocol)) return null;
+      if (!["http:", "https:", "socks:", "socks4:", "socks4a:", "socks5:", "socks5h:"].includes(parsed.protocol)) return null;
       if (!parsed.hostname) return null;
       return parsed.toString();
     } catch {
@@ -135,7 +136,9 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
 
   try {
     try {
-      dispatcher = new ProxyAgent({ uri: parsedProxyUrl });
+      dispatcher = isSocksDispatcherUrl(parsedProxyUrl)
+        ? createSocksDispatcher(parsedProxyUrl, { connectTimeout: normalizedTimeoutMs })
+        : new ProxyAgent({ uri: parsedProxyUrl });
     } catch (err) {
       return {
         ok: false,

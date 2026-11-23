@@ -118,6 +118,8 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
   const kindError = await modelKindError(provider, model, await getSettings(), "tts");
   if (kindError) return kindError;
+  const preferredConnectionId = request.headers.get("x-connection-id") || null;
+  const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
   /** Reuse request identity across retries; never parse or buffer audio for usage.
    * Streaming EOF waits for completed accounting and a durable ledger write.
    * Failed billing errors the response stream instead of reporting clean EOF.
@@ -179,6 +181,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   // provider-account relations.
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
     const credentials = await getNoAuthProviderCredentials(provider, model, {
+      ...pinOptions,
       apiKeyId,
       allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
       restrictionApplied: comboRouting?.restrictionApplied === true
@@ -205,6 +208,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
 
   while (true) {
     const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
+      ...pinOptions,
       apiKeyId,
       allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
       restrictionApplied: comboRouting?.restrictionApplied === true

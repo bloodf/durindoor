@@ -17,6 +17,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { checkAndRefreshToken, updateProviderCredentials } from "../services/tokenRefresh.js";
 
 /**
  * Handle rerank request — Cohere/Jina/Voyage-style /v1/rerank passthrough.
@@ -139,16 +140,25 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const dispatch = credentialDispatchSnapshot(credentials);
-    const result = await handleRerankCore({
+    const refreshedCredentials = await checkAndRefreshToken(provider, { ...credentials });
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
+    let result = await handleRerankCore({
       body,
       modelInfo: { provider, model },
-      credentials: toExecutorCredentials({ ...credentials }),
+      credentials: toExecutorCredentials(refreshedCredentials),
+      signal: request.signal,
       log,
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       },
     });
+    if (!result.success && [HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.FORBIDDEN].includes(result.status)) {
+      const retryCredentials = await checkAndRefreshToken(provider, { ...credentials, accessToken: null });
+      if (retryCredentials.accessToken !== credentials.accessToken) {
+        await updateProviderCredentials(credentials.connectionId, { accessToken: retryCredentials.accessToken, refreshToken: retryCredentials.refreshToken, providerSpecificData: retryCredentials.providerSpecificData, testStatus: "active" });
+        result = await handleRerankCore({ body, modelInfo: { provider, model }, credentials: toExecutorCredentials(retryCredentials), signal: request.signal, log });
+      }
+    }
 
     if (result.success) return recordSuccess(result, credentials);
 

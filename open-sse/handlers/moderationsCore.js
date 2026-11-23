@@ -16,11 +16,7 @@ function isRecord(value) {
 // Tolerates an /openai segment (e.g. deepinfra's /v1/openai/chat/completions).
 export function deriveModerationsUrl(baseUrl) {
   if (/\/chat\/completions$/.test(baseUrl)) return baseUrl.replace(/\/chat\/completions$/, "/moderations");
-  // Fallback: drop the last path segment, append /moderations.
-  const u = new URL(baseUrl);
-  const parts = u.pathname.split("/").filter(Boolean);
-  parts.pop();
-  return `${u.origin}${parts.length ? "/" + parts.join("/") : ""}/moderations`;
+  return null;
 }
 
 /**
@@ -53,6 +49,8 @@ export async function handleModerationsCore({
   if (!baseUrl) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' has no base URL for moderation`);
   }
+  const url = deriveModerationsUrl(baseUrl);
+  if (!url) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not expose a derivable /moderations endpoint`);
 
   if (signal?.aborted) {
     return createErrorResult(499, "Moderation request aborted");
@@ -60,7 +58,6 @@ export async function handleModerationsCore({
 
   const executor = getExecutor(provider);
   const headers = executor.buildHeaders(credentials || {}, false, null, model);
-  const url = deriveModerationsUrl(baseUrl);
 
   log?.debug?.("MODERATION", `${provider} | ${model} | ${url}`);
 

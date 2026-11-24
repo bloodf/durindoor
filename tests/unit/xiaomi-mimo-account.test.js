@@ -11,7 +11,7 @@ import {
   invalidateMimoAccountCookieCache,
   resolveMimoServerBase,
   __test__,
-} from "../../open-sse/shared/mimoAccount.js";
+} from "../../open-sse/utils/mimoAccount.js";
 
 // > 2^53: JSON.parse would round it, so signing must use the raw literal.
 const NONCE = "1234567890123456789";

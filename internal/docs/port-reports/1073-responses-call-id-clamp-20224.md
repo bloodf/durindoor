@@ -36,4 +36,4 @@ The full four-batch `test:ci` was not run in this lane; CI on the PR is the full
 
 ## Status
 
-DurinDoor PR: PENDING_PR_LINK. Not a completed port until that PR merges.
+DurinDoor PR: [#2487](https://github.com/bloodf/durindoor/pull/2487) (draft). Not a completed port until that PR merges.

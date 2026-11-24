@@ -12,6 +12,6 @@ The provider-alias portion is deferred. DurinDoor lacks upstream's shared provid
 
 The open PR list was checked on 2026-11-24. Of 13 open PRs, [#2484](https://github.com/bloodf/durindoor/pull/2484) also changes `accountFallback.js`, but its diff addresses Cline cooldowns and model-scoped failures, not `filterAvailableAccounts`. No availability-filter overlap was found in the changed-file lists, including paginated results.
 
-Verification: `node node_modules/vitest/vitest.mjs run unit/account-availability-terminal.test.js --maxWorkers=2` from `tests/`, with private `HOME`, `DATA_DIR` and cache directories, passed 12 tests. An initial attempt imported the broad public index and failed during module loading; the focused test imports the defining module, and the public re-export was verified in source. This is focused evidence, not the full local CI gate.
+Verification: the test was initially named `unit/account-availability-terminal.test.js`; `node node_modules/vitest/vitest.mjs run unit/omni-dead-account-filter.test.js --maxWorkers=2` from `tests/`, with private `HOME`, `DATA_DIR` and cache directories, passed 12 tests. An initial attempt imported the broad public index and failed during module loading; the focused test imports the defining module, and the public re-export was verified in source. This is focused evidence, not the full local CI gate.
 
 The same command with `unit/port9r-quota-lockout-5462.test.js` passed 7 existing tests. `git diff --check` passed.

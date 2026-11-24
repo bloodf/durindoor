@@ -4,7 +4,7 @@ import openai from "../../open-sse/providers/registry/openai.js";
 import anthropic from "../../open-sse/providers/registry/anthropic.js";
 import openrouter from "../../open-sse/providers/registry/openrouter.js";
 import kilocode from "../../open-sse/providers/registry/kilocode.js";
-import { getComboModelsFromData } from "../../open-sse/services/compact.js";
+import { getComboModelsFromData } from "../../open-sse/services/combo.js";
 
 const require = createRequire(import.meta.url);
 const { PROVIDER_MODELS } = require("../../cli/src/cli/menus/providers.js").__test__;

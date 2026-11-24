@@ -23,14 +23,18 @@ export async function runMediaEndpoint(request, { kind, pinConnection = false, r
   return route(admission, pinOptions);
 }
 
-export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind } = {}) {
+export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind, beforePolicy } = {}) {
   const { provider, model } = await getModelInfo(modelStr);
   if (!provider) return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format") };
 
-  if (provider === "openrouter") {
-    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, routingKind || "image"); }
+  // Only endpoints that select a routing kind apply their OpenRouter policy here.
+  if (provider === "openrouter" && routingKind) {
+    try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, routingKind); }
     catch (error) { return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, error.message) }; }
   }
+
+  const earlyError = await beforePolicy?.(provider, model);
+  if (earlyError) return { error: earlyError };
 
   const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError) return { error: onPolicyError ? onPolicyError(policyError) : policyError };
@@ -59,7 +63,7 @@ export async function resolveTypedMediaModel(request, modelStr, body, apiKey, ki
  */
 export async function runMediaAccounts({
   provider, model, selectionOptions, runAttempt, buildExhaustedResponse, selectCredentials,
-  onAccountFailure, onFallback, buildFailureResponse = (result) => result.response,
+  onAccountFailure, onAttemptResult, onFallback, buildFailureResponse = (result) => result.response,
 }) {
   const excluded = new Set();
   let lastError = null;
@@ -75,6 +79,9 @@ export async function runMediaAccounts({
 
     const { response, result, dispatch, resetAt = null, failureContext } = await runAttempt(credentials);
     if (!result) return response;
+
+    const terminalAttemptResponse = await onAttemptResult?.(result, credentials);
+    if (terminalAttemptResponse) return terminalAttemptResponse;
 
     const failure = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetAt, {
       usedCredential: credentials.accessToken || credentials.apiKey || null,

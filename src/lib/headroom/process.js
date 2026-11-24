@@ -202,6 +202,11 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
     child.once("exit", onExit);
   });
 
+  // Keep the ChildProcess handle for stopHeadroomProxy(), while allowing
+  // one-shot callers to exit without waiting for the long-lived proxy.
+  const unrefChild = child.unref;
+  if (unrefChild) unrefChild.call(child);
+
   const spawnedPid = child.pid;
   child.once("exit", () => {
     if (managedChild === child) managedChild = null;

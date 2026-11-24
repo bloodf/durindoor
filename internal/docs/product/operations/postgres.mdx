@@ -53,7 +53,7 @@ Compose ships profile-gated clusters: `postgres16`, `postgres17`, `postgres18`. 
 Start a cluster. Default compose `up` does not start Postgres.
 
 ```bash
-docker compose --profile postgres18 up -d
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml --profile postgres18 up -d
 ```
 
 </Step>

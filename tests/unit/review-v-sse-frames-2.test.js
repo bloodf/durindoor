@@ -40,7 +40,7 @@ describe("shared frame consumers", () => {
     expect(frames).toEqual([{ data: '{"x":\n1}' }, { data: "tail" }]);
   });
   it("recognizes a multiline Codex image completion", async () => {
-    const wire = 'event: response.completed\r\ndata: {"response":{"status":"completed",\r\ndata: "output":[{"type":"image_generation_call","result":"YQ=="}]}}\r\n\r\n';
+    const wire = 'event: response.completed \r\ndata: {"response":{"status":"completed",\r\ndata: "output":[{"type":"image_generation_call","result":"YQ=="}]}}\r\n\r\n';
     await expect(codex.parseResponse(new Response(body(wire)), {})).resolves.toMatchObject({ data: [{ b64_json: "YQ==" }] });
   });
   it("accounts for multiline MiniMax terminal frames and preserves bytes", async () => {
@@ -55,6 +55,14 @@ describe("shared frame consumers", () => {
   });
   it("classifies multiline empty terminals and keeps retried frame bytes", async () => {
     const empty = 'data: {"response":{\r\ndata: "candidates":[{"finishReason":"STOP"}]}}\r\n\r\n';
+    const answer = 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"yes"}]}}]}}\r\n\r\n';
+    const reexecute = vi.fn(async () => body(answer));
+    const stream = createEmptyRetryStream({ body: body(empty), reexecute, baseDelayMs: 1 });
+    expect(await new Response(stream).text()).toBe(answer);
+    expect(reexecute).toHaveBeenCalledOnce();
+  });
+  it("withholds an empty terminal with a separate JSON trailer", async () => {
+    const empty = 'data: {"response":{"candidates":[{"finishReason":"STOP"}]}}\r\ndata: {"usage":{"total":1}}\r\n\r\n';
     const answer = 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"yes"}]}}]}}\r\n\r\n';
     const reexecute = vi.fn(async () => body(answer));
     const stream = createEmptyRetryStream({ body: body(empty), reexecute, baseDelayMs: 1 });

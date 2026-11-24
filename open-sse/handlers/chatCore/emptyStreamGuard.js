@@ -33,7 +33,7 @@
 import { GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../../translator/schema/finishReasons.js";
 import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
-import { createSseFrameReader } from "../../utils/sseFrames.js";
+import { createSseFrameReader, parseResponsesSseData } from "../../utils/sseFrames.js";
 
 // Mirrors oh-my-pi's empty-response policy: 2 retries, 500ms * 2^attempt backoff.
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -251,9 +251,12 @@ export function createEmptyRetryStream({
           if (held) return;
           const wire = frame.wire ?? frame.raw;
           if (!frame.hasData || !frame.data || frame.data === "[DONE]") { emit(wire); return; }
-          let parsed;
-          try { parsed = JSON.parse(frame.data); }
+          // Some providers append a separate JSON trailer in the same frame.
+          let event;
+          try { event = parseResponsesSseData(frame); }
           catch { emit(wire); return; }
+          if (event.rawDone) { emit(wire); return; }
+          const { parsed } = event;
           if (hasErrorEnvelope(parsed)) onInBandError?.(parsed.error || parsed.response?.error, currentBody);
           const decision = classifyEvent(parsed, meaningfulSeen);
           if (decision.meaningful) meaningfulSeen = true;

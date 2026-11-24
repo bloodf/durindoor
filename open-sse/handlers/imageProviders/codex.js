@@ -92,7 +92,7 @@ async function* parseStream(reader, log, onReceipt) {
     }
     const frame = frames.shift();
     if (!frame.hasData) continue;
-    let eventName = frame.eventName;
+    let eventName = frame.eventName?.trim();
     const text = frame.data;
     if (text === "[DONE]") throw new Error("Codex stream ended before response.completed");
     const data = JSON.parse(text);

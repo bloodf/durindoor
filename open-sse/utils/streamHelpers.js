@@ -1,5 +1,7 @@
 import { FORMATS } from "../translator/formats.js";
 import { buildErrorBody } from "./error.js";
+import { formatClaudeSseError } from "./sseFrames.js";
+export { extractCompleteSseFrames } from "./sseFrames.js";
 import { SSE_DONE } from "./sseConstants.js";
 
 const sharedEncoder = new TextEncoder();
@@ -211,15 +213,6 @@ export function formatSSE(data, sourceFormat) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
-/**
- * Split an accumulated raw SSE text buffer into complete frames plus the
- * unterminated tail. Frames are delimited by a blank line (`\r?\n\r?\n`); text
- * after the last delimiter is returned as `remainder` so the caller can
- * prepend it to the next chunk without inspecting partial data.
- *
- * @param {string} buffer Accumulated raw SSE text that may contain a partial final frame.
- * @returns {{frames: string[], remainder: string}} Complete frames and the unterminated tail.
- */
 // Terminal frame for a stream that aborted (watchdog stall/ttft timeout, lost
 // upstream connection) after HTTP 200 was already sent, for client formats
 // createTerminalTracker does not cover (Gemini-family, Ollama, Kiro,
@@ -233,20 +226,8 @@ export function buildStreamErrorBytes(statusCode, message, clientFormat) {
 
   // Claude clients retry transient in-band failures when marked overloaded.
   const sse = clientFormat === FORMATS.CLAUDE
-    ? formatSSE({ type: "error", error: { ...error, type: "overloaded_error" } }, FORMATS.CLAUDE)
+    ? formatClaudeSseError({ ...error, type: "overloaded_error" })
     : formatSSE({ error }, clientFormat) + SSE_DONE;
 
   return sharedEncoder.encode(sse);
-}
-
-export function extractCompleteSseFrames(buffer) {
-  const frames = [];
-  const delimiter = /\r?\n\r?\n/g;
-  let cursor = 0;
-  let match;
-  while ((match = delimiter.exec(buffer)) !== null) {
-    frames.push(buffer.slice(cursor, match.index));
-    cursor = delimiter.lastIndex;
-  }
-  return { frames, remainder: buffer.slice(cursor) };
 }

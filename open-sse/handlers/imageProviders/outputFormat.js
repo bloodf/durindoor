@@ -68,7 +68,9 @@ export function prepareFalOutputOptions(body, endpoint) {
 
 /** Stability only produces png/jpeg/webp stills; reject the rest before any inference. */
 export function prepareStabilityOutputOptions(body) {
-  const format = normalizeFormat(body.output_format) ?? "png";
+  const normalized = normalizeFormat(body.output_format);
+  const format = body.output_format === undefined ? "png" : normalized;
+  if (format === null) throw reject("Stability AI output_format must be one of: png, jpeg, webp");
   if (!["png", "jpeg", "webp"].includes(format)) {
     throw reject("Stability AI output_format must be one of: png, jpeg, webp");
   }

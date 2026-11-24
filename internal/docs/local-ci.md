@@ -14,7 +14,7 @@ fnm exec --using=24.22.2 node scripts/local-ci.mjs \
   --website always --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"
 ```
 
-Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Four sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
+Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Four sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. `cd tests && pnpm run test:ci` uses the same partition and batch arguments from `tests/__baseline__/full-batches.mjs`, with its own 300-second ceiling per command, so a developer or hosted run exercises the same commands as the checkpoint. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
 
 ## Workflow coverage
 

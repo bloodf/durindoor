@@ -1,5 +1,8 @@
 /** Regression for #2469: TinyCMS's imported app-config-uuid is a credential. */
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   decryptProviderSpecificData,
@@ -7,6 +10,21 @@ import {
   scrubProviderSpecificDataForExport,
 } from "@/lib/db/helpers/providerSpecificDataSecrets.js";
 import { isEncryptedBlob } from "@/lib/crypto/columnCrypto.js";
+
+let tempDir;
+let originalDataDir;
+
+beforeEach(() => {
+  originalDataDir = process.env.DATA_DIR;
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-tinycms-secret-"));
+  process.env.DATA_DIR = tempDir;
+});
+
+afterEach(() => {
+  if (originalDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = originalDataDir;
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
 
 describe("TinyCMS imported credential storage (#2469)", () => {
   it("encrypts app-config-uuid, decrypts it on read, and preserves legacy plaintext", () => {

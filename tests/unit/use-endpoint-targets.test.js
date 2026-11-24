@@ -189,6 +189,15 @@ describe("useEndpointTargets", () => {
     expect(latest.endpoints.map((e) => e.value)).toEqual(["http://localhost:5555/v1"]);
   });
 
+  it("falls back to the local endpoint on a non-OK status response", async () => {
+    global.fetch = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }));
+
+    await mount(20128);
+
+    expect(latest.loading).toBe(false);
+    expect(ids(latest.endpoints)).toEqual(["local"]);
+  });
+
   it("makes fallback targets ready while the HTTP error body is still pending", async () => {
     const originalUrl = window.location.href;
     window.happyDOM.setURL(REMOTE.origin);

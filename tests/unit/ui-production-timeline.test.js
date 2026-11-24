@@ -190,6 +190,28 @@ describe("TimelinePage 'all' rows-per-page batching", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/providers", expect.objectContaining({ cache: "no-store" }));
   });
 
+  it("keeps the table usable when the providers catalog request fails", async () => {
+    currentSearchParams = new URLSearchParams("view=table&page=1");
+    globalThis.EventSource = class { close() {} };
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url) === "/api/providers") throw new Error("catalog unavailable");
+      if (String(url).startsWith("/api/timeline?")) return { ok: true, json: async () => ({ traces: [trace("synthetic-trace", "fixture-model")], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }) };
+      return { ok: true, json: async () => ({ enableProxyTimeline: true }) };
+    });
+
+    await act(async () => {
+      root.render(React.createElement(TimelinePage));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("fixture-model");
+    expect(container.textContent).not.toContain("Timeline unavailable");
+    expect(container.textContent).toContain("fixture");
+  });
+
   it("keeps the table usable without reading an HTTP error body from the providers catalog", async () => {
     const json = vi.fn(async () => ({}));
     currentSearchParams = new URLSearchParams("view=table&page=1");

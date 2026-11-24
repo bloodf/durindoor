@@ -9,7 +9,7 @@ import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getApiKeyByKey, getApiKeyById, getApiKeyUsageLimitStatus, getComboForModel } from "@/lib/localDb";
 import { getComboCanonicalName, createRoutableModelIdChecker } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
-import { decodeClaudeCodeModelId } from "../../app/api/v1/models/_claudeCompat.js";
+import { decodeClaudeCodeModelId } from "../../shared/models/_claudeCompat.js";
 import { authErrorResponse, errorResponse } from "open-sse/utils/error.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";

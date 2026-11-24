@@ -48,7 +48,6 @@ import { buildQuotaResourceKeys, evaluateProviderQuotaPreflight } from "@/shared
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { requestAborted } from "./shared.js";
-import { dispatchNestedCombo } from "./combo.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -245,10 +244,11 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
 /**
  * Handle single model chat request
  * Fusion and fallback with tool-output images use local policy markers
- * through nested attempts to classify all-candidate ACL denials.
+ * through nested attempts to classify all-candidate ACL denials. Nested combo
+ * dispatch is supplied by the caller to keep routing dependencies one-way.
  */
 export async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], comboVisited = new Set(), planRequest, reportComboPolicyRejections = false } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], comboVisited = new Set(), planRequest, reportComboPolicyRejections = false, dispatchNestedCombo } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);

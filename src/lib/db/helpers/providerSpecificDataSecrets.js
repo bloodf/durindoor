@@ -254,5 +254,7 @@ export function scrubProxyPoolForExport(pool) {
     if (safe === null) delete out.proxyUrl;
     else out.proxyUrl = safe;
   }
+  // Deploy-time relay gate (issue #2440): never ship it in a scrubbed export.
+  delete out.relaySecret;
   return out;
 }

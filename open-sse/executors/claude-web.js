@@ -102,7 +102,8 @@ export class ClaudeWebExecutor extends BaseExecutor {
     const cookie = normalizeClaudeWebCookie(input.credentials?.apiKey || input.credentials?.cookie);
     if (!cookie) return { response: responseError(401, "Missing or invalid sessionKey cookie"), url: BASE, headers: {}, transformedBody: input.body };
     const common = headers(cookie);
-    const fetcher = input.fetcher || proxyAwareFetch;
+    const transport = input.fetcher || proxyAwareFetch;
+    const fetcher = (target, init) => transport(target, init, input.proxyOptions);
     try {
       const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, redirect: "manual", signal: input.signal });
       if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };

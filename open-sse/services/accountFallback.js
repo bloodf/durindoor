@@ -814,12 +814,13 @@ export function buildClearModelLocksUpdate(connection) {
 }
 
 /**
- * Filter available accounts (not in cooldown)
+ * Filter terminal account statuses, quota lockouts and active cooldowns.
  */
 export function filterAvailableAccounts(accounts, excludeId = null) {
   const now = Date.now();
   return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
+    if (isString(acc.status) && TERMINAL_ACCOUNT_STATES.has(acc.status.trim().toLowerCase())) return false;
     if (isQuotaLockoutActive(acc, now)) return false;
     if (acc.rateLimitedUntil) {
       const until = new Date(acc.rateLimitedUntil).getTime();

@@ -452,7 +452,7 @@ export default function CombosPage() {
         title={translate("Combos")}
         subtitle={translate("Group models under one name, then pick a strategy per combo.")}
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-stretch">
+          <div className={`flex w-full flex-col gap-2 sm:w-auto sm:items-stretch${v5 ? " sm:me-0.5" : ""}`}>
             <Button
               variant="primary"
               icon="add"

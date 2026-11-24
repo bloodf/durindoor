@@ -1,6 +1,6 @@
 // Ported from OmniRoute 4265bb2ad5477450a07d3a43ea33a62c6c874878 (MIT).
 import { createHash } from "node:crypto";
-import { acquireBrowserContext, openPage } from "../../services/browserPool.js";
+import { acquireBrowserContext, openPage, releaseBrowserContext } from "../../services/browserPool.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 const META_AI_GRAPHQL_API = "https://www.meta.ai/api/graphql";
@@ -48,6 +48,7 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", pr
       userAgent: META_AI_USER_AGENT
     });
     let page = null;
+    const release = _metaTokenBrowserPoolForTesting?.release || releaseBrowserContext;
     try {
       const open = _metaTokenBrowserPoolForTesting?.openPage || openPage;
       page = await open(pooled);
@@ -81,6 +82,7 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", pr
     } finally {
       await page?.close().catch(() => {
       });
+      await release(poolKey);
     }
   } catch (err) {
     return {

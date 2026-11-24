@@ -13,15 +13,16 @@ function encodeVarint(value) {
   return new Uint8Array(out);
 }
 function decodeVarint(data, offset) {
-  let shift = 0;
-  let value = 0;
+  let shift = 0n;
+  let value = 0n;
   let off = offset;
   while (true) {
     const byte = data[off++];
-    value |= (byte & 127) << shift;
-    if (!(byte & 128)) return [value >>> 0, off];
-    shift += 7;
-    if (shift > 63) throw new Error("Varint too long");
+    if (byte === undefined) throw new Error("Truncated varint");
+    value |= BigInt(byte & 127) << shift;
+    if (!(byte & 128)) return [value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value, off];
+    shift += 7n;
+    if (shift > 63n) throw new Error("Varint too long");
   }
 }
 function parseProtoFields(data) {
@@ -61,7 +62,7 @@ function serializeProtoFields(fields) {
     const tag = f.number << 3 | f.wireType;
     parts.push(encodeVarint(tag));
     if (f.wireType === 0) {
-      parts.push(encodeVarint(Number(f.value)));
+      parts.push(encodeVarint(f.value));
     } else if (f.wireType === 1) {
       const buf = new Uint8Array(8);
       if (f.value instanceof Uint8Array) {

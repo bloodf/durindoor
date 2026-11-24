@@ -68,6 +68,8 @@ describe("shared media pipeline", () => {
     state.rerankCore.mockResolvedValueOnce({ success: false, status: 503, error: "down", response: Response.json({ error: "down" }, { status: 503 }) });
     const response = await handleRerank(jsonRequest("/v1/rerank", { model: "provider/model", query: "text", documents: ["text"] }));
     expect(response.status).toBe(503);
+    expect(state.credentials).toHaveBeenCalledTimes(2);
+    expect(state.credentials).toHaveBeenNthCalledWith(2, "provider", new Set(["first"]), "model", expect.any(Object));
     expect(state.rerankCore).toHaveBeenCalledOnce();
     expect(state.unavailable).toHaveBeenCalledWith("first", 503, "down", "provider", "model", null, expect.objectContaining({ usedCredential: "one" }));
   });

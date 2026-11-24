@@ -34352,7 +34352,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#EventGroup",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "EventGroup",
-      "sourceSha256": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+      "sourceSha256": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -34373,7 +34373,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "proposedSourceEvidence": "Private EventGroup exercised by ExpandSseChunks",
@@ -34438,41 +34438,183 @@
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#EventRow",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "EventRow",
-      "sourceSha256": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
-      "proposedClassification": "retired",
-      "approvedClassification": "retired",
-      "proposedCoverageRationale": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
-      "requiredScenarioIds": [],
+      "sourceSha256": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+      "proposedClassification": "nonvisual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-timeline-timelinedetailpage--loaded",
+        "production-timeline-timelinedetailpage--waterfall",
+        "production-timeline-timelinedetailpage--expand-sse-chunks",
+        "production-timeline-timelinedetailpage--copy-as-json",
+        "production-timeline-timelinedetailpage--missing-trace",
+        "production-timeline-timelinedetailpage--loading",
+        "production-timeline-timelinedetailpage--skeleton",
+        "production-timeline-timelinedetailpage--completed-without-duration",
+        "production-timeline-timelinedetailpage--running-without-duration"
+      ],
       "approvedScenarioIds": [],
-      "storyScenarios": [],
-      "approvedException": {
-        "reason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
-        "runtimeStatus": "pending"
-      },
+      "storyScenarios": [
+        {
+          "id": "production-timeline-timelinedetailpage--loaded",
+          "storyId": "production-timeline-timelinedetailpage--loaded",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--loaded",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--waterfall",
+          "storyId": "production-timeline-timelinedetailpage--waterfall",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--waterfall",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--expand-sse-chunks",
+          "storyId": "production-timeline-timelinedetailpage--expand-sse-chunks",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--expand-sse-chunks",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--copy-as-json",
+          "storyId": "production-timeline-timelinedetailpage--copy-as-json",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--copy-as-json",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--missing-trace",
+          "storyId": "production-timeline-timelinedetailpage--missing-trace",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--missing-trace",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--loading",
+          "storyId": "production-timeline-timelinedetailpage--loading",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--loading",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--skeleton",
+          "storyId": "production-timeline-timelinedetailpage--skeleton",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--skeleton",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--completed-without-duration",
+          "storyId": "production-timeline-timelinedetailpage--completed-without-duration",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--completed-without-duration",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--running-without-duration",
+          "storyId": "production-timeline-timelinedetailpage--running-without-duration",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--running-without-duration",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedException": {
         "reason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow."
       },
       "supersededBy": [
         "src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow"
       ],
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "retired",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "storyScenarios": [],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#TimelineDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "TimelineDetailPage",
-      "sourceSha256": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+      "sourceSha256": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -34499,7 +34641,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "proposedSourceEvidence": "timeline/[id]/page.stories.jsx Loaded",
@@ -34518,7 +34660,7 @@
           ],
           "proposedSourceEvidence": "page.js renders CardHeader title Waterfall; Waterfall play finds Trace waterfall and exercises rows.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "expectedVisibleText": "Waterfall"
@@ -34532,7 +34674,7 @@
           ],
           "proposedSourceEvidence": "ExpandSseChunks play expands actual 3 chunks control then proves final Collapse 3 chunks button.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "expectedVisibleText": "Collapse 3 chunks"
@@ -34546,7 +34688,7 @@
           ],
           "proposedSourceEvidence": "CopyAsJson play clicks actual Copy as JSON control then proves final visible Copied button and clipboard payload.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "expectedVisibleText": "Copied"
@@ -34560,7 +34702,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "proposedSourceEvidence": "timeline/[id]/page.stories.jsx MissingTrace",
@@ -34577,7 +34719,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "proposedSourceEvidence": "timeline/[id]/page.stories.jsx Loading No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending."
@@ -34591,7 +34733,7 @@
           ],
           "proposedSourceEvidence": "CompletedWithoutDuration play finds actual Trace waterfall; page.js labels its parent card Waterfall.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "expectedVisibleText": "Waterfall"
@@ -34605,7 +34747,7 @@
           ],
           "proposedSourceEvidence": "page.js renders Trace still running for running trace without duration; play proves status region visible.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
             "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
           },
           "expectedVisibleText": "Trace still running"
@@ -35171,7 +35313,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/page.js#TimelineList",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/page.js",
       "symbol": "TimelineList",
-      "sourceSha256": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+      "sourceSha256": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -35193,7 +35335,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "proposedSourceEvidence": "TimelineList owns load error branch."
@@ -35207,7 +35349,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "proposedSourceEvidence": "Private list rendered by TableView",
@@ -35284,7 +35426,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/page.js#TimelinePage",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/page.js",
       "symbol": "TimelinePage",
-      "sourceSha256": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+      "sourceSha256": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -35311,7 +35453,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "proposedSourceEvidence": "timeline/page.stories.jsx Loaded",
@@ -35330,7 +35472,7 @@
           ],
           "proposedSourceEvidence": "SelectBar play finds actual trace bar named with claude-sonnet-4-5 and activates navigation.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "claude-sonnet-4-5"
@@ -35345,7 +35487,7 @@
           ],
           "proposedSourceEvidence": "ConnectionLanes play proves actual 1h control checked.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "1h"
@@ -35360,7 +35502,7 @@
           ],
           "proposedSourceEvidence": "TableView play clicks actual Table control and finds gpt-5.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "gpt-5"
@@ -35375,7 +35517,7 @@
           ],
           "proposedSourceEvidence": "LiveUpdates play enables actual switch then finds Listening for updates.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "Listening for updates"
@@ -35390,7 +35532,7 @@
           ],
           "proposedSourceEvidence": "page.js emptyState renders Timeline capture is off when settings fixture sets enableProxyTimeline false.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "Timeline capture is off"
@@ -35405,7 +35547,7 @@
           ],
           "proposedSourceEvidence": "AllRows play finds actual gpt-5-mini, gpt-5-pro, and gpt-5-turbo fixture rows.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "gpt-5-mini"
@@ -35418,7 +35560,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "proposedSourceEvidence": "page.js derives this fallback error for failed timeline fetch; LoadError play proves alert branch.",
@@ -35587,7 +35729,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/page.js#emptyState",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/page.js",
       "symbol": "emptyState",
-      "sourceSha256": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+      "sourceSha256": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -35607,7 +35749,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "proposedSourceEvidence": "Private emptyState renders visible capture-off title under CaptureDisabled fixture.",
@@ -35662,7 +35804,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/page.js#liveStatus",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/page.js",
       "symbol": "liveStatus",
-      "sourceSha256": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+      "sourceSha256": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -35683,7 +35825,7 @@
           ],
           "proposedSourceEvidence": "Loaded parent defaults live=false and renders paused status.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "expectedVisibleText": "Live updates paused"
@@ -35697,7 +35839,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/timeline/page.js": "20e1e423b3e2ab0812327f2bfb62d88d73ed2490579156f15996017dffcc0a64",
+            "src/app/(dashboard)/dashboard/timeline/page.js": "50f25ee8171baa88e1555546287b18e4a4627a754280c14fe04f9258d90b100f",
             "src/app/(dashboard)/dashboard/timeline/page.stories.jsx": "d2a6dd9fd2a2171f6a732ce527fbcf58865263ed624eafa1d052cc465785e8b4"
           },
           "proposedSourceEvidence": "Private live status rendered by LiveUpdates",
@@ -103710,9 +103852,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "4de6e24b34a20c90f0a5ee0ac52b746fb81399b365b9fc2a08a93a51e046447b",
-    "sourceCensusSha256": "1156de2962c39f46b26c41d120409f6befedca9847d6e473b6af3caea982e737",
-    "pendingRows": 448,
-    "retainedApprovedRows": 199,
+    "sourceCensusSha256": "c12259e70614583e08a2a0abd024a0a9ed334373832d3ed681f480f7ef0cb701",
+    "pendingRows": 449,
+    "retainedApprovedRows": 198,
     "pendingReferences": 1494,
     "runtimeStatus": "pending"
   }

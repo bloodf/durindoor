@@ -197,4 +197,16 @@ describe("useEndpointTargets", () => {
     expect(latest.loading).toBe(false);
     expect(ids(latest.endpoints)).toEqual(["local"]);
   });
+
+  it.each([
+    ["a null successful body", async () => null],
+    ["a malformed successful body", async () => { throw new SyntaxError("invalid JSON"); }],
+  ])("falls back to the local endpoint on %s", async (_description, json) => {
+    global.fetch = vi.fn(async () => ({ ok: true, json }));
+
+    await mount(20128);
+
+    expect(latest.loading).toBe(false);
+    expect(ids(latest.endpoints)).toEqual(["local"]);
+  });
 });

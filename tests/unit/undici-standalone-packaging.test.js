@@ -213,7 +213,7 @@ describe("standalone dependency closure", () => {
     }
   });
 
-  it.each(["root", "package"])("materializes external %s links without changing the source pool", (topology) => {
+  it.each(["root", "package"])("materializes external %s links without changing the source pool", async (topology) => {
     const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "standalone-closure-")));
     try {
       const pool = path.join(temp, "pool", "node_modules");
@@ -254,7 +254,7 @@ describe("standalone dependency closure", () => {
       const before = snapshot(path.join(temp, "pool"));
       const sourceLink = fs.readlinkSync(path.join(source, "node_modules"));
 
-      materializeStandaloneDependencies(output, dist, source, ["undici", "leaf"]);
+      await materializeStandaloneDependencies(output, dist, source, ["undici", "leaf"]);
 
       expect(fs.lstatSync(modules).isSymbolicLink()).toBe(false);
       expect(snapshot(path.join(temp, "pool"))).toEqual(before);
@@ -364,7 +364,47 @@ describe("standalone dependency closure", () => {
     }
   });
 
-  it.each(["absolute", "relative"])("rejects %s package links escaping into the shared pool", (kind) => {
+  it("copies each package before its nested dependencies so package modes match a serial copy", async () => {
+    const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "standalone-order-")));
+    try {
+      const pool = path.join(temp, "pool", "node_modules");
+      const source = path.join(temp, "source");
+      const dist = path.join(source, ".next");
+      const output = path.join(dist, "standalone");
+      const makePackage = (dir, name, dependencies = {}) => {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name, main: "index.js", dependencies }));
+        fs.writeFileSync(path.join(dir, "index.js"), `module.exports = ${JSON.stringify(name)};`);
+      };
+      // Many roots exceed the copy concurrency; each nests a private child and
+      // shares one hoisted leaf, which must become a relative link, not a copy.
+      const roots = Array.from({ length: 20 }, (_, index) => `root${index}`);
+      makePackage(path.join(pool, "leaf"), "leaf");
+      for (const name of roots) {
+        makePackage(path.join(pool, name), name, { child: "1", leaf: "1" });
+        makePackage(path.join(pool, name, "node_modules", "child"), "child", { leaf: "1" });
+        fs.chmodSync(path.join(pool, name), 0o751);
+      }
+      fs.mkdirSync(output, { recursive: true });
+      fs.symlinkSync(pool, path.join(source, "node_modules"), "dir");
+
+      await materializeStandaloneDependencies(output, dist, source, ["leaf", ...roots]);
+
+      const modules = path.join(output, "node_modules");
+      expect(fs.lstatSync(path.join(modules, "leaf")).isDirectory()).toBe(true);
+      for (const name of roots) {
+        expect(fs.statSync(path.join(modules, name)).mode & 0o777).toBe(0o751);
+        expect(fs.readlinkSync(path.join(modules, name, "node_modules", "leaf"))).toBe(path.join("..", "..", "leaf"));
+        const child = path.join(modules, name, "node_modules", "child");
+        expect(fs.lstatSync(child).isDirectory()).toBe(true);
+        expect(fs.readlinkSync(path.join(child, "node_modules", "leaf"))).toBe(path.join("..", "..", "..", "..", "leaf"));
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["absolute", "relative"])("rejects %s package links escaping into the shared pool", async (kind) => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "standalone-unsafe-link-"));
     try {
       const source = path.join(temp, "source");
@@ -381,8 +421,8 @@ describe("standalone dependency closure", () => {
       fs.symlinkSync(pool, path.join(output, "node_modules"), "dir");
       const before = snapshot(path.join(temp, "pool"));
 
-      expect(() => materializeStandaloneDependencies(output, dist, source, ["undici"]))
-        .toThrow("Package link escapes its runtime package");
+      await expect(materializeStandaloneDependencies(output, dist, source, ["undici"]))
+        .rejects.toThrow("Package link escapes its runtime package");
       expect(snapshot(path.join(temp, "pool"))).toEqual(before);
       expect(fs.readlinkSync(path.join(source, "node_modules"))).toBe(pool);
       expect(fs.existsSync(path.join(output, "node_modules", "undici", "index.js"))).toBe(false);

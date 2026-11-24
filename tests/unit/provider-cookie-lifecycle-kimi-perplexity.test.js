@@ -278,10 +278,12 @@ describe("Kimi Web saved session lifecycle", () => {
     expect(empty.message).toBe("Kimi Web connected. No requests recorded in the last 30 days.");
 
     outbound.mockImplementation(kimi({ live: new Set([jwt("A")]) }));
+    // The chat response schedules usage persistence without awaiting it.
+    const usageWrite = vi.spyOn(await import("@/lib/usageDb.js"), "saveRequestUsage");
     expect((await chat("kimi-web/k3")).status).toBe(200);
-    await vi.waitFor(async () => {
-      expect((await (await usage(mine.id)).json()).displayMessage).toBe("Kimi Web connected. 1 requests in the last 30 days.");
-    });
+    expect(usageWrite).toHaveBeenCalledOnce();
+    await usageWrite.mock.results[0].value;
+    expect((await (await usage(mine.id)).json()).displayMessage).toBe("Kimi Web connected. 1 requests in the last 30 days.");
     expect(Object.keys((await (await usage(mine.id)).json()).quotas)).toEqual(expect.arrayContaining(["Total tokens (30d)"]));
     expect((await (await usage(other.id)).json()).message).toBe("Kimi Web connected. No requests recorded in the last 30 days.");
   });
@@ -406,10 +408,12 @@ describe("Perplexity Web saved cookie lifecycle", () => {
     expect(empty.message).toBe("Perplexity Web connected. No requests recorded in the last 30 days.");
 
     outbound.mockImplementation(pplx({ live: ["A"] }));
+    // The chat response schedules usage persistence without awaiting it.
+    const usageWrite = vi.spyOn(await import("@/lib/usageDb.js"), "saveRequestUsage");
     expect((await chat("pw/pplx-auto")).status).toBe(200);
-    await vi.waitFor(async () => {
-      expect((await (await usage(mine.id)).json()).displayMessage).toBe("Perplexity Web connected. 1 requests in the last 30 days.");
-    });
+    expect(usageWrite).toHaveBeenCalledOnce();
+    await usageWrite.mock.results[0].value;
+    expect((await (await usage(mine.id)).json()).displayMessage).toBe("Perplexity Web connected. 1 requests in the last 30 days.");
     expect((await (await usage(other.id)).json()).message).toBe("Perplexity Web connected. No requests recorded in the last 30 days.");
   });
 });

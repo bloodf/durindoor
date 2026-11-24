@@ -4,14 +4,14 @@
  * Can be used in both Next.js and Cloudflare Workers
  */
 
-import { createSseFrameReader } from "../utils/sseFrames.js";
+import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import fs from "fs";
 import path from "path";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
 // Create log directory for responses (Node.js only)
-import { isFunction, isObject, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isRecord, isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function createResponsesLogger(model, logsDir = null) {
   // Skip logging in worker environment (no fs)
   if (!isFunction(fs.mkdirSync)) {
@@ -272,15 +272,16 @@ export function createResponsesApiTransformStream(logger = null) {
   const decoder = new TextDecoder("utf-8");
   const reader = createSseFrameReader();
   const processFrames = (frames, controller) => {
-      for (const { data: dataStr, hasData } of frames) {
-        if (!hasData || dataStr.trim() === "[DONE]") continue;
+      for (const frame of frames) {
+        if (!frame.hasData) continue;
 
         let parsed;
         try {
-          parsed = JSON.parse(dataStr);
+          ({ parsed } = parseResponsesSseData(frame));
         } catch {
           continue;
         }
+        if (!isRecord(parsed)) continue;
 
         if (parsed.usage && isObject(parsed.usage)) state.usage = parsed.usage;
         if (!parsed.choices?.length) {

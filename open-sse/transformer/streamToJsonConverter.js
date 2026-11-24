@@ -3,7 +3,7 @@
  * Converts Responses API SSE stream to single JSON response
  * Used when client requests non-streaming but provider forces streaming (e.g., Codex)
  */
-import { createSseFrameReader } from "../utils/sseFrames.js";
+import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import { FORMATS } from "../translator/formats.js";
 import { MAX_RESPONSES_OUTPUT_ITEMS } from "../config/runtimeConfig.js";
 import { readBoundedResponseText } from "../utils/error.js";
@@ -11,7 +11,7 @@ import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { responsesIncompleteDetailsOrOmit } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import { isProviderKeepaliveEvent } from "../utils/providerKeepalive.js";
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 function readResponseMetadata(response) {
   const id = response?.id;
@@ -26,7 +26,7 @@ function readResponseMetadata(response) {
  * Process a single SSE message and update state accordingly.
  */
 function processSSEMessage(msg, state) {
-  const { raw, data: dataStr, eventName, hasData } = msg;
+  const { raw, eventName } = msg;
   if (!raw.trim()) return;
   const nonCommentLines = raw.split(/\r\n|\r|\n/).filter((line) => line && !line.startsWith(":"));
   if (nonCommentLines.length === 0) return;
@@ -38,16 +38,22 @@ function processSSEMessage(msg, state) {
     return;
   }
 
-  const trimmedData = dataStr.trim();
-  if (!hasData || !trimmedData) {state.terminal.fail();return;}
-  if (trimmedData === "[DONE]") {
+  let parsed;
+  let rawDone;
+  try {
+    ({ parsed, rawDone } = parseResponsesSseData(msg));
+  } catch {
+    state.terminal.fail();
+    return;
+  }
+  if (rawDone) {
     state.terminal.observe({ rawDone: true, eventName: eventName?.trim() || null });
     return;
   }
-
-  let parsed;
-  try {parsed = JSON.parse(dataStr);}
-  catch {state.terminal.fail();return;}
+  if (!isRecord(parsed)) {
+    state.terminal.fail();
+    return;
+  }
 
   // Some providers omit `event:` lines and send data-only SSE. The Responses API
   // always sets `type` in the payload, so fall back to it (#5607); a frame with

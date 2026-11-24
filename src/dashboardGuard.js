@@ -405,7 +405,9 @@ async function loadSettings() {
 async function isAuthenticated(request) {
   if (await hasValidToken(request)) return true;
   const settings = await loadSettings();
-  if (settings && settings.requireLogin === false) return true;
+  // The open-dashboard fallback is credential-free, so require the same
+  // loopback Host/Origin proof as the other local access gates.
+  if (settings && settings.requireLogin === false && hasLoopbackHostAndOrigin(request)) return true;
   return false;
 }
 
@@ -609,7 +611,7 @@ function isPxpipePath(pathname) {
 
 async function canAccessPxpipeRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  if (isLocalRequest(request)) return await isAuthenticated(request);
+  if (isLocalRequest(request) && hasLoopbackHostAndOrigin(request)) return await isAuthenticated(request);
   return await hasValidToken(request);
 }
 
@@ -838,7 +840,11 @@ export async function proxy(request) {
   const oauthLeaf = gatewayOauthLeaf(routePath);
   if (oauthLeaf === "client-metadata") return NextResponse.next();
   if (oauthLeaf === "callback") {
-    if (await hasValidCliToken(request) || await isAuthenticated(request)) {
+    // This upstream browser redirect intentionally follows the dashboard
+    // login policy even for a remote authorization server callback.
+    const settings = await loadSettings();
+    if (await hasValidCliToken(request) || await hasValidToken(request) ||
+        (settings && settings.requireLogin === false)) {
       return NextResponse.next();
     }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

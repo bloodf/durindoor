@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -15,17 +14,6 @@ const {
   removeFileIfUnchanged,
 } = require("../../src/mitm/startLock.js");
 
-async function reserveFreePort() {
-  const probe = net.createServer();
-  await new Promise((resolve, reject) => {
-    probe.once("error", reject);
-    probe.listen({ host: "127.0.0.1", port: 0 }, resolve);
-  });
-  const { port } = probe.address();
-  await new Promise((resolve) => probe.close(resolve));
-  return port;
-}
-
 describe("MITM OS-backed startup lock", () => {
   const owners = [];
 
@@ -36,39 +24,31 @@ describe("MITM OS-backed startup lock", () => {
     }
   });
 
-  it("binds loopback exclusively, reports contention, and is reusable after release", async () => {
-    const port = await reserveFreePort();
-    const first = await acquireSocketLock({ port });
+  it("creates a private lockfile, reports contention, and is reusable after release", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-lock-"));
+    const first = await acquireSocketLock({ port: "startup", directory });
     owners.push(first);
 
-    expect(first.server.address()).toMatchObject({ address: "127.0.0.1", port });
-    await expect(acquireSocketLock({ port })).rejects.toMatchObject({
+    expect(fs.statSync(first.filePath).mode & 0o777).toBe(0o600);
+    await expect(acquireSocketLock({ port: "startup", directory })).rejects.toMatchObject({
       code: "MITM_START_IN_PROGRESS",
     });
 
     await releaseSocketLock(owners.pop());
-    const second = await acquireSocketLock({ port });
+    const second = await acquireSocketLock({ port: "startup", directory });
     owners.push(second);
-    expect(second.server.address()).toMatchObject({ port });
+    fs.rmSync(directory, { recursive: true, force: true });
   });
 
-  it("propagates non-contention listen failures", async () => {
-    const failure = Object.assign(new Error("permission denied"), { code: "EACCES" });
-    const fakeServer = {
-      once: vi.fn((event, callback) => { if (event === "error") fakeServer.onError = callback; }),
-      listen: vi.fn(() => fakeServer.onError(failure)),
-    };
+  it("propagates non-contention filesystem failures", async () => {
     await expect(acquireSocketLock({
-      port: 20443,
-      netImpl: { createServer: () => fakeServer },
-    })).rejects.toBe(failure);
+      port: "failure",
+      directory: "/dev/null/impossible",
+    })).rejects.toMatchObject({ code: "ENOTDIR" });
   });
 
-  it("surfaces listener cleanup failures", async () => {
-    const failure = new Error("injected close failure");
-    await expect(releaseSocketLock({
-      server: { close: (callback) => callback(failure) },
-    })).rejects.toBe(failure);
+  it("returns false when an already released lock is absent", async () => {
+    await expect(releaseSocketLock({ filePath: "/dev/null/missing-lock" })).resolves.toBe(false);
   });
 });
 

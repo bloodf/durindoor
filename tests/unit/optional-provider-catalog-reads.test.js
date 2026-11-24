@@ -29,7 +29,8 @@ describe("optional provider catalog reads", () => {
     await render(ComboUsageReport, { period: "7d", customRange: {}, resetNonce: 0 });
     expect(fetch).toHaveBeenCalledWith("/api/providers", expect.objectContaining({ cache: "no-store" }));
     expect(json).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("conn");
+    expect(Array.from(host.querySelectorAll("table td"), (cell) => cell.textContent)).toContain("conn");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("resolves Combo Usage connection names from a successful catalog response", async () => {

@@ -1,0 +1,5 @@
+# Stream status colors
+
+Disconnect and abort status labels are yellow, and error labels are red, when stdout is a terminal. Normal completion keeps its existing summary. Only the status label is colored; details remain plain.
+
+Set `APP_LOG_COLORS` to `true`, `1`, `yes`, or `on` to force colors, including when `NO_COLOR` is set. Set it to `false`, `0`, `no`, or `off` to disable colors. Values are case-insensitive and ignore surrounding whitespace. If the value is absent or unrecognized, colors require a TTY and an unset `NO_COLOR`. Non-terminal output is plain by default. This setting applies to stream status labels, not all application logging.

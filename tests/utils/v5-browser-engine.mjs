@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { chromiumLaunchOptions } from "./chromiumLaunch.mjs";
+import { chromiumLaunchOptions, ensureFontConfig } from "./chromiumLaunch.mjs";
 
 /** Select exactly one Playwright engine for a V5 evidence run. */
 export function selectV5Browser(name = "chromium") {
@@ -10,7 +10,10 @@ export function selectV5Browser(name = "chromium") {
 }
 
 export function v5BrowserLaunchOptions(engine, browserType, root) {
-  return engine === "chromium" ? chromiumLaunchOptions(browserType, root) : {};
+  if (engine === "chromium") return chromiumLaunchOptions(browserType, root);
+  ensureFontConfig(root);
+  const executablePath = process.env[`V5_${engine.toUpperCase()}_EXECUTABLE`];
+  return executablePath ? { executablePath } : {};
 }
 
 export function v5ScreenshotDirectory(root, engine, routeSlug) {

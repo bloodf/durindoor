@@ -24,7 +24,6 @@ import { buildV5EvidenceReport } from "../utils/v5EvidenceReport.mjs";
 const enabled = process.env.RUN_V5_EVIDENCE === "1";
 const root = resolve(import.meta.dirname, "../..");
 const engine = enabled ? selectV5Browser(process.env.V5_BROWSER_ENGINE) : "chromium";
-const browserType = { chromium, firefox, webkit }[engine];
 const storybookDir = process.env.V5_STORYBOOK_DIR ? resolve(process.cwd(), process.env.V5_STORYBOOK_DIR) : resolve(root, "storybook-static");
 const registryDir = resolve(root, "tests/e2e/v5-evidence");
 const screenshotRoot = resolve(root, ".impeccable/review/v5/production");
@@ -142,6 +141,10 @@ describe.skipIf(!enabled)("v5 production route evidence", () => {
     if (!existsSync(indexPath)) throw new Error(`${indexPath} is missing: run \`pnpm run storybook:build\` before RUN_V5_EVIDENCE=1`);
     storyIds = new Set(Object.values(JSON.parse(readFileSync(indexPath, "utf8")).entries).filter((entry) => entry.type === "story").map((entry) => entry.id));
     server = await serveDirectory(storybookDir);
+    const firefoxDriver = engine === "firefox" && process.env.V5_FIREFOX_DRIVER
+      ? (await import(process.env.V5_FIREFOX_DRIVER)).firefox
+      : firefox;
+    const browserType = { chromium, firefox: firefoxDriver, webkit }[engine];
     browser = await browserType.launch(v5BrowserLaunchOptions(engine, browserType, root));
   }, 60_000);
 

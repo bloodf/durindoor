@@ -10,6 +10,24 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const testDir = join(root, "tests");
 const vitestCli = join(testDir, "node_modules/vitest/vitest.mjs");
 const batchSize = 50;
+const dependencyConcurrency = 8;
+
+function limitDependencyConcurrency(vitest) {
+  const specifications = vitest.specifications;
+  const getTestDependencies = specifications.getTestDependencies.bind(specifications);
+  let active = 0;
+  const waiting = [];
+  specifications.getTestDependencies = async (...args) => {
+    if (active >= dependencyConcurrency) await new Promise((resolve) => waiting.push(resolve));
+    active++;
+    try {
+      return await getTestDependencies(...args);
+    } finally {
+      active--;
+      waiting.shift()?.();
+    }
+  };
+}
 
 function run(label, args, env) {
   console.log(`Start ${label}`);
@@ -32,6 +50,9 @@ async function discover(changedList, output) {
     related: changed.map((file) => resolve(root, file)),
   }, { cacheDir: join(dirname(output), "vite-cache") });
   try {
+    // Vitest otherwise builds every test's dependency graph at once. Large
+    // suites can exhaust resources before related-test discovery completes.
+    limitDependencyConcurrency(vitest);
     const specs = await vitest.getRelevantTestSpecifications();
     const files = [...new Set(specs.map(({ moduleId }) => relative(testDir, moduleId)))].sort();
     if (!files.length) throw new Error("Vitest selected zero related test files");

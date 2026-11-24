@@ -993,7 +993,8 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
-        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk },
+        // The resolved outgoing format disambiguates minimal Claude and OpenAI bodies.
+        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk, format: finalFormat },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         protectCachedPrefix: isOpenRouterAnthropicModel(provider, cleanModel),
         adaptive: {

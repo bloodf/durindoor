@@ -103710,7 +103710,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "4de6e24b34a20c90f0a5ee0ac52b746fb81399b365b9fc2a08a93a51e046447b",
-    "sourceCensusSha256": "1156de2962c39f46b26c41d120409f6befedca9847d6e473b6af3caea982e737",
+    "sourceCensusSha256": "c12259e70614583e08a2a0abd024a0a9ed334373832d3ed681f480f7ef0cb701",
     "pendingRows": 448,
     "retainedApprovedRows": 199,
     "pendingReferences": 1494,

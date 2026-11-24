@@ -1,5 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { errorResponse } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const BASE = "https://www.dola.com";
 const CHAT = `${BASE}/chat/completion`;
@@ -12,7 +13,7 @@ const textOf = (value) => {
 const promptOf = (messages) => (messages || []).map((m) => `${m.role}: ${textOf(m.content)}`).join("\n\n");
 
 export class DoubaoWebExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("doubao-web", { id: "doubao-web", baseUrl: BASE }); this.fetch = deps.fetch || fetch; }
+  constructor(deps = {}) { super("doubao-web", { id: "doubao-web", baseUrl: BASE }); this.fetch = deps.fetch || ((...args) => proxyAwareFetch(...args)); }
   async execute(input) {
     const cookie = String(input.credentials?.apiKey || "").replace(/^Cookie:\s*/i, "");
     const model = String(input.body?.model || input.model || "dola-speed").split("/").pop();
@@ -23,7 +24,7 @@ export class DoubaoWebExecutor extends BaseExecutor {
     const url = `${CHAT}?${query}`;
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Cookie: cookie, Origin: BASE, Referer: `${BASE}/chat/`, "Agw-Js-Conv": "str", "User-Agent": "Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36" };
     let upstream;
-    try { upstream = await this.fetch(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }); }
+    try { upstream = await this.fetch(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, input.proxyOptions); }
     catch (e) { return { response: errorResponse(502, e.message || "Dola request failed"), url, headers, transformedBody: payload }; }
     if (upstream.status >= 300 && upstream.status < 400) return { response: errorResponse(401, "Dola session was rejected"), url, headers, transformedBody: payload };
     if (!upstream.ok) return { response: errorResponse(upstream.status, `Dola error: ${await upstream.text()}`), url, headers, transformedBody: payload };

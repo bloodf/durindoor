@@ -73,6 +73,24 @@ source tree. A timeout is a failure; do not increase the ceiling. This separate
 owner evidence is required when Docker/release inputs change and for release
 readiness, and must be explicitly attached rather than inferred from Vitest.
 
+## PostgreSQL fencing evidence
+
+The ordinary batches supply no `DURINDOOR_TEST_PG_URL`, so the live cases in
+`tests/unit/antigravity-lease-postgres.test.js` skip there; skipped cases are
+not evidence. The batches do run `tests/unit/postgres-live-runner.test.js`
+offline: it proves the runner fails without a URL, fails rather than skips in
+required mode or against an unreachable cluster, and hands Vitest only an
+allowlisted environment.
+
+For live evidence, the supervising process starts a disposable cluster with
+synthetic credentials on `127.0.0.1` and runs
+`node scripts/test-postgres-fencing.mjs` with `DURINDOOR_TEST_PG_URL` set.
+The script never controls a container runtime. Run it without the Docker
+socket, for example
+`bwrap --dev-bind / / --bind /dev/null /run/docker.sock env -i PATH="$PATH" DURINDOOR_TEST_PG_URL="$URL" node scripts/test-postgres-fencing.mjs`,
+then remove the container. It fails unless all five fencing tests pass,
+including the multi-process acquire and fence/dispatch races.
+
 ## Verification and merge
 
 The orchestrator or a review worker that ran the gate verifies its own run before merging. The run must have:

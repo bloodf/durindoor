@@ -127,7 +127,8 @@ export default function SkillsPage() {
   return <div className={v5 ? "mx-auto max-w-4xl min-w-0 space-y-4 text-dd-text" : "mx-auto max-w-4xl space-y-4"}><PageHeader icon="psychology" title="Skills" subtitle="Copy focused instructions into your AI workflow" />
     <Card padding={false}>
       <CardHeader icon="tune" title="Copy target" subtitle="Pick the endpoint and key your agent should use." />
-      <CardContent className="grid gap-4 sm:grid-cols-2">
+      {/* The explicit mobile track can shrink below the closed selects’ intrinsic width. */}
+      <CardContent className={`grid gap-4 sm:grid-cols-2${v5 ? " grid-cols-1" : ""}`}>
         <Field label="Endpoint">
           <Select options={endpoints} value={baseUrl} onChange={setEndpoint} className="font-mono" aria-label="Endpoint" disabled={loading} />
         </Field>

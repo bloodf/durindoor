@@ -14,8 +14,10 @@ import { buildV5EvidenceReport } from "../utils/v5EvidenceReport.mjs";
  * (one file per slice). Each story renders from the built storybook-static with the
  * V5 switch on (`data-ui="v5"`), in the selected browser at 1440x900 and 360x800, dark and light.
  * It must produce no console error or page error, no serious/critical axe violation
- * (wcag2a, wcag2aa, wcag21aa) and, at 360px, no horizontal document overflow. A
- * screenshot lands under .impeccable/review/v5/production/<route-slug>/.
+ * (wcag2a, wcag2aa, wcag21aa). Horizontal document overflow fails at 360px on
+ * every route and at 1440px on /dashboard/combos, where the desktop action's
+ * scale motion can extend past the viewport. A screenshot lands under
+ * .impeccable/review/v5/production/<route-slug>/.
  *
  * Runs only with RUN_V5_EVIDENCE=1. V5_EVIDENCE_ROUTES=<comma list> filters routes.
  * V5_BROWSER_ENGINE selects chromium (default), firefox, or webkit.
@@ -106,7 +108,9 @@ async function checkStory(browser, baseURL, route, id, theme, viewport) {
     }));
     if (state.ui !== "v5") failures.push(`html data-ui is ${JSON.stringify(state.ui)}, expected "v5"`);
     overflowPx = Math.max(0, state.scrollWidth - state.innerWidth);
-    if (viewport.width === 360 && overflowPx > 0) failures.push(`horizontal overflow at 360: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
+    if (overflowPx > 0 && (viewport.width === 360 || route === "/dashboard/combos")) {
+      failures.push(`horizontal overflow at ${viewport.width}: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
+    }
 
     const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
     for (const violation of axe.violations) axeCounts[violation.impact] = (axeCounts[violation.impact] || 0) + 1;

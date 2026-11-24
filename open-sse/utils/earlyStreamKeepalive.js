@@ -16,6 +16,7 @@
  * status and retry hint instead.
  */
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { formatClaudeSseError } from "./sseFrames.js";
 import { ERROR_TYPES } from "../config/errorConfig.js";
 import { createClientAdmissionSelection } from "../services/operationalMetrics.js";
 
@@ -122,10 +123,7 @@ export function buildKeepaliveErrorFrame(format, { text = "", status = null, ret
     body?.type === "error" && isString(error?.type) && error.type ||
     ANTHROPIC_ERROR_TYPES[status] ||
     "api_error";
-    return ENCODER.encode(`event: error\ndata: ${JSON.stringify({
-      type: "error",
-      error: { type, message, ...meta }
-    })}\n\n`);
+    return ENCODER.encode(formatClaudeSseError({ type, message, ...meta }));
   }
   return ENCODER.encode(`data: ${JSON.stringify({
     error: {

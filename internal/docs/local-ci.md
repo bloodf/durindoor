@@ -123,3 +123,14 @@ inspection of main ruleset 18697697 found deletion/non-fast-forward protection,
 squash-only PRs, required review-thread resolution and Copilot review, with no
 `required_status_checks`. A branch-protection endpoint 404 is not proof that no
 ruleset applies. Recheck live rules before integration.
+
+### Orchestrator related-file checks
+
+For the orchestrator's per-change checks, pass the changed-file list to
+`node scripts/run-related-tests.mjs "$ORQ_CHANGED_FILES"` from the candidate
+checkout. Use a private, disk-backed `TMPDIR` and run lint separately. The
+runner resolves Vitest's transitive test dependencies once, then runs all
+selected files in batches of 50 with four isolated fork workers. Discovery
+and each batch have an independent five-minute ceiling, including termination
+grace. An empty selection or a failed batch fails the check. The full
+inventory checkpoint remains required for merges.

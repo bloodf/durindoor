@@ -499,6 +499,8 @@ describe("antigravity rotation route", () => {
     expect(db.get(`SELECT connectionId FROM antigravityRecoveryCredentials WHERE connectionId = ?`, ["acct-1"])).toBeFalsy();
     const status = await GET(request("GET", { connectionId: "acct-1" }));
     const body = await status.json();
+    expect(body).not.toHaveProperty("email");
+    expect(body).not.toHaveProperty("subject");
     expect(body.subjectPresent).toBe(false);
     expect(body.recoveryEnabled).toBe(false);
     expect(body.schedulerEnabled).toBe(false);

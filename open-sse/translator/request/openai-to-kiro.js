@@ -132,36 +132,34 @@ function flattenToolInteractions(messages) {
 
 /**
  * Reconcile orphaned toolResults — those whose toolUseId has no matching
- * toolUse in any assistant message. This happens when client-side compaction
- * truncates the conversation and removes the assistant message containing the
- * tool_use, but keeps the user message with the corresponding tool_result.
+ * toolUse in the assistant turn immediately before them. This happens when
+ * client-side compaction truncates the conversation and removes the assistant
+ * message containing the tool_use, but keeps the user message with the
+ * corresponding tool_result, and when a duplicate or stray result lands in a
+ * later turn than its call.
  *
+ * Kiro validates every toolResults entry against the toolUses of the turn
+ * right before it, so an id that matches an earlier turn is still dangling.
  * A dangling structured reference makes Kiro return 400, so it must be removed.
  * But the client deliberately kept the result content through compaction, so
  * rather than discard it we fold it back into the user message as text — the
  * same shape flattenToolInteractions() produces. The 400 trigger (the
- * structured reference) is gone; the content survives.
+ * structured reference) is gone; the content survives. Results that pair with
+ * the preceding assistant turn stay structured.
  *
- * `messages` is every carrier that can hold toolResults — both history items
- * and the popped-out currentMessage (orphans can land on either).
+ * Carriers are every item that can hold toolResults — both history items and
+ * the popped-out currentMessage (orphans can land on either). currentMessage
+ * follows the last history item.
  */
 function reconcileOrphanedToolResults(history, currentMessage) {
-  // Phase 1: collect all valid toolUseIds from assistant messages in history.
-  // (currentMessage is always a user turn, so it carries no toolUses.)
-  const validIds = new Set();
-  for (const h of history) {
-    const arm = h.assistantResponseMessage;
-    if (!arm) continue;
-    for (const tu of arm.toolUses || []) {
-      if (tu.toolUseId) validIds.add(tu.toolUseId);
-    }
-  }
-
   const carriers = currentMessage ? [...history, currentMessage] : history;
-  for (const item of carriers) {
+  carriers.forEach((item, index) => {
     const uim = item.userInputMessage;
     const ctx = uim?.userInputMessageContext;
-    if (!ctx?.toolResults?.length) continue;
+    if (!ctx?.toolResults?.length) return;
+
+    const previousUses = carriers[index - 1]?.assistantResponseMessage?.toolUses || [];
+    const validIds = new Set(previousUses.map((tu) => tu.toolUseId).filter(Boolean));
 
     const kept = [];
     const salvaged = [];
@@ -173,7 +171,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
       }
     }
 
-    if (salvaged.length === 0) continue; // no orphans — leave untouched
+    if (salvaged.length === 0) return; // no orphans — leave untouched
 
     // Fold orphaned result content into the user text so it is not lost
     const extra = salvaged.join("\n");
@@ -183,7 +181,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
     if (kept.length === 0 && !ctx.tools?.length) {
       delete uim.userInputMessageContext;
     }
-  }
+  });
 }
 
 /**

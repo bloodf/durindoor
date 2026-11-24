@@ -43,7 +43,7 @@ pnpm -C tests install --frozen-lockfile
 cd tests && pnpm run test:ci
 ```
 
-That command is the CI gate. It writes a Vitest JSON report and feeds it to `tests/__baseline__/verify-no-regression.mjs`. `tests/__baseline__/known-fails.txt` is empty in this tree, so every failing assertion is a regression. Do not add entries.
+That command is the CI gate. It discovers the configured inventory, checks it against the tracked test files, and runs it as four sequential Vitest batches with four isolated fork workers each. Each command has its own five-minute ceiling. It merges the batch reports into one Vitest JSON report and feeds it to `tests/__baseline__/verify-no-regression.mjs`. `tests/__baseline__/known-fails.txt` is empty in this tree, so every failing assertion is a regression. Do not add entries.
 
 Offline translator tests need no credentials. `tests/translator/real/` runs only with `RUN_REAL=1` and requires `DATA_DIR` to point to a disposable copy of the data directory. Never point real tests at `~/.9router`; account and quota errors are skipped, while protocol failures are not.
 

@@ -376,8 +376,15 @@ export const ConnectionUsage = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("heading", { name: "Connection usage" })).toBeVisible();
-    await expect(await canvas.findByText("OpenAI prod")).toBeVisible();
+    // Usage rows and connection names load independently. A missing name is
+    // expected during polling, so only assert visibility once the cell exists.
+    const cell = await waitFor(() => {
+      const connection = canvas.queryByRole("cell", { name: "OpenAI prod", exact: true });
+      if (!connection) throw new Error("Waiting for the OpenAI prod connection cell");
+      return connection;
+    }, { container: canvasElement });
+    await expect(canvas.getByRole("heading", { name: "Connection usage" })).toBeVisible();
+    await expect(cell).toBeVisible();
   },
 };
 

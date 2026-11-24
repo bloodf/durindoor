@@ -3,6 +3,7 @@
   "stories": [
     "production-combos-combospage--default",
     "production-combos-combospage--empty",
+    "production-combos-combospage--connection-usage",
     "production-combos-combospage--load-failure-error",
     "production-combos-combospage--save-failure",
     "production-combos-combospage--retained-error",

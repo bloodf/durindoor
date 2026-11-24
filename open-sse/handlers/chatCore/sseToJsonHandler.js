@@ -12,7 +12,7 @@ import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorCon
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { initState } from "../../translator/index.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
-import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
+import { createSseFrameReader } from "../../utils/sseFrames.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
@@ -53,20 +53,12 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
 }
 
 function parseSseEvents(rawSSE) {
-  const text = String(rawSSE || "");
-  const { frames, remainder } = extractCompleteSseFrames(text);
-  if (remainder.trim()) frames.push(remainder);
+  const reader = createSseFrameReader();
+  const frames = [...reader.push(String(rawSSE || "")), ...reader.flush()];
 
-  return frames.flatMap((frame) => {
-    let eventName = null;
-    const dataLines = [];
-    for (const line of frame.split(/\r?\n/)) {
-      if (line.startsWith("event:")) eventName = line.slice(6).trim() || null;
-      if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
-    }
-    if (dataLines.length === 0) return [];
-    const data = dataLines.join("\n");
-    if (!data.trim()) return [];
+  return frames.flatMap(({ eventName: rawEventName, data, dataLines }) => {
+    if (dataLines.length === 0 || !data.trim()) return [];
+    const eventName = rawEventName?.trim() || null;
     if (dataLines.length === 1 || data.trim() === "[DONE]") {
       return [{ eventName, data, done: data.trim() === "[DONE]" }];
     }

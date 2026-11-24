@@ -16,7 +16,7 @@ const KIND_ENDPOINT = {
   embedding: "/v1/embeddings",
   imageToText: "/v1/chat/completions",
   webSearch: "/v1/search",
-  webFetch: "/v1/fetch",
+  webFetch: "/v1/web/fetch",
   rerank: "/v1/rerank",
   video: "/v1/videos",
   music: "/v1/music/generations",

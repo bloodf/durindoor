@@ -32,6 +32,14 @@
     "production-providers-inferencestatus--loading",
     "production-providers-inferencestatus--error",
     "production-providers-inferencestatus--passed",
-    "production-providers-inferencestatus--skipped"
+    "production-providers-inferencestatus--skipped",
+    "production-providers-autopingschedulemodal--open",
+    "production-providers-autopingschedulemodal--empty",
+    "production-providers-autopingschedulemodal--validation-error",
+    "production-providers-autopingschedulemodal--invalid-window",
+    "production-providers-autopingschedulemodal--slots-above-maximum",
+    "production-providers-autopingschedulemodal--enable-schedule",
+    "production-providers-autopingschedulemodal--loading",
+    "production-providers-autopingschedulemodal--save-error"
   ]
 }

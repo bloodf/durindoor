@@ -24992,6 +24992,9 @@
         "production-providers-autopingschedulemodal--open",
         "production-providers-autopingschedulemodal--empty",
         "production-providers-autopingschedulemodal--validation-error",
+        "production-providers-autopingschedulemodal--invalid-window",
+        "production-providers-autopingschedulemodal--slots-above-maximum",
+        "production-providers-autopingschedulemodal--enable-schedule",
         "production-providers-autopingschedulemodal--loading",
         "production-providers-autopingschedulemodal--save-error"
       ],
@@ -25001,65 +25004,115 @@
           "storyId": "production-providers-autopingschedulemodal--open",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--open",
           "axes": [
-            "source-association-pending-review"
+            "enabled",
+            "preview",
+            "controls"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Open initializes the enabled schedule, named fields and deterministic slot preview."
         },
         {
           "id": "production-providers-autopingschedulemodal--empty",
           "storyId": "production-providers-autopingschedulemodal--empty",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--empty",
           "axes": [
-            "source-association-pending-review"
+            "disabled schedule",
+            "controls",
+            "save callback"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Empty renders a disabled schedule; Save calls the story callback with null."
         },
         {
           "id": "production-providers-autopingschedulemodal--validation-error",
           "storyId": "production-providers-autopingschedulemodal--validation-error",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--validation-error",
           "axes": [
-            "source-association-pending-review"
+            "validation",
+            "anchor"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "ValidationError rejects a malformed anchor, exposes field guidance and blocks Save."
+        },
+        {
+          "id": "production-providers-autopingschedulemodal--invalid-window",
+          "storyId": "production-providers-autopingschedulemodal--invalid-window",
+          "runtimeArtifactId": "production-providers-autopingschedulemodal--invalid-window",
+          "axes": [
+            "validation",
+            "window"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
+          },
+          "proposedSourceEvidence": "InvalidWindow rejects 25 hours, exposes the supported 0.5 to 24 hour range and blocks Save."
+        },
+        {
+          "id": "production-providers-autopingschedulemodal--slots-above-maximum",
+          "storyId": "production-providers-autopingschedulemodal--slots-above-maximum",
+          "runtimeArtifactId": "production-providers-autopingschedulemodal--slots-above-maximum",
+          "axes": [
+            "validation",
+            "computed maximum"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
+          },
+          "proposedSourceEvidence": "SlotsAboveMaximum uses a 5-hour window (maximum 4) and rejects 5 pings per day."
+        },
+        {
+          "id": "production-providers-autopingschedulemodal--enable-schedule",
+          "storyId": "production-providers-autopingschedulemodal--enable-schedule",
+          "runtimeArtifactId": "production-providers-autopingschedulemodal--enable-schedule",
+          "axes": [
+            "disabled schedule",
+            "interaction",
+            "preview"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
+          },
+          "proposedSourceEvidence": "EnableSchedule starts disabled, then reveals the enabled schedule preview after checkbox interaction."
         },
         {
           "id": "production-providers-autopingschedulemodal--loading",
           "storyId": "production-providers-autopingschedulemodal--loading",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--loading",
           "axes": [
-            "source-association-pending-review"
+            "pending save",
+            "controls"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Loading holds the save promise pending and disables repeat submission and dismissal controls."
         },
         {
           "id": "production-providers-autopingschedulemodal--save-error",
           "storyId": "production-providers-autopingschedulemodal--save-error",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--save-error",
           "axes": [
-            "source-association-pending-review"
+            "failed save",
+            "alert"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "SaveError rejects the synthetic save callback, retains the dialog and announces the failure."
         }
       ],
       "unresolvedHistoricalScenarioIds": [],

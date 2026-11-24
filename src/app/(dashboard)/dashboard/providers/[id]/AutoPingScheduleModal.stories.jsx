@@ -41,13 +41,53 @@ export const Open = {
 
 /** Disabled schedule: no slot fields, save still available. */
 export const Empty = {
-  args: { schedule: null },
-  play: async () => {
+  args: { schedule: null, onSave: fn() },
+  play: async ({ args }) => {
     await within(document.body).findByRole("dialog");
     const view = within(document.body);
     await expect(view.getByRole("checkbox", { name: "Enable scheduled pings" })).not.toBeChecked();
     await expect(view.queryByLabelText("Anchor time")).not.toBeInTheDocument();
     await expect(view.getByRole("button", { name: "Save" })).toBeEnabled();
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(null);
+  },
+};
+
+/** Window outside the supported range blocks save and explains the valid range. */
+export const InvalidWindow = {
+  args: { schedule: { ...schedule, windowHours: 25 } },
+  play: async () => {
+    await within(document.body).findByRole("dialog");
+    const view = within(document.body);
+    await expect(view.getByLabelText("Window (hours)")).toHaveAttribute("aria-invalid", "true");
+    await expect(view.getByRole("alert")).toHaveTextContent("0.5 to 24");
+    await expect(view.getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};
+
+/** Slot count above the window-derived maximum blocks save. */
+export const SlotsAboveMaximum = {
+  args: { schedule: { ...schedule, windowHours: 5, slotsPerDay: 5 } },
+  play: async () => {
+    await within(document.body).findByRole("dialog");
+    const view = within(document.body);
+    await expect(view.getByLabelText("Pings per day")).toHaveAttribute("aria-invalid", "true");
+    await expect(view.getByRole("alert")).toHaveTextContent("1 to 4");
+    await expect(view.getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};
+
+/** Enabling a disabled schedule reveals its deterministic slot preview. */
+export const EnableSchedule = {
+  args: { schedule: { ...schedule, enabled: false } },
+  play: async () => {
+    await within(document.body).findByRole("dialog");
+    const view = within(document.body);
+    const enabled = view.getByRole("checkbox", { name: "Enable scheduled pings" });
+    await expect(enabled).not.toBeChecked();
+    await userEvent.click(enabled);
+    await expect(enabled).toBeChecked();
+    await expect(view.getByText("09:30 → 14:30 → 19:30")).toBeInTheDocument();
   },
 };
 

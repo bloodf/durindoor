@@ -7,6 +7,7 @@ import { isRecord } from "@/shared/utils/typeChecks";
 
 let settingsRevision = 0;
 let patchSequence = 0;
+let publishedPatchSequence = 0;
 let pendingRead = null;
 let activeReads = 0;
 let readSequence = 0;
@@ -38,7 +39,7 @@ async function readSettings(set, get, { revision, signal, cache, headers }) {
     }
     if (!canPublish()) return { ok: true, status: 200, body: get().settings ?? data };
     publishedReadSequence = sequence;
-    set({ settings: data, error: null, lastFetched: Date.now() });
+    set({ settings: data, error: null, errorStatus: null, errorBody: null, lastFetched: Date.now() });
     return { ok: true, status: 200, body: data };
   } catch (error) {
     if (signal?.aborted) return { error: signal.reason };
@@ -94,11 +95,15 @@ const useSettingsStore = create((set, get) => ({
     try {
       const updated = await api.patch("/api/settings", patch);
       onResult?.({ ok: true, status: 200, body: updated });
-      // A newer PATCH is in flight or finished: this snapshot is stale.
-      if (sequence !== patchSequence) return get().settings;
-      advanceSettingsRevision();
-      set({ settings: updated, loading: false, error: null, lastFetched: Date.now() });
-      return updated;
+      // Keep the newest successful PATCH response even while a newer request
+      // is pending. If that request fails, this is the server-confirmed state.
+      if (sequence > publishedPatchSequence) {
+        publishedPatchSequence = sequence;
+        advanceSettingsRevision();
+        set({ settings: updated, loading: false, error: null, errorStatus: null, errorBody: null, lastFetched: Date.now() });
+        return updated;
+      }
+      return get().settings;
     } catch (e) {
       if (e.status) onResult?.({ ok: false, status: e.status, body: e.body || {} });
       if (sequence === patchSequence) set({ error: e.body?.error || "Failed to save settings", errorStatus: e.status || null, errorBody: e.body || null });

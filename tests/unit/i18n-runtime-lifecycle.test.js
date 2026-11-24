@@ -26,6 +26,65 @@ describe("i18n runtime lifecycle", () => {
     document.cookie = "locale=; max-age=0; path=/";
   });
 
+  function deferred() {
+    let resolve;
+    const promise = new Promise((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+
+  it("does not let an older locale response overwrite the newer reload", async () => {
+    const viResponse = deferred();
+    const frResponse = deferred();
+    vi.stubGlobal("fetch", vi.fn((url) => url.includes("/vi.") ? viResponse.promise : frResponse.promise));
+    const callback = vi.fn();
+    const unsubscribe = onLocaleChange(callback);
+
+    const older = reloadTranslations();
+    document.cookie = "locale=fr; path=/";
+    const newer = reloadTranslations();
+    frResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Français" }) });
+    await newer;
+    expect(translate("Label")).toBe("Français");
+    viResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Tiếng Việt" }) });
+    await older;
+
+    expect(translate("Label")).toBe("Français");
+    expect(callback).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it("reprocesses the current page when a same-locale route reload completes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ Label: "Tiếng Việt" }),
+    }));
+    document.body.innerHTML = "<span>Label</span>";
+
+    await reloadTranslations();
+
+    expect(document.querySelector("span").textContent).toBe("Tiếng Việt");
+  });
+
+  it("does not let initialization invalidated by teardown publish or clear a later handle", async () => {
+    const first = deferred();
+    const second = deferred();
+    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    vi.stubGlobal("fetch", fetch);
+    document.body.innerHTML = "<span>Label</span>";
+
+    const staleInit = initRuntimeI18n();
+    teardownRuntimeI18n();
+    const activeInit = initRuntimeI18n();
+    first.resolve({ ok: true, status: 200, json: async () => ({ Label: "Old" }) });
+    await staleInit;
+    expect(observe).not.toHaveBeenCalled();
+    const joinedActiveInit = initRuntimeI18n();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    second.resolve({ ok: true, status: 200, json: async () => ({ Label: "New" }) });
+    await Promise.all([activeInit, joinedActiveInit]);
+    expect(translate("Label")).toBe("New");
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps English on a 404 and warns once with the locale and status", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

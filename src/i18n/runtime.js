@@ -9,6 +9,7 @@ let reloadCallbacks = [];
 let observerHandle = null;
 let initPromise = null;
 let lifecycleVersion = 0;
+let workVersion = 0;
 const missingKeys = new Set();
 const textState = new WeakMap();
 
@@ -41,33 +42,32 @@ function syncLocaleFromCookie() {
   syncDocumentLocale(locale);
 }
 
-// Load translation map
+// Load into a local value; only the newest active runtime work may publish it.
 async function loadTranslations(locale) {
   if (locale === "en") {
-    translationMap = {};
-    return;
+    return {};
   }
 
   try {
     const response = await fetch(`/i18n/literals/${locale}.json`);
     if (response.ok === false) {
-      translationMap = {};
       console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
-      return;
+      return {};
     }
     try {
       const translations = await response.json();
-      translationMap = isRecord(translations) ? translations : {};
-      if (translationMap !== translations) {
+      const translationMapForLocale = isRecord(translations) ? translations : {};
+      if (translationMapForLocale !== translations) {
         console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
       }
+      return translationMapForLocale;
     } catch {
-      translationMap = {};
       console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+      return {};
     }
   } catch {
-    translationMap = {};
     console.warn(`Failed to load translations for locale ${locale} (status unavailable)`);
+    return {};
   }
 }
 
@@ -170,11 +170,15 @@ export async function initRuntimeI18n() {
   if (observerHandle) return;
   if (initPromise) return initPromise;
 
-  initPromise = (async () => {
-    const version = lifecycleVersion;
+  // Each init/reload supersedes prior work. Stale completions cannot publish,
+  // notify, or mutate the DOM; an old init also cannot clear a newer pending handle.
+  const lifecycle = lifecycleVersion;
+  const work = ++workVersion;
+  const promise = (async () => {
     syncLocaleFromCookie();
-    await loadTranslations(currentLocale);
-    if (version !== lifecycleVersion) return;
+    const translations = await loadTranslations(currentLocale);
+    if (lifecycle !== lifecycleVersion || work !== workVersion) return;
+    translationMap = translations;
 
     // Process existing DOM
     processElement(document.body);
@@ -199,16 +203,18 @@ export async function initRuntimeI18n() {
       subtree: true
     });
   })();
+  initPromise = promise;
   try {
-    await initPromise;
+    await promise;
   } finally {
-    initPromise = null;
+    if (initPromise === promise) initPromise = null;
   }
 }
 
 /** Disconnect runtime observation. Subscribers retain their callbacks until they unsubscribe. */
 export function teardownRuntimeI18n() {
   lifecycleVersion += 1;
+  workVersion += 1;
   observerHandle?.disconnect();
   observerHandle = null;
   initPromise = null;
@@ -218,7 +224,11 @@ export function teardownRuntimeI18n() {
 // Reload translations when locale changes
 export async function reloadTranslations() {
   syncLocaleFromCookie();
-  await loadTranslations(currentLocale);
+  const lifecycle = lifecycleVersion;
+  const work = ++workVersion;
+  const translations = await loadTranslations(currentLocale);
+  if (lifecycle !== lifecycleVersion || work !== workVersion) return;
+  translationMap = translations;
 
   // Notify all registered callbacks
   reloadCallbacks.forEach((callback) => callback());

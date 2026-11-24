@@ -35,14 +35,14 @@ async function handleModerationsHandler(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
+  // Moderation historically ignores x-connection-id, including model fallbacks.
   return runMediaEndpoint(request, {
     kind: "moderations",
-    pinConnection: true,
-    route: (admission, pinOptions) => routeModerations(request, body, modelStr, url, admission, pinOptions),
+    route: (admission) => routeModerations(request, body, modelStr, url, admission),
   });
 }
 
-async function routeModerations(request, body, modelStr, url, { settings, apiKey, auth: apiKeyAuth }, pinOptions) {
+async function routeModerations(request, body, modelStr, url, { settings, apiKey, auth: apiKeyAuth }) {
   if (apiKey) {
     log.debug("AUTH", "API key provided");
   } else {
@@ -56,12 +56,12 @@ async function routeModerations(request, body, modelStr, url, { settings, apiKey
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelModeration(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext, pinOptions),
+    (m) => handleSingleModelModeration(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext),
     log
   );
 }
 
-async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId, usageContext, pinOptions) {
+async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId, usageContext) {
   if (request.signal?.aborted) {
     return errorResponse(499, "Moderation request aborted");
   }
@@ -91,7 +91,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
   const { getExecutor } = await import("open-sse/executors/index.js");
   const executor = getExecutor(provider);
   if (executor?.noAuth) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { ...pinOptions, apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -110,7 +110,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
   }
 
   return runMediaAccounts({
-    provider, model, selectionOptions: { ...pinOptions, apiKeyId },
+    provider, model, selectionOptions: { apiKeyId },
     buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("MODERATION", `[${provider}/${model}] free no-auth provider disabled by settings`);

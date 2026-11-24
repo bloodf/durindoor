@@ -13,18 +13,15 @@ const handlersDir = join(here, "../../src/sse/handlers");
 // (count_tokens, Gemini-native v1beta) intentionally keep the plain selector.
 const QUOTA_PREFLIGHT_ROUTES = [
   "chat/singleModel.js",
-  "embeddings.js",
   "fetch.js",
   "media/pipeline.js",
-  "moderations.js",
   "music.js",
-  "rerank.js",
   "search.js",
   "video.js",
 ];
 
 describe("quota preflight route coverage (OmniRoute #6742)", () => {
-  for (const file of ["stt.js", "tts.js"]) {
+  for (const file of ["stt.js", "tts.js", "embeddings.js", "moderations.js", "rerank.js"]) {
     it(`${file} delegates account selection to the shared media pipeline`, () => {
       const source = readFileSync(join(handlersDir, file), "utf8");
       expect(source).toMatch(/runMediaAccounts\s*\(/);
@@ -42,10 +39,7 @@ describe("quota preflight route coverage (OmniRoute #6742)", () => {
 
   for (const file of QUOTA_PREFLIGHT_ROUTES) {
     it(`${file} selects credentials through getProviderCredentialsWithQuotaPreflight only`, () => {
-      const source = readFileSync(
-        join(handlersDir, file === "embeddings.js" || file === "moderations.js" || file === "rerank.js" ? "media/pipeline.js" : file),
-        "utf8",
-      );
+      const source = readFileSync(join(handlersDir, file), "utf8");
       expect(source, `${file} must call the quota-preflight wrapper`).toMatch(
         /getProviderCredentialsWithQuotaPreflight\s*\(/
       );

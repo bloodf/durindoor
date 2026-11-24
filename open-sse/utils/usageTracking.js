@@ -897,7 +897,7 @@ export function estimateNonStreamingUsage(requestBody, response) {
 }
 
 /**
- * Log usage with cache info (green color)
+ * Log verbose usage in green, including cache and reasoning fields; estimates are yellow.
  */
 export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null) {
   if (!usage || !isObject(usage)) return;
@@ -915,11 +915,11 @@ export function logUsage(provider, usage, model = null, connectionId = null, api
   const outTokens = usage?.completion_tokens || usage?.output_tokens || 0;
   const accountPrefix = connectionId ? connectionId.slice(0, 8) + "..." : "unknown";
 
-  let msg = `[${getTimeString()}] 📊 ${COLORS.green}[USAGE] ${p} | in=${inTokens} | out=${outTokens} | account=${accountPrefix}${COLORS.reset}`;
+  let msg = `[${getTimeString()}] 📊 ${COLORS.green}[USAGE] ${p} | in=${inTokens} | out=${outTokens} | account=${accountPrefix}`;
 
   // Add estimated flag if present
   if (usage.estimated) {
-    msg += ` ${COLORS.yellow}(estimated)${COLORS.reset}`;
+    msg += ` ${COLORS.yellow}(estimated)${COLORS.green}`;
   }
 
   // Add cache info if present (unified from different formats)
@@ -932,5 +932,5 @@ export function logUsage(provider, usage, model = null, connectionId = null, api
   const reasoning = usage.reasoning_tokens;
   if (reasoning) msg += ` | reasoning=${reasoning}`;
 
-  console.log(msg);
+  console.log(msg + COLORS.reset);
 }

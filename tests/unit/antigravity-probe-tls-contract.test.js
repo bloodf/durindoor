@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { Agent } from "undici";
-import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { getDirectDispatcherOptionsForTest, proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/tls");
 const fixtureCert = fs.readFileSync(path.join(fixtureDir, "antigravity-probe-fixture.crt"));
@@ -51,7 +51,11 @@ it("records ALPN offered separately from negotiated for the account-probe transp
 
   // The fixture certificate is the only trust anchor supplied to this
   // dispatcher. Verification remains enabled and the URL hostname is checked.
-  const dispatcher = new Agent({ connect: { ca: fixtureCert, rejectUnauthorized: true } });
+  const options = getDirectDispatcherOptionsForTest();
+  const dispatcher = new Agent({
+    ...options,
+    connect: { ...options.connect, ca: fixtureCert, rejectUnauthorized: true },
+  });
   dispatchers.add(dispatcher);
   const response = await proxyAwareFetch(`https://localhost:${server.address().port}/v1internal:fetchAvailableModels`, {
     method: "POST",

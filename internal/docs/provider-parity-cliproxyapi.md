@@ -234,14 +234,13 @@ recommendation.
    through `proxyAwareFetch` with no protocol control, so the wire shape is not
    pinned by the account-probe caller. The loopback-only TLS fixture in
    `tests/unit/antigravity-probe-tls-contract.test.js` exercised
-   Node 24's native fetch/Undici transport with normal certificate validation
+   the direct fetch path using the shared pool settings and a fixture trust anchor
    against a server that reports both ClientHello ALPN offers and the selected
    protocol. The client offered `http/1.1`; the server selected `http/1.1` and
    returned the fixture response. The fixture would select `h2` if it were
    offered, so this distinguishes the offer from the negotiated result. No
    offer-free behavior was observed on this runtime. This establishes the
-   shared transport's current default, not a protocol guarantee in the probe
-   contract or behavior across Node versions and custom dispatchers. Since the
+   behavior of these settings on the tested runtime. Since the
    actual account probe still does not explicitly constrain ALPN, its observed
    interoperability with an ALPN-free server is not established here. The
    shared transport was left intact; see [`antigravity-2034.md`](./antigravity-2034.md)

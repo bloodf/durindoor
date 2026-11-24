@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readFile, access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import { readDesktopPassToken } from "open-sse/shared/mimoAccount.js";
+import { readDesktopPassToken } from "open-sse/utils/mimoAccount.js";
 
 /**
  * GET /api/oauth/xiaomi-mimo/auto-import

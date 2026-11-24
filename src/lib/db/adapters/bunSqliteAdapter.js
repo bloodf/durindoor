@@ -27,10 +27,13 @@ export async function createBunSqliteAdapter(filePath) {
   }, CHECKPOINT_INTERVAL_MS);
   if (isFunction(checkpointTimer.unref)) checkpointTimer.unref();
 
+  // bun:sqlite exposes no open flag; track our own close outcome.
+  let isOpen = true;
   function gracefulClose() {
     try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
     try {stmtCache.clear();} catch {}
-    try {db.close();} catch {}
+    // close(true) makes bun throw on pending queries instead of staying silently open.
+    try {db.close(true); isOpen = false;} catch {}
   }
   const onSignal = () => {
     // Keep the repository available until the central MITM cleanup finishes.
@@ -71,6 +74,10 @@ export async function createBunSqliteAdapter(filePath) {
       clearInterval(checkpointTimer);
       gracefulClose();
     },
+    // Per-handle state for releaseExclusiveLock(). bun:sqlite throws when
+    // inTransaction is read after close, so our own flag guards the read.
+    get open() {return isOpen;},
+    get inTransaction() {return isOpen ? db.inTransaction : false;},
     raw: db
   };
 }

@@ -40,10 +40,14 @@ export async function createNodeSqliteAdapter(filePath) {
   }, CHECKPOINT_INTERVAL_MS);
   if (isFunction(checkpointTimer.unref)) checkpointTimer.unref();
 
+  // Follows the driver when it reports state (Node >= 22.15), otherwise the
+  // outcome of our own close call, so a swallowed refusal is not reported as closed.
+  let closed = false;
+  const handleOpen = () => (typeof db.isOpen === "boolean" ? db.isOpen : !closed);
   function gracefulClose() {
     try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
     try {stmtCache.clear();} catch {}
-    try {db.close();} catch {}
+    try {db.close(); closed = true;} catch {}
   }
   const onSignal = () => {
     // Keep the repository available until the central MITM cleanup finishes.
@@ -91,6 +95,15 @@ export async function createNodeSqliteAdapter(filePath) {
     close() {
       clearInterval(checkpointTimer);
       gracefulClose();
+    },
+    // Per-handle state for releaseExclusiveLock(). node:sqlite throws
+    // ERR_INVALID_STATE when isTransaction is read after close, so isOpen guards it.
+    get open() {
+      return handleOpen();
+    },
+    get inTransaction() {
+      // Undefined on a driver without isTransaction, which the release helper treats as unknown.
+      return handleOpen() ? db.isTransaction : false;
     },
     raw: db
   };

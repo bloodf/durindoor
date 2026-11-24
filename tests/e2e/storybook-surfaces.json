@@ -13800,7 +13800,7 @@
       "id": "src/app/(dashboard)/dashboard/health/page.js#HealthPage",
       "sourcePath": "src/app/(dashboard)/dashboard/health/page.js",
       "symbol": "HealthPage",
-      "sourceSha256": "38d3994e19cb0258272225496f1af776482ea1480e3bcf6013a6c09bdcb67d7a",
+      "sourceSha256": "074e2f1c3f90ab838411fc8093ec0e0f45cdc71c5993288ef5c80767e3e44d8d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -13824,7 +13824,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/health/page.js": "38d3994e19cb0258272225496f1af776482ea1480e3bcf6013a6c09bdcb67d7a",
+            "src/app/(dashboard)/dashboard/health/page.js": "074e2f1c3f90ab838411fc8093ec0e0f45cdc71c5993288ef5c80767e3e44d8d",
             "src/app/(dashboard)/dashboard/health/page.stories.jsx": "dd957d06e60aae412ea1dd20269b31df68ee819078824680d62fe3c3aee82f2b"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -13839,7 +13839,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/health/page.js": "38d3994e19cb0258272225496f1af776482ea1480e3bcf6013a6c09bdcb67d7a",
+            "src/app/(dashboard)/dashboard/health/page.js": "074e2f1c3f90ab838411fc8093ec0e0f45cdc71c5993288ef5c80767e3e44d8d",
             "src/app/(dashboard)/dashboard/health/page.stories.jsx": "dd957d06e60aae412ea1dd20269b31df68ee819078824680d62fe3c3aee82f2b"
           },
           "proposedSourceEvidence": "page.stories.jsx#Empty",
@@ -13854,7 +13854,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/health/page.js": "38d3994e19cb0258272225496f1af776482ea1480e3bcf6013a6c09bdcb67d7a",
+            "src/app/(dashboard)/dashboard/health/page.js": "074e2f1c3f90ab838411fc8093ec0e0f45cdc71c5993288ef5c80767e3e44d8d",
             "src/app/(dashboard)/dashboard/health/page.stories.jsx": "dd957d06e60aae412ea1dd20269b31df68ee819078824680d62fe3c3aee82f2b"
           },
           "proposedSourceEvidence": "page.stories.jsx#LoadFailure",
@@ -103444,7 +103444,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "24cc0b8a7d6703b045a3c3eaf7dd0a1f60db0249d5313f528bea04fd9755a879",
-    "sourceCensusSha256": "93d014c6062c4d1579209cec75e5ead4454277ea01679ac6facbee4c5712eb9d",
+    "sourceCensusSha256": "7a3b3242f4e030814c7883a2e62f5d85f7135f6993e6bdc677b415dfe8fc24ae",
     "pendingRows": 448,
     "retainedApprovedRows": 199,
     "pendingReferences": 1489,

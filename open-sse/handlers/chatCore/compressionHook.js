@@ -82,6 +82,8 @@ function bodyFormat(body) {
  * @param {object} [deps] optional DI override { isEngineAvailable, getEngine,
  *        deriveDefaultPlan, resolveAdaptivePlan, planToEngineIds } (tests only)
  * @param {object} cfg  { enabled, engines, applyOpts, adaptive, fidelityGate, log }
+ *        applyOpts.headroomApplied: true when the legacy headroom stage already
+ *        compressed this request, so the stack must skip its headroom step.
  *        fidelityGate: { textInvariants?: boolean } — protected blocks (tool
  *        schemas, media, signatures, error results, instructions, fenced code)
  *        are always gated per step; textInvariants adds the opt-in number /
@@ -125,6 +127,7 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       isAvailable: (id) => {
         if (!isEngineAvailable(id)) return false;
         if (id === "rtk" && cfg.applyOpts?.rtkApplied === true) return false;
+        if (id === "headroom" && cfg.applyOpts?.headroomApplied === true) return false;
         const engine = getEngine(id);
         return engine.isConfigured?.({ config: cfg.applyOpts || {}, stepConfig: engineStepOptions(engine, cfg.engines?.[id]) }) ?? true;
       }
@@ -156,14 +159,17 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
   for (const id of engineIds) {
     const stepInput = working;
     try {
+      if (id === "headroom" && cfg.applyOpts?.headroomApplied === true) continue;
       if (!isEngineAvailable(id)) continue; // unavailable -> skip, keep stepInput
       // Always forward stepConfig per contract {config, stepConfig}. Stacked steps
       // carry the real planner step (with intensity); single-mode plans have an
       // empty stackedPipeline, so synthesize a minimal {engine} step.
       const engine = getEngine(id);
       const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
+      const format = cfg.applyOpts?.format ?? bodyFormat(working);
+      if (id === "headroom") step.format = format;
       const opts = {
-        config: { format: cfg.applyOpts?.format ?? bodyFormat(working), ...(cfg.applyOpts || {}) },
+        config: { format, ...(cfg.applyOpts || {}) },
         stepConfig: step
       };
       const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;

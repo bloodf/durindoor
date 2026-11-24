@@ -994,7 +994,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         enabled: true,
         engines: compressionEngines ?? {},
         // The resolved outgoing format disambiguates minimal Claude and OpenAI bodies.
-        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk, format: finalFormat },
+        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk, headroomApplied: Boolean(headroomStats), format: finalFormat },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         protectCachedPrefix: isOpenRouterAnthropicModel(provider, cleanModel),
         adaptive: {

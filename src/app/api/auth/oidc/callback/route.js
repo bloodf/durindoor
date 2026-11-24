@@ -83,6 +83,7 @@ export async function GET(request) {
     }
     await setDashboardAuthCookie(cookieStore, request, {
       oidc: true,
+      mfa: "oidc",
       oidcSub: payload.sub || null,
       oidcEmail: pickOidcEmail(payload) || null,
       oidcName: pickOidcDisplayName(payload),

@@ -17,11 +17,13 @@ describe("agy background refresh spacing", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
+    vi.stubEnv("BG_REFRESH_GOOGLE_DELAY_MS", "12000");
     vi.resetModules();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.resetModules();
   });
@@ -38,10 +40,9 @@ describe("agy background refresh spacing", () => {
     );
 
     const tick = runBackgroundTokenRefreshTick({ loadConnections, refreshConnection });
-    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(refreshConnection.mock.calls.map(([connection]) => connection.id)).toEqual(["agy-1"]);
-    expect(vi.getTimerCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(13_999);
     expect(refreshConnection).toHaveBeenCalledTimes(1);

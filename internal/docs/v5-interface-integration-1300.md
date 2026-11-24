@@ -12,7 +12,7 @@ The [surface manifest](../../tests/e2e/storybook-surfaces.json) records the curr
 
 ## Remaining V5 scope
 
-S05 covers five provider-detail surfaces (`AutoPingScheduleModal`, `InferenceStatus`, `ModelCatalogProvenance`, `NativeProviderReadiness` and `ProviderRpmControl`). The manifest maps these surfaces to scenarios and records source-story evidence for the mapped states. Independent source review remains pending for the five surfaces and their scoped evidence.
+The five provider-detail rows in S05 (`AutoPingScheduleModal`, `InferenceStatus`, `ModelCatalogProvenance`, `NativeProviderReadiness` and `ProviderRpmControl`) record proposed scenario mappings and supporting source-story evidence. Independent source review and approval of those mappings and evidence remain pending. This guide records no new approved coverage.
 
 Reconcile the remaining review compositions against live dashboard workflows and confirm ownership with the integration owner. Visual, interaction, loading, empty, error, responsive and accessibility coverage still requires approved scenario associations. Final V5 candidate acceptance and release readiness remain open under #1067.
 
@@ -42,10 +42,14 @@ Follow the local browser prerequisites in the [testing guide](./testing.mdx#v5-s
 RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=chromium V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/chromium.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
 ```
 
-Scoped browser runs have recorded evidence in Chromium, Firefox and WebKit. The historical [production acceptance audit](./audits/v5-production-2026-11-22/README.md) records passing Chromium cases and attributes them to its tested checkout SHA. #1067 tracks final browser evidence across the release candidate, with results tied to the exact candidate SHA.
+The [November 22 production acceptance audit](./audits/v5-production-2026-11-22/README.md) records 1,640 passing historical Chromium cases for tested checkout `78aef4edadc5`.
+
+The scoped provider catalog fixture run recorded 60 passing cases, 20 each in Chromium, Firefox and WebKit. [PR #2422](https://github.com/bloodf/durindoor/pull/2422)
+
+The Firefox and WebKit matrix for the exact integrated release candidate remains open under [#1067](https://github.com/bloodf/durindoor/issues/1067).
 
 ## Production integration status
 
-The canonical [production integration plan](./v5-production-integration.md) records S01–S20 as integrated. PR #2320 integrated S01–S08. S09–S19 completed the remaining surface slices. S20 made V5 the default for the release candidate and retained the documented `DURINDOOR_UI_V5=0` opt-out.
+The [production integration plan](./v5-production-integration.md#1-acceptance-status) says S20 made V5 the default and retained the documented `DURINDOOR_UI_V5=0` opt-out. It defers S21 removal of legacy branches, the switch and the Storybook boundary until #1067 accepts the release candidate.
 
-S21 removes legacy branches, the switch and Storybook boundary only after #1067 accepts the release candidate.
+The plan's surface status table still labels S05 and S09–S19 as Planned. The `tests/unit/v5-int-*.test.js` slice suites record the implemented behavior, including [S01 foundation](../../tests/unit/v5-int-01-foundation.test.js), [S08 model picker](../../tests/unit/v5-int-08-model-picker.test.js) and the dashboard surfaces from [S09 combos](../../tests/unit/v5-int-09-combos.test.js) through [S19 settings](../../tests/unit/v5-int-19-settings.test.js). The [S05 provider-story suite](../../tests/unit/v5-int-05-provider-stories.test.js) checks the source stories and inventory entries. Approval of the five mappings remains subject to source review.

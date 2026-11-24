@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 import { serveDirectory } from "../utils/staticServer.mjs";
-import { chromiumLaunchOptions } from "../utils/chromiumLaunch.mjs";
+import { selectV5Browser, v5BrowserLaunchOptions, v5ScreenshotDirectory } from "../utils/v5-browser-engine.mjs";
 import { buildV5EvidenceReport } from "../utils/v5EvidenceReport.mjs";
 
 /**
@@ -12,16 +12,18 @@ import { buildV5EvidenceReport } from "../utils/v5EvidenceReport.mjs";
  *
  * Every tests/e2e/v5-evidence/*.json file is `{ "route": "/dashboard/x", "stories": [<story id>...] }`
  * (one file per slice). Each story renders from the built storybook-static with the
- * V5 switch on (`data-ui="v5"`), in chromium at 1440x900 and 360x800, dark and light.
+ * V5 switch on (`data-ui="v5"`), in the selected browser at 1440x900 and 360x800, dark and light.
  * It must produce no console error or page error, no serious/critical axe violation
  * (wcag2a, wcag2aa, wcag21aa) and, at 360px, no horizontal document overflow. A
  * screenshot lands under .impeccable/review/v5/production/<route-slug>/.
  *
  * Runs only with RUN_V5_EVIDENCE=1. V5_EVIDENCE_ROUTES=<comma list> filters routes.
+ * V5_BROWSER_ENGINE selects chromium (default), firefox, or webkit.
  * V5_STORYBOOK_DIR overrides the served directory (default <repo>/storybook-static).
  */
 const enabled = process.env.RUN_V5_EVIDENCE === "1";
 const root = resolve(import.meta.dirname, "../..");
+const engine = enabled ? selectV5Browser(process.env.V5_BROWSER_ENGINE) : "chromium";
 const storybookDir = process.env.V5_STORYBOOK_DIR ? resolve(process.cwd(), process.env.V5_STORYBOOK_DIR) : resolve(root, "storybook-static");
 const registryDir = resolve(root, "tests/e2e/v5-evidence");
 const screenshotRoot = resolve(root, ".impeccable/review/v5/production");
@@ -112,7 +114,7 @@ async function checkStory(browser, baseURL, route, id, theme, viewport) {
       failures.push(`axe ${violation.impact} ${violation.id}: ${violation.nodes.slice(0, 3).map((node) => node.target.join(" ")).join(" | ")}`);
     }
 
-    const dir = resolve(screenshotRoot, slug(route));
+    const dir = v5ScreenshotDirectory(screenshotRoot, engine, slug(route));
     mkdirSync(dir, { recursive: true });
     await page.screenshot({ path: resolve(dir, `${id}-${theme}-${viewport.width}.png`), fullPage: true });
     // Collected after the screenshot so late console output from settling is included.
@@ -122,7 +124,7 @@ async function checkStory(browser, baseURL, route, id, theme, viewport) {
   } finally {
     await context.close();
   }
-  evidenceRows.push({ route, story: id, theme, width: viewport.width, pass: failures.length === 0, axeViolationsByImpact: axeCounts, consoleErrorCount: consoleErrors.length, overflowPx });
+  evidenceRows.push({ engine, route, story: id, theme, width: viewport.width, pass: failures.length === 0, axeViolationsByImpact: axeCounts, consoleErrorCount: consoleErrors.length, overflowPx });
   return failures.map((failure) => `[${theme} ${viewport.width}px] ${failure}`);
 }
 
@@ -139,7 +141,11 @@ describe.skipIf(!enabled)("v5 production route evidence", () => {
     if (!existsSync(indexPath)) throw new Error(`${indexPath} is missing: run \`pnpm run storybook:build\` before RUN_V5_EVIDENCE=1`);
     storyIds = new Set(Object.values(JSON.parse(readFileSync(indexPath, "utf8")).entries).filter((entry) => entry.type === "story").map((entry) => entry.id));
     server = await serveDirectory(storybookDir);
-    browser = await chromium.launch(chromiumLaunchOptions(chromium, root));
+    const firefoxDriver = engine === "firefox" && process.env.V5_FIREFOX_DRIVER
+      ? (await import(process.env.V5_FIREFOX_DRIVER)).firefox
+      : firefox;
+    const browserType = { chromium, firefox: firefoxDriver, webkit }[engine];
+    browser = await browserType.launch(v5BrowserLaunchOptions(engine, browserType, root));
   }, 60_000);
 
   afterAll(async () => {

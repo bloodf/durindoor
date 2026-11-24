@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi as mock } from "vitest";
 import { reloadTranslations, translate } from "../../src/i18n/runtime.js";
+import { getKeyedMessage, REQUEST_DETAILS_TITLE } from "../../src/i18n/keyedMessages.js";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +33,8 @@ describe("Vietnamese dashboard labels", () => {
 
   it("translates the shipped drawer title and falls back for missing labels", async () => {
     const source = readFileSync(resolve(__dirname, "../../src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"), "utf8");
-    const drawerTitle = source.match(/title="(Request details)"/)?.[1];
+    const drawerTitle = getKeyedMessage(REQUEST_DETAILS_TITLE, "en");
+    expect(source).toContain("title={<span data-i18n-skip=\"true\">{requestDetailsTitle}</span>}");
     expect(drawerTitle).toBe("Request details");
     document.cookie = "locale=vi; path=/";
     mock.stubGlobal("fetch", mock.fn().mockResolvedValue({ ok: true, json: async () => vi }));

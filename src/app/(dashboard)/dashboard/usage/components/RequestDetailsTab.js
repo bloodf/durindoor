@@ -22,6 +22,9 @@ const REQUEST_DETAIL_ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100, "all"];
 const REQUEST_DETAIL_MAX_PAGE_SIZE = 100;
 const REQUEST_DETAIL_PAGE_SIZE = 20;
 
+// A received HTTP failure is shown inline. Fetch and JSON exceptions also need diagnostics.
+class RequestDetailsHttpError extends Error {}
+
 const PAYLOAD_STAGES = [
   { field: "request", label: "Client request" },
   { field: "providerRequest", label: "Provider request" },
@@ -232,7 +235,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       };
       const requestPage = async (page, pageSize) => {
         const res = await fetch(`/api/usage/request-details?${buildParams(page, pageSize).toString()}`, { signal });
-        if (!res.ok) throw new Error(`Request details failed: ${res.status}`);
+        if (!res.ok) throw new RequestDetailsHttpError(`Request details failed: ${res.status}`);
         return res.json();
       };
       const allMode = pagination.pageSize === "all";
@@ -260,10 +263,11 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
         totalPages: allMode ? 1 : totalPages,
       }));
     } catch (error) {
-      if (error?.name !== "AbortError") {
+      if (error?.name === "AbortError") return;
+      if (!(error instanceof RequestDetailsHttpError)) {
         console.error("Failed to fetch request details:", error);
-        setFetchError(error.message || "Failed to fetch request details");
       }
+      if (!signal.aborted) setFetchError(error.message || "Failed to fetch request details");
     } finally {
       if (!signal.aborted) setLoading(false);
     }

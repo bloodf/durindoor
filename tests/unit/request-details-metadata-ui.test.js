@@ -64,6 +64,7 @@ describe("Request Details metadata-only UI", () => {
     act(() => root.unmount());
     container.remove();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("explains all four redacted stages and offers no raw payload copy or view path", async () => {
@@ -160,6 +161,40 @@ describe("Request Details metadata-only UI", () => {
     const detailButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Detail");
     await act(async () => detailButton.click());
     expect(container.textContent).toContain("300.0 tok/s");
+  });
+
+  it("shows the received HTTP status without logging a second error", async () => {
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const json = vi.fn();
+    const fallback = mockSettingsResponse(true);
+    vi.stubGlobal("fetch", vi.fn((url) => String(url).startsWith("/api/usage/request-details")
+      ? Promise.resolve({ ok: false, status: 500, json })
+      : fallback(url)));
+
+    await act(async () => root.render(React.createElement(RequestDetailsTab)));
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Request details failed: 500");
+    expect(json).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["transport", new TypeError("Network connection lost"), (error) => Promise.reject(error)],
+    ["JSON parse", new SyntaxError("Invalid JSON"), (error) => Promise.resolve({
+      ok: true,
+      json: async () => { throw error; },
+    })],
+  ])("keeps diagnostics for unexpected %s failures", async (_kind, error, fail) => {
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fallback = mockSettingsResponse(true);
+    vi.stubGlobal("fetch", vi.fn((url) => String(url).startsWith("/api/usage/request-details")
+      ? fail(error)
+      : fallback(url)));
+
+    await act(async () => root.render(React.createElement(RequestDetailsTab)));
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(error.message);
+    expect(logError).toHaveBeenCalledExactlyOnceWith("Failed to fetch request details:", error);
   });
 
   it("renders the observability callout with a settings link when observability is disabled", async () => {

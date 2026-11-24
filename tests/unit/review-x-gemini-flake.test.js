@@ -2,12 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chromium } from "playwright";
 import { GeminiWebExecutor, resetGeminiBrowserLeaseForTests } from "../../open-sse/executors/gemini-web.js";
 
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  resolveConnectProxyForRequest: () => ({ proxyUrl: null }),
+}));
+
 const STREAM_URL = "https://gemini.google.com/_/StreamGenerate";
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const frameBody = (answer) => `)]}'\n\n1\n${JSON.stringify([["wrb.fr", null, JSON.stringify([null, null, null, null, [["c", [answer]]]])]])}\n`;
 
 afterEach(async () => {
   await resetGeminiBrowserLeaseForTests();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("Gemini Web concurrent browser lease", () => {
@@ -37,7 +43,7 @@ describe("Gemini Web concurrent browser lease", () => {
                   press: async () => responseHandler({
                     url: () => STREAM_URL,
                     status: () => 200,
-                    text: async () => `)]}'\n\n1\n[["wrb.fr",null,"[null,null,null,null,[[\"c\",[\"ok\"]]]]]]\n`,
+                    text: async () => frameBody("ok"),
                   }),
                 },
                 waitForTimeout: async () => {},
@@ -50,7 +56,6 @@ describe("Gemini Web concurrent browser lease", () => {
 
     const executor = new GeminiWebExecutor();
     const requests = Array.from({ length: 20 }, (_, index) => executor.execute({
-      model: "gemini-2.5-pro",
       body: { messages: [{ role: "user", content: `request ${index}` }] },
       stream: false,
       credentials: { apiKey: `__Secure-1PSID=synthetic-${index}` },
@@ -60,6 +65,30 @@ describe("Gemini Web concurrent browser lease", () => {
     expect(launch).toHaveBeenCalledTimes(1);
     expect(contexts).toHaveLength(20);
     expect(contexts.every((context) => context.closed)).toBe(true);
-    expect(results.every(({ response }) => response.status === 200)).toBe(true);
+    expect(results.map(({ response }) => response.status)).toEqual(Array(20).fill(200));
+  });
+
+  it("clears the lease count when a launcher throws synchronously", async () => {
+    vi.useFakeTimers();
+    const browser = {
+      isConnected: () => true,
+      close: vi.fn(async () => {}),
+      newContext: async () => { throw new Error("context setup failed"); },
+    };
+    const launch = vi.spyOn(chromium, "launch")
+      .mockImplementationOnce(() => { throw new Error("launcher failed synchronously"); })
+      .mockResolvedValueOnce(browser);
+    const executor = new GeminiWebExecutor();
+    const input = {
+      body: { messages: [{ role: "user", content: "hello" }] },
+      credentials: { apiKey: "__Secure-1PSID=synthetic" },
+    };
+
+    await executor.execute(input);
+    await executor.execute(input);
+    expect(launch).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(browser.close).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

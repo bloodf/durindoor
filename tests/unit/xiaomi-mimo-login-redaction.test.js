@@ -8,7 +8,7 @@ import {
 } from "../../src/lib/mimoLoginSession.js";
 
 const mocks = vi.hoisted(() => ({ exchange: vi.fn(), proxyFetch: vi.fn() }));
-vi.mock("../../open-sse/shared/mimoAccount.js", () => ({ getMimoAccountCookie: mocks.exchange }));
+vi.mock("../../open-sse/utils/mimoAccount.js", () => ({ getMimoAccountCookie: mocks.exchange }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.proxyFetch }));
 
 const ORIGIN = "https://dashboard.example.test";
@@ -342,7 +342,7 @@ describe("real shared transport diagnostics (#1088)", () => {
 
   it("retains final phase-two status without logging redirect, cookie or response credentials", async () => {
     const realProxy = await vi.importActual("../../open-sse/utils/proxyFetch.js");
-    const realAccount = await vi.importActual("../../open-sse/shared/mimoAccount.js");
+    const realAccount = await vi.importActual("../../open-sse/utils/mimoAccount.js");
     mocks.proxyFetch.mockImplementation(realProxy.proxyAwareFetch);
     const transport = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

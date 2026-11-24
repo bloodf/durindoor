@@ -334,7 +334,7 @@ export async function ensureServiceSession(sess) {
     return false;
   }
   try {
-    const mod = await import("../../open-sse/shared/mimoAccount.js");
+    const mod = await import("../../open-sse/utils/mimoAccount.js");
     const proxyOptions = sess.proxyUrl ? { enabled: true, url: sess.proxyUrl } : null;
     log("exchange_start");
     const serviceCookie = await mod.getMimoAccountCookie(

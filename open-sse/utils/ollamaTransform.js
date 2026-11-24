@@ -15,6 +15,7 @@
 // if the stream ended without one — never twice. An upstream `{error: ...}`
 // frame is terminal on its own: it is forwarded and suppresses any synthetic
 // `done:true`, so a failed stream never looks like a clean completion.
+import { createSseFrameReader } from "./sseFrames.js";
 import { projectCompletionToClientFormat } from "../translator/response/completionProjector.js";
 import { FORMATS } from "../translator/formats.js";
 
@@ -44,6 +45,7 @@ function isErrorFrame(parsed) {
 
 export function transformToOllama(response, model) {
   let buffer = "";
+  const reader = createSseFrameReader();
   let pendingToolCalls = {};
   let ended = false;
   // One persistent decoder across chunks so multi-byte UTF-8 sequences split
@@ -182,20 +184,33 @@ export function transformToOllama(response, model) {
       }}
   };
 
+  // Native NDJSON is line-oriented; SSE is dispatched at frame boundaries.
+  const emitFrame = (frame, controller) => {
+    if (!frame.hasData) return;
+    try {
+      if (frame.data.trim() !== "[DONE]") JSON.parse(frame.data);
+      processLine(`data: ${frame.data}`, controller);
+    } catch {
+      // Some providers omit blank separators between complete JSON events.
+      for (const line of frame.dataLines) processLine(`data: ${line}`, controller);
+    }
+  };
+  const acceptLine = (line, controller) => {
+    if (line.trimStart().startsWith("{")) processLine(line.trim(), controller);
+    else for (const frame of reader.push(line + "\n")) emitFrame(frame, controller);
+  };
   const transform = new TransformStream({
     transform(chunk, controller) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-      for (const line of lines) processLine(line.trim(), controller);
+      for (const line of lines) acceptLine(line, controller);
     },
     flush(controller) {
-      // Flush any trailing multi-byte bytes held by the streaming decoder,
-      // then process a final line that ended without a newline.
       buffer += decoder.decode();
-      const rest = buffer.trim();
+      if (buffer) acceptLine(buffer, controller);
       buffer = "";
-      if (rest) processLine(rest, controller);
+      for (const frame of reader.flush()) emitFrame(frame, controller);
       emitTerminalOnce(controller);
     }
   });

@@ -26456,65 +26456,90 @@
           "storyId": "production-providers-inferencestatus--empty",
           "runtimeArtifactId": "production-providers-inferencestatus--empty",
           "axes": [
-            "source-association-pending-review"
+            "no-session-test",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Empty. The no-session-test prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference not tested",
+          "proposedVisibleTexts": [
+            "Inference not tested"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--loading",
           "storyId": "production-providers-inferencestatus--loading",
           "runtimeArtifactId": "production-providers-inferencestatus--loading",
           "axes": [
-            "source-association-pending-review"
+            "testing-prop=true",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Loading. The testing-prop=true prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference test running",
+          "proposedVisibleTexts": [
+            "Inference test running"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--error",
           "storyId": "production-providers-inferencestatus--error",
           "runtimeArtifactId": "production-providers-inferencestatus--error",
           "axes": [
-            "source-association-pending-review"
+            "status=error",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Error. The status=error prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference failed in this session",
+          "proposedVisibleTexts": [
+            "Inference failed in this session"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--passed",
           "storyId": "production-providers-inferencestatus--passed",
           "runtimeArtifactId": "production-providers-inferencestatus--passed",
           "axes": [
-            "source-association-pending-review"
+            "status=ok",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Passed. The status=ok prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference passed in this session",
+          "proposedVisibleTexts": [
+            "Inference passed in this session"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--skipped",
           "storyId": "production-providers-inferencestatus--skipped",
           "runtimeArtifactId": "production-providers-inferencestatus--skipped",
           "axes": [
-            "source-association-pending-review"
+            "status=skipped",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Skipped. The status=skipped prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference skipped in this session",
+          "proposedVisibleTexts": [
+            "Inference skipped in this session"
+          ]
         }
       ],
       "unresolvedHistoricalScenarioIds": [],

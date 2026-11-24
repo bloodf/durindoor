@@ -27,6 +27,11 @@
     "production-providers-nativeproviderreadiness--loaded",
     "production-providers-nativeproviderreadiness--empty",
     "production-providers-nativeproviderreadiness--loading",
-    "production-providers-nativeproviderreadiness--error"
+    "production-providers-nativeproviderreadiness--error",
+    "production-providers-inferencestatus--empty",
+    "production-providers-inferencestatus--loading",
+    "production-providers-inferencestatus--error",
+    "production-providers-inferencestatus--passed",
+    "production-providers-inferencestatus--skipped"
   ]
 }

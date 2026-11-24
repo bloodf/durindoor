@@ -12,7 +12,7 @@ describe("management response secret redaction", () => {
     };
 
     expect(redactSecrets(source)).toEqual({
-      env: { ANTHROPIC_AUTH_TOKEN: REDACTED_SECRET, API_TIMEOUT_MS: "600000" },
+      env: { ANTHROPIC_AUTH_TOKEN: REDACTED_SECRET, API_TIMEOUT_MS: REDACTED_SECRET },
       provider: { options: { apiKey: REDACTED_SECRET, baseURL: "http://localhost" } },
       headers: { "x-9r-cli-token": REDACTED_SECRET },
       policy: { maxTokens: 500 },

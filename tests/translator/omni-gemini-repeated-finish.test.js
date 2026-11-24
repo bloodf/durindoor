@@ -6,7 +6,7 @@
 // Synthetic fixtures only: no provider call, no credentials, no network.
 
 import { describe, expect, it } from "vitest";
-import "../translator/registerAll.js";
+import "./registerAll.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { initState, translateResponse } from "../../open-sse/translator/index.js";
 import { openaiToAntigravityResponse } from "../../open-sse/translator/response/openai-to-antigravity.js";

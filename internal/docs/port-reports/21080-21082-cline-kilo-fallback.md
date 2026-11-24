@@ -32,7 +32,7 @@ Upstream's `modelScopedAccessDenial.ts`, `errorClassifier.ts`, combo target-exha
 
 ## Evidence
 
-- `tests/unit/port-omni-cline-kilo-fallback-21080-21082.test.js`: 14 tests. Cline parser forms, malformed/zero/negative/huge input, provider gating, cap, JSON envelope, non-429 and no-hint behavior. Kilo: three envelope shapes, structured vs text body, statuses 401/402/403, both providers and aliases, exact-code match, credential-message and other-provider/status guards, and `markAccountUnavailable` lock keys (only `modelLock_kilo-auto/frontier`; no lock for an unlisted id; credential failure still writes `modelLock___all`).
+- `tests/unit/omni-21080-21082-fallback.test.js`: 14 tests. Cline parser forms, malformed/zero/negative/huge input, provider gating, cap, JSON envelope, non-429 and no-hint behavior. Kilo: three envelope shapes, structured vs text body, statuses 401/402/403, both providers and aliases, exact-code match, credential-message and other-provider/status guards, and `markAccountUnavailable` lock keys (only `modelLock_kilo-auto/frontier`; no lock for an unlisted id; credential failure still writes `modelLock___all`).
 - `cd tests && node node_modules/vitest/vitest.mjs run` on that file plus 15 neighbouring fallback, provider-rule, Kilo, Cline and Y-API files: 16 files, 198 tests passed. `tests/__baseline__/known-fails.txt` untouched. No credentials, production gateway or machine settings were used; all probes call pure functions or mocked storage.
 - Docs: note added to `docs/features/error-rules-and-egress-cooldown.mdx`.
 

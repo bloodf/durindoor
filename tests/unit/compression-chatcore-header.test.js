@@ -4,6 +4,7 @@
 // emit the header when disabled. The seam itself is mocked — its real behavior
 // is covered by compression-chatcore-f1b.test.js; here we prove the wiring.
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const { executeMock, runCompressionSeam } = vi.hoisted(() => ({
   executeMock: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("../../open-sse/utils/stream.js", () => ({
 
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
+  finishActiveSession: vi.fn(),
   appendRequestLog: vi.fn(async () => {}),
   saveRequestDetail: vi.fn(async () => {}),
   saveRequestUsage: vi.fn(async () => {}),
@@ -93,11 +95,26 @@ describe("handleChatCore compression header wiring", () => {
     );
 
     expect(runCompressionSeam).toHaveBeenCalledTimes(1);
+    expect(runCompressionSeam.mock.calls[0][2].applyOpts.format).toBe(FORMATS.OPENAI);
     expect(executeMock.mock.calls[0][0].body.messages[0].content).toBe("COMPRESSED-BY-SEAM");
     expect(result.response).toBeInstanceOf(Response);
     expect(result.response.status).toBe(200);
     expect(result.response.headers.get("content-type")).toMatch(/text\/event-stream/);
     expect(result.response.headers.get(HEADER)).toBe("caveman|12.5%");
+  });
+
+  it("passes the resolved Claude format for a minimal Claude request", async () => {
+    runCompressionSeam.mockImplementation(async (body) => ({ body, headerValue: null }));
+    const body = { model: "claude-test", max_tokens: 32, messages: [{ role: "user", content: "hello" }] };
+    await handleChatCore(baseArgs({
+      body,
+      modelInfo: { provider: "anthropic", model: "claude-test" },
+      sourceFormatOverride: FORMATS.CLAUDE,
+      compressionEnabled: true,
+      compressionEngines: { headroom: { enabled: true } },
+    }));
+    expect(runCompressionSeam).toHaveBeenCalledTimes(1);
+    expect(runCompressionSeam.mock.calls[0][2].applyOpts.format).toBe(FORMATS.CLAUDE);
   });
 
   it("enabled + seam reports header -> non-streaming (JSON) final response carries X-DurinDoor-Compression", async () => {

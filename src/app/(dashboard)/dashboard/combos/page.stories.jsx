@@ -375,16 +375,37 @@ export const ConnectionUsage = {
     },
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    // Usage rows and connection names load independently. A missing name is
-    // expected during polling, so only assert visibility once the cell exists.
-    const cell = await waitFor(() => {
-      const connection = canvas.queryByRole("cell", { name: "OpenAI prod", exact: true });
-      if (!connection) throw new Error("Waiting for the OpenAI prod connection cell");
-      return connection;
-    }, { container: canvasElement });
-    await expect(canvas.getByRole("heading", { name: "Connection usage" })).toBeVisible();
-    await expect(cell).toBeVisible();
+    const connectionName = "OpenAI prod";
+    const usageSection = () => canvasElement.querySelector('section[aria-labelledby="connection-usage-heading"]');
+    const hasConnectionCell = () =>
+      Array.from(usageSection()?.querySelectorAll("td") ?? []).some(
+        (cell) => cell.textContent.trim() === connectionName,
+      );
+
+    // Usage rows and connection names load independently. Observe the canvas
+    // so the wait also works if the usage section has yet to mount.
+    if (!hasConnectionCell()) {
+      const timeoutMs = 10_000;
+      await new Promise((resolve, reject) => {
+        const observer = new MutationObserver(() => {
+          if (hasConnectionCell()) {
+            observer.disconnect();
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        const timer = setTimeout(() => {
+          observer.disconnect();
+          clearTimeout(timer);
+          reject(new Error(`Connection usage did not show the "${connectionName}" cell within ${timeoutMs} ms`));
+        }, timeoutMs);
+        observer.observe(canvasElement, { childList: true, subtree: true, characterData: true });
+      });
+    }
+
+    const usage = within(usageSection());
+    await expect(usage.getByRole("heading", { name: "Connection usage" })).toBeVisible();
+    await expect(usage.getByRole("cell", { name: connectionName, exact: true })).toBeVisible();
   },
 };
 

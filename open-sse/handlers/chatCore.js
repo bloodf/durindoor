@@ -1801,7 +1801,9 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     // have their own deliberate resetsAtMs handling above, including leaving
     // it undefined on purpose when no real reset is known.
     if (!claudeRequestScoped && statusCode === HTTP_STATUS.RATE_LIMITED && !Number.isFinite(resetsAtMs)) {
-      const { cooldownMs, terminal } = checkFallbackError(statusCode, message, 0);
+      const { cooldownMs, terminal } = checkFallbackError({
+        status: statusCode, errorText: message, provider, model: cleanModel,
+      });
       if (!terminal && Number.isFinite(cooldownMs) && cooldownMs > 0) {
         resetsAtMs = Date.now() + cooldownMs;
       }

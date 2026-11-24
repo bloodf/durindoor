@@ -319,17 +319,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   context?.rateLimitEvidence && isObject(context.rateLimitEvidence) ?
   context.rateLimitEvidence :
   null;
-  const fallbackResult = checkFallbackError(
+  const fallbackResult = checkFallbackError({
     status,
     errorText,
     backoffLevel,
     provider,
-    context?.headers ?? null,
-    context?.errorBody ?? null
-  );
-  // A request-scoped OpenRouter 404 must not inherit a reset hint and lock a
-  // healthy model for later requests.
-  if (Number(status) === 404 && fallbackResult.requestScoped) {
+    headers: context?.headers,
+    structuredError: context?.errorBody,
+    model,
+  });
+  // A request-scoped OpenRouter error must stay off the account even
+  // when the upstream response supplies a reset hint.
+  if (fallbackResult.requestScoped && (Number(status) === 404 || provider === "openrouter" && Number(status) === 400)) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;

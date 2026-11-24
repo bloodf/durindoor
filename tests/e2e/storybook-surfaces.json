@@ -14,7 +14,10 @@
       "reviewStatus": "pending",
       "reviewedBy": null,
       "requiredScenarioIds": [
-        "durin-ds-production-pages-auto-configure--status-preview"
+        "durin-ds-production-pages-auto-configure--status-preview",
+        "durin-ds-production-pages-auto-configure--plain-text-actions",
+        "durin-ds-production-pages-auto-configure--diagnostic-actions",
+        "durin-ds-production-pages-auto-configure--run-success"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
@@ -28,10 +31,80 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
-          "proposedSourceEvidence": "Private action entry rendered by StatusPreview",
-          "expectedVisibleText": "$ npm install firecrawl"
+          "proposedSourceEvidence": "StatusPreview renders command ActionEntry rows (Firecrawl and PxPipe code regions with Copy controls, plus expanded Action log) and Headroom plain-text span.",
+          "expectedVisibleText": "$ npm install firecrawl",
+          "proposedVisibleTexts": [
+            "$ npm install firecrawl",
+            "$ headroomUrl=http://localhost:8080 pip install pxpipe",
+            "Headroom is already running"
+          ]
+        },
+        {
+          "id": "durin-ds-production-pages-auto-configure--plain-text-actions",
+          "storyId": "durin-ds-production-pages-auto-configure--plain-text-actions",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--plain-text-actions",
+          "axes": [
+            "plain-text",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
+          },
+          "proposedSourceEvidence": "PlainTextActions renders non-command string ActionEntry spans across service rows and expanded Action log, asserting no Configuration command region or Copy control.",
+          "expectedVisibleText": "pxpipe-proxy dependency not detected; skipping enable",
+          "proposedVisibleTexts": [
+            "Headroom is already running",
+            "pxpipe-proxy dependency not detected; skipping enable",
+            "firecrawl custom connection already up to date",
+            "rtkEnabled already true"
+          ]
+        },
+        {
+          "id": "durin-ds-production-pages-auto-configure--diagnostic-actions",
+          "storyId": "durin-ds-production-pages-auto-configure--diagnostic-actions",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--diagnostic-actions",
+          "axes": [
+            "diagnostic",
+            "controls",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388",
+            "src/shared/components/SetupDiagnosticCard.jsx": "56faec09efd03890fac00644db37911d1315ba14b06eb73435632d856f877172"
+          },
+          "proposedSourceEvidence": "DiagnosticActions renders both wrapped action.diagnostic and direct {summary, fixes} ActionEntry payloads through SetupDiagnosticCard in the expanded Action log.",
+          "expectedVisibleText": "Headroom binary was not found in the managed environment.",
+          "proposedVisibleTexts": [
+            "Headroom is not installed",
+            "Headroom binary was not found in the managed environment.",
+            "Managed virtualenv is missing required tools",
+            "PxPipe helper environment is missing required tools."
+          ]
+        },
+        {
+          "id": "durin-ds-production-pages-auto-configure--run-success",
+          "storyId": "durin-ds-production-pages-auto-configure--run-success",
+          "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-success",
+          "axes": [
+            "command",
+            "controls",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
+          },
+          "proposedSourceEvidence": "RunSuccess clicks Run auto-configure, unmounts Status preview, and asserts post-run Dry run result ActionEntry plain-text and command rows plus expanded Action log.",
+          "expectedVisibleText": "$ npm install firecrawl",
+          "proposedVisibleTexts": [
+            "Dry run result",
+            "Headroom is already running",
+            "$ npm install firecrawl"
+          ]
         }
       ],
       "approvedException": null,
@@ -42,7 +115,7 @@
         "RunSuccess action-entry evidence missing.",
         "RunFailure has no action entry."
       ],
-      "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
+      "proposedSourceReviewNotes": "Private visual fragment mapped through parent AutoConfigureClient: StatusPreview covers command + plain-text preview entries, PlainTextActions isolates non-command prose spans, DiagnosticActions covers wrapped and direct SetupDiagnosticCard entries, and RunSuccess covers post-run Dry run result entries after statusPreview unmounts. RunFailure is excluded because a failed POST sets error without rendering report ActionEntry rows; non-string non-diagnostic inputs return null.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
         {
@@ -150,7 +223,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "AutoConfigureClient.stories.jsx StatusPreview",
           "expectedVisibleText": "Auto-configure",
@@ -171,7 +244,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Play clicks Run auto-configure."
         },
@@ -185,7 +258,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "AutoConfigureClient.stories.jsx RunFailure",
           "expectedVisibleText": "Configuration service unavailable",
@@ -384,7 +457,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Private result summary rendered by RunSuccess",
           "expectedVisibleText": "Dry run result",
@@ -514,7 +587,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Private service row rendered by StatusPreview",
           "expectedVisibleText": "Headroom",
@@ -535,7 +608,7 @@
           "proposedSourceEvidence": "Run report supplies services rendered as rows.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           }
         }
       ],
@@ -695,7 +768,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -708,7 +781,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -721,7 +794,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -734,7 +807,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js": "e08af3bb2eef1869b12e752cb867d9d228d6fa2328d610014792148f76c5495b",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -818,7 +891,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/auto-configure/page.js": "63f39b366552364f0954e3054ed9103d9b1afa0bc558047af2d3c1927df99ec6",
-            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "fbfd3a31fa7aa45387cf45ae557fed1f0a0aaf0f3d3eb051cdb4c244302dafeb"
+            "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx": "5fe2a737a8b33cb0783c77548c40f2049c96479deeacbfd29d6a5023b33ac388"
           },
           "proposedSourceEvidence": "Client seam AutoConfigureClient consumed by route and story Server/document bootstrap is not executed or certified by this client story.",
           "expectedVisibleText": "Auto-configure",
@@ -103370,7 +103443,7 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "83962cfb40892c171deeb71e1a6339232323ad54dcc644c46946b5a4c7703fc1",
+    "builtIndexSha256": "24cc0b8a7d6703b045a3c3eaf7dd0a1f60db0249d5313f528bea04fd9755a879",
     "sourceCensusSha256": "93d014c6062c4d1579209cec75e5ead4454277ea01679ac6facbee4c5712eb9d",
     "pendingRows": 448,
     "retainedApprovedRows": 199,

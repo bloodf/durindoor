@@ -52,6 +52,23 @@ describe("shared SSE frames", () => {
     expect(reader.flush()).toEqual([]);
   });
 
+  it("dispatches CR-only frames and preserves their wire text", () => {
+    const reader = createSseFrameReader();
+    const frames = reader.push("data: one\r\rdata: two\r\r");
+    expect(frames.map((frame) => frame.data)).toEqual(["one"]);
+    const last = reader.flush();
+    expect(last.map((frame) => frame.data)).toEqual(["two"]);
+    expect([...frames, ...last].map((frame) => frame.wire)).toEqual(["data: one\r\r", "data: two\r\r"]);
+  });
+
+  it("preserves CRLF delimiters split across chunks", () => {
+    const reader = createSseFrameReader();
+    expect(reader.push("data: one\r\n\r")).toEqual([]);
+    const frames = reader.push("\ndata: two\r\n\r");
+    expect(frames.map((frame) => frame.wire)).toEqual(["data: one\r\n\r\n"]);
+    expect(reader.push("\n").map((frame) => frame.wire)).toEqual(["data: two\r\n\r\n"]);
+  });
+
   it("enforces the pending frame byte cap in UTF-8 bytes", () => {
     expect(MAX_PENDING_SSE_LINE_BYTES).toBe(64 * 1024 * 1024);
     const small = createSseFrameReader({ maxBytes: 10 });

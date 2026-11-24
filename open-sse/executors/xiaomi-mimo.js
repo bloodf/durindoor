@@ -1,5 +1,5 @@
 import { DefaultExecutor } from "./default.js";
-import { getMimoAccountCookie, invalidateMimoAccountCookieCache, resolveMimoServerBase, MIMO_API_UA } from "../shared/mimoAccount.js";
+import { getMimoAccountCookie, invalidateMimoAccountCookieCache, resolveMimoServerBase, MIMO_API_UA } from "../utils/mimoAccount.js";
 
 /**
  * Xiaomi MiMo executor (dual auth).

@@ -5,7 +5,7 @@ const getMimoAccountCookie = vi.hoisted(() => vi.fn());
 const invalidateMimoAccountCookieCache = vi.hoisted(() => vi.fn());
 const proxyAwareFetch = vi.hoisted(() => vi.fn());
 
-vi.mock("../../open-sse/shared/mimoAccount.js", async (importOriginal) => ({
+vi.mock("../../open-sse/utils/mimoAccount.js", async (importOriginal) => ({
   ...(await importOriginal()),
   getMimoAccountCookie,
   invalidateMimoAccountCookieCache,

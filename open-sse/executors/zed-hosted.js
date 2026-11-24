@@ -24,6 +24,8 @@ import { claudeToOpenAIResponse } from "../translator/response/claude-to-openai.
 import { geminiToOpenAIResponse } from "../translator/response/gemini-to-openai.js";
 import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
 import { buildErrorBody } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
   ZED_HEADERS,
@@ -324,7 +326,8 @@ export class ZedHostedExecutor extends BaseExecutor {
       const refused = zedDispatchDisabledError();
       return failure(refused.status, refused.code, refused.message, requestBody);
     }
-    const options = { fetch: this.deps.fetch, proxyOptions, signal };
+    const baseFetch = this.deps.fetch || ((url, init) => proxyAwareFetch(url, init, proxyOptions));
+    const options = { fetch: (url, init) => credentialFetch(baseFetch, url, init), signal };
     try {
       const provider = await this.resolveModel(model, credentials, options);
       const providerRequest = buildProviderRequest(provider, model, requestBody, stream, credentials);

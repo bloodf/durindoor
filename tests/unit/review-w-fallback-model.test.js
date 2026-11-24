@@ -91,6 +91,18 @@ it.each([true, false])("classifies the actual rejected model when it is primary=
   expect(checkFallbackError.mock.results.at(-1).value).toMatchObject({ requestScoped: true, cooldownMs: 0 });
 });
 
+it("tries the next model when an echoed model accompanies a genuine rate limit", async () => {
+  const failure = Response.json({
+    error: { message: `Rate limit exceeded for model ${model}` },
+  }, { status: 400 });
+  const backup = "openai/backup";
+  const success = Response.json({ ok: true });
+  const runner = vi.fn(async (attempt) => attempt === modelSpec ? failure : success);
+
+  expect(await runWithModelFallback(modelSpec, { [modelSpec]: { fallbacks: [backup] } }, runner, log)).toBe(success);
+  expect(runner.mock.calls.flat()).toEqual([modelSpec, backup]);
+});
+
 it("passes the attempted model when chat computes retry timing for a 429", async () => {
   mocks.execute.mockResolvedValueOnce({
     response: Response.json(errorBody, { status: 429 }),

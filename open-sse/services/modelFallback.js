@@ -126,6 +126,7 @@ function stopsModelFallbackChain(status, errorText, modelStr, headers, structure
     model: slash > 0 ? modelStr.slice(slash + 1) : modelStr,
     headers,
     structuredError,
+    checkAccountLockScope: false,
   });
   if (decision.requestScoped === true) return true;
   if (decision.terminal === true) return true;

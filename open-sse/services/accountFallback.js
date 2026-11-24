@@ -143,7 +143,9 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * precedence otherwise; deterministic request-scoped 4xx client failures do not rotate.
  * Pass the attempted model in the options object so text rules can ignore
  * echoed model IDs (#2471). The positional form remains supported.
- * @param {number|{status: number, errorText: unknown, backoffLevel?: number, provider?: string|null, headers?: Headers|object|null, structuredError?: unknown, model?: string|null}} status - HTTP status code or classifier options
+ * Set `checkAccountLockScope: false` when the caller only decides whether to
+ * try another model and does not persist account locks.
+ * @param {number|{status: number, errorText: unknown, backoffLevel?: number, provider?: string|null, headers?: Headers|object|null, structuredError?: unknown, model?: string|null, checkAccountLockScope?: boolean}} status - HTTP status code or classifier options
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @param {string} provider - Optional provider ID for provider-specific rules
@@ -169,6 +171,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
 
 function classifyFallbackError({
   status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null,
+  checkAccountLockScope = true,
 }) {
   const normalizedText = errorText ?
   isString(errorText) ? errorText : JSON.stringify(errorText) :
@@ -343,6 +346,7 @@ function classifyFallbackError({
   // request-scoped. Terminal billing matches (real credit exhaustion) keep
   // their account-wide lock even on passthrough catalogs.
   if (
+    checkAccountLockScope &&
     generic.shouldFallback &&
     !generic.terminal &&
     Number(status) === 400 &&

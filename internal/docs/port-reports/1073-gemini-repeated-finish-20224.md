@@ -2,7 +2,7 @@
 
 Closes two verified gaps from the row 91 complete comparison (`1073-nov24-row-91-complete.md`, on the `orq/tows9a/integration` branch, not yet on `main`). Compared on 2026-11-24 against `origin/main` (this branch is based on it, not on the integration branch).
 
-**Status: implemented on this branch; not a completed port until the PR below merges.** PR link: see the PR for branch `orq/tows9a/port-omni-gemini-finish-a1` (recorded in the PR body and the thread, not claimed here before it exists).
+**Status: implemented on this branch; not a completed port until the PR below merges.** PR: [DurinDoor #2493](https://github.com/bloodf/durindoor/pull/2493) (draft, open, unmerged).
 
 ## Upstream
 

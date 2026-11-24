@@ -18,6 +18,7 @@ import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 import { ENGINE_IDS, isEngineAvailable, engineMeta } from "open-sse/services/compression/engineCatalog.js";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { get } from "@/shared/utils/api.js";
 
 const PRESETS = [
   { label: "Simple chat", icon: "chat_bubble", value: { model: "openai/gpt-4o", messages: [{ role: "user", content: "hello" }] } },
@@ -57,7 +58,7 @@ export default function CompressionStudioPage() {
   const parsedJSON = useMemo(() => { if (!useAdvanced || !advancedJSON.trim()) return null; try { return JSON.parse(advancedJSON); } catch { return null; } }, [useAdvanced, advancedJSON]);
   const isPayloadValid = useMemo(() => useAdvanced ? parsedJSON !== null && isObject(parsedJSON) && !Array.isArray(parsedJSON) : model.trim() !== "" || inputText.trim() !== "", [useAdvanced, parsedJSON, model, inputText]);
 
-  useEffect(() => { fetch("/api/providers").then((response) => response.ok ? response.json() : Promise.reject(new Error("failed"))).then((data) => { setActiveProviders(filterActiveConnections(data.connections)); setActiveProvidersError(false); }).catch(() => setActiveProvidersError(true)); }, []);
+  useEffect(() => { get("/api/providers", { skipErrorBody: true }).then((data) => { setActiveProviders(filterActiveConnections(data.connections)); setActiveProvidersError(false); }).catch(() => setActiveProvidersError(true)); }, []);
   useEffect(() => { if (!useAdvanced) return; try { const parsed = JSON.parse(advancedJSON || "{}"); setModel(isString(parsed.model) ? parsed.model : ""); } catch { /* Keep model while JSON is invalid. */ } }, [advancedJSON, useAdvanced]);
 
   const handlePresetChange = (label) => { setSelectedPreset(label); const preset = PRESETS.find((item) => item.label === label); if (!preset) return; setAdvancedJSON(JSON.stringify(preset.value, null, 2)); setUseAdvanced(true); };

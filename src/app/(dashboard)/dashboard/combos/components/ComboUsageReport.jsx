@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import { buildConnectionNameMap, connectionDisplayName } from "@/shared/utils/connectionDisplay.js";
+import { get } from "@/shared/utils/api.js";
 
 const fmt = (value) => new Intl.NumberFormat().format(value || 0);
 const money = (value) => `$${Number(value || 0).toFixed(2)}`;
@@ -67,8 +68,7 @@ export default function ComboUsageReport({ period, customRange, resetNonce }) {
   // Connection ids render as names; fetch the catalog once (fail-open).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/providers", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    get("/api/providers", { cache: "no-store", skipErrorBody: true })
       .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
       .catch(() => {});
     return () => { cancelled = true; };

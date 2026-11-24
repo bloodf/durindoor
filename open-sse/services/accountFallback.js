@@ -12,7 +12,7 @@ import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
  */
-import { isNumber, isString, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isString, isObject, isRecord } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
@@ -142,7 +142,11 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * Config-driven: terminal status rules win before text rules, then remaining
  * ERROR_RULES match top-to-bottom. Known account/quota text rules take
  * precedence otherwise; deterministic request-scoped 4xx client failures do not rotate.
- * @param {number} status - HTTP status code
+ * Pass the attempted model in the options object so text rules can ignore
+ * echoed model IDs (#2471). The positional form remains supported.
+ * Set `checkAccountLockScope: false` when the caller only decides whether to
+ * try another model and does not persist account locks.
+ * @param {number|{status: number, errorText: unknown, backoffLevel?: number, provider?: string|null, headers?: Headers|object|null, structuredError?: unknown, model?: string|null, checkAccountLockScope?: boolean}} status - HTTP status code or classifier options
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @param {string} provider - Optional provider ID for provider-specific rules
@@ -160,6 +164,16 @@ export function getQuotaCooldown(backoffLevel = 0) {
  *   must not advertise a client-facing Retry-After for it.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null) {
+  const options = isRecord(status) ? status : {
+    status, errorText, backoffLevel, provider, headers, structuredError, model,
+  };
+  return classifyFallbackError(options);
+}
+
+function classifyFallbackError({
+  status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null,
+  checkAccountLockScope = true,
+}) {
   const normalizedText = errorText ?
   isString(errorText) ? errorText : JSON.stringify(errorText) :
   "";
@@ -347,6 +361,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // request-scoped. Terminal billing matches (real credit exhaustion) keep
   // their account-wide lock even on passthrough catalogs.
   if (
+    checkAccountLockScope &&
     generic.shouldFallback &&
     !generic.terminal &&
     Number(status) === 400 &&
@@ -839,22 +854,18 @@ export function resetAccountState(account) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
+ * @param {string|null} model - Model attempted by the request
  * @returns {object} Updated account with error state. `providerErrorScope`
  *   is set when a provider rule returned a `scope` (e.g. AgentRouter quota
  *   `connection`) so the lock layer can pick account-wide persistence.
  */
-export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null) {
+export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null, model = null) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError(
-    status,
-    errorText,
-    backoffLevel,
-    provider,
-    headers,
-    structuredError
-  );
+  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError({
+    status, errorText, backoffLevel, provider, headers, structuredError, model,
+  });
 
   return {
     ...account,

@@ -34,6 +34,13 @@ export function syncDocumentLocale(locale) {
   document.documentElement.dir = getLocaleDirection(normalized);
 }
 
+function syncLocaleFromCookie() {
+  const locale = getLocaleFromCookie();
+  if (locale !== currentLocale) missingKeys.clear();
+  currentLocale = locale;
+  syncDocumentLocale(locale);
+}
+
 // Load translation map
 async function loadTranslations(locale) {
   if (locale === "en") {
@@ -75,7 +82,7 @@ export function translate(text) {
   return translated || text;
 }
 
-/** Return the unique missing source strings encountered in development. */
+/** Return the unique missing source strings encountered for the current development locale. */
 export function getMissingTranslationKeys() {
   return [...missingKeys];
 }
@@ -165,8 +172,7 @@ export async function initRuntimeI18n() {
 
   initPromise = (async () => {
     const version = lifecycleVersion;
-    currentLocale = getLocaleFromCookie();
-    syncDocumentLocale(currentLocale);
+    syncLocaleFromCookie();
     await loadTranslations(currentLocale);
     if (version !== lifecycleVersion) return;
 
@@ -200,19 +206,18 @@ export async function initRuntimeI18n() {
   }
 }
 
-/** Disconnect runtime observation and discard registered locale callbacks. */
+/** Disconnect runtime observation. Subscribers retain their callbacks until they unsubscribe. */
 export function teardownRuntimeI18n() {
   lifecycleVersion += 1;
   observerHandle?.disconnect();
   observerHandle = null;
   initPromise = null;
-  reloadCallbacks = [];
+  missingKeys.clear();
 }
 
 // Reload translations when locale changes
 export async function reloadTranslations() {
-  currentLocale = getLocaleFromCookie();
-  syncDocumentLocale(currentLocale);
+  syncLocaleFromCookie();
   await loadTranslations(currentLocale);
 
   // Notify all registered callbacks

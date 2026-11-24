@@ -4,6 +4,7 @@ import {
   getMissingTranslationKeys,
   initRuntimeI18n,
   onLocaleChange,
+  reloadTranslations,
   teardownRuntimeI18n,
   translate,
 } from "../../src/i18n/runtime.js";
@@ -63,22 +64,43 @@ describe("i18n runtime lifecycle", () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("records each missing non-English key once and clears callbacks on teardown", async () => {
+  it("keeps active locale subscriptions through teardown and reinitialization", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }));
     const callback = vi.fn();
-    onLocaleChange(callback);
+    const unsubscribe = onLocaleChange(callback);
+
+    try {
+      await initRuntimeI18n();
+      teardownRuntimeI18n();
+      await initRuntimeI18n();
+      document.cookie = "locale=en; path=/";
+      await reloadTranslations();
+      expect(callback).toHaveBeenCalledTimes(1);
+
+      unsubscribe();
+      document.cookie = "locale=vi; path=/";
+      await reloadTranslations();
+      expect(callback).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("records each missing key once for the current locale and clears it on teardown", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }));
 
     await initRuntimeI18n();
     translate("Untranslated source");
     translate("Untranslated source");
-    expect(getMissingTranslationKeys()).toContain("Untranslated source");
     expect(getMissingTranslationKeys().filter((key) => key === "Untranslated source")).toHaveLength(1);
 
-    teardownRuntimeI18n();
-    document.cookie = "locale=en; path=/";
-    vi.stubGlobal("fetch", vi.fn());
-    const { reloadTranslations } = await import("../../src/i18n/runtime.js");
+    document.cookie = "locale=fr; path=/";
     await reloadTranslations();
-    expect(callback).not.toHaveBeenCalled();
+    expect(getMissingTranslationKeys()).not.toContain("Untranslated source");
+
+    translate("French diagnostic");
+    expect(getMissingTranslationKeys()).toContain("French diagnostic");
+    teardownRuntimeI18n();
+    expect(getMissingTranslationKeys()).toEqual([]);
   });
 });

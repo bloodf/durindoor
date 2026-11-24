@@ -57,7 +57,8 @@ export function buildEndpointTargets(status, { localPort = 20128, location = nul
  * Endpoint choices (local, tunnels, Tailscale, and the host the dashboard is
  * opened from) shared by pages that hand out a base URL. The optional
  * same-origin `/api/tunnel/status` read may fail or return no usable JSON;
- * those cases keep the local and browser-origin choices available.
+ * those cases keep the local and browser-origin choices available. HTTP errors
+ * fall back as soon as the status arrives, without waiting for the body.
  */
 export function useEndpointTargets(localPort = 20128) {
   const [endpoints, setEndpoints] = useState(() => buildEndpointTargets(null, { localPort }));
@@ -68,7 +69,7 @@ export function useEndpointTargets(localPort = 20128) {
     (async () => {
       let status = null;
       try {
-        status = await get("/api/tunnel/status", { cache: "no-store" });
+        status = await get("/api/tunnel/status", { cache: "no-store", skipErrorBody: true });
       } catch {
         // Status is optional: fall back to the local (and browser-origin) rows.
       }

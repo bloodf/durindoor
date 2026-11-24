@@ -120,7 +120,7 @@ function TimelineList() {
   // Connection ids render as names; fetch the catalog once (fail-open).
   useEffect(() => {
     let cancelled = false;
-    get("/api/providers", { cache: "no-store" })
+    get("/api/providers", { cache: "no-store", skipErrorBody: true })
       .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
       .catch(() => {});
     return () => { cancelled = true; };

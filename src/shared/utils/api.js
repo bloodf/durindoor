@@ -2,7 +2,7 @@
 const DEFAULT_HEADERS = { "Content-Type": "application/json" };
 
 async function request(method, url, requestOptions, data, jsonParseFallback = null, skipErrorBody = false) {
-  // Mutation wrappers accept null options, as they did when spreading options directly.
+  // Mutation wrappers treat null options as omitted.
   const { strictJson = false, ...options } = requestOptions ?? {};
   const init = { ...options, method, headers: { ...DEFAULT_HEADERS, ...options.headers } };
   // Fetch defaults to GET; omit the explicit method for existing read callers.

@@ -47,4 +47,4 @@ Synthetic key ids (`test-key-*`) and connection ids (`conn-test-*`) only. The DB
 
 ## Pull request
 
-Recorded after the PR is opened; see the PR link in the commit that adds it. Until a link is present here, this effect is **not** claimed as ported.
+[bloodf/durindoor#2496](https://github.com/bloodf/durindoor/pull/2496), opened as a draft against `main` from `orq/tows9a/port-omni-auto-scope-clean`. The effect counts as ported only after that PR merges.

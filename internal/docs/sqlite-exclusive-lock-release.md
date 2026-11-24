@@ -36,4 +36,4 @@ The helper never throws and never sets a pragma. With a live cursor the pragma i
 - A failed close still stops the adapter's periodic checkpoint timer (and, for better-sqlite3, removes its signal listeners), because `close()` does that before the driver close. A retry of `close()` still works.
 - The node:sqlite driver bundled with Node 24 did not block a second connection while in exclusive mode in the test environment, so its test asserts post-release readability only. better-sqlite3 is the driver whose exclusive holder demonstrably blocks the second connection.
 
-Tests: `tests/unit/exclusive-lock-release.test.js`.
+Tests: `tests/unit/omni-21159-sqlite-release.test.js`.

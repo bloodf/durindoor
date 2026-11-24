@@ -9,7 +9,9 @@ let reloadCallbacks = [];
 let observerHandle = null;
 let initPromise = null;
 let lifecycleVersion = 0;
-let workVersion = 0;
+let localeVersion = 0;
+let requestVersion = 0;
+let publishedVersion = 0;
 const missingKeys = new Set();
 const textState = new WeakMap();
 
@@ -37,12 +39,15 @@ export function syncDocumentLocale(locale) {
 
 function syncLocaleFromCookie() {
   const locale = getLocaleFromCookie();
-  if (locale !== currentLocale) missingKeys.clear();
+  if (locale !== currentLocale) {
+    localeVersion += 1;
+    missingKeys.clear();
+  }
   currentLocale = locale;
   syncDocumentLocale(locale);
 }
 
-// Load into a local value; only the newest active runtime work may publish it.
+// Load into a local value so stale responses cannot change the active map.
 async function loadTranslations(locale) {
   if (locale === "en") {
     return {};
@@ -69,6 +74,21 @@ async function loadTranslations(locale) {
     console.warn(`Failed to load translations for locale ${locale} (status unavailable)`);
     return {};
   }
+}
+
+// A pending refresh leaves earlier results eligible to publish within the same
+// locale and lifecycle. A published result, including a fallback, supersedes them.
+async function refreshTranslations(onPublish) {
+  syncLocaleFromCookie();
+  const lifecycle = lifecycleVersion;
+  const locale = localeVersion;
+  const request = ++requestVersion;
+  const translations = await loadTranslations(currentLocale);
+  if (lifecycle !== lifecycleVersion || locale !== localeVersion || request < publishedVersion) return;
+
+  translationMap = translations;
+  publishedVersion = request;
+  onPublish();
 }
 
 // Translate text - exported for use in components
@@ -170,20 +190,12 @@ export async function initRuntimeI18n() {
   if (observerHandle) return;
   if (initPromise) return initPromise;
 
-  // Only the latest request may publish translations and process existing text.
-  // Observer registration belongs to initialization for the active lifecycle.
   const lifecycle = lifecycleVersion;
-  const work = ++workVersion;
   const promise = (async () => {
-    syncLocaleFromCookie();
-    const translations = await loadTranslations(currentLocale);
+    await refreshTranslations(() => processElement(document.body));
     if (lifecycle !== lifecycleVersion) return;
-    if (work === workVersion) {
-      translationMap = translations;
-      processElement(document.body);
-    }
 
-    // Watch for new nodes
+    // Observation belongs to the active lifecycle even if a reload superseded this fetch.
     observerHandle = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === "characterData") processTextNode(mutation.target);
@@ -214,7 +226,6 @@ export async function initRuntimeI18n() {
 /** Disconnect runtime observation. Subscribers retain their callbacks until they unsubscribe. */
 export function teardownRuntimeI18n() {
   lifecycleVersion += 1;
-  workVersion += 1;
   observerHandle?.disconnect();
   observerHandle = null;
   initPromise = null;
@@ -223,16 +234,11 @@ export function teardownRuntimeI18n() {
 
 // Reload translations when locale changes
 export async function reloadTranslations() {
-  syncLocaleFromCookie();
-  const lifecycle = lifecycleVersion;
-  const work = ++workVersion;
-  const translations = await loadTranslations(currentLocale);
-  if (lifecycle !== lifecycleVersion || work !== workVersion) return;
-  translationMap = translations;
+  await refreshTranslations(() => {
+    // Notify all registered callbacks
+    reloadCallbacks.forEach((callback) => callback());
 
-  // Notify all registered callbacks
-  reloadCallbacks.forEach((callback) => callback());
-
-  // Re-process the current source labels, retaining translations only we wrote.
-  processElement(document.body);
+    // Re-process the current source labels, retaining translations only we wrote.
+    processElement(document.body);
+  });
 }

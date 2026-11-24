@@ -57,25 +57,82 @@ describe("i18n runtime lifecycle", () => {
     }
   });
 
+  it("translates visible text while a same-locale route reload is pending", async () => {
+    const initialResponse = deferred();
+    const routeResponse = deferred();
+    const fetch = vi.fn().mockReturnValueOnce(initialResponse.promise).mockReturnValueOnce(routeResponse.promise);
+    vi.stubGlobal("fetch", fetch);
+    document.body.innerHTML = "<span>Label</span>";
+    const label = document.querySelector("span");
+
+    const init = initRuntimeI18n();
+    const reload = reloadTranslations();
+    expect(fetch.mock.calls).toEqual([
+      ["/i18n/literals/vi.json"],
+      ["/i18n/literals/vi.json"],
+    ]);
+
+    initialResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Tiếng Việt" }) });
+    await init;
+    try {
+      expect(label.textContent).toBe("Tiếng Việt");
+    } finally {
+      routeResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Nhãn" }) });
+      await reload;
+    }
+    expect(label.textContent).toBe("Nhãn");
+  });
+
+  it("rejects a response from before switching away and back while the new request is pending", async () => {
+    const oldResponse = deferred();
+    const awayResponse = deferred();
+    const newResponse = deferred();
+    vi.stubGlobal("fetch", vi.fn()
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(awayResponse.promise)
+      .mockReturnValueOnce(newResponse.promise));
+    document.body.innerHTML = "<span>Label</span>";
+    const label = document.querySelector("span");
+
+    const older = reloadTranslations();
+    document.cookie = "locale=fr; path=/";
+    const away = reloadTranslations();
+    document.cookie = "locale=vi; path=/";
+    const newer = reloadTranslations();
+
+    oldResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Stale" }) });
+    await older;
+    try {
+      expect(label.textContent).toBe("Label");
+    } finally {
+      awayResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Français" }) });
+      newResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Nhãn" }) });
+      await Promise.all([away, newer]);
+    }
+    expect(label.textContent).toBe("Nhãn");
+  });
+
   it("observes late text when a route reload supersedes initialization", async () => {
     const initialResponse = deferred();
-    const fetch = vi.fn()
-      .mockReturnValueOnce(initialResponse.promise)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ Label: "New" }) });
+    const routeResponse = deferred();
+    const fetch = vi.fn().mockReturnValueOnce(initialResponse.promise).mockReturnValueOnce(routeResponse.promise);
     vi.stubGlobal("fetch", fetch);
 
-    const initial = initRuntimeI18n();
-    await reloadTranslations();
-    initialResponse.resolve({ ok: true, json: async () => ({ Label: "Old" }) });
-    await initial;
+    const init = initRuntimeI18n();
+    const reload = reloadTranslations();
+    routeResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Tiếng Việt" }) });
+    await reload;
+    expect(translate("Label")).toBe("Tiếng Việt");
 
-    expect(translate("Label")).toBe("New");
+    initialResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Stale" }) });
+    await init;
+    expect(translate("Label")).toBe("Tiếng Việt");
     expect(observe).toHaveBeenCalledTimes(1);
 
-    const lateLabel = document.createElement("span");
-    lateLabel.textContent = "Label";
-    document.body.append(lateLabel);
-    await vi.waitFor(() => expect(lateLabel.textContent).toBe("New"));
+    const label = document.createElement("span");
+    label.textContent = "Label";
+    document.body.append(label);
+    await vi.waitFor(() => expect(label.textContent).toBe("Tiếng Việt"));
   });
 
   it("reprocesses the current page when a same-locale route reload completes", async () => {

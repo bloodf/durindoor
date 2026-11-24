@@ -4,7 +4,7 @@
 // paired with the wrong call. An over-long id keeps a prefix plus a hash of the whole
 // id; the same id always maps to the same clamped id, so call and output stay paired.
 import { describe, expect, it } from "vitest";
-import "../translator/registerAll.js";
+import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { ROLE, RESPONSES_ITEM, OPENAI_BLOCK } from "../../open-sse/translator/schema/index.js";

@@ -114,7 +114,7 @@ A stream can carry more than one terminal chunk. Two response translators guard 
   `message_stop`. Later chunks that carry a candidate return nothing, so the Claude client sees
   one terminal and no events after it. Candidate-less error chunks are not affected.
 
-Streams with a single finish are unchanged. Tests: `tests/unit/omni-gemini-repeated-finish.test.js`.
+Streams with a single finish are unchanged. Tests: `tests/translator/omni-gemini-repeated-finish.test.js`.
 
 ## Forced SSE with a Claude transport
 

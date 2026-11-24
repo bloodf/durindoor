@@ -33,7 +33,7 @@ The two tests that pass both before and after are the valid-stream guards: two p
 |---|---|
 | `open-sse/translator/response/openai-to-antigravity.js` | After the finish-time flush, `state._toolCallAccum = {}`. |
 | `open-sse/translator/response/gemini-to-claude.js` | Set `state.claudeFinishEmitted` after `message_stop`; return `null` for later candidate-bearing chunks. |
-| `tests/unit/omni-gemini-repeated-finish.test.js` | 11 behaviour tests. |
+| `tests/translator/omni-gemini-repeated-finish.test.js` | 11 behaviour tests. |
 | `internal/docs/translators.mdx` | New "Repeated finish chunks (Gemini family)" note. |
 
 ## Deliberate adaptations
@@ -41,7 +41,7 @@ The two tests that pass both before and after are the valid-stream guards: two p
 - Upstream has a separate `openai-to-gemini-sse.ts` converter. DurinDoor has none: `openai-to-gemini.js` registers `openaiToAntigravityResponse` for Gemini, Gemini CLI and Vertex, so one change covers all four client formats. No new translator was added, so nothing new needs registering.
 - The Claude guard sits after the candidate-less error branch (as upstream), so an upstream error chunk is still surfaced and the existing #1342 behaviour is unchanged. A candidate-less error chunk after `message_stop` is therefore still emitted; this is out of scope for the upstream commit.
 - The repeated finish chunk still yields one empty-text candidate with `finishReason` on the Gemini wire (upstream does too). Only the duplicate `functionCall` is removed.
-- Tests use `FORMATS`, `OPENAI_FINISH` and `GEMINI_FINISH` constants and import `../translator/registerAll.js` before calling `translateResponse`. No changelog fragment: DurinDoor has no `changelog.d`.
+- Tests use `FORMATS`, `OPENAI_FINISH` and `GEMINI_FINISH` constants and import `./registerAll.js` before calling `translateResponse`. No changelog fragment: DurinDoor has no `changelog.d`.
 - `tests/__baseline__/known-fails.txt` untouched.
 
 ## Commands run

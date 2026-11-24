@@ -77,7 +77,7 @@ readiness, and must be explicitly attached rather than inferred from Vitest.
 
 The ordinary batches supply no `DURINDOOR_TEST_PG_URL`, so the live cases in
 `tests/unit/antigravity-lease-postgres.test.js` skip there; skipped cases are
-not evidence. The batches do run `tests/unit/postgres-fencing-runner.test.js`
+not evidence. The batches do run `tests/unit/postgres-live-runner.test.js`
 offline: it proves the runner fails without a URL, fails rather than skips in
 required mode or against an unreachable cluster, and hands Vitest only an
 allowlisted environment.

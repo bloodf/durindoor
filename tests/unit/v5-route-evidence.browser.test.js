@@ -106,7 +106,8 @@ async function checkStory(browser, baseURL, route, id, theme, viewport) {
     }));
     if (state.ui !== "v5") failures.push(`html data-ui is ${JSON.stringify(state.ui)}, expected "v5"`);
     overflowPx = Math.max(0, state.scrollWidth - state.innerWidth);
-    if (viewport.width === 360 && overflowPx > 0) failures.push(`horizontal overflow at 360: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
+    if (route === "/dashboard/combos" && overflowPx > 0) failures.push(`horizontal overflow at ${viewport.width}: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
+    else if (viewport.width === 360 && overflowPx > 0) failures.push(`horizontal overflow at 360: scrollWidth ${state.scrollWidth} > innerWidth ${state.innerWidth}`);
 
     const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
     for (const violation of axe.violations) axeCounts[violation.impact] = (axeCounts[violation.impact] || 0) + 1;

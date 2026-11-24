@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: vi.fn(async ([kind]) => kind === "llm" ? [
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: vi.fn(async ([kind]) => kind === "llm" ? [
   { id: "openai/gpt-5-pro", owned_by: "openai", kind: "llm" },
   { id: "openai/gpt-5-mini", owned_by: "openai", kind: "llm" },
   { id: "saved", owned_by: "combo", kind: "llm" }

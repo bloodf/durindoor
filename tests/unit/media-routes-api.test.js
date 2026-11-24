@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   buildModelsList: vi.fn()
 }));
 
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
 vi.mock("@/lib/localDb", () => ({
   getSettings: vi.fn(async () => ({ ...mocks.store })),
   updateSettings: vi.fn(async (updates) => {

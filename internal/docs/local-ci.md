@@ -6,35 +6,15 @@ operational commands and workflow coverage for that contract.
 
 ## One-command full checkpoint
 
-The integration owner first obtains an independent review, freezes the reviewed
-checkout outside the candidate, and records every imported file's SHA256 in an
-external manifest. This includes the runner, baseline helpers and their recursive
-imports, including `src/shared/utils/typeChecks.js`. Keep this bundle and the
-manifest inaccessible to candidate subprocesses. Use Node 24.22.2, pnpm 12.18.0,
-an ownership-correct unprivileged POSIX account, and a new private output path.
+The orchestrator or a review worker runs the full gate on the exact PR head from a clean checkout of `main`, never from the candidate's own runner. Use Node 24.22.2 and pnpm 12.18.0 in a private output path.
 
 ```sh
-command fnm exec --using=24.22.2 node "$FROZEN/scripts/local-ci.mjs" \
+fnm exec --using=24.22.2 node scripts/local-ci.mjs \
   --repo "$CHECKOUT" --base "$BASE_SHA" --head "$HEAD_SHA" \
-  --runner-sha "$FROZEN_RUNNER_SHA256" --website always \
-  --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"
+  --website always --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"
 ```
 
-Variables are owner-supplied absolute paths and independently verified identities,
-not values sourced from candidate scripts. Full is the default. `--website always`
-retains the former main-push website coverage at bootstrap and checkpoints.
-PR runs may use `--website auto`, which also checks shared dashboard, runtime,
-assets, dependency and build inputs. Docs, provider catalog and registry-index
-checks run in every full checkpoint. Scoped mode still requires an independently
-frozen selection under the existing policy; it cannot authorize this transition.
-
-Every command has a 300-second ceiling and a silence watchdog. Four sequential
-Vitest commands retain at most four forks and per-file isolation. Configured
-discovery must equal the complete eligible tracked head inventory; missing,
-duplicate, stale, failed and runtime-error results fail the gate. JSON/JUnit
-reports are aggregated only after all batches pass. The failure baseline stays
-empty. Private HOME, DATA_DIR, temp directories, caches and sanitized child
-environments are mandatory. A failed prerequisite is a blocker, not a waiver.
+Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Four sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
 
 ## Workflow coverage
 
@@ -93,55 +73,16 @@ source tree. A timeout is a failure; do not increase the ceiling. This separate
 owner evidence is required when Docker/release inputs change and for release
 readiness, and must be explicitly attached rather than inferred from Vitest.
 
-## Owner verification and publication
+## Verification and merge
 
-There is no trusted external publisher checked into this repository. Use this
-manual owner procedure until a separately reviewed publisher exists. Never use
-candidate code, including `validateReceipt`, as the authority for publication.
-The runner's metadata validator is not a provenance verifier.
+The orchestrator or a review worker that ran the gate verifies its own run before merging. The run must have:
 
-1. Obtain the independent review outside the candidate, naming the exact reviewed
-   source SHA and complete import-closure hashes. Recompute those hashes before
-   execution from the frozen bundle. Record base-policy hashes, toolchain/ABI,
-   platform, lockfiles, selection if scoped, and expected command list outside
-   the candidate. Full bootstrap and this transition require `--website always`.
-2. Execute the frozen runner under the approved unprivileged identity. Keep
-   credentials and frozen provenance outside the candidate execution boundary.
-   Retain the supervisor's exit status, start/end times and logs independently.
-   Do not accept evidence from an author-controlled run or an untrusted shared
-   directory. Check ownership and reject symlinks/paths outside the run directory.
-3. Independently recompute receipt, command-log, JSON/JUnit and artifact hashes.
-   Compare all fields to the external manifest and expected commands, not to
-   claims inside the receipt alone. Require each mandatory command exactly once
-   per expected job, zero exit, no signal/spawn error, no failed/not-run marker,
-   duration at most 300 seconds and fresh timestamps. Require all four batch
-   results and their exact inventory union, executed passing assertions, zero
-   failures/runtime errors, and the empty baseline. Validate website and artifact
-   commands, tarball size/hash and report aggregation. Recompute toolchain and
-   policy identities; reject drift, missing files and evidence older than one hour.
-4. In the credential-bearing owner shell, reread live `main`, PR base/head and
-   title via GitHub. They must match reviewed/run identities and the linted title.
-   Any base/head drift requires new evidence; changed code requires new review.
-   Only after every check passes, post the status to that exact head. Immediately
-   before merge, reread identities and review-thread resolution. This is a human
-   gate because current main rules do not require a status check. Never enable
-   auto-merge as a substitute for this check.
+- covered the exact PR base and head;
+- every mandatory command exit 0 within its 300-second ceiling;
+- all four test batches passing, with their union equal to the tracked test inventory;
+- an empty failure baseline.
 
-The owner may then run this explicit publication command, substituting only the
-verified head and an owner-controlled evidence URL. The implementation worker
-must not run it:
-
-```sh
-GH_CONFIG_DIR="$HOME/.config/gh-bloodf" /opt/homebrew/bin/gh api \
-  --method POST "repos/bloodf/durindoor/statuses/$VERIFIED_HEAD" \
-  -f state=success -f context='V5 Local CI' \
-  -f description='Independent exact-head local validation passed' \
-  -f target_url="$OWNER_EVIDENCE_URL"
-```
-
-Preserve private logs securely; do not publish secrets or private filesystem
-paths as the evidence URL. Remove disposable snapshots/build outputs after
-verification while retaining the externally sealed evidence needed for audit.
+A review from a different model family than the author must be recorded on the PR. Reread the PR head right before merging; if it changed, run the gate again. Attaching the run summary to the PR is enough evidence. Posting a commit status is optional, and no owner-held receipt is required. Never publish secrets or private filesystem paths in PR comments.
 
 ## Manual fallback and rollback
 

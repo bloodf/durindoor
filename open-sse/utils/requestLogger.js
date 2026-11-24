@@ -182,16 +182,22 @@ function errorMetadata(error) {
   return { name, message: payloadMetadata(error?.message ?? error) };
 }
 
-function writeStreamMetadata(sessionPath, filename, state, chunk) {
+function updateStreamMetadata(state, chunk) {
   const metadata = payloadMetadata(chunk);
   if (state.chunks === 0 || metadata.type === "bytes") state.type = metadata.type;
   state.bytes += metadata.bytes;
   state.chunks += 1;
+  state.timestamp = new Date().toISOString();
+}
+
+function writeStreamMetadata(sessionPath, filename, state) {
+  if (!state.chunks || !state.dirty) return;
   writeJsonFile(sessionPath, filename, {
-    timestamp: new Date().toISOString(),
+    timestamp: state.timestamp,
     body: { redacted: true, present: state.chunks > 0, type: state.type, bytes: state.bytes },
     chunks: state.chunks
   });
+  state.dirty = false;
 }
 
 // No-op logger when logging is disabled
@@ -207,6 +213,7 @@ function createNoOpLogger() {
     appendOpenAIChunk() {},
     logConvertedResponse() {},
     appendConvertedChunk() {},
+    flushStreams() {},
     logError() {}
   };
 }
@@ -229,6 +236,12 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
   const providerStream = { bytes: 0, chunks: 0 };
   const openAIStream = { bytes: 0, chunks: 0 };
   const convertedStream = { bytes: 0, chunks: 0 };
+  // Stream counters stay in memory until the response ends or is interrupted.
+  const flushStreams = () => {
+    writeStreamMetadata(sessionPath, "5_res_provider.txt", providerStream);
+    writeStreamMetadata(sessionPath, "6_res_openai.txt", openAIStream);
+    writeStreamMetadata(sessionPath, "7_res_client.txt", convertedStream);
+  };
 
   return {
     get sessionPath() {return sessionPath;},
@@ -283,12 +296,14 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 5. Append streaming chunk to provider response
     appendProviderChunk(chunk) {
-      writeStreamMetadata(sessionPath, "5_res_provider.txt", providerStream, chunk);
+      updateStreamMetadata(providerStream, chunk);
+      providerStream.dirty = true;
     },
 
     // 6. Append OpenAI intermediate chunks (target → openai)
     appendOpenAIChunk(chunk) {
-      writeStreamMetadata(sessionPath, "6_res_openai.txt", openAIStream, chunk);
+      updateStreamMetadata(openAIStream, chunk);
+      openAIStream.dirty = true;
     },
 
     // 7. Log converted response to client (for non-streaming)
@@ -301,11 +316,15 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 7. Append streaming chunk to converted response
     appendConvertedChunk(chunk) {
-      writeStreamMetadata(sessionPath, "7_res_client.txt", convertedStream, chunk);
+      updateStreamMetadata(convertedStream, chunk);
+      convertedStream.dirty = true;
     },
+
+    flushStreams,
 
     // 6. Log error
     logError(error) {
+      flushStreams();
       writeJsonFile(sessionPath, "6_error.json", {
         timestamp: new Date().toISOString(),
         error: errorMetadata(error)

@@ -5,7 +5,7 @@ const sharedEncoder = new TextEncoder();
 /** Split complete SSE frames from an unterminated tail. */
 export function extractCompleteSseFrames(buffer) {
   const frames = [];
-  const delimiter = /\r?\n\r?\n/g;
+  const delimiter = /(?:\r\n|\r(?!\n)|\n)(?:\r\n|\r(?!\n)|\n)/g;
   let cursor = 0;
   let match;
   while ((match = delimiter.exec(buffer)) !== null) {
@@ -73,6 +73,7 @@ export function parseResponsesSseData({ data, dataLines }) {
  * pending-frame cap once in linear time. `flush()` parses any unterminated
  * trailing frame at end-of-stream. Complete frames expose their original
  * wire text as the non-enumerable `wire` string for transparent forwarding.
+ * A final CR is held until the next chunk or flush to preserve split CRLF.
  */
 export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } = {}) {
   let pendingChunks = [];
@@ -86,10 +87,11 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
   };
 
   return {
-    push(text) {
-      if (!text) return [];
+    push(text, final = false) {
+      if (!text && !final) return [];
       const suffix = scanTail + text;
-      if (!/\r?\n\r?\n/.test(suffix)) {
+      const searchable = !final && suffix.endsWith("\r") ? suffix.slice(0, -1) : suffix;
+      if (!/(?:\r\n|\r(?!\n)|\n)(?:\r\n|\r(?!\n)|\n)/.test(searchable)) {
         pendingBytes += sharedEncoder.encode(text).byteLength;
         if (pendingBytes > maxBytes) {
           reset();
@@ -102,7 +104,9 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
 
       pendingChunks.push(text);
       const buffer = pendingChunks.join("");
-      const { frames, remainder } = extractCompleteSseFrames(buffer);
+      const searchableBuffer = !final && buffer.endsWith("\r") ? buffer.slice(0, -1) : buffer;
+      const { frames, remainder: scannedRemainder } = extractCompleteSseFrames(searchableBuffer);
+      const remainder = scannedRemainder + buffer.slice(searchableBuffer.length);
       const remainderBytes = remainder ? sharedEncoder.encode(remainder).byteLength : 0;
       if (remainderBytes > maxBytes || frames.some((frame) => exceedsByteLimit(frame, maxBytes))) {
         reset();
@@ -115,8 +119,8 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
       return frames.map((raw) => {
         const frame = parseSseFrame(raw);
         const delimiterStart = offset + raw.length;
-        const firstLength = buffer[delimiterStart] === "\r" ? 2 : 1;
-        const secondLength = buffer[delimiterStart + firstLength] === "\r" ? 2 : 1;
+        const firstLength = buffer.slice(delimiterStart, delimiterStart + 2) === "\r\n" ? 2 : 1;
+        const secondLength = buffer.slice(delimiterStart + firstLength, delimiterStart + firstLength + 2) === "\r\n" ? 2 : 1;
         const end = delimiterStart + firstLength + secondLength;
         Object.defineProperty(frame, "wire", { value: buffer.slice(offset, end) });
         offset = end;
@@ -125,9 +129,10 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
     },
     flush() {
       if (pendingChunks.length === 0) return [];
+      const frames = this.push("", true);
       const tail = pendingChunks.join("");
       reset();
-      return tail ? [parseSseFrame(tail)] : [];
+      return tail ? [...frames, parseSseFrame(tail)] : frames;
     },
   };
 }

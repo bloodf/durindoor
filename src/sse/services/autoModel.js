@@ -9,7 +9,7 @@ import { listMediaRouteCandidates, mediaEndpointSupport, providerOfModelId } fro
 export const CAPABILITY_ENDPOINTS = {
   llm: "/v1/chat/completions", image: "/v1/images/generations", video: "/v1/video/generations",
   tts: "/v1/audio/speech", stt: "/v1/audio/transcriptions", embedding: "/v1/embeddings",
-  imageToText: "/v1/chat/completions", webSearch: "/v1/search", webFetch: "/v1/fetch"
+  imageToText: "/v1/chat/completions", webSearch: "/v1/search", webFetch: "/v1/web/fetch"
 };
 const aliases = { chat: "llm", text: "llm", llm: "llm", image: "image", img: "image", video: "video", tts: "tts", stt: "stt", embedding: "embedding", embeddings: "embedding", "image-to-text": "imageToText", imageToText: "imageToText", web: "webSearch", search: "webSearch", fetch: "webFetch" };
 

@@ -5,6 +5,7 @@
  */
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { encodeDataUri } from "open-sse/translator/concerns/image.js";
+import { buildGeminiUsageMetadata } from "open-sse/translator/response/geminiUsageMetadata.js";
 
 /**
  * Convert Gemini request format to OpenAI/internal format.
@@ -267,15 +268,7 @@ export function openAIChunkToGeminiChunk(parsed, model, state = {}) {
   const geminiChunk = { candidates: [candidate] };
 
   if (choice.finish_reason && parsed.usage) {
-    geminiChunk.usageMetadata = {
-      promptTokenCount: parsed.usage.prompt_tokens || 0,
-      candidatesTokenCount: parsed.usage.completion_tokens || 0,
-      totalTokenCount: parsed.usage.total_tokens || 0
-    };
-    const reasoningTokens = parsed.usage.completion_tokens_details?.reasoning_tokens;
-    if (reasoningTokens) {
-      geminiChunk.usageMetadata.thoughtsTokenCount = reasoningTokens;
-    }
+    geminiChunk.usageMetadata = buildGeminiUsageMetadata(parsed.usage);
     geminiChunk.modelVersion = parsed.model || model;
   }
 
@@ -421,15 +414,7 @@ export async function convertOpenAIResponseToGemini(response, model) {
   };
 
   if (body.usage) {
-    geminiResponse.usageMetadata = {
-      promptTokenCount: body.usage.prompt_tokens || 0,
-      candidatesTokenCount: body.usage.completion_tokens || 0,
-      totalTokenCount: body.usage.total_tokens || 0
-    };
-    const reasoningTokens = body.usage.completion_tokens_details?.reasoning_tokens;
-    if (reasoningTokens) {
-      geminiResponse.usageMetadata.thoughtsTokenCount = reasoningTokens;
-    }
+    geminiResponse.usageMetadata = buildGeminiUsageMetadata(body.usage);
   }
 
   return Response.json(geminiResponse, {

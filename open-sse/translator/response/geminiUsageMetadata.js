@@ -14,31 +14,30 @@
 // totalTokenCount on the stream path, matching the JSON projector. See
 // internal/docs/v5-protocol-conformance.md.
 //
-// The upstream total is never recomputed, and the detail fields stay absent
-// when the upstream reports none: a usage object without reasoning or cache
-// details must project byte-identically to the pre-#18643 output.
+// Responses names (input_tokens, output_tokens, *_tokens_details) are read when the
+// Chat names are absent (OmniRoute #20224). A Chat total is never recomputed here;
+// a Responses report without total_tokens gets input + output. Detail fields stay
+// absent when the upstream reports none. Reasoning that the upstream total counts on
+// top of the output count (see reasoningIsSubsetOfOutput) is not subtracted again.
+import { reasoningIsSubsetOfOutput } from "../../utils/usageTracking.js";
+
 export function buildGeminiUsageMetadata(usage) {
   if (!usage) return null;
 
-  const metadata = {
-    promptTokenCount: usage.prompt_tokens || 0,
-    candidatesTokenCount: usage.completion_tokens || 0,
-    totalTokenCount: usage.total_tokens || 0
+  const prompt = usage.prompt_tokens || usage.input_tokens || 0;
+  const completion = usage.completion_tokens || usage.output_tokens || 0;
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens ?? usage.output_tokens_details?.reasoning_tokens;
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? usage.input_tokens_details?.cached_tokens;
+  const responsesTotal = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+
+  return {
+    promptTokenCount: prompt,
+    // Gemini counts thoughts separately from candidates.
+    candidatesTokenCount: reasoning && reasoningIsSubsetOfOutput(usage) ?
+    Math.max(0, completion - reasoning) :
+    completion,
+    totalTokenCount: usage.total_tokens || responsesTotal,
+    ...(reasoning ? { thoughtsTokenCount: reasoning } : null),
+    ...(cached ? { cachedContentTokenCount: cached } : null)
   };
-
-  if (usage.completion_tokens_details?.reasoning_tokens) {
-    metadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
-    // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
-    // The non-streaming projector (nonStreamingHandler) already subtracts them, so
-    // without this clamp the stream path double counts reasoning and breaks
-    // prompt + candidates + thoughts === total.
-    metadata.candidatesTokenCount = Math.max(0,
-      metadata.candidatesTokenCount - metadata.thoughtsTokenCount);
-  }
-
-  if (usage.prompt_tokens_details?.cached_tokens) {
-    metadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
-  }
-
-  return metadata;
 }

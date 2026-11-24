@@ -104,7 +104,15 @@ const HANDLERS = [
   "rerank", "search", "stt", "systemone", "tts", "video", "codexAlphaSearch",
 ];
 it.each(HANDLERS)("%s handler passes a dispatch snapshot to outcome writes", (name) => {
-  const source = fs.readFileSync(path.resolve(__dirname, `../../src/sse/handlers/${name}.js`), "utf8");
+  const handlerPath = path.resolve(__dirname, `../../src/sse/handlers/${name}.js`);
+  const pipelinePath = path.resolve(__dirname, "../../src/sse/handlers/media/pipeline.js");
+  const handler = fs.readFileSync(handlerPath, "utf8");
+  const migrated = ["tts", "stt", "embeddings", "moderations", "rerank", "imageEdit", "imageGeneration"].includes(name);
+  if (migrated) {
+    expect(handler).toMatch(/runMediaAccounts\s*\(/);
+    expect(handler).toMatch(/return\s*\{\s*result,\s*dispatch\b/);
+  }
+  const source = handler + (migrated ? fs.readFileSync(pipelinePath, "utf8") : "");
   expect(source).toContain("credentialDispatchSnapshot(");
   const calls = [...source.matchAll(/await (markAccountUnavailable|clearAccountError)\(([\s\S]*?)\);/g)]
     .filter((m) => !m[2].includes("Antigravity credential") && !m[2].includes("lastStatus, lastError"));

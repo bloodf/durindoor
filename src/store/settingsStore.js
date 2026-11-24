@@ -2,9 +2,56 @@
 
 import { create } from "zustand";
 import { CLIENT_STORE_TTL_MS } from "@/shared/constants/config";
+import api from "@/shared/utils/api";
+import { isRecord } from "@/shared/utils/typeChecks";
 
 let settingsRevision = 0;
 let patchSequence = 0;
+let pendingRead = null;
+let activeReads = 0;
+let readSequence = 0;
+let publishedReadSequence = 0;
+
+function advanceSettingsRevision() {
+  settingsRevision++;
+  activeReads = 0;
+}
+
+// Publish only to the active revision, in request order when reads overlap.
+async function readSettings(set, get, { revision, signal, cache, headers }) {
+  const sequence = ++readSequence;
+  const canPublish = () => revision === settingsRevision && sequence > publishedReadSequence;
+  activeReads++;
+  set({ loading: true, error: null });
+  try {
+    const data = await api.get("/api/settings", { signal, cache, headers });
+    signal?.throwIfAborted();
+    if (!isRecord(data)) {
+      const error = "Settings could not be loaded.";
+      if (canPublish()) {
+        publishedReadSequence = sequence;
+        set({ error });
+      }
+      // Fetch succeeded but yielded no settings object. Let callers use their
+      // HTTP failure path instead of treating the missing data as settings.
+      return { ok: false, status: 502, body: { error } };
+    }
+    if (!canPublish()) return { ok: true, status: 200, body: get().settings ?? data };
+    publishedReadSequence = sequence;
+    set({ settings: data, error: null, lastFetched: Date.now() });
+    return { ok: true, status: 200, body: data };
+  } catch (error) {
+    if (signal?.aborted) return { error: signal.reason };
+    if (canPublish()) {
+      publishedReadSequence = sequence;
+      set({ error: error?.body?.error || "Failed to fetch settings" });
+    }
+    if (error?.status) return { ok: false, status: error.status, body: error.body || {} };
+    return { error };
+  } finally {
+    if (revision === settingsRevision && --activeReads === 0) set({ loading: false });
+  }
+}
 
 const useSettingsStore = create((set, get) => ({
   settings: null,
@@ -14,35 +61,30 @@ const useSettingsStore = create((set, get) => ({
   errorBody: null,
   lastFetched: 0,
 
-  invalidate: () => { settingsRevision++; set({ lastFetched: 0 }); },
+  invalidate: () => { advanceSettingsRevision(); set({ loading: false, lastFetched: 0 }); },
 
-  // Skips network when cache is fresh; pass {force:true} to override
-  fetchSettings: async ({ force = false, signal, onResult } = {}) => {
+  /** Forced or cancelable reads run independently of shared cache refreshes. */
+  fetchSettings: async ({ force = false, signal, cache, headers, onResult } = {}) => {
     const { lastFetched, settings } = get();
-    if (!force && settings && Date.now() - lastFetched < CLIENT_STORE_TTL_MS) {
+    if (signal?.aborted) {
+      onResult?.({ error: signal.reason });
+      return null;
+    }
+    const shareable = !force && !signal && !cache && !headers;
+    if (shareable && settings && Date.now() - lastFetched < CLIENT_STORE_TTL_MS) {
       onResult?.({ ok: true, status: 200, body: settings });
       return settings;
     }
     const revision = settingsRevision;
-    set({ loading: true, error: null });
-    try {
-      const res = signal ? await fetch("/api/settings", { signal }) : await fetch("/api/settings");
-      const data = await res.json();
-      if (revision !== settingsRevision) {
-        onResult?.({ ok: true, status: 200, body: get().settings });
-        return get().settings;
-      }
-      onResult?.({ ok: res.ok, status: res.status, body: data });
-      if (res.ok) {
-        set({ settings: data, loading: false, lastFetched: Date.now() });
-        return data;
-      }
-      set({ error: data.error, loading: false });
-    } catch (e) {
-      if (revision !== settingsRevision) return get().settings;
-      set({ error: "Failed to fetch settings", loading: false });
+    let promise = shareable && pendingRead?.revision === revision ? pendingRead.promise : null;
+    if (!promise) {
+      promise = readSettings(set, get, { revision, signal, cache: cache ?? (force ? "no-store" : undefined), headers });
+      if (shareable) pendingRead = { revision, promise };
     }
-    return null;
+    const result = await promise;
+    if (pendingRead?.promise === promise) pendingRead = null;
+    onResult?.(result);
+    return result.ok ? result.body : null;
   },
 
   // Cache successful settings and expose server failures to callers.
@@ -50,24 +92,16 @@ const useSettingsStore = create((set, get) => ({
     const sequence = ++patchSequence;
     set({ error: null, errorStatus: null, errorBody: null });
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const updated = await Promise.resolve().then(() => res.json()).catch(() => ({}));
-      onResult?.({ ok: res.ok, status: res.status, body: updated });
-      if (!res.ok) {
-        if (sequence === patchSequence) set({ error: updated.error || "Failed to save settings", errorStatus: res.status, errorBody: updated });
-        return null;
-      }
+      const updated = await api.patch("/api/settings", patch);
+      onResult?.({ ok: true, status: 200, body: updated });
       // A newer PATCH is in flight or finished: this snapshot is stale.
       if (sequence !== patchSequence) return get().settings;
-      settingsRevision++;
+      advanceSettingsRevision();
       set({ settings: updated, loading: false, error: null, lastFetched: Date.now() });
       return updated;
-    } catch {
-      if (sequence === patchSequence) set({ error: "Failed to save settings" });
+    } catch (e) {
+      if (e.status) onResult?.({ ok: false, status: e.status, body: e.body || {} });
+      if (sequence === patchSequence) set({ error: e.body?.error || "Failed to save settings", errorStatus: e.status || null, errorBody: e.body || null });
       return null;
     }
   },
@@ -81,8 +115,11 @@ export async function requestSettings(options = {}) {
   if (options.method === "PATCH") {
     await useSettingsStore.getState().patchSettings(JSON.parse(options.body), { onResult });
   } else {
-    await useSettingsStore.getState().fetchSettings({ force: true, signal: options.signal, onResult });
+    await useSettingsStore.getState().fetchSettings({
+      force: true, signal: options.signal, cache: options.cache, headers: options.headers, onResult,
+    });
   }
+  if (result && "error" in result) throw result.error;
   if (!result) throw new Error(useSettingsStore.getState().error || "Settings request failed");
   return { ok: result.ok, status: result.status, json: async () => result.body };
 }

@@ -4,13 +4,14 @@
  * Can be used in both Next.js and Cloudflare Workers
  */
 
+import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import fs from "fs";
 import path from "path";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
 // Create log directory for responses (Node.js only)
-import { isFunction, isObject, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isRecord, isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function createResponsesLogger(model, logsDir = null) {
   // Skip logging in worker environment (no fs)
   if (!isFunction(fs.mkdirSync)) {
@@ -78,7 +79,6 @@ export function createResponsesApiTransformStream(logger = null) {
     funcItemDone: {},
     funcOutputIndexes: {},
     nextOutputIndex: 0,
-    buffer: "",
     usage: null,
     // Delay completion after finish_reason so a trailing usage-only chunk can enrich it.
     awaitingTrailingUsage: false,
@@ -267,34 +267,21 @@ export function createResponsesApiTransformStream(logger = null) {
 
   /**
    * One decoder must span the stream so split multi-byte UTF-8 sequences remain intact.
-   * Reusing transform during flush also sends a final unterminated SSE event through the normal parser.
+   * Reusing processFrames during flush sends any unterminated trailing SSE frame through the shared reader.
    */
   const decoder = new TextDecoder("utf-8");
-  const messageTerminator = encoder.encode("\n\n");
-  const handlers = {
-    transform(chunk, controller) {
-      const text = decoder.decode(chunk, { stream: true });
-      if (text.trim()) logger?.logInput(text.trim());
-      state.buffer += text;
-
-      const messages = state.buffer.split("\n\n");
-      state.buffer = messages.pop() || "";
-
-      for (const msg of messages) {
-        if (!msg.trim()) continue;
-
-        const dataMatch = msg.match(/^data:\s*(.+)$/m);
-        if (!dataMatch) continue;
-
-        const dataStr = dataMatch[1].trim();
-        if (dataStr === "[DONE]") continue;
+  const reader = createSseFrameReader();
+  const processFrames = (frames, controller) => {
+      for (const frame of frames) {
+        if (!frame.hasData) continue;
 
         let parsed;
         try {
-          parsed = JSON.parse(dataStr);
+          ({ parsed } = parseResponsesSseData(frame));
         } catch {
           continue;
         }
+        if (!isRecord(parsed)) continue;
 
         if (parsed.usage && isObject(parsed.usage)) state.usage = parsed.usage;
         if (!parsed.choices?.length) {
@@ -445,11 +432,19 @@ export function createResponsesApiTransformStream(logger = null) {
           }
         }
       }
+  };
+
+  const handlers = {
+    transform(chunk, controller) {
+      const text = decoder.decode(chunk, { stream: true });
+      if (text.trim()) logger?.logInput(text.trim());
+      processFrames(reader.push(text), controller);
     },
 
     flush(controller) {
-      state.buffer += decoder.decode();
-      if (state.buffer.trim()) handlers.transform(messageTerminator, controller);
+      const tail = decoder.decode();
+      if (tail.trim()) logger?.logInput(tail.trim());
+      processFrames([...reader.push(tail), ...reader.flush()], controller);
 
       for (const i in state.msgItemAdded) closeMessage(controller, i);
       closeReasoning(controller);

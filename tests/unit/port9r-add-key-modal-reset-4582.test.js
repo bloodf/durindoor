@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 
-const page = readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url), "utf8");
+const page = readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx", import.meta.url), "utf8");
 
 describe("provider page AddApiKeyModal lifecycle", () => {
   it("remounts AddApiKeyModal on each open/close via a key tied to showAddApiKeyModal", () => {

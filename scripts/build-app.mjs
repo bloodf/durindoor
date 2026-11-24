@@ -159,6 +159,7 @@ try {
     }
 
     fs.copyFileSync(path.join(process.cwd(), "custom-server.js"), path.join(standaloneDir, "custom-server.js"));
+    fs.copyFileSync(path.join(process.cwd(), "realtime-upgrade.cjs"), path.join(standaloneDir, "realtime-upgrade.cjs"));
     // custom-server.js requires ./head-response-guard.cjs (OmniRoute #6908):
     // a root-level sidecar outside Next's NFT trace, so it must be copied by
     // hand or the standalone server crashes at boot with MODULE_NOT_FOUND.

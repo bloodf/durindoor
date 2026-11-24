@@ -964,6 +964,7 @@
   "Replay request flow — matches log files": "Putar ulang alur permintaan — cocok dengan file log",
   "Request": "Permintaan",
   "Request Details": "Detail Permintaan",
+  "Request details": "Detail Permintaan",
   "Request Logs": "Log Permintaan",
   "Requests": "Permintaan",
   "Requests without a valid key will be rejected": "Permintaan tanpa kunci yang valid akan ditolak",

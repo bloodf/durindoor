@@ -7,6 +7,9 @@ const meta = { ...originalMeta, title: "V5 review/Pages/providers/AutoPingSchedu
 export default meta;
 export const Open = { ...reviewStory(original.Open, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
 export const Empty = { ...reviewStory(original.Empty, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
+export const InvalidWindow = { ...reviewStory(original.InvalidWindow, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
+export const SlotsAboveMaximum = { ...reviewStory(original.SlotsAboveMaximum, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
+export const EnableSchedule = { ...reviewStory(original.EnableSchedule, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
 export const ValidationError = { ...reviewStory(original.ValidationError, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
 export const Loading = { ...reviewStory(original.Loading, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };
 export const SaveError = { ...reviewStory(original.SaveError, {"source":"src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx","standalone":false}) };

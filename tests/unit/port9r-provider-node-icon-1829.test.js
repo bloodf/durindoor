@@ -37,7 +37,7 @@ describe("compatible provider node icon fallback (9router #1829)", () => {
   it("the providers list and detail page use the helper instead of hard-coded OC/AC badges", () => {
     for (const rel of [
       "src/app/(dashboard)/dashboard/providers/page.js",
-      "src/app/(dashboard)/dashboard/providers/[id]/page.js",
+      "src/app/(dashboard)/dashboard/providers/[id]/hooks/useProviderDetail.js",
     ]) {
       const src = read(rel);
       expect(src).toContain("resolveProviderNodeIcon(");

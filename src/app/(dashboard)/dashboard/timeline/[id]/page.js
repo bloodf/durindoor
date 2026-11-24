@@ -13,6 +13,7 @@ import { statusTone } from "../timelineStatus.js";
 import EventRow from "./components/EventRow.jsx";
 import TraceWaterfall from "./components/TraceWaterfall.jsx";
 import TimelineDetailSkeleton from "./TimelineDetailSkeleton.jsx";
+import { get } from "@/shared/utils/api.js";
 
 function groupEvents(events) {
   const groups = [];
@@ -66,8 +67,7 @@ export default function TimelineDetailPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/providers", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    get("/api/providers", { cache: "no-store", skipErrorBody: true })
       .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
       .catch(() => {});
     return () => { cancelled = true; };

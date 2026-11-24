@@ -1,6 +1,7 @@
 import { antigravityGeminiResponse } from "../handlers/chatCore/antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
+import { formatClaudeSseError } from "./sseFrames.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
@@ -137,7 +138,7 @@ function formatTranslatedStreamError(error, sourceFormat, secrets = []) {
     return `event: response.failed\ndata: ${JSON.stringify(failed)}\n\ndata: [DONE]\n\n`;
   }
   if (sourceFormat === FORMATS.CLAUDE) {
-    return `event: error\ndata: ${JSON.stringify({ type: "error", error: normalized })}\n\ndata: [DONE]\n\n`;
+    return formatClaudeSseError(normalized) + "data: [DONE]\n\n";
   }
   return `data: ${JSON.stringify({ error: normalized })}\n\ndata: [DONE]\n\n`;
 }

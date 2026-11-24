@@ -6,6 +6,8 @@ import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Pages/auto-configure", parameters: reviewParameters(originalMeta.parameters, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
 export const StatusPreview = { ...reviewStory(original.StatusPreview, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
+export const PlainTextActions = { ...reviewStory(original.PlainTextActions, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
+export const DiagnosticActions = { ...reviewStory(original.DiagnosticActions, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
 export const RunSuccess = { ...reviewStory(original.RunSuccess, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
 export const RunFailure = { ...reviewStory(original.RunFailure, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
 export const StatusLoadRecovery = { ...reviewStory(original.StatusLoadRecovery, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };

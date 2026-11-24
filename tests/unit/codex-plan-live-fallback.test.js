@@ -94,7 +94,7 @@ describe("provider page live plan collection", () => {
 describe("provider page wiring", () => {
   it("imports the shared helpers and passes the plan into ConnectionRow", () => {
     const page = readFileSync(
-      new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url),
+      new URL("../../src/app/(dashboard)/dashboard/providers/[id]/hooks/useConnectionLoading.js", import.meta.url),
       "utf8",
     );
 
@@ -103,7 +103,7 @@ describe("provider page wiring", () => {
     // Shared util, not dashboard-internal ProviderLimits state.
     expect(page).toContain('from "@/shared/utils/codexPlanLabel"');
     expect(page).not.toContain("ProviderLimits/utils");
-    expect(page).toMatch(/plan=\{codexPlans\[conn\.id\]\}/);
+    expect(readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/sections/buildConnectionSections.jsx", import.meta.url), "utf8")).toMatch(/plan=\{codexPlans\[conn\.id\]\}/);
     expect(page).toContain("/api/usage/");
   });
 

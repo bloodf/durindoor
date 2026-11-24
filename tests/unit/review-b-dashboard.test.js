@@ -7,7 +7,7 @@ const read = (file) => fs.readFileSync(path.resolve(`../${file}`), "utf8");
 describe("dashboard review regressions (#2283)", () => {
   const combos = read("src/app/(dashboard)/dashboard/combos/page.js");
   const providers = read("src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js");
-  const providerDetail = read("src/app/(dashboard)/dashboard/providers/[id]/page.js");
+  const providerDetail = read("src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx");
   const keys = read("src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx");
   const update = read("src/shared/components/UpdatePanel.js");
 

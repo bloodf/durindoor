@@ -84,6 +84,10 @@ jobs:
         working-directory: website
         run: pnpm install --frozen-lockfile
 
+      - name: Smoke test website mock
+        working-directory: website
+        run: pnpm run mock:smoke
+
       - name: Build website
         working-directory: website
         run: pnpm run build

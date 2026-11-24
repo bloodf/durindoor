@@ -3,6 +3,7 @@
  * Converts Responses API SSE stream to single JSON response
  * Used when client requests non-streaming but provider forces streaming (e.g., Codex)
  */
+import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import { FORMATS } from "../translator/formats.js";
 import { MAX_RESPONSES_OUTPUT_ITEMS } from "../config/runtimeConfig.js";
 import { readBoundedResponseText } from "../utils/error.js";
@@ -10,7 +11,7 @@ import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { responsesIncompleteDetailsOrOmit } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import { isProviderKeepaliveEvent } from "../utils/providerKeepalive.js";
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 function readResponseMetadata(response) {
   const id = response?.id;
@@ -25,29 +26,39 @@ function readResponseMetadata(response) {
  * Process a single SSE message and update state accordingly.
  */
 function processSSEMessage(msg, state) {
-  if (!msg.trim()) return;
-  if (msg.trim().startsWith(":")) return;
+  const { raw, eventName } = msg;
+  if (!raw.trim()) return;
+  const nonCommentLines = raw.split(/\r\n|\r|\n/).filter((line) => line && !line.startsWith(":"));
+  if (nonCommentLines.length === 0) return;
 
-  const firstLine = msg.split(/\r?\n/, 1)[0];
-  if (isProviderKeepaliveEvent(firstLine) && /^(?:\r?\ndata: ?)*$/.test(msg.slice(firstLine.length))) return;
-
-  const dataMatch = msg.match(/^data:\s*(.+)$/m);
-  if (!dataMatch) {state.terminal.fail();return;}
-  const dataStr = dataMatch[1].trim();
-  const eventMatch = msg.match(/^event:\s*(.+)$/m);
-  if (dataStr === "[DONE]") {
-    state.terminal.observe({ rawDone: true, eventName: eventMatch?.[1]?.trim() || null });
+  if (
+    isProviderKeepaliveEvent(nonCommentLines[0]) &&
+    nonCommentLines.slice(1).every((line) => /^data: ?$/.test(line))
+  ) {
     return;
   }
 
   let parsed;
-  try {parsed = JSON.parse(dataStr);}
-  catch {state.terminal.fail();return;}
+  let rawDone;
+  try {
+    ({ parsed, rawDone } = parseResponsesSseData(msg));
+  } catch {
+    state.terminal.fail();
+    return;
+  }
+  if (rawDone) {
+    state.terminal.observe({ rawDone: true, eventName: eventName?.trim() || null });
+    return;
+  }
+  if (!isRecord(parsed)) {
+    state.terminal.fail();
+    return;
+  }
 
   // Some providers omit `event:` lines and send data-only SSE. The Responses API
   // always sets `type` in the payload, so fall back to it (#5607); a frame with
   // neither is still unusable.
-  const eventType = eventMatch?.[1]?.trim() || (isString(parsed?.type) && parsed.type ? parsed.type : null);
+  const eventType = eventName?.trim() || (isString(parsed?.type) && parsed.type ? parsed.type : null);
   if (!eventType) {state.terminal.fail();return;}
 
   state.terminal.observe({ chunk: parsed, eventName: eventType });
@@ -127,9 +138,9 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
   };
 
   const raw = await readBoundedResponseText(new Response(stream), options);
-  const messages = raw.split(/\r?\n\r?\n/);
-  for (const msg of messages) {
-    if (msg.trim()) processSSEMessage(msg, state);
+  const reader = createSseFrameReader();
+  for (const msg of [...reader.push(raw), ...reader.flush()]) {
+    processSSEMessage(msg, state);
   }
 
   if (state.terminal.outcome !== "success") state.status = "failed";

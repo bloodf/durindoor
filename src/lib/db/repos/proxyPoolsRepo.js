@@ -1,10 +1,33 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { decryptField, encryptField, isEncryptedBlob } from "../../crypto/columnCrypto.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
+
+function relaySecretAad(id) {
+  return `pool:${id}:relaySecret`;
+}
+
+/** Encrypt relaySecret for storage; already-encrypted blobs and empty values pass through. */
+export function encryptProxyPoolSecrets(pool, id = pool?.id) {
+  if (!pool || !isString(pool.relaySecret) || pool.relaySecret === "") return pool;
+  return { ...pool, relaySecret: encryptField(pool.relaySecret, relaySecretAad(id), 2) };
+}
+
+/** Decrypt relaySecret for callers; legacy plaintext rows pass through. */
+export function decryptProxyPoolSecrets(pool, id = pool?.id) {
+  if (!pool || !isEncryptedBlob(pool.relaySecret)) return pool;
+  try {
+    return { ...pool, relaySecret: decryptField(pool.relaySecret, relaySecretAad(id)) };
+  } catch {
+    console.warn("Unable to decrypt proxy pool relay secret");
+    return { ...pool, relaySecret: "" };
+  }
+}
 
 function rowToPool(row) {
   if (!row) return null;
-  const extra = parseJson(row.data, {});
+  const extra = decryptProxyPoolSecrets(parseJson(row.data, {}), row.id);
   return {
     ...extra,
     id: row.id,
@@ -21,7 +44,7 @@ function poolToRow(p) {
     id,
     isActive: isActive === false ? 0 : 1,
     testStatus: testStatus ?? null,
-    data: stringifyJson(rest),
+    data: stringifyJson(encryptProxyPoolSecrets(rest, id)),
     createdAt,
     updatedAt,
   };

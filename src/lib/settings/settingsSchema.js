@@ -341,3 +341,9 @@ export function validateSettingsPatch(patch) {
   }
   return invalid;
 }
+
+/**
+ * Settings dropped from scrubbed (includeSecrets:false) exports. Derived from
+ * the schema's redact-on-GET flag so a newly redacted setting is scrubbed too.
+ */
+export const EXPORT_SCRUBBED_SETTING_KEYS = REDACT_ON_GET_SETTING_KEYS;

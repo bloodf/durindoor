@@ -5,7 +5,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting } from "./mediaAccounting.js";
-import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+import { createSseFrameReader } from "../utils/sseFrames.js";
 
 
 const MUSIC_PROVIDERS = {
@@ -96,16 +96,12 @@ function musicStreamResult(response, provider, onComplete) {
   accounting.state = "pending";
   const sse = /text\/event-stream/i.test(response.headers.get("content-type") || "");
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
   let terminal = null;
   let failed = false;
   let bytes = 0;
   const consume = (text) => {
-    buffer += text;
-    const { frames, remainder } = extractCompleteSseFrames(buffer);
-    buffer = remainder;
-    for (const frame of frames) {
-      const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+    for (const { data } of frameReader.push(text)) {
       if (!data || data === "[DONE]") continue;
       const value = JSON.parse(data);
       if (value.error || (value.base_resp?.status_code !== undefined && value.base_resp.status_code !== 0)) failed = true;
@@ -122,7 +118,7 @@ function musicStreamResult(response, provider, onComplete) {
       if (sse) consume(decoder.decode());
       // EOF alone is not a successful SSE terminal. Binary bytes pass untouched;
       // a failed/cancelled transport never reaches flush and never records usage.
-      if (failed || (sse ? !terminal || buffer.trim() !== "" : bytes === 0)) return;
+      if (failed || (sse ? !terminal || frameReader.flush().some((frame) => frame.raw.trim() !== "") : bytes === 0)) return;
       Object.assign(accounting, musicAccounting(terminal, provider), { state: "complete" });
       await onComplete?.(accounting);
     },

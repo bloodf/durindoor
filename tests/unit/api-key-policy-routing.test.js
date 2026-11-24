@@ -42,10 +42,10 @@ vi.mock("../../src/sse/utils/logger.js", () => ({
 const { handleModerations } = await import("../../src/sse/handlers/moderations.js");
 const { handleRerank } = await import("../../src/sse/handlers/rerank.js");
 
-function request(path, body) {
+function request(path, body, extraHeaders = {}) {
   return new Request(`http://localhost${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: "Bearer sk-test" },
+    headers: { "content-type": "application/json", authorization: "Bearer sk-test", ...extraHeaders },
     body: JSON.stringify(body),
   });
 }
@@ -112,6 +112,16 @@ describe("resolved-target API-key policy routing", () => {
     expect(mocks.rerankCore).toHaveBeenCalledOnce();
     expect(mocks.rerankCore.mock.calls[0][0].modelInfo.model).toBe("allowed-resolved");
     expect(mocks.record).toHaveBeenCalledOnce();
+  });
+
+  it("ignores the connection header for moderation across model fallback", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false, modelFallbacks: { primary: { enabled: true, fallbacks: ["allowed"] } } });
+    mocks.moderationCore.mockResolvedValueOnce(coreResult(503)).mockResolvedValueOnce(coreResult());
+    const response = await handleModerations(request("/v1/moderations", { model: "primary", input: "hello" }, { "x-connection-id": "pinned" }));
+    expect(response.status).toBe(200);
+    expect(mocks.moderationCore).toHaveBeenCalledTimes(2);
+    expect(mocks.getProviderCredentials).toHaveBeenCalledTimes(2);
+    for (const call of mocks.getProviderCredentials.mock.calls) expect(call[2]).toEqual({ apiKeyId: undefined });
   });
 
   it.each([

@@ -432,27 +432,19 @@ function publicSession(s) {
 
 /**
  * Async generator yielding parsed `{ data }` records from a Web ReadableStream
- * of SSE bytes. Handles multi-line data: and event boundaries (\n\n).
+ * of SSE bytes. Handles CRLF, multi-line data and an unterminated EOF frame.
  */
 async function* iterateSSE(readable) {
   const reader = readable.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const { createSseFrameReader } = await import("../utils/sseFrames.js");
+  const frames = createSseFrameReader();
   try {
     for (;;) {
       const { value, done } = await reader.read();
+      const parsed = done ? [...frames.push(decoder.decode()), ...frames.flush()] : frames.push(decoder.decode(value, { stream: true }));
+      for (const frame of parsed) if (frame.hasData) yield { data: frame.data };
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) !== -1) {
-        const rawEvent = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const dataLines = [];
-        for (const line of rawEvent.split("\n")) {
-          if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^\s/, ""));
-        }
-        if (dataLines.length) yield { data: dataLines.join("\n") };
-      }
     }
   } finally {
     try {reader.releaseLock();} catch {/* ignore */}

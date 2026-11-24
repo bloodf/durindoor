@@ -26,17 +26,17 @@ The previous access token stays usable until it expires. A commit checks generat
 
 `GET` and `POST /api/oauth/antigravity/rotation` stay protected when dashboard login is optional. A browser request needs a same-origin `Origin`, or the machine-bound CLI token. The session is a dashboard JWT or `x-9r-cli-token`.
 
-`enroll`, `replace`, `enable`, and `scheduler-enable` also require header `x-9r-password` and a dashboard password that is not the built-in default. `disable`, `delete`, `retry`, `reset`, and `scheduler-disable` need the session and the origin check.
+`enroll`, `replace`, `enable`, and `scheduler-enable` also require header `x-9r-password` and a dashboard password that is not the built-in default. `disable`, `delete`, `retry`, `reset`, and `scheduler-disable` need the session and the origin check. These authorization requirements do not mean the protected actions are currently available: `enroll`, `replace`, and `enable` return `reauth_required` without writing recovery credentials. `scheduler-enable` reports `schedulerEnabled: false`; the scheduler cannot be enabled through this API.
 
 The JSON body limit is 8192 bytes. Public errors are allowlisted categories. Status returns `attemptState`, `errorCategory`, `recoveryEnabled`, `retryCount`, `nextRetryAt`, `subjectPresent`, and `schedulerEnabled`. It does not return tokens, the recovery password, ciphertext, email, the owner, the fencing token, or the subject string. `GET` does not start the scheduler.
 
-Enrollment requires `providerSpecificData.antigravitySubject`, but this editable field does not prove verified identity provenance. The stored consent timestamp is not explicit scope-bound consent. Neither enrollment nor enablement authorizes a recovery attempt. A blank password does not delete or replace a stored recovery password. Disable fences the generation and keeps the ciphertext. Delete removes only the recovery row and fences the generation. It does not delete the access or refresh token.
+Recovery enrollment, password replacement, and enablement are not supported by the current API. It rejects all three actions with `reauth_required`, even when a subject and password are supplied; those values are not stored. Status always reports `recoveryEnabled: false` and `subjectPresent: false`, including when legacy lease rows contain those values. Operators cannot enable browser recovery or change those status flags through the API. If an account needs recovery, use the normal Antigravity provider sign-in/reauthentication flow in the dashboard. A blank password does not delete or replace a stored recovery password. Disable fences the generation and keeps any existing ciphertext. Delete removes only the recovery row and fences the generation; it does not delete the access or refresh token.
 
-Sign-in still succeeds when Google omits a subject. Enrollment requires a stored subject; enablement can also reuse the subject in the lease row. Neither proves its origin. Dashboard and CLI authorization use PKCE (`code_challenge` and `code_verifier`). A missing verifier or challenge fails closed.
+Sign-in still succeeds when Google omits a subject. The current rotation API does not use a subject for enrollment or enablement because both actions are rejected. Dashboard and CLI authorization use PKCE (`code_challenge` and `code_verifier`). A missing verifier or challenge fails closed.
 
 ## Scheduler
 
-The scheduler is hard-disabled. An enable request does not start it, and boot does not resume it. An unexpired `dispatched` lease stays `busy` on leased paths, including after the holder process is killed. Expired dispatched leases become `uncertain` on acquire and are not replayed by those paths.
+The scheduler is hard-disabled. `scheduler-enable` returns `schedulerEnabled: false` and does not start it; boot does not resume it. An unexpired `dispatched` lease stays `busy` on leased paths, including after the holder process is killed. Expired dispatched leases become `uncertain` on acquire and are not replayed by those paths.
 
 ## Browser recovery
 

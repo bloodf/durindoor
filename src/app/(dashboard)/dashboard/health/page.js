@@ -8,6 +8,7 @@ import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import StatCard from "@/shared/ui/components/StatCard.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { get } from "@/shared/utils/api.js";
 import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
@@ -42,11 +43,16 @@ export default function HealthPage() {
     request.current.abort = abort;
     const current = () => !abort.signal.aborted && epoch === request.current.epoch;
     setLoading(true); setHeadroomLoading(true);
+    // Parse failures yield an empty snapshot. A successful JSON null leaves the snapshot unknown.
     const read = async (url) => {
-      const response = await fetch(url, { cache: "no-store", signal: abort.signal });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || `Health request failed (${response.status})`);
-      return body;
+      try {
+        return await get(url, { cache: "no-store", signal: abort.signal, jsonParseFallback: {} });
+      } catch (failure) {
+        if (Object.hasOwn(failure, "status") && Object.hasOwn(failure, "body")) {
+          throw new Error(failure.body.error || `Health request failed (${failure.status})`);
+        }
+        throw failure;
+      }
     };
     await Promise.allSettled([
       read(force ? "/api/health/providers?force=1" : "/api/health/providers").then((body) => {

@@ -11,8 +11,9 @@ if (isMainThread && process.env.AGY_HOLD === "1") {
       owner: "killed-worker",
     });
     const marked = result.ok === true && markAntigravityDispatched(db, result.lease);
+    const disconnected = new Promise((resolve) => process.once("disconnect", resolve));
     process.send?.({ phase: "held", ok: marked });
-    await new Promise(() => {});
+    await disconnected;
   } catch {
     process.send?.({ phase: "held", ok: false });
   } finally {

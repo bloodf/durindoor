@@ -206,6 +206,10 @@ describe("antigravity rotation lease", () => {
         child.once("exit", (code) => reject(new Error(`worker exited before dispatch: ${code}`)));
       });
       expect(held).toMatchObject({ phase: "held", ok: true });
+      // Let the child reach an idle event loop before fencing its live dispatch.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(child.exitCode).toBeNull();
+      expect(child.signalCode).toBeNull();
       db.transaction(() => fenceAntigravityRecovery(db, "fence-crash", { deleteCredential: true }));
       child.kill("SIGKILL");
       await new Promise((resolve) => child.once("exit", resolve));

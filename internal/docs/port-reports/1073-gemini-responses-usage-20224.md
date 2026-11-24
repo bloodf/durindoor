@@ -2,6 +2,8 @@
 
 Upstream: `2d0d3112ad0f050e85bbba8c7f61ec4a3e67dec9` and the usage part of `73f02b9d74324a6e2c7ebc03388e592d58233536`. The Cursor part of `73f02b9d` stays not applicable, as recorded in [the row 91 comparison](1073-nov24-row-91-complete.md). That report is unchanged.
 
+Port PR: [DurinDoor #2499](https://github.com/bloodf/durindoor/pull/2499) (draft, not merged).
+
 ## Verified gap
 
 Probed on integration HEAD `3b6e9098db` with `{input_tokens: 10, output_tokens: 30, total_tokens: 40, output_tokens_details.reasoning_tokens: 20}`:
@@ -16,7 +18,7 @@ Two double counts used Chat names: the non-stream projector for non-native Gemin
 
 ## Overlap
 
-Open PRs checked on 2026-11-24. #2493 changes `openai-to-antigravity.js` and `gemini-to-claude.js`; this port edits neither. No other open PR touches the changed source files.
+Open PRs checked on 2026-11-24. #2493 changes `openai-to-antigravity.js` and `gemini-to-claude.js`; this port edits neither. No other open PR touches the changed source files. `ListAgents` showed no session working on this gateway.
 
 ## Changes and adaptations
 
@@ -33,8 +35,8 @@ Open PRs checked on 2026-11-24. #2493 changes `openai-to-antigravity.js` and `ge
 
 ## Evidence
 
-- New test file: 20 tests pass; 14 fail with the four source files reverted.
-- That file plus every unit and translator test file naming the changed surfaces: 689 passed, 6 skipped.
+- New test file: 20 tests pass; on the integration branch, 14 failed with the four source files reverted.
+- That file plus every unit and translator test file naming the changed surfaces, on the PR branch (base `484c4e941a`): 678 passed, 6 skipped.
 - `pnpm lint` passed. `check:agent-index` passed. `check:docs` fails on `docs/operations/stream-status-colors.mdx`, which this change does not touch.
 - `openaiToGeminiResponseSelfCheck.mjs` fails with `Cannot find package '@/lib'` both with and without this change. `completionProjectorSelfCheck.mjs` passes 20/20.
 - Full local CI not run. No credentials, provider calls, production gateway or machine settings.

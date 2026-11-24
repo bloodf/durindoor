@@ -26861,16 +26861,19 @@
           "axes": [
             "provider=openai",
             "discovery=enabled",
-            "snapshot=inside-configured-interval",
-            "visible-text=Provider discovery with derived registry variants",
-            "visible-text=Within the configured sync interval. Availability is not verified.",
-            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+            "snapshot=inside-configured-interval"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "Fresh play assertions require the Model list provenance label, provider discovery with derived registry variants, within-interval availability-not-verified text, and UNKNOWN text stating list-models does not verify the model vendor or capabilities."
+          "proposedSourceEvidence": "Fresh play assertions require the Model list provenance label, provider discovery with derived registry variants, within-interval availability-not-verified text, and UNKNOWN text stating list-models does not verify the model vendor or capabilities.",
+          "expectedVisibleText": "Provider discovery with derived registry variants",
+          "proposedVisibleTexts": [
+            "Provider discovery with derived registry variants",
+            "Within the configured sync interval. Availability is not verified.",
+            "UNKNOWN. A list-models response does not verify the model vendor or its capabilities."
+          ]
         },
         {
           "id": "production-providers-modelcatalogprovenance--empty",
@@ -26880,16 +26883,19 @@
             "provider=openai",
             "discovery=disabled",
             "snapshot=absent",
-            "catalog=built-in-registry",
-            "visible-text=Built-in registry",
-            "visible-text=UNKNOWN",
-            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+            "catalog=built-in-registry"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "Empty play assertions require the built-in registry, exact UNKNOWN freshness, and UNKNOWN text stating list-models does not verify the model vendor or capabilities; discovery is explicitly disabled with no snapshot."
+          "proposedSourceEvidence": "Empty play assertions require the built-in registry, exact UNKNOWN freshness, and UNKNOWN text stating list-models does not verify the model vendor or capabilities; discovery is explicitly disabled with no snapshot.",
+          "expectedVisibleText": "Built-in registry",
+          "proposedVisibleTexts": [
+            "Built-in registry",
+            "UNKNOWN",
+            "UNKNOWN. A list-models response does not verify the model vendor or its capabilities."
+          ]
         },
         {
           "id": "production-providers-modelcatalogprovenance--stale-snapshot",
@@ -26898,16 +26904,19 @@
           "axes": [
             "provider=openai",
             "discovery=enabled",
-            "snapshot=expired",
-            "visible-text=Provider discovery with derived registry variants",
-            "visible-text=STALE; stored snapshot older than configured sync interval",
-            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+            "snapshot=expired"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "StaleSnapshot play assertions require provider discovery with derived registry variants, STALE text saying the stored snapshot is older than the configured sync interval, and UNKNOWN text stating list-models does not verify the model vendor or capabilities. The configured interval has expired."
+          "proposedSourceEvidence": "StaleSnapshot play assertions require provider discovery with derived registry variants, STALE text saying the stored snapshot is older than the configured sync interval, and UNKNOWN text stating list-models does not verify the model vendor or capabilities. The configured interval has expired.",
+          "expectedVisibleText": "Provider discovery with derived registry variants",
+          "proposedVisibleTexts": [
+            "Provider discovery with derived registry variants",
+            "STALE. The stored snapshot is older than the configured sync interval.",
+            "UNKNOWN. A list-models response does not verify the model vendor or its capabilities."
+          ]
         },
         {
           "id": "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
@@ -26917,16 +26926,19 @@
             "provider=openai",
             "discovery=enabled",
             "snapshot=not-yet-created",
-            "catalog=built-in-registry",
-            "visible-text=Built-in registry",
-            "visible-text=UNKNOWN",
-            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+            "catalog=built-in-registry"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "DiscoveryBeforeFirstSnapshot play assertions require the built-in registry, exact UNKNOWN freshness, and UNKNOWN text stating list-models does not verify the model vendor or capabilities; discovery is enabled but models and syncedAt are absent."
+          "proposedSourceEvidence": "DiscoveryBeforeFirstSnapshot play assertions require the built-in registry, exact UNKNOWN freshness, and UNKNOWN text stating list-models does not verify the model vendor or capabilities; discovery is enabled but models and syncedAt are absent.",
+          "expectedVisibleText": "Built-in registry",
+          "proposedVisibleTexts": [
+            "Built-in registry",
+            "UNKNOWN",
+            "UNKNOWN. A list-models response does not verify the model vendor or its capabilities."
+          ]
         },
         {
           "id": "production-providers-modelcatalogprovenance--error",
@@ -26935,15 +26947,18 @@
           "axes": [
             "provider=openai",
             "discovery=failed",
-            "snapshot=previous-snapshot-retained",
-            "visible-text=STALE; last discovery attempt failed; previous snapshot retained",
-            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+            "snapshot=previous-snapshot-retained"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "Error play assertions require STALE text saying the last discovery attempt failed and the previous snapshot is retained, plus UNKNOWN text stating list-models does not verify the model vendor or capabilities. This is a failed discovery with a retained snapshot, distinct from an expired snapshot."
+          "proposedSourceEvidence": "Error play assertions require STALE text saying the last discovery attempt failed and the previous snapshot is retained, plus UNKNOWN text stating list-models does not verify the model vendor or capabilities. This is a failed discovery with a retained snapshot, distinct from an expired snapshot.",
+          "expectedVisibleText": "STALE. The last discovery attempt failed; the previous snapshot is retained.",
+          "proposedVisibleTexts": [
+            "STALE. The last discovery attempt failed; the previous snapshot is retained.",
+            "UNKNOWN. A list-models response does not verify the model vendor or its capabilities."
+          ]
         }
       ],
       "unresolvedHistoricalScenarioIds": [],

@@ -1,11 +1,15 @@
 "use client";
 
 import { DEFAULT_LOCALE, LOCALE_COOKIE, getLocaleDirection, normalizeLocale } from "./config";
-import { isBrowser, isString, isUndefined } from "../shared/utils/typeChecks.js";
+import { isBrowser, isRecord, isString, isUndefined } from "../shared/utils/typeChecks.js";
 
 let translationMap = {};
 let currentLocale = DEFAULT_LOCALE;
 let reloadCallbacks = [];
+let observerHandle = null;
+let initPromise = null;
+let lifecycleVersion = 0;
+const missingKeys = new Set();
 const textState = new WeakMap();
 
 // Read locale from cookie
@@ -30,6 +34,13 @@ export function syncDocumentLocale(locale) {
   document.documentElement.dir = getLocaleDirection(normalized);
 }
 
+function syncLocaleFromCookie() {
+  const locale = getLocaleFromCookie();
+  if (locale !== currentLocale) missingKeys.clear();
+  currentLocale = locale;
+  syncDocumentLocale(locale);
+}
+
 // Load translation map
 async function loadTranslations(locale) {
   if (locale === "en") {
@@ -39,10 +50,24 @@ async function loadTranslations(locale) {
 
   try {
     const response = await fetch(`/i18n/literals/${locale}.json`);
-    translationMap = await response.json();
-  } catch (err) {
-    console.error("Failed to load translations:", err);
+    if (response.ok === false) {
+      translationMap = {};
+      console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+      return;
+    }
+    try {
+      const translations = await response.json();
+      translationMap = isRecord(translations) ? translations : {};
+      if (translationMap !== translations) {
+        console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+      }
+    } catch {
+      translationMap = {};
+      console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+    }
+  } catch {
     translationMap = {};
+    console.warn(`Failed to load translations for locale ${locale} (status unavailable)`);
   }
 }
 
@@ -52,7 +77,14 @@ export function translate(text) {
   const trimmed = text.trim();
   if (!trimmed) return text;
   if (currentLocale === "en") return text;
-  return translationMap[trimmed] || text;
+  const translated = translationMap[trimmed];
+  if (!translated && import.meta.env?.DEV) missingKeys.add(trimmed);
+  return translated || text;
+}
+
+/** Return the unique missing source strings encountered for the current development locale. */
+export function getMissingTranslationKeys() {
+  return [...missingKeys];
 }
 
 // Get current locale - exported for use in components
@@ -135,39 +167,57 @@ function processElement(element) {
 // Initialize runtime i18n
 export async function initRuntimeI18n() {
   if (!isBrowser()) return;
+  if (observerHandle) return;
+  if (initPromise) return initPromise;
 
-  currentLocale = getLocaleFromCookie();
-  syncDocumentLocale(currentLocale);
-  await loadTranslations(currentLocale);
+  initPromise = (async () => {
+    const version = lifecycleVersion;
+    syncLocaleFromCookie();
+    await loadTranslations(currentLocale);
+    if (version !== lifecycleVersion) return;
 
-  // Process existing DOM
-  processElement(document.body);
+    // Process existing DOM
+    processElement(document.body);
 
-  // Watch for new nodes
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === "characterData") processTextNode(mutation.target);
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          processElement(node);
-        } else if (node.nodeType === Node.TEXT_NODE) {
-          processTextNode(node);
-        }
+    // Watch for new nodes
+    observerHandle = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === "characterData") processTextNode(mutation.target);
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            processElement(node);
+          } else if (node.nodeType === Node.TEXT_NODE) {
+            processTextNode(node);
+          }
+        });
       });
     });
-  });
 
-  observer.observe(document.body, {
-    childList: true,
-    characterData: true,
-    subtree: true
-  });
+    observerHandle.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+  })();
+  try {
+    await initPromise;
+  } finally {
+    initPromise = null;
+  }
+}
+
+/** Disconnect runtime observation. Subscribers retain their callbacks until they unsubscribe. */
+export function teardownRuntimeI18n() {
+  lifecycleVersion += 1;
+  observerHandle?.disconnect();
+  observerHandle = null;
+  initPromise = null;
+  missingKeys.clear();
 }
 
 // Reload translations when locale changes
 export async function reloadTranslations() {
-  currentLocale = getLocaleFromCookie();
-  syncDocumentLocale(currentLocale);
+  syncLocaleFromCookie();
   await loadTranslations(currentLocale);
 
   // Notify all registered callbacks

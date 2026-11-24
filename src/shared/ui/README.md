@@ -1,10 +1,14 @@
 # `src/shared/ui` — Durin DS
 
-Component and page previews for the next DurinDoor dashboard. Every file in this
-tree is DurinDoor-owned. The app already imports `tokens.css`; production
-component/page migration remains pending.
+This directory contains production UI primitives alongside Storybook previews.
+The components under `src/shared/ui/components/` are production primitives used
+by about 156 importers. The pages under `src/shared/ui/pages/` and the shell
+under `src/shared/ui/shell/` are Storybook previews; they are not the shipped
+dashboard pages or shell. The shipped shell is implemented by
+`src/shared/components/Sidebar.js` and `src/shared/components/Header.js`, which
+have their own Storybook stories.
 
-## Run the preview
+## Run the previews
 
 ```bash
 # From the repository root of your isolated worktree:
@@ -20,10 +24,10 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
 | Path | Contents |
 | --- | --- |
 | `tokens.css` | Raw `--dd-*` custom properties + Tailwind v4 `@theme inline` mapping. Self-contained Tailwind root. |
-| `components/` | 27 React primitives, each with matching `*.stories.jsx`. |
-| `shell/` | `DashboardShell`, `Header`, `Sidebar`, `withDashboardShell` decorator, `index.js` re-exports. |
+| `components/` | Production React primitives, each with matching `*.stories.jsx` files. |
+| `shell/` | Storybook preview shell, header and sidebar; these preview the UI and are not the shipped shell. |
 | `foundation/Palette.stories.jsx` | Token proof: swatches, shape/elevation, typography. |
-| `pages/<slug>/` | One folder per mocked dashboard page; each has `<Slug>Page.jsx` and `<Slug>Page.stories.jsx`. |
+| `pages/<slug>/` | Mocked dashboard page previews; each has `<Slug>Page.jsx` and `<Slug>Page.stories.jsx`. |
 
 ## Conventions
 
@@ -38,9 +42,9 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
   ["autodocs"]` is opt-in, not required. Check neighboring story before
   adding it. `argTypes` controls are per-story where useful.
 - **Page identity.** Every page mock renders `PageHeader` with `icon`,
-  `title`, and `subtitle`; `withDashboardShell` supplies navigation chrome
-  with `activePath` and optional actions. Decorator does not accept or render
-  page identity values.
+  `title`, and `subtitle`; `withDashboardShell` supplies preview navigation
+  chrome with `activePath` and optional actions. Decorator does not accept or
+  render page identity values.
 
 > **Campaign gate:** token text contrast needs foundation remediation before
 > page ports. Source token pairs are not served-surface contrast proof, and
@@ -51,4 +55,4 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
 ## Full documentation
 
 - [internal/docs/design-system.mdx](../../../internal/docs/design-system.mdx)
-  tokens, primitives, Storybook, and authoring rules.
+  tokens, primitives, Storybook, and authoring rules

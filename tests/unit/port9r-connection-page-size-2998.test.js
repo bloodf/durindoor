@@ -11,8 +11,8 @@ import { connectionPage, togglePageSelection } from "../../src/app/(dashboard)/d
   });
 
   it("wires the size selector to pagination and resets the page", () => {
-    const page = readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url), "utf8");
+    const page = readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/hooks/useProviderDetail.js", import.meta.url), "utf8");
     expect(page).toContain("connectionPage(visibleConnections, connectionPageNumber, connectionPageSize)");
-    expect(page).toContain("setConnectionPageSize(Number(event.target.value)); setConnectionPageNumber(1)");
+    expect(readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx", import.meta.url), "utf8")).toContain("setConnectionPageSize(Number(event.target.value)); setConnectionPageNumber(1)");
   });
 });

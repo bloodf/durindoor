@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-const pagePath = path.resolve("../src/app/(dashboard)/dashboard/providers/[id]/page.js");
+const pagePath = path.resolve("../src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx");
 const indexPath = path.resolve("../src/shared/components/index.js");
 const modalPath = path.resolve("../src/shared/components/ImportTokenModal.js");
 
@@ -10,7 +10,7 @@ describe("ProviderDetailPage import-token branch", () => {
   it("branches to ImportTokenModal when providerInfo.flowType is import_token", () => {
     const page = fs.readFileSync(pagePath, "utf8");
     expect(page).toContain("ImportTokenModal");
-    expect(page).toContain("providerInfo?.flowType === \"import_token\"");
+    expect(fs.readFileSync(path.resolve("../src/app/(dashboard)/dashboard/providers/[id]/hooks/useProviderDetail.js"), "utf8")).toContain("providerInfo?.flowType === \"import_token\"");
     expect(page).toContain("isImportToken ?");
   });
 

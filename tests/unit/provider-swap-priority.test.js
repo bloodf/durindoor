@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { persistConnectionOrder } from "@/shared/utils/connectionReorder";
 
-const pagePath = path.resolve("../src/app/(dashboard)/dashboard/providers/[id]/page.js");
+const pagePath = path.resolve("../src/app/(dashboard)/dashboard/providers/[id]/hooks/useConnectionActions.js");
 
 describe("ProviderDetailPage handleSwapPriority", () => {
   it("delegates to the atomic persistConnectionOrder helper, not per-connection PUTs", () => {

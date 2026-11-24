@@ -477,9 +477,11 @@ export function verifyTailscaleInstallScript(content) {
 // Tailscale Developer ID Installer identity.
 export function assertTailscalePkgSignature(output) {
   const text = isString(output) ? output : "";
-  const signed = /^\s*Status:\s*signed/m.test(text);
-  const signer = /^\s*1\.\s*Developer ID Installer: Tailscale Inc\./m.test(text);
-  if (!signed || !signer) {
+  const signed = /^\s*Status:\s*signed by a developer certificate issued by Apple for distribution\s*$/m.test(text);
+  const signer = /^\s*1\.\s*Developer ID Installer: Tailscale Inc\. \(W5364U7YZB\)\s*$/m.test(text);
+  const appleChain = /^\s*2\.\s*Developer ID Certification Authority\s*$/m.test(text) &&
+    /^\s*3\.\s*Apple Root CA\s*$/m.test(text);
+  if (!signed || !signer || !appleChain) {
     throw new Error("Tailscale package signature check failed (expected Developer ID Installer: Tailscale Inc.); refusing to install");
   }
 }
@@ -829,11 +831,10 @@ function getAuthUrlFromStatus() {
 }
 
 /** Build login arguments, including an optional unattended authentication key. */
-export function buildTailscaleUpArgs(hostname, env = process.env) {
+export function buildTailscaleUpArgs(hostname, authKeyFile = null) {
   const args = tsArgs("up", "--accept-routes");
   if (hostname) args.push(`--hostname=${hostname}`);
-  const authKey = env.TAILSCALE_AUTHKEY?.trim();
-  if (authKey) args.push(`--auth-key=${authKey}`);
+  if (isString(authKeyFile) && authKeyFile) args.push(`--auth-key=file:${authKeyFile}`);
   return args;
 }
 
@@ -852,7 +853,28 @@ export function startLogin(hostname) {
       return;
     }
 
-    const args = buildTailscaleUpArgs(hostname);
+    let authKeyDir = null;
+    try {
+      const authKey = process.env.TAILSCALE_AUTHKEY?.trim();
+      if (authKey) {
+        authKeyDir = fs.mkdtempSync(path.join(os.tmpdir(), "tailscale-authkey-"));
+        const authKeyPath = path.join(authKeyDir, "authkey");
+        fs.writeFileSync(authKeyPath, authKey, { mode: 0o600, flag: "wx" });
+        const args = buildTailscaleUpArgs(hostname, authKeyPath);
+        return spawnLogin(args, bin, authKeyDir, resolve, reject);
+      }
+      return spawnLogin(buildTailscaleUpArgs(hostname), bin, authKeyDir, resolve, reject);
+    } catch (error) {
+      if (authKeyDir) { try { fs.rmSync(authKeyDir, { recursive: true, force: true }); } catch { /* ignore */ } }
+      reject(error);
+    }
+  });
+}
+
+function spawnLogin(args, bin, authKeyDir, resolve, reject) {
+    const cleanupAuthKey = () => {
+      if (authKeyDir) { try { fs.rmSync(authKeyDir, { recursive: true, force: true }); } catch { /* ignore */ } }
+    };
     const child = spawn(bin, args, {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
@@ -911,12 +933,15 @@ export function startLogin(hostname) {
 
     child.stdout.on("data", handleData);
     child.stderr.on("data", handleData);
+    child.once("exit", cleanupAuthKey);
+    child.once("close", cleanupAuthKey);
 
     child.on("error", (err) => {
       if (resolved) return;
       resolved = true;
       clearTimeout(timeout);
       clearInterval(statusPoll);
+      cleanupAuthKey();
       console.error(`[Tailscale] login spawn error: ${err.message}`);
       reject(err);
     });
@@ -941,7 +966,6 @@ export function startLogin(hostname) {
       }
       // Otherwise keep polling — daemon may publish AuthURL shortly after exit
     });
-  });
 }
 
 /** Start tailscale funnel for the given port */

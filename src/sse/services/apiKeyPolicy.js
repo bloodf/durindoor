@@ -128,7 +128,7 @@ export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
  * @param {string} modelStr
  * @param {string | null} [apiKey]
  * @param {{ limits?: boolean }} [options] `limits: false` skips the windowed
- *   limits (used by count_tokens, which never reaches a provider).
+ *   limits. Use it only for requests that remain local and do not reach a provider.
  * @returns {Promise<Response | null>}
  */
 export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limits = true } = {}) {

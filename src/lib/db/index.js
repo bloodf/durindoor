@@ -27,6 +27,7 @@ import {
   encryptProviderSpecificData,
   scrubProxyPoolForExport,
   scrubProviderSpecificDataForExport,
+  scrubCredentialedUrl,
   scrubSettingsSecretsForExport } from
 "./helpers/providerSpecificDataSecrets.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
@@ -490,23 +491,32 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         unknownCostRequests: Number(r.unknownCostRequests) || 0,
         updatedAt: r.updatedAt || null
       })),
-      mcpInstances: db.all(`SELECT * FROM mcpInstances ORDER BY createdAt ASC`).map((r) => ({
-        id: r.id,
-        slug: r.slug,
-        title: r.title,
-        kind: r.kind,
-        transport: r.transport,
-        url: r.url,
-        command: r.command,
-        args: parseJson(r.args, null),
-        env: parseJson(r.env, null),
-        headers: parseJson(r.headers, null),
-        oauth: r.oauth === 1 || r.oauth === true,
-        oauthTokens: parseJson(r.oauthTokens, null),
-        providerConnectionId: r.providerConnectionId ?? null,
-        enabled: r.enabled === 1 || r.enabled === true,
-        createdAt: r.createdAt,
-      })),
+      mcpInstances: db.all(`SELECT * FROM mcpInstances ORDER BY createdAt ASC`).map((r) => {
+        const row = {
+          id: r.id,
+          slug: r.slug,
+          title: r.title,
+          kind: r.kind,
+          transport: r.transport,
+          url: r.url,
+          command: r.command,
+          args: parseJson(r.args, null),
+          env: parseJson(r.env, null),
+          headers: parseJson(r.headers, null),
+          oauth: r.oauth === 1 || r.oauth === true,
+          oauthTokens: parseJson(r.oauthTokens, null),
+          providerConnectionId: r.providerConnectionId ?? null,
+          enabled: r.enabled === 1 || r.enabled === true,
+          createdAt: r.createdAt,
+        };
+        if (!includeSecrets) {
+          row.env = null;
+          row.headers = null;
+          row.oauthTokens = null;
+          if (scrubCredentialedUrl(row.url) === null) row.url = null;
+        }
+        return row;
+      }),
       mcpGatewayKeys: db.all(`SELECT * FROM mcpGatewayKeys ORDER BY createdAt ASC`).map((r) => {
         const row = {
           id: r.id,
@@ -649,6 +659,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       db.run(`INSERT INTO kv(scope, key, value) VALUES('usageEventReceipts', ?, '1')
         ON CONFLICT(scope, key) DO NOTHING`, [key]);
     }
+    // Retain MCP credentials when importing a scrubbed export into the same
+    // installation, matching provider-connection secret preservation.
+    const priorMcpSecrets = new Map(db.all(`SELECT id, url, env, headers, oauthTokens FROM mcpInstances`).map((row) => [row.id, row]));
     // Wipe all tables (keep _meta)
     // Usage history is intentionally retained for operator analytics, but its
     // key associations belong to the pre-import key set. Clear both so
@@ -815,6 +828,11 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
     for (const inst of mcpInstances) {
       if (!inst || !isString(inst.id) || !isString(inst.slug)) continue;
+      const prior = priorMcpSecrets.get(inst.id);
+      const env = inst.env == null && prior ? parseJson(prior.env, null) : inst.env;
+      const headers = inst.headers == null && prior ? parseJson(prior.headers, null) : inst.headers;
+      const oauthTokens = inst.oauthTokens == null && prior ? parseJson(prior.oauthTokens, null) : inst.oauthTokens;
+      const url = inst.url == null && prior ? prior.url : inst.url;
       db.run(
         `INSERT INTO mcpInstances(id, slug, title, kind, transport, url, command, args, env, headers, oauth, oauthTokens, providerConnectionId, enabled, createdAt)
          VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -824,13 +842,13 @@ export async function importDb(payload, { now = Date.now() } = {}) {
           inst.title ?? null,
           inst.kind || "custom",
           inst.transport || "stdio",
-          inst.url ?? null,
+          url ?? null,
           inst.command ?? null,
           inst.args == null ? null : stringifyJson(inst.args),
-          inst.env == null ? null : stringifyJson(inst.env),
-          inst.headers == null ? null : stringifyJson(inst.headers),
+          env == null ? null : stringifyJson(env),
+          headers == null ? null : stringifyJson(headers),
           inst.oauth ? 1 : 0,
-          inst.oauthTokens == null ? null : stringifyJson(inst.oauthTokens),
+          oauthTokens == null ? null : stringifyJson(oauthTokens),
           inst.providerConnectionId ?? null,
           inst.enabled === false ? 0 : 1,
           inst.createdAt || new Date().toISOString(),

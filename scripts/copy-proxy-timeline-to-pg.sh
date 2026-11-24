@@ -45,7 +45,7 @@ docker exec "$container" chmod 600 "$remote_dir/traces.csv" "$remote_dir/events.
 
 # Single psql session: target remains empty unless copy, verification, and
 # sequence repair all succeed.
-docker exec -u postgres -e "PGPASSWORD=$pg_password" -i "$container" psql "$copy_url" -v ON_ERROR_STOP=1 \
+PGPASSWORD="$pg_password" docker exec -u postgres -e PGPASSWORD -i "$container" psql "$copy_url" -v ON_ERROR_STOP=1 \
   -v traces_csv="$remote_dir/traces.csv" -v events_csv="$remote_dir/events.csv" \
   -v traces_summary="$traces_summary" -v events_summary="$events_summary" <<'SQL'
 BEGIN;

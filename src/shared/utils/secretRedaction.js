@@ -40,16 +40,28 @@ export function redactSecrets(value, context = {}) {
   }
 
   return Object.fromEntries(Object.entries(value).map(([key, child]) => {
-    const inMcpServer = context.inMcpServers;
-    if (inMcpServer && ["env", "env_http_headers", "http_headers", "headers"].includes(key)) {
+    if (["env", "environment", "env_http_headers", "http_headers", "headers"].includes(key)) {
       return [key, redactAllValues(child)];
     }
-    if (inMcpServer && key === "args") return [key, redactArgs(child)];
-    const nextContext = { inMcpServers: inMcpServer || key === "mcp_servers" };
+    if (key === "args") return [key, redactArgs(child)];
+    const nextContext = context;
     return [key, isSecretField(key) && child != null && child !== ""
       ? REDACTED_SECRET
       : redactSecrets(child, nextContext)];
   }));
+}
+
+/** Keep stored values when a redacted management response is submitted back. */
+export function preserveRedactedSecrets(value, existing) {
+  if (value === REDACTED_SECRET) return existing;
+  if (Array.isArray(value)) {
+    return value.map((child, index) => preserveRedactedSecrets(child, existing?.[index]));
+  }
+  if (!value || !isObject(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    preserveRedactedSecrets(child, existing?.[key]),
+  ]));
 }
 
 function redactAllValues(value) {

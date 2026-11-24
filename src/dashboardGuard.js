@@ -773,7 +773,7 @@ export async function proxy(request) {
       .some((apiKey) => /^sk-[0-9a-f]{8}$/i.test(apiKey));
     if (!isLocalRequest(request) && hasLegacyKeyCandidate && !(await hasValidCliToken(request)) &&
         !(isModelListRead && await hasValidToken(request))) {
-      const ip = getClientIp(request);
+      const ip = `key:${getClientIp(request)}`;
       if (await hasValidApiKey(request)) {
         recordSuccess(ip);
       } else {

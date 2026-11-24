@@ -44,7 +44,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: fixture.fetch 
 vi.mock("open-sse/handlers/chatCore.js", () => ({ handleChatCore: fixture.core }));
 vi.mock("open-sse/services/liveModelLimits.js", () => ({ warmLiveModelLimits: vi.fn() }));
 vi.mock("@/lib/usageDb", () => ({ recordTokenSaverEvent: vi.fn() }));
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: async ([kind]) => (fixture.settings.mediaRoutes?.[kind] || []).map((id) => ({ id, kind })) }));
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: async ([kind]) => (fixture.settings.mediaRoutes?.[kind] || []).map((id) => ({ id, kind })) }));
 
 const { default: proxy } = await import("../../src/proxy.js");
 const { uploadFile, createOpenAIBatch, createAnthropicBatch, _waitForBatch, _resetBatches } = await import("open-sse/services/localFilesBatches.js");

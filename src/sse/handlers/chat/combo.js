@@ -272,7 +272,7 @@ export async function dispatchChat({ body, modelStr, settings, request, apiKeyAu
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, comboVisited, reportComboPolicyRejections: true }
+            { dispatchNestedCombo, settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, comboVisited, reportComboPolicyRejections: true }
           );
         },
         log,
@@ -310,7 +310,7 @@ export async function dispatchChat({ body, modelStr, settings, request, apiKeyAu
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, comboVisited, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }
+          { dispatchNestedCombo, settings, planRequest, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, comboVisited, reportComboPolicyRejections: attemptOptions?.reportComboPolicyRejections }
         );
       },
       log,
@@ -353,6 +353,7 @@ export async function dispatchChat({ body, modelStr, settings, request, apiKeyAu
   return finishChat(runWithTransientBackendRetry(
     () =>
       handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
+        dispatchNestedCombo,
         settings,
         planRequest,
         allowVisionBridge: true,
@@ -415,7 +416,7 @@ export async function dispatchNestedCombo({ body, modelStr, clientRawRequest, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, comboVisited: nestedVisited, reportComboPolicyRejections: true }
+              { dispatchNestedCombo, settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, comboVisited: nestedVisited, reportComboPolicyRejections: true }
             );
           },
           log,
@@ -452,7 +453,7 @@ export async function dispatchNestedCombo({ body, modelStr, clientRawRequest, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, comboVisited: nestedVisited, reportComboPolicyRejections: reportComboPolicyRejections || attemptOptions?.reportComboPolicyRejections }
+            { dispatchNestedCombo, settings: chatSettings, planRequest, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, comboVisited: nestedVisited, reportComboPolicyRejections: reportComboPolicyRejections || attemptOptions?.reportComboPolicyRejections }
           );
         },
         log,

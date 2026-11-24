@@ -26849,6 +26849,8 @@
       "requiredScenarioIds": [
         "production-providers-modelcatalogprovenance--fresh",
         "production-providers-modelcatalogprovenance--empty",
+        "production-providers-modelcatalogprovenance--stale-snapshot",
+        "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
         "production-providers-modelcatalogprovenance--error"
       ],
       "storyScenarios": [
@@ -26857,39 +26859,91 @@
           "storyId": "production-providers-modelcatalogprovenance--fresh",
           "runtimeArtifactId": "production-providers-modelcatalogprovenance--fresh",
           "axes": [
-            "source-association-pending-review"
+            "provider=openai",
+            "discovery=enabled",
+            "snapshot=inside-configured-interval",
+            "visible-text=Provider discovery with derived registry variants",
+            "visible-text=Within the configured sync interval. Availability is not verified.",
+            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Fresh play assertions require the Model list provenance label, provider discovery with derived registry variants, within-interval availability-not-verified text, and UNKNOWN text stating list-models does not verify the model vendor or capabilities."
         },
         {
           "id": "production-providers-modelcatalogprovenance--empty",
           "storyId": "production-providers-modelcatalogprovenance--empty",
           "runtimeArtifactId": "production-providers-modelcatalogprovenance--empty",
           "axes": [
-            "source-association-pending-review"
+            "provider=openai",
+            "discovery=disabled",
+            "snapshot=absent",
+            "catalog=built-in-registry",
+            "visible-text=Built-in registry",
+            "visible-text=UNKNOWN",
+            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Empty play assertions require the built-in registry, exact UNKNOWN freshness, and UNKNOWN text stating list-models does not verify the model vendor or capabilities; discovery is explicitly disabled with no snapshot."
+        },
+        {
+          "id": "production-providers-modelcatalogprovenance--stale-snapshot",
+          "storyId": "production-providers-modelcatalogprovenance--stale-snapshot",
+          "runtimeArtifactId": "production-providers-modelcatalogprovenance--stale-snapshot",
+          "axes": [
+            "provider=openai",
+            "discovery=enabled",
+            "snapshot=expired",
+            "visible-text=Provider discovery with derived registry variants",
+            "visible-text=STALE; stored snapshot older than configured sync interval",
+            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
+            "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
+          },
+          "proposedSourceEvidence": "StaleSnapshot play assertions require provider discovery with derived registry variants, STALE text saying the stored snapshot is older than the configured sync interval, and UNKNOWN text stating list-models does not verify the model vendor or capabilities. The configured interval has expired."
+        },
+        {
+          "id": "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
+          "storyId": "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
+          "runtimeArtifactId": "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
+          "axes": [
+            "provider=openai",
+            "discovery=enabled",
+            "snapshot=not-yet-created",
+            "catalog=built-in-registry",
+            "visible-text=Built-in registry",
+            "visible-text=UNKNOWN",
+            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
+            "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
+          },
+          "proposedSourceEvidence": "DiscoveryBeforeFirstSnapshot play assertions require the built-in registry, exact UNKNOWN freshness, and UNKNOWN text stating list-models does not verify the model vendor or capabilities; discovery is enabled but models and syncedAt are absent."
         },
         {
           "id": "production-providers-modelcatalogprovenance--error",
           "storyId": "production-providers-modelcatalogprovenance--error",
           "runtimeArtifactId": "production-providers-modelcatalogprovenance--error",
           "axes": [
-            "source-association-pending-review"
+            "provider=openai",
+            "discovery=failed",
+            "snapshot=previous-snapshot-retained",
+            "visible-text=STALE; last discovery attempt failed; previous snapshot retained",
+            "visible-text=UNKNOWN; list-models does not verify vendor or capabilities"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.js": "a06103512923c5d1b887373df9e3c789fa931716f370db31549bdefa6d968843",
             "src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Error play assertions require STALE text saying the last discovery attempt failed and the previous snapshot is retained, plus UNKNOWN text stating list-models does not verify the model vendor or capabilities. This is a failed discovery with a retained snapshot, distinct from an expired snapshot."
         }
       ],
       "unresolvedHistoricalScenarioIds": [],
@@ -91954,26 +92008,6 @@
       "storyId": "production-providers-editcompatiblenodemodal--save-error",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/EditCompatibleNodeModal.stories.jsx",
       "sourceSha256": "eb0b74b2d7fd9c4c60f3f5e0325975ff3f64fb28fe3016976d6798449aab7211",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null
-    },
-    {
-      "storyId": "production-providers-modelcatalogprovenance--stale-snapshot",
-      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx",
-      "sourceSha256": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
-      "runtimeStatus": "pending",
-      "reviewEvidence": null
-    },
-    {
-      "storyId": "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
-      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx",
-      "sourceSha256": "c14c9d1e22fd44de4e8837ae48d30c6ee45230c8c54a277985e6df77b7bc7e98",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",

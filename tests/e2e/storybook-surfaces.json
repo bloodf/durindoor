@@ -26456,65 +26456,90 @@
           "storyId": "production-providers-inferencestatus--empty",
           "runtimeArtifactId": "production-providers-inferencestatus--empty",
           "axes": [
-            "source-association-pending-review"
+            "no-session-test",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Empty. The no-session-test prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference not tested",
+          "proposedVisibleTexts": [
+            "Inference not tested"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--loading",
           "storyId": "production-providers-inferencestatus--loading",
           "runtimeArtifactId": "production-providers-inferencestatus--loading",
           "axes": [
-            "source-association-pending-review"
+            "testing-prop=true",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Loading. The testing-prop=true prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference test running",
+          "proposedVisibleTexts": [
+            "Inference test running"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--error",
           "storyId": "production-providers-inferencestatus--error",
           "runtimeArtifactId": "production-providers-inferencestatus--error",
           "axes": [
-            "source-association-pending-review"
+            "status=error",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Error. The status=error prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference failed in this session",
+          "proposedVisibleTexts": [
+            "Inference failed in this session"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--passed",
           "storyId": "production-providers-inferencestatus--passed",
           "runtimeArtifactId": "production-providers-inferencestatus--passed",
           "axes": [
-            "source-association-pending-review"
+            "status=ok",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Passed. The status=ok prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference passed in this session",
+          "proposedVisibleTexts": [
+            "Inference passed in this session"
+          ]
         },
         {
           "id": "production-providers-inferencestatus--skipped",
           "storyId": "production-providers-inferencestatus--skipped",
           "runtimeArtifactId": "production-providers-inferencestatus--skipped",
           "axes": [
-            "source-association-pending-review"
+            "status=skipped",
+            "status-copy-only"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx": "bd01bb163144084757ce8efad98d07c19f015355c54bdd9706bdd19a7576ad46",
             "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx": "1c1c48b371a5bd4fce5a4c17f31d1b965d42095492d1fefbced7348e7789515b"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Actual InferenceStatus component story: src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx#Skipped. The status=skipped prop/state renders this status copy only; no provider request, catalog, authorization, or connection-state side effect is claimed.",
+          "expectedVisibleText": "Inference skipped in this session",
+          "proposedVisibleTexts": [
+            "Inference skipped in this session"
+          ]
         }
       ],
       "unresolvedHistoricalScenarioIds": [],
@@ -26934,52 +26959,100 @@
           "storyId": "production-providers-nativeproviderreadiness--loaded",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--loaded",
           "axes": [
-            "source-association-pending-review"
+            "loaded",
+            "provider=openai",
+            "saved-validations=1",
+            "configured-native-kind=chat",
+            "authentication=unknown",
+            "inference=unknown"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "7743a394bf9088febf790517760ba49695e1f1e8e1c43d41512e2e3ba6d2cf91"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness renders the summary: openai has one saved successful credential validation and configured native kind chat; authentication and inference remain UNKNOWN. ReadinessEvidence renders LISTED catalog metadata, configured chat dispatch, and timestamp-free UNKNOWN authentication and inference. Story fixture serves synthetic readiness JSON; no provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Current authentication",
+            "Actual inference",
+            "Saved successful credential validations: 1",
+            "Configured native kinds: chat"
+          ],
+          "expectedVisibleText": "Provider readiness"
         },
         {
           "id": "production-providers-nativeproviderreadiness--empty",
           "storyId": "production-providers-nativeproviderreadiness--empty",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--empty",
           "axes": [
-            "source-association-pending-review"
+            "empty",
+            "provider=fixture-empty",
+            "saved-validations=0",
+            "configured-native-kinds=none",
+            "catalog=not-listed",
+            "dispatch=unknown",
+            "authentication=unknown",
+            "inference=unknown"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "7743a394bf9088febf790517760ba49695e1f1e8e1c43d41512e2e3ba6d2cf91"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness renders the empty summary with zero saved validations, no configured native kinds, and UNKNOWN current authentication and inference. ReadinessEvidence renders NOT_LISTED catalog, UNKNOWN dispatch, no reported native operation kinds, and UNKNOWN validation/inference. Fixture is synthetic and makes no provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Saved successful credential validations: 0",
+            "Configured native kinds: none",
+            "Not listed",
+            "Configured native operation kinds: none reported"
+          ],
+          "expectedVisibleText": "Provider readiness"
         },
         {
           "id": "production-providers-nativeproviderreadiness--loading",
           "storyId": "production-providers-nativeproviderreadiness--loading",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--loading",
           "axes": [
-            "source-association-pending-review"
+            "loading",
+            "provider=openai",
+            "readiness-request-pending",
+            "summary-retained"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "7743a394bf9088febf790517760ba49695e1f1e8e1c43d41512e2e3ba6d2cf91"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness keeps its summary visible while ReadinessEvidence exposes role=status text “Loading local readiness evidence…” for a never-resolving synthetic local readiness fixture. No provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Loading local readiness evidence…",
+            "Current authentication",
+            "Actual inference"
+          ],
+          "expectedVisibleText": "Provider readiness"
         },
         {
           "id": "production-providers-nativeproviderreadiness--error",
           "storyId": "production-providers-nativeproviderreadiness--error",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--error",
           "axes": [
-            "source-association-pending-review"
+            "error",
+            "provider=openai",
+            "readiness-request-failed",
+            "summary-retained"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "7743a394bf9088febf790517760ba49695e1f1e8e1c43d41512e2e3ba6d2cf91"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness keeps its summary and UNKNOWN authentication/inference visible while ReadinessEvidence reports the synthetic local readiness request failure. No provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Readiness evidence unavailable. Catalog, dispatch, authentication and inference are unknown.",
+            "Current authentication",
+            "Actual inference"
+          ],
+          "expectedVisibleText": "Provider readiness"
         }
       ],
       "unresolvedHistoricalScenarioIds": [],

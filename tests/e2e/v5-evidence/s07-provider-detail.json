@@ -23,6 +23,15 @@
     "production-providers-detail-widgets--provider-error-rule-validation-error",
     "production-providers-detail-widgets--model-auto-sync",
     "production-providers-detail-widgets--chatgpt-web-cookie",
-    "production-providers-detail-widgets--error-state"
+    "production-providers-detail-widgets--error-state",
+    "production-providers-nativeproviderreadiness--loaded",
+    "production-providers-nativeproviderreadiness--empty",
+    "production-providers-nativeproviderreadiness--loading",
+    "production-providers-nativeproviderreadiness--error",
+    "production-providers-inferencestatus--empty",
+    "production-providers-inferencestatus--loading",
+    "production-providers-inferencestatus--error",
+    "production-providers-inferencestatus--passed",
+    "production-providers-inferencestatus--skipped"
   ]
 }

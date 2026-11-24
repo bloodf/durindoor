@@ -97,10 +97,10 @@ describe("BulkImportGrokCliModal", () => {
 
   it("wires Grok Bulk Add beside the existing Codex controls", () => {
     const source = readFileSync(
-      resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/page.js"),
+      resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx"),
       "utf8",
     );
-    expect(source).toContain('import BulkImportGrokCliModal from "./BulkImportGrokCliModal"');
+    expect(source).toContain('import BulkImportGrokCliModal from "../BulkImportGrokCliModal"');
     expect(source.match(/providerId === "grok-cli"/g).length).toBeGreaterThanOrEqual(3);
     expect(source).toContain("<BulkImportGrokCliModal");
   });

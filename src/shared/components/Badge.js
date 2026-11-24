@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * The UI Badge lacks the dot and large size and uses different medium
+ * spacing, so its current props cannot preserve this legacy DOM and styling.
+ */
+
 import { cn } from "@/shared/utils/cn";
 
 const VARIANT_CLASSES = {

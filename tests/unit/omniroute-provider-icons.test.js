@@ -186,7 +186,7 @@ describe("OmniRoute provider icon assets", () => {
 
   it("uses ProviderIcon for custom provider URLs and ProviderLogo for registered providers", () => {
     const detailPage = readFileSync(
-      resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/page.js"),
+      resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx"),
       "utf8",
     );
     expect(detailPage).toContain("ProviderIcon");

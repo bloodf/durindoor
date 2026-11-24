@@ -6,7 +6,7 @@ const meta = {
   title: "Production/shared-kiro/CursorAuthModal",
   component: CursorAuthModal,
   args: { isOpen: true, onSuccess: fn(), onClose: fn() },
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: true, accessToken: "tok_abc123", machineId: "machine-xyz" } } } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: true, accessToken: "tok_abc123", machineId: "machine-xyz" } } } } },
 };
 export default meta;
 
@@ -33,7 +33,7 @@ export const AutoDetected = {
 };
 
 export const AutoDetecting = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": () => new Promise(() => {}) } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": () => new Promise(() => {}) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Cursor IDE"));
     await expect(await canvas.findByRole("status")).toHaveTextContent(/auto-detecting tokens/i);
@@ -41,7 +41,7 @@ export const AutoDetecting = {
 };
 
 export const WindowsManual = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, windowsManual: true } } } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, windowsManual: true } } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Cursor IDE"));
     await waitFor(() => expect(canvas.getByRole("button", { name: /retry/i })).toBeVisible());
@@ -50,7 +50,7 @@ export const WindowsManual = {
 };
 
 export const ManualImportValidation = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, windowsManual: true } } } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, windowsManual: true } } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Cursor IDE"));
     const notice = await canvas.findByText("Could not read Cursor database automatically.");
@@ -64,7 +64,7 @@ export const ManualImportValidation = {
 };
 
 export const ManualImportFailure = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, error: "Cursor IDE not found" } }, "POST /api/oauth/cursor/import": { status: 400, body: { error: "Cursor token rejected" } } } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, error: "Cursor IDE not found" } }, "POST /api/oauth/cursor/import": { status: 400, body: { error: "Cursor token rejected" } } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Cursor IDE"));
     await userEvent.type(await canvas.findByLabelText(/access token/i), "tok_manual");
@@ -75,7 +75,7 @@ export const ManualImportFailure = {
 };
 
 export const ManualImportSuccess = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, error: "Cursor IDE not found" } }, "POST /api/oauth/cursor/import": { status: 200, body: { ok: true } } } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: false, error: "Cursor IDE not found" } }, "POST /api/oauth/cursor/import": { status: 200, body: { ok: true } } } } },
   play: async ({ canvasElement, args }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Cursor IDE"));
     await userEvent.type(await canvas.findByLabelText(/access token/i), "tok_manual");
@@ -87,7 +87,7 @@ export const ManualImportSuccess = {
 };
 
 export const Importing = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: true, accessToken: "tok_abc123", machineId: "machine-xyz" } }, "POST /api/oauth/cursor/import": () => new Promise(() => {}) } } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: { "GET /api/deployment-mode": { body: { hosted: false } }, "GET /api/oauth/cursor/auto-import": { status: 200, body: { found: true, accessToken: "tok_abc123", machineId: "machine-xyz" } }, "POST /api/oauth/cursor/import": () => new Promise(() => {}) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(await getVisibleDialog(canvasElement, "Connect Cursor IDE"));
     await userEvent.click(await canvas.findByRole("button", { name: /import token/i }));

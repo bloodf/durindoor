@@ -21,7 +21,7 @@ Checked open DurinDoor PRs (`gh pr list -R bloodf/durindoor --state open`, searc
 ## Change
 
 - `open-sse/translator/formats/responsesApi.js`: over-long ids become `<first 55 chars>_<8 hex sha256>`; length is exactly 64. The constant `MAX_RESPONSES_CALL_ID_LEN` and a new `CALL_ID_HASH_LEN` define the layout.
-- `tests/unit/responses-call-id-clamp-20224.test.js`: behavior tests using `ROLE`, `RESPONSES_ITEM`, `OPENAI_BLOCK` and `FORMATS` constants and `translator/registerAll.js`: unchanged short ids, distinct and stable clamping for shared-prefix ids, and an end-to-end Chat → Responses parallel-call pairing.
+- `tests/translator/omni-20224-call-ids.test.js`: behavior tests using `ROLE`, `RESPONSES_ITEM`, `OPENAI_BLOCK` and `FORMATS` constants and `translator/registerAll.js`: unchanged short ids, distinct and stable clamping for shared-prefix ids, and an end-to-end Chat → Responses parallel-call pairing.
 
 ## Verification
 

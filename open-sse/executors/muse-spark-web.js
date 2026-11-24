@@ -8,7 +8,7 @@ import { UnsupportedOmniRouteWebSessionExecutor } from "./unsupported-websession
 import { normalizeSessionCookieHeader, normalizeSessionCookieHeaders } from "./websession-utils.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import { isRecord } from "./muse-spark-web/response-parser.js";
 import {
   _fetchFreshAccessTokenDispatch
@@ -554,11 +554,33 @@ function __setMuseSparkWebSocketForTesting(ctor) {
     WebSocketCtor = previous;
   };
 }
-async function wsChat(prompt, conversationId, authorization, cookieHeader, templateB64, signal) {
+async function proxyAgentForWebSocket(proxyUrl) {
+  try {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyUrl);
+  } catch {
+    try {
+      const { SocksProxyAgent } = await import("socks-proxy-agent");
+      return new SocksProxyAgent(proxyUrl);
+    } catch {
+      return null;
+    }
+  }
+}
+async function wsChat(prompt, conversationId, authorization, cookieHeader, templateB64, signal, proxyOptions = null) {
   const requestId = crypto.randomUUID();
   const wsUrl = buildWsUrl(authorization, requestId);
+  let agent = null;
+  try {
+    const route = resolveWebSocketProxyRoute(wsUrl, proxyOptions);
+    if (route.enabled && route.url) agent = await proxyAgentForWebSocket(route.url);
+    if (route.strict && !agent) throw new Error("WebSocket proxy required but unavailable");
+  } catch (error) {
+    return { content: "", deltas: [], error: sanitizeErrorMessage(error?.message) || "WebSocket proxy required but unavailable" };
+  }
   return new Promise((resolve) => {
     const ws = new WebSocketCtor(wsUrl, {
+      ...(agent ? { agent } : null),
       headers: {
         "User-Agent": META_AI_USER_AGENT,
         Origin: "https://meta.ai"
@@ -795,7 +817,8 @@ class MuseSparkWebExecutor extends BaseExecutor {
       authorization,
       cookieHeader,
       templateB64,
-      signal
+      signal,
+      proxyOptions
     );
     const headers = {};
     if (wsResult.error) {

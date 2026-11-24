@@ -12,7 +12,7 @@ The open DurinDoor PRs checked were #2430, #2112, #1809, and #1784. Their listed
 
 ## Implementation evidence
 
-Status: implemented on branch `orq/tows9a/port-omni-21159-a1`; not ported until a DurinDoor PR exists and merges. Recorded evidence below is from the branch, not from production.
+Status: implemented on branch `orq/tows9a/port-omni-21159-a1`; draft DurinDoor PR [#2481](https://github.com/bloodf/durindoor/pull/2481) open, not merged. Recorded evidence below is from the branch, not from production.
 
 Upstream head was re-fetched and is still `59f6a7893437c6363482561056adcd332e02cc62` (open, five files: Bun and Node adapter getters, `exclusiveLockRelease.ts`, two test files). Open DurinDoor PRs #2430, #2112, #1809, and #1784 were re-listed; none touches `src/lib/db/` or the files below. Upstream's no-caller scope is kept: no existing DurinDoor caller was found, so none was added.
 

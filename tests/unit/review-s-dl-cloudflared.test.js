@@ -5,6 +5,9 @@ import path from "path";
 import { createHash } from "crypto";
 import { EventEmitter } from "events";
 import https from "https";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 const cloudflaredSource = fs.readFileSync(
   path.join(import.meta.dirname, "../../src/lib/tunnel/cloudflare/cloudflared.js"),
@@ -174,8 +177,20 @@ describe("#2213 updater pin + hash + CORS", () => {
     expect(updateRouteSource).toMatch(/fetchLatestVersion/);
   });
 
-  it("updater status server does not send Access-Control-Allow-Origin: *", () => {
-    expect(updaterSource).not.toMatch(/Access-Control-Allow-Origin/);
+  it("updater status server allows only the exact loopback dashboard origins", () => {
+    expect(updaterSource).toMatch(/setStatusCorsHeaders/);
+    const { setStatusCorsHeaders } = require("../../src/lib/updater/statusCors.cjs");
+    for (const origin of ["http://localhost:20128", "http://127.0.0.1:20128"]) {
+      const headers = {};
+      setStatusCorsHeaders({ headers: { origin } }, { setHeader: (key, value) => { headers[key] = value; } }, 20128);
+      expect(headers).toEqual({ Vary: "Origin", "Access-Control-Allow-Origin": origin });
+    }
+    for (const origin of ["https://localhost:20128", "http://localhost:20129", "http://evil.example"]) {
+      const headers = {};
+      setStatusCorsHeaders({ headers: { origin } }, { setHeader: (key, value) => { headers[key] = value; } }, 20128);
+      expect(headers).toEqual({ Vary: "Origin" });
+    }
+    expect(updaterSource).not.toMatch(/Access-Control-Allow-Origin.{0,10}\*/);
   });
 
   it("updater refuses an unpinned @latest install spec", () => {

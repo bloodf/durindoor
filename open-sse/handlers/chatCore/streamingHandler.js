@@ -246,10 +246,12 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     ? attachClientFrameTap(traceId, emittedFormat === FORMATS.OLLAMA ? "ndjson" : "sse-lines")
     : null;
   const onClientEnd = () => {
+    reqLogger?.flushStreams?.();
     clientTap?.onClientEnd();
     if (traceId) { try { finishTrace(traceId, { status: "ok" }); } catch {} }
   };
   const onClientAbort = () => {
+    reqLogger?.flushStreams?.();
     clientTap?.onClientAbort();
     if (traceId) { try { finishTrace(traceId, { status: "aborted" }); } catch {} }
   };

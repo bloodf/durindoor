@@ -89,6 +89,18 @@ export function installLifecycleHarness({
   cacheModule("../../src/mitm/processIdentity.js", {
     getProcessStartIdentity: (pid) => alivePids.has(pid) ? processStartFor(pid) : null,
   }, restorers);
+  const startLockApi = require("../../src/mitm/startLock.js");
+  cacheModule("../../src/mitm/startLock.js", {
+    ...startLockApi,
+    acquireSocketLock: vi.fn(async () => {
+      if (lockContention) throw Object.assign(new Error("lock contention"), { code: "MITM_START_IN_PROGRESS" });
+      return { fixtureLock: true };
+    }),
+    releaseSocketLock: vi.fn(async () => {
+      if (lockReleaseError) throw lockReleaseError;
+      return true;
+    }),
+  }, restorers);
   cacheModule("../../src/mitm/winElevated.js", {
     isAdmin: () => parentIsAdmin,
     runElevatedPowerShell: vi.fn(),
@@ -236,11 +248,7 @@ export function installLifecycleHarness({
       removeListener() { return this; },
       unref() { return this; },
       listen(...args) {
-        if (serverId === 1 && lockContention) {
-          callbacks.error?.(Object.assign(new Error("address in use"), { code: "EADDRINUSE" }));
-          return;
-        }
-        if (serverId === 2 && internalPortBusy) {
+        if (serverId === 1 && internalPortBusy) {
           callbacks.error?.(Object.assign(new Error("address in use"), { code: "EADDRINUSE" }));
           return;
         }
@@ -249,7 +257,7 @@ export function installLifecycleHarness({
         else callbacks.listening?.();
       },
       close(callback) {
-        callback?.(serverId === 1 ? lockReleaseError : null);
+        callback?.(null);
       },
     };
   });

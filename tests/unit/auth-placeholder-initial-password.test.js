@@ -21,7 +21,7 @@ vi.mock("@/lib/auth/dashboardSession", async (importOriginal) => ({
   ...(await importOriginal()),
   setDashboardAuthCookie: mocks.setDashboardAuthCookie,
 }));
-vi.mock("@/lib/auth/oidc", () => ({ isOidcConfigured: () => false }));
+vi.mock("@/lib/auth/oidc", () => ({ isPasswordLoginAllowed: () => true }));
 vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: () => true, hasTrustedLocalOrigin: () => true }));
 vi.mock("@/lib/auth/passwordChangeProof", () => ({ issuePasswordChangeProof: () => "proof" }));
 vi.mock("@/dashboardGuard", () => ({ isLocalRequest: mocks.isLocalRequest }));

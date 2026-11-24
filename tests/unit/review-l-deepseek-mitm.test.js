@@ -55,14 +55,13 @@ describe("DeepSeek TUI settings TOML writer", () => {
   });
 });
 
-describe("per-user MITM lock ports", () => {
-  it("derives separate startup and Root CA lock ports from the OS uid", async () => {
+describe("per-user MITM lock identifiers", () => {
+  it("uses distinct private lockfile identifiers for startup and Root CA", async () => {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
     const config = require("../../src/mitm/config.js");
-    const uid = process.getuid?.() ?? 0;
-    expect(config.MITM_START_LOCK_PORT).toBe(30000 + ((uid % 10000) * 2));
-    expect(config.ROOT_CA_LOCK_PORT).toBe(config.MITM_START_LOCK_PORT + 1);
-    expect(config.ROOT_CA_LOCK_PORT).not.toBe(20444);
+    expect(config.MITM_START_LOCK_PORT).toBe("mitm-start");
+    expect(config.ROOT_CA_LOCK_PORT).toBe("root-ca");
+    expect(config.ROOT_CA_LOCK_PORT).not.toBe(config.MITM_START_LOCK_PORT);
   });
 });

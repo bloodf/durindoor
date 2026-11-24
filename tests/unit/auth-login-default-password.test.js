@@ -29,7 +29,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   isUsingDefaultPassword: mocks.isUsingDefaultPassword,
   setDashboardAuthCookie: mocks.setDashboardAuthCookie,
 }));
-vi.mock("@/lib/auth/oidc", () => ({ isOidcConfigured: mocks.isOidcConfigured }));
+vi.mock("@/lib/auth/oidc", () => ({ isPasswordLoginAllowed: (settings) => !["sso", "oidc"].includes(settings.authMode) || !mocks.isOidcConfigured(settings) }));
 vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: mocks.hasExactRequestOrigin, hasTrustedLocalOrigin: mocks.hasTrustedLocalOrigin }));
 vi.mock("@/lib/auth/loginLimiter", () => ({
   checkLock: mocks.checkLock,

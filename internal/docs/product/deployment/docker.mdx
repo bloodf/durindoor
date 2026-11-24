@@ -88,7 +88,7 @@ The `durindoor` service in that file:
 
 `HOSTNAME=0.0.0.0` is required inside the container so the process accepts traffic from Docker's port publish. The image Dockerfile sets the same `PORT`, `HOSTNAME`, and `DATA_DIR`.
 
-Put secrets in `.env`. Compose also forwards optional `DURINDOOR_PG_URL`, `DURINDOOR_PG_SSLMODE` (default `prefer`), and `DURINDOOR_PG_PREFERRED_VERSION` (default `18`). Postgres is opt-in: `docker compose --profile postgres18 up` (or `postgres17` / `postgres16`). Cutover is Settings, then Database. Operator runbook: [Postgres](../operations/postgres.mdx).
+Put secrets in `.env`. Compose also forwards optional `DURINDOOR_PG_URL`, `DURINDOOR_PG_SSLMODE` (default `prefer`), and `DURINDOOR_PG_PREFERRED_VERSION` (default `18`). PostgreSQL profiles live in `docker-compose.postgres.yml`; set `POSTGRES_PASSWORD` in `.env` and include both Compose files, for example: `docker compose -f docker-compose.yml -f docker-compose.postgres.yml --profile postgres18 up` (or use `postgres17` / `postgres16`). Cutover is Settings, then Database. Operator runbook: [Postgres](../operations/postgres.mdx).
 
 ```bash
 docker compose up -d

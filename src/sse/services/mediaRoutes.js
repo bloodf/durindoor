@@ -1,4 +1,4 @@
-import { buildModelsList } from "@/app/api/v1/models/buildModelsList.js";
+import { buildModelsList } from "@/shared/models/buildModelsList.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";

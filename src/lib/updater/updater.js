@@ -8,6 +8,8 @@ const net = require("net");
 const path = require("path");
 const fs = require("fs");
 const { resolveDataDir } = require("./dataDir.cjs");
+const { isHosted } = require("./deploymentMode.cjs");
+const { setStatusCorsHeaders } = require("./statusCors.cjs");
 
 const packageName = process.env.UPDATER_PKG_NAME || "";
 const port = parseInt(process.env.UPDATER_PORT || "20129", 10);
@@ -21,12 +23,7 @@ const waitCheckMs = parseInt(process.env.UPDATER_WAIT_CHECK_MS || "500", 10);
 const appPort = parseInt(process.env.UPDATER_APP_PORT || "20128", 10);
 
 // Keep detached status files in the same resolved directory as the app.
-const updateDir = path.join(resolveDataDir(() => {
-  const mode = (process.env.DEPLOYMENT_MODE || "local").trim().toLowerCase();
-  if (mode === "local") return false;
-  if (mode === "hosted" || mode === "remote") return true;
-  throw new Error("DEPLOYMENT_MODE must be local, hosted, or remote");
-}), "update");
+const updateDir = path.join(resolveDataDir(() => isHosted(process.env.UPDATER_DEPLOYMENT_MODE || process.env.DEPLOYMENT_MODE)), "update");
 try { fs.mkdirSync(updateDir, { recursive: true }); } catch { /* best effort */ }
 const statusFile = path.join(updateDir, "status.json");
 const logFile = path.join(updateDir, "install.log");
@@ -63,9 +60,10 @@ function setPhase(phase) {
 }
 
 // HTTP server exposing status (browser polls this while Next server is dead).
-// Loopback-only listen below; no wildcard CORS — status must not be readable cross-origin.
+// Loopback-only listener. Permit only the dashboard's exact loopback origins.
 const server = http.createServer((req, res) => {
   res.setHeader("Cache-Control", "no-store");
+  setStatusCorsHeaders(req, res, appPort);
   if (req.url === "/update/status" || req.url === "/") {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(state));

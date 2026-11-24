@@ -67,6 +67,17 @@ const NON_SECRET_PSD_KEY_EXCEPTIONS = new Set([
 );
 
 const SECRET_LIKE_PSD_KEY = /(secret|token|cookie|password)/i;
+const URL_PSD_KEYS = new Set(["baseUrl", "azureEndpoint", "resourceUrl", "connectionProxyUrl"]);
+
+function isCredentialedUrl(value) {
+  if (!isString(value) || !value) return false;
+  try {
+    const parsed = new URL(value);
+    return Boolean(parsed.username || parsed.password);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * @param {string} key
@@ -155,7 +166,7 @@ export function encryptProviderSpecificData(providerSpecificData, rowId) {
   }
   const out = { ...providerSpecificData };
   for (const [key, value] of Object.entries(out)) {
-    if (!isSensitiveProviderSpecificDataKey(key)) continue;
+    if (!isSensitiveProviderSpecificDataKey(key) && !(URL_PSD_KEYS.has(key) && (isEncryptedBlob(value) || isCredentialedUrl(value)))) continue;
     out[key] = encryptPsdValue(value, psdAad(rowId, key));
   }
   return out;
@@ -173,7 +184,7 @@ export function decryptProviderSpecificData(providerSpecificData, rowId) {
   }
   const out = { ...providerSpecificData };
   for (const [key, value] of Object.entries(out)) {
-    if (!isSensitiveProviderSpecificDataKey(key)) continue;
+    if (!isSensitiveProviderSpecificDataKey(key) && !(URL_PSD_KEYS.has(key) && (isEncryptedBlob(value) || isCredentialedUrl(value)))) continue;
     out[key] = decryptPsdValue(value, psdAad(rowId, key));
   }
   return out;

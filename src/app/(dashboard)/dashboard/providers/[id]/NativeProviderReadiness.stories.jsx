@@ -30,11 +30,16 @@ export default meta;
 export const Loaded = {
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
-    await expect(view.getByRole("region", { name: "Provider readiness" })).toBeInTheDocument();
-    await expect(await view.findByText("Listed")).toBeInTheDocument();
-    await expect(view.getByText("Saved successful credential validations: 1")).toBeInTheDocument();
-    await expect(view.getAllByText("UNKNOWN").length).toBeGreaterThan(0);
-    await expect(await view.findByLabelText("Local API readiness evidence")).toBeInTheDocument();
+    const summary = view.getByRole("region", { name: "Provider readiness" });
+    await expect(summary).toBeInTheDocument();
+    await expect(within(summary).getByText(/Configured native kinds: .*chat/)).toBeInTheDocument();
+    await expect(within(summary).getByText(/Saved successful credential validations: 1\./)).toBeInTheDocument();
+    await expect(within(summary).getByText("Current authentication").parentElement.querySelector("dd")).toHaveTextContent("UNKNOWN");
+    await expect(within(summary).getByText("Actual inference").parentElement.querySelector("dd")).toHaveTextContent("UNKNOWN");
+    const evidenceRegion = await view.findByLabelText("Local API readiness evidence");
+    await expect(within(evidenceRegion).getByText("Configured native operation kinds: chat.", { exact: false })).toBeInTheDocument();
+    await expect(within(evidenceRegion).getByText("Authenticated validation").parentElement.querySelector("dd")).toHaveTextContent("Unknown — no fresh timestamped evidence");
+    await expect(within(evidenceRegion).getByText("Actual inference").parentElement.querySelector("dd")).toHaveTextContent("Unknown — no account, model and operation-bound evidence");
   },
 };
 
@@ -46,10 +51,17 @@ export const Empty = {
   },
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
-    await expect(view.getByText("Not listed")).toBeInTheDocument();
-    await expect(view.getByText("No dedicated native route configured")).toBeInTheDocument();
-    await expect(view.getByText("Saved successful credential validations: 0")).toBeInTheDocument();
-    await expect(await view.findByText(/none reported/)).toBeInTheDocument();
+    const summary = view.getByRole("region", { name: "Provider readiness" });
+    await expect(within(summary).getByText("Catalog metadata").parentElement.querySelector("dd")).toHaveTextContent("Not listed");
+    await expect(within(summary).getByText("Configured native kinds: none.", { exact: false })).toBeInTheDocument();
+    await expect(within(summary).getByText(/Saved successful credential validations: 0\./)).toBeInTheDocument();
+    await expect(within(summary).getByText("Current authentication").parentElement.querySelector("dd")).toHaveTextContent("UNKNOWN");
+    await expect(within(summary).getByText("Actual inference").parentElement.querySelector("dd")).toHaveTextContent("UNKNOWN");
+    const evidenceRegion = await view.findByLabelText("Local API readiness evidence");
+    await expect(within(evidenceRegion).getByText("Not listed")).toBeInTheDocument();
+    await expect(within(evidenceRegion).getByText(/Configured native operation kinds: none reported\./)).toBeInTheDocument();
+    await expect(within(evidenceRegion).getByText("Authenticated validation").parentElement.querySelector("dd")).toHaveTextContent("Unknown — no fresh timestamped evidence");
+    await expect(within(evidenceRegion).getByText("Actual inference").parentElement.querySelector("dd")).toHaveTextContent("Unknown — no account, model and operation-bound evidence");
   },
 };
 

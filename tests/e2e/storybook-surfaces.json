@@ -26934,52 +26934,100 @@
           "storyId": "production-providers-nativeproviderreadiness--loaded",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--loaded",
           "axes": [
-            "source-association-pending-review"
+            "loaded",
+            "provider=openai",
+            "saved-validations=1",
+            "configured-native-kind=chat",
+            "authentication=unknown",
+            "inference=unknown"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "9eb87e4365c1991ef392f6ca649b778a0afbbb1b2f54eab867f331548874ff8c"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness renders the summary: openai has one saved successful credential validation and configured native kind chat; authentication and inference remain UNKNOWN. ReadinessEvidence renders LISTED catalog metadata, configured chat dispatch, and timestamp-free UNKNOWN authentication and inference. Story fixture serves synthetic readiness JSON; no provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Current authentication",
+            "Actual inference",
+            "Saved successful credential validations: 1",
+            "Configured native kinds: chat"
+          ],
+          "expectedVisibleText": "Provider readiness"
         },
         {
           "id": "production-providers-nativeproviderreadiness--empty",
           "storyId": "production-providers-nativeproviderreadiness--empty",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--empty",
           "axes": [
-            "source-association-pending-review"
+            "empty",
+            "provider=fixture-empty",
+            "saved-validations=0",
+            "configured-native-kinds=none",
+            "catalog=not-listed",
+            "dispatch=unknown",
+            "authentication=unknown",
+            "inference=unknown"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "9eb87e4365c1991ef392f6ca649b778a0afbbb1b2f54eab867f331548874ff8c"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness renders the empty summary with zero saved validations, no configured native kinds, and UNKNOWN current authentication and inference. ReadinessEvidence renders NOT_LISTED catalog, UNKNOWN dispatch, no reported native operation kinds, and UNKNOWN validation/inference. Fixture is synthetic and makes no provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Saved successful credential validations: 0",
+            "Configured native kinds: none",
+            "Not listed",
+            "Configured native operation kinds: none reported"
+          ],
+          "expectedVisibleText": "Provider readiness"
         },
         {
           "id": "production-providers-nativeproviderreadiness--loading",
           "storyId": "production-providers-nativeproviderreadiness--loading",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--loading",
           "axes": [
-            "source-association-pending-review"
+            "loading",
+            "provider=openai",
+            "readiness-request-pending",
+            "summary-retained"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "9eb87e4365c1991ef392f6ca649b778a0afbbb1b2f54eab867f331548874ff8c"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness keeps its summary visible while ReadinessEvidence exposes role=status text “Loading local readiness evidence…” for a never-resolving synthetic local readiness fixture. No provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Loading local readiness evidence…",
+            "Current authentication",
+            "Actual inference"
+          ],
+          "expectedVisibleText": "Provider readiness"
         },
         {
           "id": "production-providers-nativeproviderreadiness--error",
           "storyId": "production-providers-nativeproviderreadiness--error",
           "runtimeArtifactId": "production-providers-nativeproviderreadiness--error",
           "axes": [
-            "source-association-pending-review"
+            "error",
+            "provider=openai",
+            "readiness-request-failed",
+            "summary-retained"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.jsx": "47b1fc193eafc9a943d84efbc9d4c9a1b96c43fc2bb62a35f5da03cea8132379",
-            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "f7396cfe6a85340d7d8bfe1b8d72e9edde5edcb6d290d9613252fb0c5a528a37"
+            "src/app/(dashboard)/dashboard/providers/[id]/NativeProviderReadiness.stories.jsx": "9eb87e4365c1991ef392f6ca649b778a0afbbb1b2f54eab867f331548874ff8c"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "NativeProviderReadiness keeps its summary and UNKNOWN authentication/inference visible while ReadinessEvidence reports the synthetic local readiness request failure. No provider calls.",
+          "proposedVisibleTexts": [
+            "Provider readiness",
+            "Readiness evidence unavailable. Catalog, dispatch, authentication and inference are unknown.",
+            "Current authentication",
+            "Actual inference"
+          ],
+          "expectedVisibleText": "Provider readiness"
         }
       ],
       "unresolvedHistoricalScenarioIds": [],

@@ -422,12 +422,15 @@ describe("web cookie usage reporting", () => {
     outbound.mockImplementation(provider === "adapta-web"
       ? adaptaTransport({ live: new Set(["mine"]), text: "hello world" })
       : t3Transport({ live: new Set(["mine"]), text: "hello world" }));
+    // The chat response schedules usage persistence without awaiting it.
+    const usageWrite = vi.spyOn(await import("@/lib/usageDb.js"), "saveRequestUsage");
     expect((await chat(model)).status).toBe(200);
-
-    await vi.waitFor(async () => {
+    expect(usageWrite).toHaveBeenCalledOnce();
+    await usageWrite.mock.results[0].value;
+    {
       const summary = await (await usage(mine.id)).json();
       expect(summary.displayMessage).toBe(`${label} connected. 1 requests in the last 30 days.`);
-    });
+    }
     const summary = await (await usage(mine.id)).json();
     expect(Object.keys(summary.quotas)).toEqual(expect.arrayContaining(["Total tokens (30d)"]));
     // The provider reports no token counts, so the card carries the estimate

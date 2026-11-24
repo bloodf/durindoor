@@ -80,6 +80,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [muse-spark-web-2034.md](./muse-spark-web-2034.md)
 - [notion-web-2034.md](./notion-web-2034.md)
 - [notrack-web-2034.md](./notrack-web-2034.md)
+- [oauth-native-esm.md](./oauth-native-esm.md)
 - [openference-oauth.md](./openference-oauth.md)
 - [orcarouter-signin-parity-2034.md](./orcarouter-signin-parity-2034.md)
 - [perplexity-web-2034.md](./perplexity-web-2034.md)

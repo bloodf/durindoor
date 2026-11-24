@@ -431,7 +431,9 @@ async function acquireBrowser(launch) {
     await previous.close().catch(() => {});
   }
   inflight += 1;
-  const launching = launch({ headless: true }).then((browser) => {
+  // Publish the in-flight promise before invoking/awaiting the launcher. Deferring
+  // the call also covers launchers that throw synchronously.
+  const launching = Promise.resolve().then(() => launch({ headless: true })).then((browser) => {
     slot = { launch, browser };
     return browser;
   });

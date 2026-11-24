@@ -95,6 +95,15 @@ export function artifactCommands(src, packDirectory, version) {
   ];
 }
 
+export function fullTestDependencyCommands(src) {
+  const install = ["install", "--frozen-lockfile"];
+  return [
+    ["pnpm-install-root", "pnpm", install],
+    ["pnpm-install-cli", "pnpm", install, { cwd: path.join(src, "cli") }],
+    ["pnpm-install-tests", "pnpm", install, { cwd: path.join(src, "tests") }],
+  ];
+}
+
 export function scopedTestArgs(tests, selected) {
   return [path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...selected, "--maxWorkers=2",
     "--reporter=json", `--outputFile=${path.join(tests, ".scoped-results.json")}`];
@@ -529,9 +538,8 @@ if (rootVersion !== cliVersion) {
 
 // vitest + no-regression gate (independent of lint-and-build / website-build outcome)
 await job("vitest", [
-  ["pnpm-install-root", "pnpm", pnpmInstall],
+  ...fullTestDependencyCommands(dirs.src),
   ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
-  ["pnpm-install-tests", "pnpm", pnpmInstall, { cwd: tests }],
 ]);
 // Discover with the same configuration as execution; never substitute tracked-file globs.
 const testEnv = { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE };

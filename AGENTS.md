@@ -78,4 +78,4 @@ Manual Actions remain fallbacks. Release, tag, nightly and publishing stay separ
 
 ## Agent tooling
 
-Read [the tooling guide](internal/docs/ai-tooling.md) before repository work. Product remains HOLD until explicit user approval.
+Read [the tooling guide](internal/docs/ai-tooling.md) before repository work.

@@ -2,6 +2,7 @@ import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { CLAUDE_FAST_MODE_BETA, claudeFunctionalBetas, claudeRequestedBetas, prepareClaudeOAuthBody } from "../utils/claudeProtocol.js";
 import crypto from "crypto";
 import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
+import { normalizeKimiRequest } from "./kimiParity.js";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor, normalizeAnthropicHeaders } from "./base.js";
 import { wantsGeminiLongDecode, withGeminiLongDecode } from "../utils/geminiLongDecode.js";
@@ -557,6 +558,10 @@ export class DefaultExecutor extends BaseExecutor {
         applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       }
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
+      if (["kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider)) {
+        normalizeKimiRequest(transformed, model, transportFormat);
+        if (transportFormat === FORMATS.OPENAI) completeKimiToolNames(transformed);
+      }
       // Luna Chat Completions rejects function tools with reasoning enabled.
       if (this.provider === "openai" && model === "gpt-5.6-luna" &&
         transportFormat === FORMATS.OPENAI && ![FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(requestContext?.sourceFormat) &&

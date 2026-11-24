@@ -1,10 +1,17 @@
 import { EventEmitter } from "node:events";
+import { PROVIDER_OAUTH } from "../../open-sse/providers/index.js";
+import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearCursorModelCache,
   parseCursorUsableModels,
   resolveCursorModels,
 } from "../../open-sse/services/cursorModels.js";
+
+vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
+  ...await importOriginal(),
+  proxyAwareFetch: vi.fn(async () => new Response(null, { status: 503 })),
+}));
 
 const http2Mock = vi.hoisted(() => ({ connect: vi.fn() }));
 vi.mock("http2", () => ({ default: http2Mock, ...http2Mock }));
@@ -62,6 +69,7 @@ function model(id, name) {
 describe("Cursor live model catalog", () => {
   beforeEach(() => {
     clearCursorModelCache();
+    vi.mocked(proxyAwareFetch).mockClear();
   });
 
   afterEach(() => {
@@ -106,6 +114,41 @@ describe("Cursor live model catalog", () => {
     }));
   });
 
+  it("uses the configured JSON catalog endpoint and separates ghost-mode cache entries", async () => {
+    stubH2(503, []);
+    const config = PROVIDER_OAUTH.cursor;
+    const originalEndpoint = config.apiEndpoint;
+    config.apiEndpoint = "https://catalog.invalid/";
+    try {
+      vi.mocked(proxyAwareFetch)
+        .mockResolvedValueOnce(Response.json({ models: ["private-model"] }))
+        .mockResolvedValueOnce(Response.json({ models: ["shared-model"] }));
+      const credentials = { accessToken: "synthetic", providerSpecificData: { machineId: "machine" } };
+      const options = { proxyOptions: { disableEnvProxy: true } };
+      await expect(resolveCursorModels(credentials, options)).resolves.toMatchObject({ models: [{ id: "auto" }, { id: "private-model" }] });
+      credentials.providerSpecificData.ghostMode = false;
+      await expect(resolveCursorModels(credentials, options)).resolves.toMatchObject({ models: [{ id: "auto" }, { id: "shared-model" }] });
+      expect(proxyAwareFetch).toHaveBeenLastCalledWith(
+        "https://catalog.invalid/aiserver.v1.AiService/AvailableModels",
+        expect.objectContaining({ headers: expect.objectContaining({ "x-ghost-mode": "false" }) }),
+        expect.any(Object),
+      );
+    } finally {
+      config.apiEndpoint = originalEndpoint;
+    }
+  });
+
+  it("discards oversized protobuf and JSON catalog responses", async () => {
+    const client = stubH2(200, Buffer.alloc(1024 * 1024 + 1));
+    vi.mocked(proxyAwareFetch).mockResolvedValueOnce(Response.json({ padding: "x".repeat(1024 * 1024), models: ["synthetic"] }));
+    await expect(resolveCursorModels({
+      accessToken: "synthetic",
+      providerSpecificData: { machineId: "machine" },
+    }, { proxyOptions: { disableEnvProxy: true } })).resolves.toBeNull();
+    expect(client.request.mock.results[0].value.destroy).toHaveBeenCalled();
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("skips the live fetch (no direct socket) when a proxy applies", async () => {
     stubH2(200, concat(model("claude-4.6-opus", "Claude 4.6 Opus")));
     await expect(resolveCursorModels({
@@ -113,6 +156,11 @@ describe("Cursor live model catalog", () => {
       providerSpecificData: { machineId: "machine-id" },
     }, { proxyOptions: { connectionProxyEnabled: true, connectionProxyUrl: "http://127.0.0.1:9" } })).resolves.toBeNull();
     expect(http2Mock.connect).not.toHaveBeenCalled();
+    expect(proxyAwareFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/AvailableModels"),
+      expect.objectContaining({ redirect: "error" }),
+      expect.objectContaining({ connectionProxyUrl: "http://127.0.0.1:9", strictProxy: true }),
+    );
   });
 
   it("keeps proxy-bound lookups separate from the direct catalog cache", async () => {

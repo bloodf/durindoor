@@ -582,7 +582,14 @@ async function wsChat(prompt, conversationId, authorization, cookieHeader, templ
       resolve(result);
     };
     const fail = (error) => finish({ content: "", deltas: [], error });
-    timeout = setTimeout(() => fail(`Meta AI WS timed out (readyState=${ws.readyState})`), 3e4);
+    const armIdleTimeout = () => {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        if (accumulatedText) finish({ content: accumulatedText, deltas: contentDeltas });
+        else fail(`Meta AI WS timed out (readyState=${ws.readyState})`);
+      }, 3e4);
+    };
+    armIdleTimeout();
     abortHandler = () => fail("Request aborted");
     signal?.addEventListener("abort", abortHandler, { once: true });
     ws.onopen = () => {
@@ -590,6 +597,7 @@ async function wsChat(prompt, conversationId, authorization, cookieHeader, templ
       ws.send(buildWsPromptFrame(prompt, conversationId, { templateB64, requestId }));
     };
     ws.onmessage = (event) => {
+      armIdleTimeout();
       let raw = "";
       if (isString(event.data)) {
         raw = event.data;

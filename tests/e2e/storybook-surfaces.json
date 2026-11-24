@@ -33531,7 +33531,7 @@
       "id": "src/app/(dashboard)/dashboard/skills/page.js#CopyButton",
       "sourcePath": "src/app/(dashboard)/dashboard/skills/page.js",
       "symbol": "CopyButton",
-      "sourceSha256": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+      "sourceSha256": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -33551,7 +33551,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "page.stories.jsx#CopyEntryLink parent render",
@@ -33606,7 +33606,7 @@
       "id": "src/app/(dashboard)/dashboard/skills/page.js#CopyInstructionButton",
       "sourcePath": "src/app/(dashboard)/dashboard/skills/page.js",
       "symbol": "CopyInstructionButton",
-      "sourceSha256": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+      "sourceSha256": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -33627,7 +33627,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "page.stories.jsx#CopyEntryLink parent render",
@@ -33642,7 +33642,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "page.stories.jsx#CopyInstructionFailure",
@@ -33713,7 +33713,7 @@
       "id": "src/app/(dashboard)/dashboard/skills/page.js#SkillRow",
       "sourcePath": "src/app/(dashboard)/dashboard/skills/page.js",
       "symbol": "SkillRow",
-      "sourceSha256": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+      "sourceSha256": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -33736,7 +33736,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "Fixture supplies visible skill entry."
@@ -33750,7 +33750,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default parent render",
@@ -33822,7 +33822,7 @@
       "id": "src/app/(dashboard)/dashboard/skills/page.js#SkillsPage",
       "sourcePath": "src/app/(dashboard)/dashboard/skills/page.js",
       "symbol": "SkillsPage",
-      "sourceSha256": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+      "sourceSha256": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -33844,7 +33844,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -33860,7 +33860,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "Play exercises copy path."
@@ -33874,7 +33874,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/skills/page.js": "e687be24a422b8a3c10e920645cb7fae66be432f13eb473915c31229770260e8",
+            "src/app/(dashboard)/dashboard/skills/page.js": "af91abe24aa5df71bc27104af13a75e6ef3274ade9fe47c757952f05a40cf649",
             "src/app/(dashboard)/dashboard/skills/page.stories.jsx": "3840836e87418790fede372af966a8bc87b8ad1a1af74997acf6771608922e67"
           },
           "proposedSourceEvidence": "page.stories.jsx#ManyEndpoints",
@@ -103971,7 +103971,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "58f712110ebff61a223453456bf778e77c98ba4d8e1ca175816dc38ea80660b0",
+    "sourceCensusSha256": "36492a67ffa49ceebc5d6ac8093942fe4b655771c188ee11e2b0ed04aa5e66fb",
     "pendingRows": 449,
     "retainedApprovedRows": 198,
     "pendingReferences": 1496,

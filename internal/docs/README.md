@@ -116,6 +116,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 ### Provider contracts and implementation notes
 
 - [antigravity-2034.md](./antigravity-2034.md)
+- [antigravity-translator-refresh.md](./antigravity-translator-refresh.md)
 - [chatgpt-plan-connection-2034.md](./chatgpt-plan-connection-2034.md)
 - [chatgpt-plan-transport.md](./chatgpt-plan-transport.md)
 - [chatplayground-2034.md](./chatplayground-2034.md)
@@ -192,6 +193,8 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [sqlite-exclusive-lock-release.md](./sqlite-exclusive-lock-release.md)
 - [deploy-gates.md](./deploy-gates.md)
 - [deployment-mode.md](./deployment-mode.md)
+- [image-cache-20828-investigation.md](./image-cache-20828-investigation.md)
+- [integration-cdfb0c5-follow-up.md](./integration-cdfb0c5-follow-up.md)
 - [documentation-plan.md](./documentation-plan.md)
 - [local-ci.md](./local-ci.md)
 - [local-development.mdx](./local-development.mdx)

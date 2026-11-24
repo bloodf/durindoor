@@ -55,6 +55,19 @@ export function parseSseFrame(frame) {
   };
 }
 
+/** Parse joined JSON first, then use the first data line as legacy Responses parsers did. */
+export function parseResponsesSseData({ data, dataLines }) {
+  if (data.trim() === "[DONE]") return { rawDone: true };
+  try {
+    return { parsed: JSON.parse(data) };
+  } catch (error) {
+    if (dataLines.length < 2) throw error;
+    const firstLine = dataLines[0].trim();
+    if (firstLine === "[DONE]") return { rawDone: true };
+    return { parsed: JSON.parse(firstLine) };
+  }
+}
+
 /**
  * Incrementally read SSE frames across chunk boundaries, applying the 64 MiB
  * pending-frame cap once in linear time. `flush()` parses any unterminated

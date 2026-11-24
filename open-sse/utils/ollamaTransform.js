@@ -184,20 +184,32 @@ export function transformToOllama(response, model) {
       }}
   };
 
-  // Native NDJSON is line-oriented; SSE is dispatched at frame boundaries.
-  const emitFrame = (frame, controller) => {
-    if (!frame.hasData) return;
+  const isStandaloneData = (data) => {
+    if (data === "[DONE]") return true;
+    if (!data.startsWith("{")) return false;
     try {
-      if (frame.data.trim() !== "[DONE]") JSON.parse(frame.data);
-      processLine(`data: ${frame.data}`, controller);
+      JSON.parse(data);
+      return true;
     } catch {
-      // Some providers omit blank separators between complete JSON events.
-      for (const line of frame.dataLines) processLine(`data: ${line}`, controller);
+      return false;
     }
   };
+
+  const emitFrame = (frame, controller) => {
+    if (frame.hasData) processLine(`data: ${frame.data}`, controller);
+  };
   const acceptLine = (line, controller) => {
-    if (line.trimStart().startsWith("{")) processLine(line.trim(), controller);
-    else for (const frame of reader.push(line + "\n")) emitFrame(frame, controller);
+    if (ended) return;
+    const trimmed = line.trim();
+    // Standalone payloads arrive one per line on some streams. Deliver them
+    // immediately and let the frame reader assemble incomplete JSON fragments.
+    if (trimmed.startsWith("{") ||
+        (trimmed.startsWith("data:") && isStandaloneData(trimmed.slice(5).trimStart()))) {
+      for (const frame of reader.flush()) emitFrame(frame, controller);
+      processLine(trimmed, controller);
+      return;
+    }
+    for (const frame of reader.push(line + "\n")) emitFrame(frame, controller);
   };
   const transform = new TransformStream({
     transform(chunk, controller) {

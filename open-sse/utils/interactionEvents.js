@@ -1,8 +1,10 @@
-import { createSseFrameReader } from "./sseFrames.js";
+import { extractCompleteSseFrames, parseSseFrame } from "./sseFrames.js";
+
+const MAX_PENDING_INTERACTION_CHARS = 1024 * 1024;
 
 /** Decode SSE frames across byte boundaries, including multiple data lines. */
 export function mapInteractionEvents(body, map, onEnd = () => "") {
-  const reader = createSseFrameReader();
+  let pending = "";
   const encoder = new TextEncoder();
   function emit(frame, controller) {
     const trimmed = frame.data.trim();
@@ -14,10 +16,16 @@ export function mapInteractionEvents(body, map, onEnd = () => "") {
   }
   return body.pipeThrough(new TextDecoderStream()).pipeThrough(new TransformStream({
     transform(chunk, controller) {
-      for (const frame of reader.push(chunk)) emit(frame, controller);
+      const { frames, remainder } = extractCompleteSseFrames(pending + chunk);
+      pending = remainder;
+      for (const raw of frames) emit(parseSseFrame(raw), controller);
+      // The interaction limit counts UTF-16 code units in the unfinished tail.
+      if (pending.length > MAX_PENDING_INTERACTION_CHARS) {
+        throw new Error("Interactions SSE frame exceeds size limit");
+      }
     },
     flush(controller) {
-      for (const frame of reader.flush()) emit(frame, controller);
+      if (pending) emit(parseSseFrame(pending), controller);
       const output = onEnd();
       if (output) controller.enqueue(encoder.encode(output));
     },

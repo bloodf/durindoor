@@ -9,6 +9,9 @@ let reloadCallbacks = [];
 let observerHandle = null;
 let initPromise = null;
 let lifecycleVersion = 0;
+let localeVersion = 0;
+let requestVersion = 0;
+let publishedVersion = 0;
 const missingKeys = new Set();
 const textState = new WeakMap();
 
@@ -36,39 +39,56 @@ export function syncDocumentLocale(locale) {
 
 function syncLocaleFromCookie() {
   const locale = getLocaleFromCookie();
-  if (locale !== currentLocale) missingKeys.clear();
+  if (locale !== currentLocale) {
+    localeVersion += 1;
+    missingKeys.clear();
+  }
   currentLocale = locale;
   syncDocumentLocale(locale);
 }
 
-// Load translation map
+// Load into a local value so stale responses cannot change the active map.
 async function loadTranslations(locale) {
   if (locale === "en") {
-    translationMap = {};
-    return;
+    return {};
   }
 
   try {
     const response = await fetch(`/i18n/literals/${locale}.json`);
     if (response.ok === false) {
-      translationMap = {};
       console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
-      return;
+      return {};
     }
     try {
       const translations = await response.json();
-      translationMap = isRecord(translations) ? translations : {};
-      if (translationMap !== translations) {
+      const translationMapForLocale = isRecord(translations) ? translations : {};
+      if (translationMapForLocale !== translations) {
         console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
       }
+      return translationMapForLocale;
     } catch {
-      translationMap = {};
       console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+      return {};
     }
   } catch {
-    translationMap = {};
     console.warn(`Failed to load translations for locale ${locale} (status unavailable)`);
+    return {};
   }
+}
+
+// A pending refresh leaves earlier results eligible to publish within the same
+// locale and lifecycle. A published result, including a fallback, supersedes them.
+async function refreshTranslations(onPublish) {
+  syncLocaleFromCookie();
+  const lifecycle = lifecycleVersion;
+  const locale = localeVersion;
+  const request = ++requestVersion;
+  const translations = await loadTranslations(currentLocale);
+  if (lifecycle !== lifecycleVersion || locale !== localeVersion || request < publishedVersion) return;
+
+  translationMap = translations;
+  publishedVersion = request;
+  onPublish();
 }
 
 // Translate text - exported for use in components
@@ -170,16 +190,12 @@ export async function initRuntimeI18n() {
   if (observerHandle) return;
   if (initPromise) return initPromise;
 
-  initPromise = (async () => {
-    const version = lifecycleVersion;
-    syncLocaleFromCookie();
-    await loadTranslations(currentLocale);
-    if (version !== lifecycleVersion) return;
+  const lifecycle = lifecycleVersion;
+  const promise = (async () => {
+    await refreshTranslations(() => processElement(document.body));
+    if (lifecycle !== lifecycleVersion) return;
 
-    // Process existing DOM
-    processElement(document.body);
-
-    // Watch for new nodes
+    // Observation belongs to the active lifecycle even if a reload superseded this fetch.
     observerHandle = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === "characterData") processTextNode(mutation.target);
@@ -199,10 +215,11 @@ export async function initRuntimeI18n() {
       subtree: true
     });
   })();
+  initPromise = promise;
   try {
-    await initPromise;
+    await promise;
   } finally {
-    initPromise = null;
+    if (initPromise === promise) initPromise = null;
   }
 }
 
@@ -217,12 +234,11 @@ export function teardownRuntimeI18n() {
 
 // Reload translations when locale changes
 export async function reloadTranslations() {
-  syncLocaleFromCookie();
-  await loadTranslations(currentLocale);
+  await refreshTranslations(() => {
+    // Notify all registered callbacks
+    reloadCallbacks.forEach((callback) => callback());
 
-  // Notify all registered callbacks
-  reloadCallbacks.forEach((callback) => callback());
-
-  // Re-process the current source labels, retaining translations only we wrote.
-  processElement(document.body);
+    // Re-process the current source labels, retaining translations only we wrote.
+    processElement(document.body);
+  });
 }

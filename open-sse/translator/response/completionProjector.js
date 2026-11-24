@@ -7,6 +7,7 @@ import {
   responsesTerminalFromChatFinish
 } from "../concerns/finishReason.js";
 import { toResponsesUsage } from "../concerns/usage.js";
+import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
@@ -95,6 +96,15 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
   };
 }
 
+// A non-stream body without total_tokens still reports a total.
+function geminiUsageWithTotal(usage) {
+  const metadata = buildGeminiUsageMetadata(usage);
+  return {
+    ...metadata,
+    totalTokenCount: metadata.totalTokenCount || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
+  };
+}
+
 function openAICompletionToGeminiResponse(completion) {
   if (!completion?.choices?.[0]) return completion;
   const message = getMessage(completion);
@@ -123,11 +133,7 @@ function openAICompletionToGeminiResponse(completion) {
         finishReason: openAIToGeminiFinish(getChoice(completion).finish_reason),
         index: 0
       }],
-      usageMetadata: {
-        promptTokenCount: usage.prompt_tokens || usage.input_tokens || 0,
-        candidatesTokenCount: usage.completion_tokens || usage.output_tokens || 0,
-        totalTokenCount: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
-      },
+      usageMetadata: geminiUsageWithTotal(usage),
       modelVersion: completion.model || "unknown",
       responseId: completion.id || `resp_${Date.now()}`
     }

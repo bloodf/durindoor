@@ -375,15 +375,13 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
         if (id !== undefined) part.functionCall.id = id;
       }
     }
+    // The projector omits zero details; native Gemini JSON keeps a reported zero.
     const usage = responseBody.usage;
     if (usage?.prompt_tokens_details?.cached_tokens !== undefined) {
       result.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
     }
     if (usage?.completion_tokens_details?.reasoning_tokens !== undefined) {
       result.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
-      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
-      result.usageMetadata.candidatesTokenCount = Math.max(0,
-        result.usageMetadata.candidatesTokenCount - result.usageMetadata.thoughtsTokenCount);
     }
     return result;
   }

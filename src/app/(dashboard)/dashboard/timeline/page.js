@@ -22,6 +22,7 @@ import TimelineWindowControls, { DEFAULT_LANE, DEFAULT_WINDOW, resolveLane, reso
 import { statusTone } from "./timelineStatus.js";
 import { useWindowedTraces } from "./useWindowedTraces.js";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { get } from "@/shared/utils/api.js";
 
 const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate", "q"];
 const WINDOW_FILTER_KEYS = FILTER_KEYS.filter((key) => key !== "startDate" && key !== "endDate");
@@ -119,8 +120,7 @@ function TimelineList() {
   // Connection ids render as names; fetch the catalog once (fail-open).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/providers", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    get("/api/providers", { cache: "no-store" })
       .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
       .catch(() => {});
     return () => { cancelled = true; };

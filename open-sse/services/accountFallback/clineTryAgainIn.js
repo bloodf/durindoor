@@ -21,9 +21,10 @@ const CLINE_TRY_AGAIN_IN_RE =
  * @returns {number|null}
  */
 export function parseClineTryAgainInMs(text, provider, maxMs) {
-  if (typeof provider !== "string" || !CLINE_PROVIDERS.has(provider.toLowerCase())) return null;
-  if (typeof text !== "string" || !text) return null;
-  const match = CLINE_TRY_AGAIN_IN_RE.exec(text.slice(0, 4096));
+  if (!CLINE_PROVIDERS.has(String(provider ?? "").toLowerCase())) return null;
+  const body = String(text ?? "");
+  if (!body) return null;
+  const match = CLINE_TRY_AGAIN_IN_RE.exec(body.slice(0, 4096));
   if (!match) return null;
   const hours = match[1] ? Number.parseInt(match[1], 10) : 0;
   const minutes = match[2] ? Number.parseInt(match[2], 10) : 0;

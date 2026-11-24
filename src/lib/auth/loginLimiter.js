@@ -5,6 +5,7 @@ import { hasTrustedPeerHeaders } from "./trustedPeer.js";
 
 const MAX_FAILS_BEFORE_LOCK = 5;
 const LOCK_STEPS_MS = [30_000, 120_000, 600_000, 1_800_000]; // 30s, 2m, 10m, 30m
+const RESERVATION_TTL_MS = 60_000; // Abandoned requests cannot hold slots indefinitely.
 const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
 // Bounds memory against an attacker cycling through many spoofed IPs faster
 // than FAIL_WINDOW_MS would naturally expire their entries.
@@ -15,6 +16,8 @@ const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt,
 function now() { return Date.now(); }
 
 function isExpired(e, t) {
+  e.reservations = e.reservations.filter((stamp) => t - stamp < RESERVATION_TTL_MS);
+  e.inFlight = e.reservations.length;
   if (e.inFlight > 0) return false;
   return e.lastFailAt && t - e.lastFailAt > FAIL_WINDOW_MS && (!e.lockUntil || t >= e.lockUntil);
 }
@@ -112,7 +115,7 @@ function touchEntry(key, e) {
 }
 
 function emptyEntry() {
-  return { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0, inFlight: 0 };
+  return { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0, inFlight: 0, reservations: [] };
 }
 
 function ensureEntry(key) {
@@ -169,7 +172,7 @@ export function recordFail(ip) {
   const existing = attempts.get(key);
   if (!existing) evictForNewEntry();
   const e = getEntry(key) || emptyEntry();
-  if (e.inFlight > 0) e.inFlight -= 1;
+  if (e.inFlight > 0) { e.reservations.shift(); e.inFlight -= 1; }
   e.fails += 1;
   e.lastFailAt = now();
   if (e.fails >= MAX_FAILS_BEFORE_LOCK) {
@@ -202,6 +205,7 @@ export function reserveAttempt(ip) {
     return { locked: true, retryAfter: Math.ceil(step / 1000) };
   }
   e.inFlight += 1;
+  e.reservations.push(now());
   e.lastFailAt = now();
   touchEntry(key, e);
   return {
@@ -220,6 +224,7 @@ export function releaseReservation(ip) {
   const key = bucket(ip);
   const e = getEntry(key);
   if (!e || !(e.inFlight > 0)) return;
+  e.reservations.shift();
   e.inFlight -= 1;
   touchEntry(key, e);
   if (e.inFlight <= 0 && e.fails <= 0 && e.lockLevel <= 0 && !(e.lockUntil && e.lockUntil > now())) {

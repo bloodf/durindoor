@@ -36,12 +36,14 @@ function lockedResponse(lock) {
 }
 
 export async function POST(request) {
+  let ip;
+  let settled = true;
   try {
     if (!hasExactRequestOrigin(request)) {
       return NextResponse.json({ error: "Cross-origin request is not allowed" }, { status: 403, headers: NO_STORE_HEADERS });
     }
 
-    const ip = getClientIp(request);
+    ip = getClientIp(request);
 
     // Share the password limiter: TOTP has only 10^6 values, so an unthrottled
     // endpoint is the weak point of the whole scheme.
@@ -49,11 +51,13 @@ export async function POST(request) {
     // TOTP bursts cannot all evaluate then race recordFail (issue #2242).
     const reserved = reserveAttempt(ip);
     if (reserved.locked) return lockedResponse(reserved);
+    settled = false;
 
     const cookieStore = await cookies();
     const pending = await getMfaPendingSession(cookieStore.get(MFA_PENDING_COOKIE)?.value);
     if (!pending) {
       releaseReservation(ip);
+      settled = true;
       return NextResponse.json(
         { error: "MFA session expired. Sign in again." },
         { status: 401, headers: NO_STORE_HEADERS },
@@ -65,6 +69,7 @@ export async function POST(request) {
 
     if (!result.ok) {
       const { remainingBeforeLock } = recordFail(ip);
+      settled = true;
       const postLock = checkLock(ip);
       if (postLock.locked) return lockedResponse(postLock);
       return NextResponse.json(
@@ -77,10 +82,12 @@ export async function POST(request) {
     const successLock = checkLock(ip);
     if (successLock.locked) {
       releaseReservation(ip);
+      settled = true;
       return lockedResponse(successLock);
     }
 
     recordSuccess(ip);
+    settled = true;
     clearMfaPendingCookie(cookieStore);
 
     const settings = await getSettings();
@@ -105,5 +112,7 @@ export async function POST(request) {
   } catch {
     console.error("[auth] mfa verify failed");
     return NextResponse.json({ error: "MFA verification failed" }, { status: 500, headers: NO_STORE_HEADERS });
+  } finally {
+    if (!settled) releaseReservation(ip);
   }
 }

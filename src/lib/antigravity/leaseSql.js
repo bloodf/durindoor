@@ -297,6 +297,20 @@ export function markAntigravityReauth(db, lease) {
   ));
 }
 
+// True while this lease still owns its dispatch. Expiry alone does not end
+// ownership: only expiry observation, a generation advance or a management
+// fence rewrites the row, and each of those clears the owner and token.
+export function holdsAntigravityDispatch(db, lease) {
+  return Boolean(db.get(
+    `SELECT 1 AS held FROM antigravityRefreshLeases
+     WHERE connectionId = ? AND generation = ? AND owner = ? AND fencingToken = ?
+       AND attemptState = 'dispatched'`,
+    fenceMatch(lease)
+  ));
+}
+
+// A late success still commits when nothing observed the expiry, so a
+// rotated refresh token is never discarded by a slow provider response.
 export function clearAntigravityLease(db, lease, refreshToken) {
   const now = dbNow(db);
   return oneRow(db.run(
@@ -304,7 +318,7 @@ export function clearAntigravityLease(db, lease, refreshToken) {
      SET attemptState = 'idle', owner = NULL, fencingToken = NULL, leaseExpiresAt = NULL, attemptId = NULL,
          errorCategory = NULL, retryCount = 0, nextRetryAt = NULL, credentialRevision = ?, updatedAt = ${now}
      WHERE connectionId = ? AND generation = ? AND owner = ? AND fencingToken = ?
-       AND attemptState = 'dispatched' AND leaseExpiresAt > ${now}`,
+       AND attemptState = 'dispatched'`,
     [credentialRevision(refreshToken), ...fenceMatch(lease)]
   ));
 }

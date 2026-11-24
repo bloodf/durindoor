@@ -20,7 +20,7 @@ For leased paths, attempt states are `idle`, `claimed`, `dispatched`, `uncertain
 - OAuth replacement and interactive reauth bump the generation, even when the refresh token string is unchanged.
 - Pre-dispatch failures use bounded exponential backoff, add 0–30 seconds of jitter, and honor a larger `Retry-After`. `retryCount` and `nextRetryAt` survive restart. After 5 failures the category is `budget_exhausted` until an operator reset. Reset clears the budget only while the state is `idle`. `force` skips `nextRetryAt` and the budget. It does not skip `uncertain`, `reauth`, or `dispatched`.
 
-The previous access token stays usable until it expires. A commit checks generation, owner, fencing token, lease, connection existence, the refresh-token revision, and enablement. No fencing token can fence Google.
+The previous access token stays usable until it expires. A commit checks generation, owner, fencing token, the `dispatched` state, connection existence, the refresh-token revision, and enablement. A success that returns after the lease expired still commits if nothing has observed the expiry. Once an acquire, reset, generation advance, or management action has made the attempt `uncertain`, the late result is discarded and the state stays `uncertain`. No fencing token can fence Google.
 
 ## Management API
 

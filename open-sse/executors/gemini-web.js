@@ -27,7 +27,7 @@ import { BaseExecutor } from "./base.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 import { resolvePlaywrightProxy } from "../services/browserPool.js";
 import { isFunction, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -42,7 +42,7 @@ export const GEMINI_WEB_ORIGIN = "https://gemini.google.com";
  * the browser egress directly from the host IP.
  */
 export function resolveGeminiWebBrowserProxy(proxyOptions) {
-  const proxyUrl = resolveProxyForRequest(GEMINI_WEB_URL, proxyOptions).proxyUrl;
+  const proxyUrl = resolveConnectProxyForRequest(GEMINI_WEB_URL, proxyOptions).proxyUrl;
   if (!proxyUrl) return undefined;
   const proxy = resolvePlaywrightProxy(proxyUrl);
   if (!proxy) throw new Error("Gemini Web proxy is invalid; refusing a direct connection");

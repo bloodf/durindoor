@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
   getNoAuthProviderCredentials: vi.fn()
 }));
 
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
 // Keyless providers (veoaifree-web, edge-tts...) would otherwise be probed over
 // the real network; a slow or blocked host drops them from the route and turns
 // these tests into network-dependent flakes.

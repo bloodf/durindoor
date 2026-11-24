@@ -206,7 +206,7 @@ be distinguished from missing resources without exposing their existence.
 `localFilesBatches.js` and ownership/DB authority remain outside this grant.
 
 The sole chat edit wraps the existing selected daily-token 429 at published
-`chat.js:470` with `client_limit`. `nativeUsage.js` adds the same annotation at
+`handleChat` in `src/sse/handlers/chat.js` with `client_limit`. `nativeUsage.js` adds the same annotation at
 its existing daily-denial Response construction. Native provider and SystemOne
 handlers pass that Response unchanged. `recordNativeUsage` also creates and
 discards a daily-denial Response after committing usage; that candidate is not
@@ -554,7 +554,7 @@ followed by successful fallback.
 
 | Existing bounded source | Exact integration point to consider after assignment | Counting boundary |
 | --- | --- | --- |
-| Credential evaluation has `ok` plus `missing`/`invalid`, with local optional-auth behavior | `src/sse/services/auth.js:1649-1662,1680-1690`; actual client return in `src/sse/handlers/chat.js:436-443`, native provider `:60`, image `:55`, TTS `:48`, STT `:45`, embeddings `:53-58` | Mark the selected client rejection, not each credential candidate; realtime operator bypass means `resolveClientApiKey` failure alone is not proof of a denial |
+| Credential evaluation has `ok` plus `missing`/`invalid`, with local optional-auth behavior | `evaluateApiKeyAuth` and `resolveClientApiKey` in `src/sse/services/auth/clientApiKeys.js`; actual client return in `handleChat` in `src/sse/handlers/chat.js`, native provider `:60`, image `:55`, TTS `:48`, STT `:45`, embeddings `:53-58` | Mark the selected client rejection, not each credential candidate; realtime operator bypass means `resolveClientApiKey` failure alone is not proof of a denial |
 | Invalid policy, model allowlist/access, lifetime token/cost limits | `src/sse/services/apiKeyPolicy.js:126-204` at existing denial Response construction | Associate a fixed reason with that Response, without incrementing there; vision-bridge rejection in chat `:927-929` deliberately keeps the original model |
 | Per-Request window/RPM/TPM check, existing checked-Request WeakSet | `src/lib/apiKeyLimits.js:160-175` at its returned limit Response; chat `:475-476` is the outer use | Preserve rate accounting and fail-open query behavior; do not count quota queries, checked calls or successful requests as failures |
 | Daily key token limit | Chat `:454-469`; `src/sse/services/nativeUsage.js:78-82`, called by native provider `:137-138` | Mark actual denial Response with a fixed `client_limit` reason; no token totals or key identifiers in telemetry |

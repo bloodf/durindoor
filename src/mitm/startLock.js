@@ -1,5 +1,6 @@
 const fs = require("fs");
-const net = require("net");
+const path = require("path");
+const { getProcessStartIdentity } = require("./processIdentity");
 
 function createAlreadyStartingError(message = "MITM server is already starting") {
   const error = new Error(message);
@@ -7,45 +8,78 @@ function createAlreadyStartingError(message = "MITM server is already starting")
   return error;
 }
 
-/**
- * Use a loopback listener as the cross-process startup mutex. The operating
- * system releases the port on process death, so there is no stale file to
- * reclaim and no compare/unlink race that can delete a successor's lock.
- */
-function acquireSocketLock({ port, host = "127.0.0.1", netImpl = net }) {
-  return new Promise((resolve, reject) => {
-    const server = netImpl.createServer();
-    const onError = (error) => {
-      if (error.code === "EADDRINUSE") {
-        reject(createAlreadyStartingError("MITM server is already starting (lock contention)"));
-      } else {
-        reject(error);
-      }
-    };
+/** Acquire an owner-private O_EXCL lockfile, reclaiming only a dead PID's lock. */
+function acquireSocketLock({ port, lockPath, directory, fsImpl = fs, pid = process.pid, now = Date.now }) {
+  directory = directory || require("./paths").MITM_DIR;
+  const filePath = lockPath || path.join(directory, `.${String(port)}.lock`);
+  try {
+    fsImpl.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+    const dirStat = fsImpl.lstatSync(path.dirname(filePath));
+    if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) {
+      const error = new Error("Unsafe MITM lock directory");
+      error.code = "EINVAL";
+      throw error;
+    }
+    if (process.platform !== "win32") fsImpl.chmodSync(path.dirname(filePath), 0o700);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 
-    server.once("error", onError);
-    server.listen({ host, port, exclusive: true }, () => {
-      server.removeListener("error", onError);
-      // A later listener error must not become an unhandled process error.
-      server.on("error", () => {});
-      server.unref?.();
-      resolve({ server, host, port });
-    });
-  });
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let fd;
+    try {
+      fd = fsImpl.openSync(filePath, "wx", 0o600);
+      const record = JSON.stringify({ pid, startedAt: now(), startIdentity: getProcessStartIdentity(pid) });
+      fsImpl.writeFileSync(fd, record, "utf8");
+      fsImpl.fsyncSync(fd);
+      const stat = fsImpl.fstatSync(fd);
+      fsImpl.closeSync(fd);
+      fd = undefined;
+      if (process.platform !== "win32") fsImpl.chmodSync(filePath, 0o600);
+      return Promise.resolve({ filePath, record, dev: String(stat.dev), ino: String(stat.ino), fsImpl });
+    } catch (error) {
+      if (fd !== undefined) fsImpl.closeSync(fd);
+      if (error.code !== "EEXIST") return Promise.reject(error);
+      let snap;
+      try {
+        snap = readFileSnapshot(filePath, fsImpl);
+        const record = JSON.parse(snap.raw);
+        if (!Number.isSafeInteger(record.pid) || record.pid <= 0) throw new Error("invalid lock record");
+        const currentIdentity = getProcessStartIdentity(record.pid);
+        let stale = Boolean(record.startIdentity && currentIdentity !== record.startIdentity);
+        if (!record.startIdentity || currentIdentity === record.startIdentity) {
+          try {
+            process.kill(record.pid, 0);
+          } catch (probeError) {
+            stale = probeError.code === "ESRCH";
+            if (!stale) return Promise.reject(createAlreadyStartingError("MITM server is already starting (lock contention)"));
+          }
+        }
+        if (stale) {
+          if (removeFileIfUnchanged(filePath, snap, fsImpl)) continue;
+        }
+      } catch (readError) {
+        if (readError.code === "ENOENT" || readError.code === "EAGAIN") continue;
+        return Promise.reject(createAlreadyStartingError("MITM server is already starting (lock contention)"));
+      }
+      return Promise.reject(createAlreadyStartingError("MITM server is already starting (lock contention)"));
+    }
+  }
+  return Promise.reject(createAlreadyStartingError("MITM server is already starting (lock contention)"));
 }
 
 function releaseSocketLock(owner) {
-  return new Promise((resolve, reject) => {
-    try {
-      owner.server.close((error) => {
-        if (error) reject(error);
-        else resolve(true);
-      });
-    } catch (error) {
-      if (error.code === "ERR_SERVER_NOT_RUNNING") resolve(false);
-      else reject(error);
-    }
-  });
+  if (!owner || !owner.filePath) return Promise.resolve(false);
+  try {
+    const current = readFileSnapshot(owner.filePath, owner.fsImpl || fs);
+    if (current.raw !== owner.record
+      || current.identity.dev !== owner.dev
+      || current.identity.ino !== owner.ino) return Promise.resolve(false);
+    return Promise.resolve(removeFileIfUnchanged(owner.filePath, current, owner.fsImpl || fs));
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return Promise.resolve(false);
+    return Promise.reject(error);
+  }
 }
 
 function statIdentity(stat) {

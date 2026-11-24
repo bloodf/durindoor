@@ -46,16 +46,6 @@ export async function POST(request) {
     return NextResponse.json({ success: false, message: "Invalid DurinDoor version" }, { status: 400 });
   }
 
-  try {
-    // Kill sibling processes (cloudflared, MITM, stray next-server) to release file locks on Windows
-    await killAppProcesses();
-  } catch (error) {
-    return NextResponse.json({
-      success: false,
-      message: `Update blocked because safe process cleanup failed: ${error.message}`,
-    }, { status: 500 });
-  }
-
   let latestVersion = null;
   if (!targetVersion) {
     latestVersion = await fetchLatestVersion();
@@ -65,6 +55,15 @@ export async function POST(request) {
   }
   // Install the selected or checked exact version — never @latest.
   const installVersion = targetVersion || latestVersion;
+  try {
+    // Resolve and validate first so a failed lookup leaves the running app untouched.
+    await killAppProcesses();
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: `Update blocked because safe process cleanup failed: ${error.message}`,
+    }, { status: 500 });
+  }
   spawnUpdaterAndExit(targetVersion
     ? formatUpdaterPackageSpec(UPDATER_CONFIG.npmPackageName, targetVersion)
     : `${UPDATER_CONFIG.npmPackageName}@${latestVersion}`);

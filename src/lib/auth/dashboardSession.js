@@ -263,7 +263,8 @@ export async function verifyDashboardAuthToken(token) {
     // intermediate cookie, so it is rejected everywhere a session is expected.
     if (payload.scope === MFA_PENDING_SCOPE) return false;
     const settings = await getSettings();
-    if (settings.mfaEnabled === true && settings.mfaSecret && !payload.mfa) return false;
+    if (settings.mfaEnabled === true && settings.mfaSecret &&
+        !payload.mfa && !(payload.oidc === true && payload.mfa === "oidc")) return false;
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch;
   } catch {
     return false;
@@ -276,7 +277,8 @@ export async function getDashboardAuthSession(token) {
     const { payload } = await jwtVerify(token, getSecretBytes());
     if (payload.scope === MFA_PENDING_SCOPE) return null;
     const settings = await getSettings();
-    if (settings.mfaEnabled === true && settings.mfaSecret && !payload.mfa) return null;
+    if (settings.mfaEnabled === true && settings.mfaSecret &&
+        !payload.mfa && !(payload.oidc === true && payload.mfa === "oidc")) return null;
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch ? payload : null;
   } catch {
     return null;

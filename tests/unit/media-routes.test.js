@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   allowedIds: vi.fn(async () => []),
   connections: vi.fn(async () => [])
 }));
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
 vi.mock("@/lib/localDb", () => ({ getApiKeyProviderConnectionIds: mocks.allowedIds, getProviderConnections: mocks.connections }));
 vi.mock("../../src/sse/services/keylessAvailability.js", () => ({ isKeylessProviderWorking: mocks.working }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetch(...args) }));

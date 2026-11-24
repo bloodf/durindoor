@@ -248,37 +248,33 @@ describe("AUDIT-018: XSS escaping in OAuth callback", () => {
 // AUDIT-004 (#1963): TOCTOU-free OS-backed startup lock
 // ============================================================
 describe("AUDIT-004: OS-backed MITM startup lock", () => {
-  it("manager.js should acquire the configured loopback socket lock", () => {
+  it("manager.js should acquire the configured private lock", () => {
     const source = fs.readFileSync(
       path.resolve(repoRoot, "src/mitm/manager.js"),
       "utf-8"
     );
     expect(source).toContain("acquireSocketLock({ port: MITM_START_LOCK_PORT })");
-    expect(source).not.toContain(".mitm.lock");
+    expect(source).toContain("release: releaseSocketLock");
   });
 
-  it("should bind only loopback with an exclusive listener", () => {
+  it("should use exclusive private lockfiles with stale recovery", () => {
     const source = fs.readFileSync(
       path.resolve(repoRoot, "src/mitm/startLock.js"),
       "utf-8"
     );
-    expect(source).toContain('host = "127.0.0.1"');
-    expect(source).toContain("exclusive: true");
-    expect(source).toContain("EADDRINUSE");
+    expect(source).toContain('"wx"');
+    expect(source).toContain("process.kill(record.pid, 0)");
+    expect(source).toContain("removeFileIfUnchanged(filePath, snap, fsImpl)");
   });
 
-  it("should release through the listener handle without lock-file unlink", () => {
-    const managerSource = fs.readFileSync(
-      path.resolve(repoRoot, "src/mitm/manager.js"),
-      "utf-8"
-    );
+  it("should release only the lockfile owned by this process", () => {
     const lockSource = fs.readFileSync(
       path.resolve(repoRoot, "src/mitm/startLock.js"),
       "utf-8"
     );
-    expect(managerSource).toContain("release: releaseSocketLock");
-    expect(managerSource).not.toContain("unlinkSync(LOCK_FILE)");
-    expect(lockSource).toContain("owner.server.close");
+    expect(lockSource).toContain("owner.record");
+    expect(lockSource).toContain("owner.ino");
+    expect(lockSource).toContain("removeFileIfUnchanged(owner.filePath, current");
   });
 });
 

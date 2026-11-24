@@ -9,6 +9,8 @@
 import { describe, expect, it } from "vitest";
 import processScan from "../../cli/src/lib/processScan.js";
 
+const installCli = new URL("../../cli/cli.js", import.meta.url).pathname;
+
 const {
   collectAppPids,
   isAppProcess,
@@ -62,10 +64,10 @@ describe("parseProcessTable — a pid only ever comes from the pid column", () =
 
 describe("collectAppPids — verified candidates only", () => {
   const rows = [
-    { pid: 100, command: "node /app/9router/cli.js" },
+    { pid: 100, command: `node ${installCli} --port 20128` },
     { pid: 200, command: "next-server (v16.3.4)" },
     { pid: 300, command: "vim /home/me/notes.txt" },
-    { pid: 400, command: "node /app/9router/cli.js" },
+    { pid: 400, command: `node ${installCli} --port 20128` },
   ];
   // 400 looks like one of ours in the table but the pid now runs something else.
   const live = (pid) => {
@@ -74,22 +76,22 @@ describe("collectAppPids — verified candidates only", () => {
   };
 
   it("matches our processes and skips everything else", () => {
-    expect(collectAppPids({ processes: rows, readCommand: live, exclude: new Set(), ownsNextServer: () => true })).toEqual([100, 200]);
+    expect(collectAppPids({ processes: rows, readCommand: live, exclude: new Set(), installDir: new URL("../../cli/", import.meta.url).pathname, appPort: 20128, ownsNextServer: () => true })).toEqual([100, 200]);
   });
 
   it("never kills a number that only looked like a pid", () => {
     // The regression case: a wrapped line contributed 4096, and 4096 is a real
     // process — but not one of ours, so verification rejects it.
     const processes = [
-      { pid: 100, command: "node /app/9router/cli.js" },
+      { pid: 100, command: `node ${installCli} --port 20128` },
       { pid: 4096, command: "/home/me/app/node_modules/9router/hooks/trayRuntime.js" },
     ];
-    const readCommand = (pid) => (pid === 4096 ? "postgres -D /var/lib/postgres" : "node /app/9router/cli.js");
-    expect(collectAppPids({ processes, readCommand, exclude: new Set() })).toEqual([100]);
+    const readCommand = (pid) => (pid === 4096 ? "postgres -D /var/lib/postgres" : `node ${installCli} --port 20128`);
+    expect(collectAppPids({ processes, readCommand, exclude: new Set(), installDir: new URL("../../cli/", import.meta.url).pathname, appPort: 20128 })).toEqual([100]);
   });
 
   it("skips a recycled pid that no longer matches", () => {
-    expect(collectAppPids({ processes: rows, readCommand: (pid) => (pid === 100 ? null : live(pid)), exclude: new Set(), ownsNextServer: () => true }))
+    expect(collectAppPids({ processes: rows, readCommand: (pid) => (pid === 100 ? null : live(pid)), exclude: new Set(), installDir: new URL("../../cli/", import.meta.url).pathname, appPort: 20128, ownsNextServer: () => true }))
       .toEqual([200]);
   });
 
@@ -97,11 +99,13 @@ describe("collectAppPids — verified candidates only", () => {
     const chain = ownProcessChain(30, (pid) => (pid === 30 ? 20 : pid === 20 ? 10 : null));
     expect([...chain].sort((a, b) => a - b)).toEqual([10, 20, 30]);
 
-    const all = [10, 20, 30].map((pid) => ({ pid, command: "node /app/9router/cli.js" }));
+    const all = [10, 20, 30].map((pid) => ({ pid, command: `node ${installCli} --port 20128` }));
     const pids = collectAppPids({
       processes: all,
-      readCommand: () => "node /app/9router/cli.js",
+      readCommand: () => `node ${installCli} --port 20128`,
       exclude: chain,
+      installDir: new URL("../../cli/", import.meta.url).pathname,
+      appPort: 20128,
     });
     // The supervisor (10, 20) started us; killing it would take down the thing
     // that keeps us running.

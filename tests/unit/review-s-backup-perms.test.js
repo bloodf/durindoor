@@ -34,7 +34,7 @@ describe("migration backup permissions", () => {
 
   it("passes PostgreSQL passwords through PGPASSWORD and strips them from psql URLs", () => {
     const script = readFileSync(new URL("../../scripts/copy-proxy-timeline-to-pg.sh", import.meta.url), "utf8");
-    expect(script).toMatch(/docker exec[^\n]*-e "PGPASSWORD=\$pg_password"[^\n]*psql/);
+    expect(script).toMatch(/PGPASSWORD="\$pg_password" docker exec[^\n]*-e PGPASSWORD[^\n]*psql/);
     expect(script).toMatch(/u\.password\s*=\s*""/);
     expect(script).not.toMatch(/psql\s+"\$DURINDOOR_PG_URL"/);
   });

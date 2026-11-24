@@ -65,6 +65,11 @@ export function isOidcAuthMode(authMode) {
   return ["sso", "oidc", "both"].includes(authMode);
 }
 
+/** Password remains available unless a configured OIDC-only mode is selected. */
+export function isPasswordLoginAllowed(settings) {
+  return !(settings && ["sso", "oidc"].includes(settings.authMode) && isOidcConfigured(settings));
+}
+
 export async function getOidcRuntimeConfig() {
   const settings = await getSettings();
   if (!isOidcAuthMode(settings.authMode) || !isOidcConfigured(settings)) return null;
@@ -294,7 +299,7 @@ let warnedEmptyAllowlist = false;
 /** Log once per process when OIDC is enabled but no identity is allowlisted. */
 export function warnIfOidcAllowlistEmpty(settings = {}) {
   if (warnedEmptyAllowlist) return;
-  if (!["oidc", "both"].includes(settings.authMode) || !isOidcAllowlistEmpty(settings)) return;
+  if (!isOidcAuthMode(settings.authMode) || !isOidcAllowlistEmpty(settings)) return;
   warnedEmptyAllowlist = true;
   console.warn("[oidc] OIDC login is enabled but oidcAllowedSubjects, oidcAllowedEmails and oidcAllowedDomains are all empty; " +
     "every OIDC login will be refused until an allowlist is configured.");

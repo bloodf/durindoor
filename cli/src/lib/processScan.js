@@ -101,6 +101,36 @@ function isLauncherProcess(command) {
   });
 }
 
+function launcherOwnedByInstall(command, options = {}) {
+  const tokens = String(command || "").match(/"[^\"]*"|'[^']*'|\S+/g) || [];
+  const cliIndex = tokens.findIndex((token) => /(?:^|[\\/])cli\.js$/i.test(token.replace(/^['"]|['"]$/g, "")));
+  if (cliIndex < 1 || options.appPort == null) return false;
+  const installCli = options.cliPath || (options.installDir && path.join(options.installDir, "cli.js"));
+  if (!installCli) return false;
+  let actualCli;
+  let expectedCli;
+  try {
+    actualCli = fs.realpathSync(tokens[cliIndex].replace(/^['"]|['"]$/g, ""));
+    expectedCli = fs.realpathSync(installCli);
+  } catch {
+    return false;
+  }
+  if (actualCli !== expectedCli) return false;
+  let port = null;
+  for (let i = cliIndex + 1; i < tokens.length; i += 1) {
+    const token = tokens[i].replace(/^['"]|['"]$/g, "");
+    if (token === "--port" || token === "-p") {
+      const value = tokens[i + 1] && tokens[i + 1].replace(/^['"]|['"]$/g, "");
+      if (!value || !/^\d+$/.test(value)) return false;
+      port = Number(value);
+      break;
+    }
+    const inline = token.match(/^--port=(\d+)$/);
+    if (inline) { port = Number(inline[1]); break; }
+  }
+  return port !== null && port === Number(options.appPort);
+}
+
 /** Command lines that mean "a candidate process of ours". Ownership is enforced by `collectAppPids`. */
 function isAppProcess(command) {
   const cmd = String(command || "");
@@ -371,6 +401,7 @@ function collectAppPids(options = {}) {
         !(options.ownsCloudflared || ownsCloudflared)(row.pid, live, options)) continue;
     if (isTrayProcess(live) &&
         !(options.ownsTrayProcess || ownsTrayProcess)(live, options)) continue;
+    if (isLauncherProcess(live) && !launcherOwnedByInstall(live, options)) continue;
     pids.push(row.pid);
   }
   return pids;
@@ -423,6 +454,7 @@ module.exports = {
   isCloudflaredProcess,
   isTrayProcess,
   isLauncherProcess,
+  launcherOwnedByInstall,
   ownsNextServer,
   ownsCloudflared,
   ownsTrayProcess,

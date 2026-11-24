@@ -80,7 +80,7 @@ function randomPositiveSerialHex(byteLength = ROOT_CA_SERIAL_BYTES) {
 }
 
 /**
- * Build a critical id-ce-nameConstraints value with permittedSubtrees dNSName entries.
+ * Permit target DNS names and exclude all IP, email, and URI names.
  * node-forge parses this OID but does not encode it via setExtensions helpers.
  * @param {string[]} hosts
  */
@@ -93,18 +93,32 @@ function buildNameConstraintsValue(hosts) {
   );
   return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
     asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, subtrees),
+    asn1.create(asn1.Class.CONTEXT_SPECIFIC, 1, true, [
+      [7, "\x00".repeat(8)],
+      [7, "\x00".repeat(32)],
+      [1, ""],
+      [6, ""],
+    ].map(([type, value]) => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(asn1.Class.CONTEXT_SPECIFIC, type, false, value),
+    ]))),
   ]);
 }
 
 /**
- * Legacy unconstrained CAs remain valid until natural rotation. Constrained CAs
- * must permit every current MITM target host; otherwise ensureRootCA regenerates.
+ * Reject legacy roots that lack the current constraints or exceed the validity limit.
  */
 function rootCACoversTargetHosts(certPath) {
   try {
     const cert = forge.pki.certificateFromPem(fs.readFileSync(certPath, "utf8"));
     const nc = cert.getExtension({ id: NAME_CONSTRAINTS_OID });
-    if (!nc) return true;
+    const maxExpiry = new Date(cert.validity.notBefore);
+    maxExpiry.setFullYear(maxExpiry.getFullYear() + ROOT_CA_VALIDITY_YEARS);
+    const eku = cert.getExtension("extKeyUsage");
+    if (!nc?.critical || nc.unsupportedSubtreeRange || cert.validity.notAfter > maxExpiry || !eku?.serverAuth ||
+      Object.keys(eku).some((key) => key !== "id" && key !== "name" && key !== "value" && key !== "critical" && key !== "serverAuth")) return false;
+    const excluded = nc.excludedSubtrees || [];
+    if (![[7, "\x00".repeat(8)], [7, "\x00".repeat(32)], [1, ""], [6, ""]]
+      .every(([type, value]) => excluded.some((entry) => entry.type === type && entry.value === value && entry.minimum === undefined && entry.maximum === undefined))) return false;
     const permitted = new Set(
       (nc.permittedSubtrees || [])
         .filter((subtree) => subtree.type === 2 && isString(subtree.value))
@@ -358,6 +372,10 @@ function createRootCAMaterial(permittedHosts = TARGET_HOSTS) {
       name: "subjectKeyIdentifier"
     },
     {
+      name: "extKeyUsage",
+      serverAuth: true,
+    },
+    {
       id: NAME_CONSTRAINTS_OID,
       name: "nameConstraints",
       critical: true,
@@ -398,6 +416,7 @@ function ensureRootCAInternal({ existingMessage, generatingMessage, successMessa
     return false;
   }
 
+  if (fs.existsSync(ROOT_CA_CERT_PATH)) console.log("[MITM] Rotating invalid Root CA; previous system trust will be removed after replacement trust is verified.");
   if (generatingMessage) console.log(generatingMessage);
   const { privateKeyPem, certPem } = createRootCAMaterial();
   publishRootCAPair(privateKeyPem, certPem);

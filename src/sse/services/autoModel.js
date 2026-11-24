@@ -1,5 +1,5 @@
 import { isString } from "@/shared/utils/typeChecks.js";
-import { buildModelsList } from "@/app/api/v1/models/buildModelsList.js";
+import { buildModelsList } from "@/shared/models/buildModelsList.js";
 import { getProviderConnections } from "@/lib/localDb";
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";

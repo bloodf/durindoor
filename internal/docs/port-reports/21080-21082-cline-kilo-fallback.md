@@ -1,13 +1,13 @@
 # OmniRoute #21080 and #21082: Cline retry hint and Kilo paid-model denial scope
 
-Source rows 9 and 11 of the [#1073 Nov 24 disposition](1073-nov24-commits-1.md). Fetched 2026-11-24 with `gh pr view` and `gh pr diff` against `cheaper-inference/OmniRoute`.
+Source rows 9 and 11 of the `1073-nov24-commits-1.md` (#1073 Nov 24 disposition, carried on the `orq/tows9a/integration` branch, not yet on `main`). Fetched 2026-11-24 with `gh pr view` and `gh pr diff` against `cheaper-inference/OmniRoute`.
 
 | Upstream PR | State | Head | Merge commit |
 |---|---|---|---|
 | [#21080](https://github.com/cheaper-inference/OmniRoute/pull/21080) `fix(sse): honor Cline daily free-limit countdown as a model lockout hint` | merged 2026-11-24T15:51:03Z | `b1ace531875a5640ead3ff1dd2d188b9c163b985` | `b65b8a728ccc8b97cfe5d61509c047635fd92aea` |
 | [#21082](https://github.com/cheaper-inference/OmniRoute/pull/21082) `fix(sse): lock only the model on Kilo PAID_MODEL_AUTH_REQUIRED` | merged 2026-11-24T15:52:41Z | `56d1842a74c48b49b7e2487114350b1eb91bf12a` | `af292fe49fd207de99c2c73d9454a777ac51d0e2` |
 
-DurinDoor PR: **none linked yet**. This report does not claim a completed port until the PR URL is recorded in the section below.
+DurinDoor PR: [#2484](https://github.com/bloodf/durindoor/pull/2484) (draft, base `main`). The port is not complete until it is reviewed and merged.
 
 ## Gaps confirmed on this checkout (base `640c0882e7`)
 
@@ -38,4 +38,4 @@ Upstream's `modelScopedAccessDenial.ts`, `errorClassifier.ts`, combo target-exha
 
 ## PR
 
-Pending.
+[#2484](https://github.com/bloodf/durindoor/pull/2484), draft, open at the time of writing.

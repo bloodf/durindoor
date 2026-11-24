@@ -6843,7 +6843,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx#ConnectionGroupsPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx",
       "symbol": "ConnectionGroupsPanel",
-      "sourceSha256": "b2c29c56eed90935a6a90ce64622e99e9c807c209a71ff50b7ef812e2cf7f5ee",
+      "sourceSha256": "e4d96d7e3758e81bc288d6e4fe1597143feb3f759f6b2ed7c3bfcaa3b338c3e3",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -6865,7 +6865,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx": "b2c29c56eed90935a6a90ce64622e99e9c807c209a71ff50b7ef812e2cf7f5ee",
+            "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx": "e4d96d7e3758e81bc288d6e4fe1597143feb3f759f6b2ed7c3bfcaa3b338c3e3",
             "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.stories.jsx": "cec52fca66c7c9dbc98412746729fcecaed509fc9e75b5df371477369f9d2b2b"
           },
           "proposedSourceEvidence": "ConnectionGroupsPanel.stories.jsx Empty",
@@ -6885,7 +6885,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx": "b2c29c56eed90935a6a90ce64622e99e9c807c209a71ff50b7ef812e2cf7f5ee",
+            "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx": "e4d96d7e3758e81bc288d6e4fe1597143feb3f759f6b2ed7c3bfcaa3b338c3e3",
             "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.stories.jsx": "cec52fca66c7c9dbc98412746729fcecaed509fc9e75b5df371477369f9d2b2b"
           },
           "proposedSourceEvidence": "Direct grouped fixture."
@@ -6899,7 +6899,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx": "b2c29c56eed90935a6a90ce64622e99e9c807c209a71ff50b7ef812e2cf7f5ee",
+            "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx": "e4d96d7e3758e81bc288d6e4fe1597143feb3f759f6b2ed7c3bfcaa3b338c3e3",
             "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.stories.jsx": "cec52fca66c7c9dbc98412746729fcecaed509fc9e75b5df371477369f9d2b2b"
           },
           "proposedSourceEvidence": "ConnectionGroupsPanel.stories.jsx CreateGroup",
@@ -103852,7 +103852,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "4de6e24b34a20c90f0a5ee0ac52b746fb81399b365b9fc2a08a93a51e046447b",
-    "sourceCensusSha256": "c12259e70614583e08a2a0abd024a0a9ed334373832d3ed681f480f7ef0cb701",
+    "sourceCensusSha256": "9cea505ab54f3886906413af6ae8ad17934999c4f3768bbbd8ed6c575b798ea7",
     "pendingRows": 449,
     "retainedApprovedRows": 198,
     "pendingReferences": 1494,

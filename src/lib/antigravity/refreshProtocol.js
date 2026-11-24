@@ -4,6 +4,7 @@ import { providerRefreshContext } from "../../shared/utils/providerCredentialCon
 import {
   acquireAntigravityLease,
   clearAntigravityLease,
+  holdsAntigravityDispatch,
   markAntigravityDispatched,
   markAntigravityReauth,
   markAntigravityUncertain,
@@ -57,7 +58,7 @@ function sessionFrom(db, lease) {
       let applied = false;
       try {
         db.transaction(() => {
-          if (!renewAntigravityLease(db, lease)) return;
+          if (!holdsAntigravityDispatch(db, lease)) return;
           const result = applyProviderConnectionPatchInTx(db, lease.connectionId, patch, {
             expectedRefreshContext,
             returnCommitResult: true,

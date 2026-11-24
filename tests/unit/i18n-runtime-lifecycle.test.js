@@ -21,6 +21,7 @@ describe("i18n runtime lifecycle", () => {
 
   afterEach(() => {
     teardownRuntimeI18n();
+    document.body.replaceChildren();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     document.cookie = "locale=; max-age=0; path=/";
@@ -39,18 +40,42 @@ describe("i18n runtime lifecycle", () => {
     const callback = vi.fn();
     const unsubscribe = onLocaleChange(callback);
 
-    const older = reloadTranslations();
-    document.cookie = "locale=fr; path=/";
-    const newer = reloadTranslations();
-    frResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Français" }) });
-    await newer;
-    expect(translate("Label")).toBe("Français");
-    viResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Tiếng Việt" }) });
-    await older;
+    try {
+      const older = reloadTranslations();
+      document.cookie = "locale=fr; path=/";
+      const newer = reloadTranslations();
+      frResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Français" }) });
+      await newer;
+      expect(translate("Label")).toBe("Français");
+      viResponse.resolve({ ok: true, status: 200, json: async () => ({ Label: "Tiếng Việt" }) });
+      await older;
 
-    expect(translate("Label")).toBe("Français");
-    expect(callback).toHaveBeenCalledTimes(1);
-    unsubscribe();
+      expect(translate("Label")).toBe("Français");
+      expect(callback).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("observes late text when a route reload supersedes initialization", async () => {
+    const initialResponse = deferred();
+    const fetch = vi.fn()
+      .mockReturnValueOnce(initialResponse.promise)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ Label: "New" }) });
+    vi.stubGlobal("fetch", fetch);
+
+    const initial = initRuntimeI18n();
+    await reloadTranslations();
+    initialResponse.resolve({ ok: true, json: async () => ({ Label: "Old" }) });
+    await initial;
+
+    expect(translate("Label")).toBe("New");
+    expect(observe).toHaveBeenCalledTimes(1);
+
+    const lateLabel = document.createElement("span");
+    lateLabel.textContent = "Label";
+    document.body.append(lateLabel);
+    await vi.waitFor(() => expect(lateLabel.textContent).toBe("New"));
   });
 
   it("reprocesses the current page when a same-locale route reload completes", async () => {

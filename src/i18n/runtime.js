@@ -170,18 +170,18 @@ export async function initRuntimeI18n() {
   if (observerHandle) return;
   if (initPromise) return initPromise;
 
-  // Each init/reload supersedes prior work. Stale completions cannot publish,
-  // notify, or mutate the DOM; an old init also cannot clear a newer pending handle.
+  // Only the latest request may publish translations and process existing text.
+  // Observer registration belongs to initialization for the active lifecycle.
   const lifecycle = lifecycleVersion;
   const work = ++workVersion;
   const promise = (async () => {
     syncLocaleFromCookie();
     const translations = await loadTranslations(currentLocale);
-    if (lifecycle !== lifecycleVersion || work !== workVersion) return;
-    translationMap = translations;
-
-    // Process existing DOM
-    processElement(document.body);
+    if (lifecycle !== lifecycleVersion) return;
+    if (work === workVersion) {
+      translationMap = translations;
+      processElement(document.body);
+    }
 
     // Watch for new nodes
     observerHandle = new MutationObserver((mutations) => {

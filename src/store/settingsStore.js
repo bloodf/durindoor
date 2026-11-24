@@ -27,7 +27,7 @@ async function readSettings(set, get, { revision, signal, cache, headers }) {
     const data = await api.get("/api/settings", { signal, cache, headers });
     signal?.throwIfAborted();
     if (!isRecord(data)) {
-      const error = "Invalid settings response";
+      const error = "Settings could not be loaded.";
       if (canPublish()) {
         publishedReadSequence = sequence;
         set({ error });

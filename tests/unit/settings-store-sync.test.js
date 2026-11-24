@@ -123,10 +123,10 @@ it.each([
 
   const response = await requestSettings();
   expect(response.ok).toBe(false);
-  await expect(response.json()).resolves.toEqual({ error: "Invalid settings response" });
+  await expect(response.json()).resolves.toEqual({ error: "Settings could not be loaded." });
   expect(useSettingsStore.getState()).toMatchObject({
     settings: previousSettings,
-    error: "Invalid settings response",
+    error: "Settings could not be loaded.",
     lastFetched: 0,
     loading: false,
   });

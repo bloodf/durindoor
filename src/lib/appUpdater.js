@@ -57,8 +57,14 @@ export function ensureRuntimeUpdater(bundledPath) {
     // The detached updater needs the same resolver after the package is replaced.
     const resolverPath = path.join(path.dirname(bundledPath), "dataDir.cjs");
     const runtimeResolver = path.join(runtimeDir, "dataDir.cjs");
+    const modeParserPath = path.join(path.dirname(bundledPath), "deploymentMode.cjs");
+    const runtimeModeParser = path.join(runtimeDir, "deploymentMode.cjs");
+    const statusCorsPath = path.join(path.dirname(bundledPath), "statusCors.cjs");
+    const runtimeStatusCors = path.join(runtimeDir, "statusCors.cjs");
     fs.mkdirSync(runtimeDir, { recursive: true });
     if (fs.existsSync(resolverPath)) fs.copyFileSync(resolverPath, runtimeResolver);
+    if (fs.existsSync(modeParserPath)) fs.copyFileSync(modeParserPath, runtimeModeParser);
+    if (fs.existsSync(statusCorsPath)) fs.copyFileSync(statusCorsPath, runtimeStatusCors);
     if (fs.existsSync(runtimePath)) {
       try {
         if (fileSha256(bundledPath) === fileSha256(runtimePath)) return runtimePath;
@@ -120,6 +126,7 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
       UPDATER_WAIT_CHECK_MS: String(UPDATER_CONFIG.waitForExitCheckMs),
       // Prefer live server port so wait/relaunch match instance (not hardcoded default)
       UPDATER_APP_PORT: appPort,
+      UPDATER_DEPLOYMENT_MODE: process.env.DEPLOYMENT_MODE || "local",
       UPDATER_RELAUNCH: "1",
       UPDATER_RELAUNCH_CMD: relaunch.cmd,
       UPDATER_RELAUNCH_ARGS: JSON.stringify(relaunchArgs),

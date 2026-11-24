@@ -36,6 +36,12 @@ Before retrying, revoke the affected key or select another account for it. Clear
 
 On a provider page, filter connections by name or email and select visible rows. Selections remain when the filter changes; expand the selection summary to review them. Clear the filter before reordering connection priorities. The selected actions enable, disable, test, or delete those accounts; deletion asks for confirmation. The test summary separates temporarily unavailable provider tests from invalid credentials and counts completed results hidden by the filter, with a control to reveal them. Switching providers or leaving the page aborts an in-flight test request, stops scheduling further accounts, and clears the session results. Failed bulk updates are listed by account and failed status updates stay selected for retry. The separate Apply Proxy action targets all connections shown in its dialog.
 
+## Auto combos with a restricted key
+
+For a restricted key, a chat request to an `auto/<family>` combo such as `auto/glm` tries only models whose provider has an active account in the key's selection. Models on other providers are left out before ranking and fallback. If no model remains, the request fails with the combo's normal 503 error.
+
+If DurinDoor cannot read the key's account selection, the chat auto combo keeps no models and the request fails. If it can read the selection but not the account list, it keeps the models and logs a warning. Account selection still applies the key's restriction before each request is sent. Saved combos and media, speech, search and fetch auto combos are not changed by this filter. Their accounts are still checked when each request is sent.
+
 ## Check native resource boundaries
 
 Native HTTP and WebSocket requests apply account and model restrictions, including nested execution models. Account-bound operations require `x-connection-id`; a failed pin cannot select a sibling account.

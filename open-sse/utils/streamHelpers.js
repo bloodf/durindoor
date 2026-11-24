@@ -1,5 +1,6 @@
 import { FORMATS } from "../translator/formats.js";
 import { buildErrorBody } from "./error.js";
+import { formatClaudeSseError } from "./sseFrames.js";
 import { SSE_DONE } from "./sseConstants.js";
 
 const sharedEncoder = new TextEncoder();
@@ -233,7 +234,7 @@ export function buildStreamErrorBytes(statusCode, message, clientFormat) {
 
   // Claude clients retry transient in-band failures when marked overloaded.
   const sse = clientFormat === FORMATS.CLAUDE
-    ? formatSSE({ type: "error", error: { ...error, type: "overloaded_error" } }, FORMATS.CLAUDE)
+    ? formatClaudeSseError({ ...error, type: "overloaded_error" })
     : formatSSE({ error }, clientFormat) + SSE_DONE;
 
   return sharedEncoder.encode(sse);

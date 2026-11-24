@@ -95,3 +95,8 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
     },
   };
 }
+
+/** Format an Anthropic error event with the standard SSE wire spelling. */
+export function formatClaudeSseError(error) {
+  return `event: error\ndata: ${JSON.stringify({ type: "error", error })}\n\n`;
+}

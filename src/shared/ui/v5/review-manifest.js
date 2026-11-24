@@ -6,12 +6,16 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-auto-configure--status-preview",
     "states": [
       "StatusPreview",
+      "PlainTextActions",
+      "DiagnosticActions",
       "RunSuccess",
       "RunFailure",
       "StatusLoadRecovery"
     ],
     "storyIds": [
       "v5-review-pages-auto-configure--status-preview",
+      "v5-review-pages-auto-configure--plain-text-actions",
+      "v5-review-pages-auto-configure--diagnostic-actions",
       "v5-review-pages-auto-configure--run-success",
       "v5-review-pages-auto-configure--run-failure",
       "v5-review-pages-auto-configure--status-load-recovery"
@@ -1298,6 +1302,9 @@ export const REVIEW_SURFACES = [
     "states": [
       "Open",
       "Empty",
+      "InvalidWindow",
+      "SlotsAboveMaximum",
+      "EnableSchedule",
       "ValidationError",
       "Loading",
       "SaveError"
@@ -1305,6 +1312,9 @@ export const REVIEW_SURFACES = [
     "storyIds": [
       "v5-review-pages-providers-autopingschedulemodal--open",
       "v5-review-pages-providers-autopingschedulemodal--empty",
+      "v5-review-pages-providers-autopingschedulemodal--invalid-window",
+      "v5-review-pages-providers-autopingschedulemodal--slots-above-maximum",
+      "v5-review-pages-providers-autopingschedulemodal--enable-schedule",
       "v5-review-pages-providers-autopingschedulemodal--validation-error",
       "v5-review-pages-providers-autopingschedulemodal--loading",
       "v5-review-pages-providers-autopingschedulemodal--save-error"

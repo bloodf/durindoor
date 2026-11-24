@@ -24992,6 +24992,9 @@
         "production-providers-autopingschedulemodal--open",
         "production-providers-autopingschedulemodal--empty",
         "production-providers-autopingschedulemodal--validation-error",
+        "production-providers-autopingschedulemodal--invalid-window",
+        "production-providers-autopingschedulemodal--slots-above-maximum",
+        "production-providers-autopingschedulemodal--enable-schedule",
         "production-providers-autopingschedulemodal--loading",
         "production-providers-autopingschedulemodal--save-error"
       ],
@@ -25001,65 +25004,115 @@
           "storyId": "production-providers-autopingschedulemodal--open",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--open",
           "axes": [
-            "source-association-pending-review"
+            "enabled",
+            "preview",
+            "controls"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Open initializes the enabled schedule, named fields and deterministic slot preview."
         },
         {
           "id": "production-providers-autopingschedulemodal--empty",
           "storyId": "production-providers-autopingschedulemodal--empty",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--empty",
           "axes": [
-            "source-association-pending-review"
+            "disabled schedule",
+            "controls",
+            "save callback"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Empty renders a disabled schedule; Save calls the story callback with null."
         },
         {
           "id": "production-providers-autopingschedulemodal--validation-error",
           "storyId": "production-providers-autopingschedulemodal--validation-error",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--validation-error",
           "axes": [
-            "source-association-pending-review"
+            "validation",
+            "anchor"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "ValidationError rejects a malformed anchor, exposes field guidance and blocks Save."
+        },
+        {
+          "id": "production-providers-autopingschedulemodal--invalid-window",
+          "storyId": "production-providers-autopingschedulemodal--invalid-window",
+          "runtimeArtifactId": "production-providers-autopingschedulemodal--invalid-window",
+          "axes": [
+            "validation",
+            "window"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
+          },
+          "proposedSourceEvidence": "InvalidWindow rejects 25 hours, exposes the supported 0.5 to 24 hour range and blocks Save."
+        },
+        {
+          "id": "production-providers-autopingschedulemodal--slots-above-maximum",
+          "storyId": "production-providers-autopingschedulemodal--slots-above-maximum",
+          "runtimeArtifactId": "production-providers-autopingschedulemodal--slots-above-maximum",
+          "axes": [
+            "validation",
+            "computed maximum"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
+          },
+          "proposedSourceEvidence": "SlotsAboveMaximum uses a 5-hour window (maximum 4) and rejects 5 pings per day."
+        },
+        {
+          "id": "production-providers-autopingschedulemodal--enable-schedule",
+          "storyId": "production-providers-autopingschedulemodal--enable-schedule",
+          "runtimeArtifactId": "production-providers-autopingschedulemodal--enable-schedule",
+          "axes": [
+            "disabled schedule",
+            "interaction",
+            "preview"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
+          },
+          "proposedSourceEvidence": "EnableSchedule starts disabled, then reveals the enabled schedule preview after checkbox interaction."
         },
         {
           "id": "production-providers-autopingschedulemodal--loading",
           "storyId": "production-providers-autopingschedulemodal--loading",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--loading",
           "axes": [
-            "source-association-pending-review"
+            "pending save",
+            "controls"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "Loading holds the save promise pending and disables repeat submission and dismissal controls."
         },
         {
           "id": "production-providers-autopingschedulemodal--save-error",
           "storyId": "production-providers-autopingschedulemodal--save-error",
           "runtimeArtifactId": "production-providers-autopingschedulemodal--save-error",
           "axes": [
-            "source-association-pending-review"
+            "failed save",
+            "alert"
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js": "79988ed3a1cf93743314199a87c81e70b1ad1fb27d4964dd3a9098c9822034ff",
-            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "43b77651833ac0fc3d636af49bde6f57a8046dcdd921f9beece51572ef8e0fae"
+            "src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.stories.jsx": "15032010f7fb37db082ab92904a9f6b995204d0f89b4aed4c709966643acaf9e"
           },
-          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+          "proposedSourceEvidence": "SaveError rejects the synthetic save callback, retains the dialog and announces the failure."
         }
       ],
       "unresolvedHistoricalScenarioIds": [],
@@ -76406,7 +76459,37 @@
     {
       "storyId": "v5-review-pages-auto-configure--status-preview",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
-      "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+      "sourceSha256": "c534ec75e2ab955d877408bf578271aceccc6f365301bea9d3897c7aee00b073",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-auto-configure--status-preview",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
+        "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-auto-configure--plain-text-actions",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
+      "sourceSha256": "c534ec75e2ab955d877408bf578271aceccc6f365301bea9d3897c7aee00b073",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-auto-configure--diagnostic-actions",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
+      "sourceSha256": "c534ec75e2ab955d877408bf578271aceccc6f365301bea9d3897c7aee00b073",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -76416,32 +76499,62 @@
     {
       "storyId": "v5-review-pages-auto-configure--run-success",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
-      "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+      "sourceSha256": "c534ec75e2ab955d877408bf578271aceccc6f365301bea9d3897c7aee00b073",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-auto-configure--run-success",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
+        "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-auto-configure--run-failure",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
-      "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+      "sourceSha256": "c534ec75e2ab955d877408bf578271aceccc6f365301bea9d3897c7aee00b073",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-auto-configure--run-failure",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
+        "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-auto-configure--status-load-recovery",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
-      "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+      "sourceSha256": "c534ec75e2ab955d877408bf578271aceccc6f365301bea9d3897c7aee00b073",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-auto-configure--status-load-recovery",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-auto-configure-autoconfigureclient.stories.jsx",
+        "sourceSha256": "ea1dce84fd205773a2e65f8bb4bfbef66f9081ec14a687805d849b2b7d3dd22e",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-cli-tools-clitoolspageclient--catalog",
@@ -80086,7 +80199,47 @@
     {
       "storyId": "v5-review-pages-providers-autopingschedulemodal--open",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
-      "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-providers-autopingschedulemodal--open",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+        "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-providers-autopingschedulemodal--empty",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-providers-autopingschedulemodal--empty",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+        "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
+    },
+    {
+      "storyId": "v5-review-pages-providers-autopingschedulemodal--invalid-window",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -80094,9 +80247,19 @@
       "reviewEvidence": null
     },
     {
-      "storyId": "v5-review-pages-providers-autopingschedulemodal--empty",
+      "storyId": "v5-review-pages-providers-autopingschedulemodal--slots-above-maximum",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
-      "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-autopingschedulemodal--enable-schedule",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -80106,32 +80269,62 @@
     {
       "storyId": "v5-review-pages-providers-autopingschedulemodal--validation-error",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
-      "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-providers-autopingschedulemodal--validation-error",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+        "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-providers-autopingschedulemodal--loading",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
-      "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-providers-autopingschedulemodal--loading",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+        "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-providers-autopingschedulemodal--save-error",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
-      "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+      "sourceSha256": "d9bfd6f1a365f7f09114ce53285fec143d3a2eef3dbca438289fbf68d86ca270",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
       "runtimeStatus": "pending",
-      "reviewEvidence": null
+      "reviewEvidence": null,
+      "historicalReferenceReview": {
+        "storyId": "v5-review-pages-providers-autopingschedulemodal--save-error",
+        "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-autopingschedulemodal.stories.jsx",
+        "sourceSha256": "6461191d4d1f37613b3e233b3881a6214084b412ed73cfecf0b8294ea121614f",
+        "reviewStatus": "pending",
+        "reviewedBy": null,
+        "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+        "runtimeStatus": "pending",
+        "reviewEvidence": null
+      }
     },
     {
       "storyId": "v5-review-pages-providers-bulkimportcodexmodal--open",
@@ -103516,11 +103709,11 @@
   "historicalInventoryRows": [],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "24cc0b8a7d6703b045a3c3eaf7dd0a1f60db0249d5313f528bea04fd9755a879",
+    "builtIndexSha256": "4de6e24b34a20c90f0a5ee0ac52b746fb81399b365b9fc2a08a93a51e046447b",
     "sourceCensusSha256": "1156de2962c39f46b26c41d120409f6befedca9847d6e473b6af3caea982e737",
     "pendingRows": 448,
     "retainedApprovedRows": 199,
-    "pendingReferences": 1489,
+    "pendingReferences": 1494,
     "runtimeStatus": "pending"
   }
 }

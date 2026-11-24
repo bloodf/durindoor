@@ -14,7 +14,7 @@ fnm exec --using=24.22.2 node scripts/local-ci.mjs \
   --website always --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"
 ```
 
-Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Four sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. `cd tests && pnpm run test:ci` uses the same partition and batch arguments from `tests/__baseline__/full-batches.mjs`, with its own 300-second ceiling per command, so a developer or hosted run exercises the same commands as the checkpoint. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
+Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Twelve sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. `cd tests && pnpm run test:ci` uses the same partition and batch arguments from `tests/__baseline__/full-batches.mjs`, with its own 300-second ceiling per command, so a developer or hosted run exercises the same commands as the checkpoint. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
 
 ## Workflow coverage
 
@@ -23,7 +23,7 @@ Audited all ten workflows at main `05614249fae91cbb8c4022e91607857e3f942e25`.
 | Workflow and jobs | Local coverage | Hosted control retained |
 | --- | --- | --- |
 | `ci.yml`: lint-and-build, website-build | Root lint, agent index, Postgres migration registry, app build; website build with exact base/head input selection; docs/catalog plus registry-index checks | Manual dispatch, website always built |
-| `test.yml`: vitest | Complete configured/tracked inventory, four supervised batches, empty baseline, fresh JSON/JUnit and hashes | Manual dispatch with explicit base SHA; uploaded reports |
+| `test.yml`: vitest | Complete configured/tracked inventory, twelve supervised batches, empty baseline, fresh JSON/JUnit and hashes | Manual dispatch with explicit base SHA; uploaded reports |
 | `commitlint.yml`: commitlint | Exact base..head and supplied squash title, pinned commitlint | Manual dispatch with base SHA and title |
 | `artifact-smoke.yml`: smoke | Full mode builds standalone and CLI, packs, installs the exact tarball into an isolated prefix and smokes both artifacts; hashes the tarball | Existing manual smoke fallback |
 | `nightly.yml`: nightly | Lint/index/build/tests/reports covered by full mode | Schedule/manual control and prerelease creation unchanged; enabled state is owner-managed |
@@ -97,7 +97,7 @@ The orchestrator or a review worker that ran the gate verifies its own run befor
 
 - covered the exact PR base and head;
 - every mandatory command exit 0 within its 300-second ceiling;
-- all four test batches passing, with their union equal to the tracked test inventory;
+- all twelve test batches passing, with their union equal to the tracked test inventory;
 - an empty failure baseline.
 
 A review from a different model family than the author must be recorded on the PR. Reread the PR head right before merging; if it changed, run the gate again. Attaching the run summary to the PR is enough evidence. Posting a commit status is optional, and no owner-held receipt is required. Never publish secrets or private filesystem paths in PR comments.

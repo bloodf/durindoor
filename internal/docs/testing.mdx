@@ -54,7 +54,7 @@ cd tests && pnpm run test:ci
 
 1. Deletes stale `.test-results.json`, `.test-results.junit.xml` and `.full-inventory.json`.
 2. Discovers the configured inventory with `vitest list --filesOnly`, and fails if any tracked `tests/**/*.test.js` file (minus the config exclusions) is missing from it.
-3. Splits the inventory into four sorted round-robin batches (`tests/__baseline__/full-batches.mjs`) and runs them as four sequential Vitest commands, each with `--maxWorkers=4 --isolate --pool=forks` and its own `.full-batch-N.json` report.
+3. Splits the inventory into twelve sorted round-robin batches (`tests/__baseline__/full-batches.mjs`) and runs them as twelve sequential Vitest commands, each with `--maxWorkers=4 --isolate --pool=forks` and its own `.full-batch-N.json` report.
 4. Gives every command, discovery included, its own 300-second ceiling. At the ceiling it kills the command's whole process group, fork workers included, and the gate fails.
 5. Fails closed on missing, stale, or unparseable reports, empty collection, collection failures, runtime errors, exit/report mismatches, and a batch report that does not cover exactly its batch.
 6. Merges the batch reports into `.test-results.json` and writes `.test-results.junit.xml`.

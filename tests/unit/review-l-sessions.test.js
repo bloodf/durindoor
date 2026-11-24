@@ -40,7 +40,10 @@ describe("dashboard session revocation across MFA and logout (#2244)", () => {
 
   it("rotates the epoch when a dashboard session is logged out", async () => {
     const token = await session.createDashboardAuthToken({ passwordSessionEpoch: "epoch-A", mfa: "totp" });
-    await logout.POST();
+    await logout.POST(new Request("http://localhost/api/auth/logout", {
+      method: "POST",
+      headers: { host: "localhost", origin: "http://localhost", cookie: `auth_token=${token}` },
+    }));
 
     expect(mocks.settings.passwordSessionEpoch).not.toBe("epoch-A");
     expect(mocks.cookieDelete).toHaveBeenCalledWith("auth_token");

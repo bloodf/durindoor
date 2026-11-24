@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   attachTokensPerSecond,
   generationDurationMs,
+  MAX_PLAUSIBLE_TOKENS_PER_SECOND,
+  MIN_GENERATION_WINDOW_MS,
   tokensPerSecond,
 } from "../../open-sse/utils/generationThroughput.js";
 import { filterUsageForFormat } from "../../open-sse/utils/usageTracking.js";
@@ -25,6 +27,22 @@ describe("generationThroughput (port of OmniRoute #12631)", () => {
     expect(generationDurationMs(3000, 3000)).toBeNull();
     expect(generationDurationMs(2000, 3000)).toBeNull();
     expect(tokensPerSecond(0, 2000)).toBeNull();
+  });
+
+  it("accepts a plausible rate and rejects generation windows below 250 ms", () => {
+    expect(MIN_GENERATION_WINDOW_MS).toBe(250);
+    expect(tokensPerSecond(100, 249)).toBeNull();
+    expect(tokensPerSecond(100, 250)).toBe(400);
+    expect(tokensPerSecond(100, 1000)).toBe(100);
+    expect(attachTokensPerSecond({ completion_tokens: 100 }, 249)).toEqual({ completion_tokens: 100 });
+  });
+
+  it("rejects rates above 5000 tok/s and accepts the exact ceiling", () => {
+    expect(MAX_PLAUSIBLE_TOKENS_PER_SECOND).toBe(5000);
+    expect(tokensPerSecond(5000, 1000)).toBe(5000);
+    expect(tokensPerSecond(5001, 1000)).toBeNull();
+    expect(tokensPerSecond(200000, 1000)).toBeNull();
+    expect(attachTokensPerSecond({ completion_tokens: 6000 }, 1000)).toEqual({ completion_tokens: 6000 });
   });
 
   it("omits tok/s when there are no output tokens", () => {

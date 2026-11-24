@@ -179,3 +179,5 @@ curl http://localhost:20128/v1/chat/completions \
 Confirm the provider and the account on **Usage**. A saved connection and a successful probe do not prove that chat, streaming, or tools work on that server.
 
 Related pages: [OpenAI-compatible nodes](./openai-compatible-nodes.mdx), [Free and local](./free-and-local.mdx), [Local router providers](./local-router-providers.mdx).
+
+Ollama Local embedding requests send the connection API key as a bearer token when configured, including when Ollama is behind an authenticated reverse proxy. Without a key, requests omit the authorization header.

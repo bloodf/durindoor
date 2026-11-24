@@ -20,6 +20,8 @@ import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRe
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
 import { isEncryptedBlob } from "../crypto/columnCrypto.js";
 import { encryptConnectionSecret, decryptConnectionSecret } from "./helpers/connectionSecrets.js";
+import { EXPORT_SCRUBBED_SETTING_KEYS } from "../settings/settingsSchema.js";
+import { encryptProxyPoolSecrets, decryptProxyPoolSecrets } from "./repos/proxyPoolsRepo.js";
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
 import {
@@ -382,13 +384,8 @@ export {
   countRequestDetailsSince, iterateRequestDetailsSince } from
 "./repos/requestDetailsRepo.js";
 
-/** Settings keys dropped from scrubbed portable exports (issue #2208). */
-const SCRUBBED_SETTING_SECRET_KEYS = Object.freeze([
-  "postgresUrl",
-  "oidcClientSecret",
-  "mfaSecret",
-  "mfaBackupCodes",
-]);
+/** Settings keys dropped from scrubbed portable exports (issues #2208, #2440). */
+const SCRUBBED_SETTING_SECRET_KEYS = EXPORT_SCRUBBED_SETTING_KEYS;
 
 /** Auth settings importDb must keep from the live install (issue #2297). */
 const IMPORT_PRESERVED_AUTH_KEYS = Object.freeze([
@@ -435,7 +432,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
       }),
       providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
       proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => {
-        const pool = { ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt };
+        const pool = decryptProxyPoolSecrets({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt }, r.id);
         return includeSecrets ? pool : scrubProxyPoolForExport(pool);
       }),
       apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {
@@ -646,6 +643,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
     // Retain MCP credentials when importing a scrubbed export into the same
     // installation, matching provider-connection secret preservation.
+    // Scrubbed exports drop relaySecret; keep the live (encrypted) value per pool id.
+    const priorPoolRelaySecrets = new Map(db.all(`SELECT id, data FROM proxyPools`).map((row) => [row.id, parseJson(row.data, {}).relaySecret]));
     const priorMcpSecrets = new Map(db.all(`SELECT id, url, env, headers, oauthTokens FROM mcpInstances`).map((row) => [row.id, row]));
     // Wipe all tables (keep _meta)
     // Usage history is intentionally retained for operator analytics, but its
@@ -700,10 +699,14 @@ export async function importDb(payload, { now = Date.now() } = {}) {
         if (Object.hasOwn(priorSettings, key)) nextSettings[key] = priorSettings[key];
         else delete nextSettings[key];
       }
+      // A scrubbed export omits these; keep the live values (issue #2440).
+      for (const key of SCRUBBED_SETTING_SECRET_KEYS) {
+        if (!Object.hasOwn(nextSettings, key) && Object.hasOwn(priorSettings, key)) nextSettings[key] = priorSettings[key];
+      }
       db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(nextSettings)]);
     } else if (Object.keys(priorSettings).length > 0) {
       const kept = {};
-      for (const key of IMPORT_PRESERVED_AUTH_KEYS) {
+      for (const key of [...IMPORT_PRESERVED_AUTH_KEYS, ...SCRUBBED_SETTING_SECRET_KEYS]) {
         if (Object.hasOwn(priorSettings, key)) kept[key] = priorSettings[key];
       }
       if (Object.keys(kept).length > 0) {
@@ -737,9 +740,14 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
     for (const p of payload.proxyPools || []) {
       const { id, isActive, testStatus, createdAt, updatedAt, ...rest } = p;
+      if (isEncryptedBlob(rest.relaySecret)) throw new Error(`Import field "relaySecret" must not contain an encrypted credential blob`);
+      let poolData = encryptProxyPoolSecrets(rest, id);
+      if (!Object.hasOwn(rest, "relaySecret") && priorPoolRelaySecrets.get(id)) {
+        poolData = { ...poolData, relaySecret: priorPoolRelaySecrets.get(id) };
+      }
       db.run(
         `INSERT OR REPLACE INTO proxyPools(id, isActive, testStatus, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-        [id, isActive === false ? 0 : 1, testStatus || "unknown", stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
+        [id, isActive === false ? 0 : 1, testStatus || "unknown", stringifyJson(poolData), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
       );
     }
     writeQuotaPortableStateSync(db, quota);

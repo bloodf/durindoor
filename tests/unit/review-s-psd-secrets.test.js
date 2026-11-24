@@ -229,8 +229,8 @@ describe("review-s-psd-secrets (#2281)", () => {
     const exported = await localDb.exportDb();
     expect(exported.settings.postgresUrl).toBeUndefined();
     expect(exported.settings.outboundProxyUrl).toBeUndefined();
-    expect(exported.settings.operatorWebhooks[0].secret).toBeUndefined();
-    expect(exported.settings.operatorWebhooks[0].url).toBe("https://hooks.example/a");
+    // #2440: operatorWebhooks is schema-secret, so scrubbed exports drop it whole.
+    expect(exported.settings.operatorWebhooks).toBeUndefined();
     expect(exported.settings.theme).toBe("system");
     expect(exported.proxyPools[0].proxyUrl).toBeUndefined();
     expect(exported.proxyPools[0].name).toBe("corp");

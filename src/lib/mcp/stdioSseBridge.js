@@ -142,6 +142,20 @@ function getOrSpawn(name) {
       try { msg = JSON.parse(line); } catch {
         continue;
       }
+      if (isObject(msg) && msg.id !== undefined && isString(msg.method)) {
+        const targetSessionId = entry.sessions.size === 1
+          ? entry.sessions.keys().next().value
+          : entry.lastSessionId;
+        const send = targetSessionId && entry.sessions.get(targetSessionId);
+        if (send) {
+          if (msg.id !== undefined) {
+            if (!entry.serverRequests) entry.serverRequests = new Set();
+            entry.serverRequests.add(msg.id);
+          }
+          try { send(`event: message\ndata: ${JSON.stringify(msg)}\n\n`); } catch { /* ignore broken pipe */ }
+        }
+        continue;
+      }
       if (isObject(msg) && msg.id !== undefined && entry.pending.has(msg.id)) {
         const { sessionId, clientId } = entry.pending.get(msg.id);
         entry.pending.delete(msg.id);
@@ -212,12 +226,17 @@ function sendToChild(name, jsonRpc, sessionId) {
   if (!entry?.proc?.stdin?.writable) throw new Error(`Bridge not running: ${name}`);
   let frame = jsonRpc;
   if (sessionId && isObject(jsonRpc) && jsonRpc.id !== undefined) {
-    if (!entry.pending) entry.pending = new Map();
-    if (!entry.nextId) entry.nextId = 1;
-    const clientId = jsonRpc.id;
-    const internalId = entry.nextId++;
-    entry.pending.set(internalId, { sessionId, clientId });
-    frame = { ...jsonRpc, id: internalId };
+    if (entry.serverRequests?.has(jsonRpc.id) && !isString(jsonRpc.method)) {
+      entry.serverRequests.delete(jsonRpc.id);
+    } else {
+      if (isString(jsonRpc.method)) entry.lastSessionId = sessionId;
+      if (!entry.pending) entry.pending = new Map();
+      if (!entry.nextId) entry.nextId = 1;
+      const clientId = jsonRpc.id;
+      const internalId = entry.nextId++;
+      entry.pending.set(internalId, { sessionId, clientId });
+      frame = { ...jsonRpc, id: internalId };
+    }
   }
   entry.proc.stdin.write(`${JSON.stringify(frame)}\n`);
 }

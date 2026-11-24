@@ -7,4 +7,6 @@ const meta = { ...originalMeta, title: "V5 review/Pages/providers/ModelCatalogPr
 export default meta;
 export const Fresh = { ...reviewStory(original.Fresh, {"source":"src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx","standalone":false}) };
 export const Empty = { ...reviewStory(original.Empty, {"source":"src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx","standalone":false}) };
+export const StaleSnapshot = { ...reviewStory(original.StaleSnapshot, {"source":"src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx","standalone":false}) };
+export const DiscoveryBeforeFirstSnapshot = { ...reviewStory(original.DiscoveryBeforeFirstSnapshot, {"source":"src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx","standalone":false}) };
 export const Error = { ...reviewStory(original.Error, {"source":"src/app/(dashboard)/dashboard/providers/[id]/ModelCatalogProvenance.stories.jsx","standalone":false}) };

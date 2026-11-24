@@ -40,6 +40,11 @@
     "production-providers-autopingschedulemodal--slots-above-maximum",
     "production-providers-autopingschedulemodal--enable-schedule",
     "production-providers-autopingschedulemodal--loading",
-    "production-providers-autopingschedulemodal--save-error"
+    "production-providers-autopingschedulemodal--save-error",
+    "production-providers-modelcatalogprovenance--fresh",
+    "production-providers-modelcatalogprovenance--empty",
+    "production-providers-modelcatalogprovenance--stale-snapshot",
+    "production-providers-modelcatalogprovenance--discovery-before-first-snapshot",
+    "production-providers-modelcatalogprovenance--error"
   ]
 }

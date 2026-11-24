@@ -107,4 +107,4 @@ Default PR target is `main`. PR checklist, commit rules, and test workflow are i
 
 ## Agent tooling
 
-Read [the tooling guide](internal/docs/ai-tooling.md) before repository work. Product remains HOLD until explicit user approval.
+Read [the tooling guide](internal/docs/ai-tooling.md) before repository work.

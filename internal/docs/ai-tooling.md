@@ -1,6 +1,6 @@
 # Agent tooling
 
-Product development remains HOLD until the user explicitly resumes it. Completing tooling does not resume product work.
+Product development is active. The owner resumed it on 2026-11-24.
 
 The repository-only [preparation plan](ai-tooling-plan.md) records rollout steps and preserved product work.
 

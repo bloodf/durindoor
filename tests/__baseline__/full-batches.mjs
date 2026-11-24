@@ -2,8 +2,8 @@ import path from "node:path";
 import { validateVitestExecution } from "./run-ci.mjs";
 import { analyzeVitestReport } from "./verify-no-regression.mjs";
 
-// The repository allows four sequential Vitest commands, four fork workers each.
-export const FULL_BATCH_COUNT = 4;
+// The repository allows twelve sequential Vitest commands, four fork workers each.
+export const FULL_BATCH_COUNT = 12;
 export const FULL_BATCH_WORKERS = 4;
 
 // Sequential commands retain the complete configured inventory and normal isolation.

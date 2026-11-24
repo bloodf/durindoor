@@ -43,7 +43,7 @@ pnpm -C tests install --frozen-lockfile
 cd tests && pnpm run test:ci
 ```
 
-That command is the CI gate. It discovers the configured inventory, checks it against the tracked test files, and runs it as four sequential Vitest batches with four isolated fork workers each. Each command has its own five-minute ceiling. It merges the batch reports into one Vitest JSON report and feeds it to `tests/__baseline__/verify-no-regression.mjs`. `tests/__baseline__/known-fails.txt` is empty in this tree, so every failing assertion is a regression. Do not add entries.
+That command is the CI gate. It discovers the configured inventory, checks it against the tracked test files, and runs it as twelve sequential Vitest batches with four isolated fork workers each. Each command has its own five-minute ceiling. It merges the batch reports into one Vitest JSON report and feeds it to `tests/__baseline__/verify-no-regression.mjs`. `tests/__baseline__/known-fails.txt` is empty in this tree, so every failing assertion is a regression. Do not add entries.
 
 Offline translator tests need no credentials. `tests/translator/real/` runs only with `RUN_REAL=1` and requires `DATA_DIR` to point to a disposable copy of the data directory. Never point real tests at `~/.9router`; account and quota errors are skipped, while protocol failures are not.
 
@@ -72,7 +72,7 @@ Run focused tests directly from `tests/` with `node node_modules/vitest/vitest.m
 
 Every command has a five-minute ceiling. Keep HOME, DATA_DIR, caches and reports private to the run, and keep publisher and provider credentials out of the child environment. Failed commands, empty test collections, a non-empty failure baseline and SHA drift fail the run. Never skip security tests or use root or sudo.
 
-The full-mode test stage may use four sequential Vitest commands, at most four fork workers each, with per-file isolation. Together they must cover the complete tracked test inventory.
+The full-mode test stage may use twelve sequential Vitest commands, at most four fork workers each, with per-file isolation. Together they must cover the complete tracked test inventory.
 
 Manual Actions remain fallbacks. Release, tag, nightly and publishing stay separate controls. Docker validation runs on a disposable builder; candidate subprocesses never get Docker control or publisher credentials. See `internal/docs/local-ci.md` for job coverage.
 

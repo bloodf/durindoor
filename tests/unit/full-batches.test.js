@@ -13,7 +13,7 @@ const report = (files) => ({ success: true, numPassedTests: files.length, numTot
 describe("full gate batch completeness", () => {
   it("partitions every discovered file exactly once in stable order", () => {
     const files = Array.from({ length: 9 }, (_, i) => `unit/${i}.test.js`);
-    const batches = partitionInventory(files.map(file => ({ file: `${root}/${file}` })), root);
+    const batches = partitionInventory(files.map(file => ({ file: `${root}/${file}` })), root, 4);
     expect(batches.flat().sort()).toEqual(files);
     expect(batches.map(b => b.length)).toEqual([3, 2, 2, 2]);
     expect(() => partitionInventory([{ file: "/outside.test.js" }], root, 1)).toThrow();
@@ -36,8 +36,8 @@ describe("full gate batch completeness", () => {
     const runtime = { ...report(batches[0]), unhandledErrors: ["worker crashed"] };
     expect(() => mergeBatchReports(batches, [runtime], root)).toThrow(/runtime/);
   });
-  it("keeps the gate within four sequential commands of four isolated forks", () => {
-    expect(FULL_BATCH_COUNT).toBe(4);
+  it("keeps the gate within twelve sequential commands of four isolated forks", () => {
+    expect(FULL_BATCH_COUNT).toBe(12);
     expect(FULL_BATCH_WORKERS).toBe(4);
     expect(fullBatchArgs(root, ["unit/a.test.js"], "/r.json")).toEqual([
       path.join(root, "node_modules/vitest/vitest.mjs"), "run", "unit/a.test.js",

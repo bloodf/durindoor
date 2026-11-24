@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import config from "../vitest.config.js";
 
-// The full CI checkpoint runs four sequential batches under a 300s ceiling each.
+// The full CI checkpoint runs twelve sequential batches under a 300s ceiling each.
 // These settings keep that budget reachable without weakening isolation.
 describe("vitest runtime configuration", () => {
   it("caches transformed modules on disk so isolated forks stop re-transforming", () => {

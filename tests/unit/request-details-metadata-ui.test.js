@@ -84,6 +84,9 @@ describe("Request Details metadata-only UI", () => {
     const detailButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Detail");
     await act(async () => detailButton.click());
 
+    const drawerTitle = container.querySelector("aside h2");
+    expect(drawerTitle.textContent).toBe("Request details");
+    expect(drawerTitle.querySelector('[data-i18n-skip="true"]')).not.toBeNull();
     expect(container.textContent).toContain("Payloads intentionally redacted");
     for (const label of ["Client request", "Provider request", "Provider response", "Client response"]) {
       expect(container.textContent).toContain(label);

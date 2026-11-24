@@ -1,6 +1,8 @@
 "use client";
 
 import { requestSettings } from "@/store/settingsStore";
+import { REQUEST_DETAILS_TITLE } from "@/i18n/keyedMessages";
+import { useKeyedMessage } from "@/i18n/useKeyedMessage";
 
 import { getOutputTokens } from "./tokenDisplay.js";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -182,6 +184,7 @@ function JsonTreeNode({ name, data, depth = 0 }) {
 }
 
 export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
+  const requestDetailsTitle = useKeyedMessage(REQUEST_DETAILS_TITLE);
   const [details, setDetails] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -414,7 +417,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       <Drawer
         open={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        title="Request details"
+        title={<span data-i18n-skip="true">{requestDetailsTitle}</span>}
         width={520}
       >
         {selectedDetail ? (

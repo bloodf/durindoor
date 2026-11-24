@@ -36,6 +36,19 @@ describe("shared HTTP client", () => {
     await expect(api.get("/denied")).rejects.toMatchObject({ message: "Denied", status: 403, body: { error: "Denied" } });
     await expect(api.get("/bad")).rejects.toMatchObject({ message: "Bad Gateway", status: 502, body: null });
   });
+
+  it("can reject a GET from the status without reading a deferred error body", async () => {
+    const deferredBody = new Promise(() => {});
+    const json = vi.fn(() => deferredBody);
+    const fetch = vi.fn().mockResolvedValue({ ok: false, status: 503, statusText: "Service Unavailable", json });
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(api.get("/status", { cache: "no-store", skipErrorBody: true }))
+      .rejects.toMatchObject({ message: "Service Unavailable", status: 503, body: null });
+    expect(json).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith("/status", { cache: "no-store", headers: { "Content-Type": "application/json" } });
+  });
+
   it("supports strict JSON per request without changing tolerant defaults", async () => {
     const parseError = new SyntaxError("malformed response");
     const parse = vi.fn().mockRejectedValue(parseError);

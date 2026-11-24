@@ -38846,7 +38846,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx Overview",
           "expectedVisibleText": "Total requests",
@@ -39037,7 +39037,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx ProviderLimitCardHealthy",
           "expectedVisibleText": "OpenAI",
@@ -39060,7 +39060,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Direct message fixture.",
           "expectedVisibleText": "No API quota endpoint for this provider",
@@ -39084,7 +39084,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx ProviderLimitCardError",
           "expectedVisibleText": "429 rate limited",
@@ -39417,7 +39417,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx QuotaProgressHealthy",
           "expectedVisibleText": "85%",
@@ -39441,7 +39441,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx QuotaProgressDepleted",
           "expectedVisibleText": "3%",
@@ -39703,7 +39703,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx QuotaTablePaged",
           "expectedVisibleText": "Quota",
@@ -40460,7 +40460,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Connected parent focuses real active OpenAI node and leaves its gpt-5 ×2 tooltip visible at final state.",
           "expectedVisibleText": "gpt-5 ×2",
@@ -40485,7 +40485,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Invokes real connected topology focus interaction, then focuses Zoom In and asserts tooltip absent at final state.",
           "expectedVisibleText": "DurinDoor",
@@ -40757,7 +40757,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Connected parent focuses real active OpenAI node and leaves its gpt-5 ×2 tooltip visible at final state.",
           "expectedVisibleText": "gpt-5 ×2",
@@ -40781,7 +40781,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Own Empty passes providers=[], and production bypasses ReactFlow to render No providers connected. No RouterNode label is attributed to this branch.",
           "expectedVisibleText": "No providers connected",
@@ -40806,7 +40806,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Invokes real connected topology focus interaction, then focuses Zoom In and asserts tooltip absent at final state.",
           "expectedVisibleText": "DurinDoor",
@@ -41217,7 +41217,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Actual RouterNode in connected production topology renders DurinDoor, not Gateway.",
           "expectedVisibleText": "DurinDoor",
@@ -41406,7 +41406,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx ProviderTopologyConnected asserts enabled Zoom In, Zoom Out, and Fit View controls. Zoom In is accessible control metadata, not visible text; no text fallback is proposed.",
           "proposedControlAssertions": [
@@ -41433,7 +41433,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx ProviderTopologyTooltipDismissal focuses Zoom In after ProviderTopologyConnected and asserts tooltip absence at final state. DurinDoor remains graph text; tooltip text is intentionally absent.",
           "expectedVisibleText": "DurinDoor",
@@ -41698,7 +41698,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js#CollapsibleSection",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js",
       "symbol": "CollapsibleSection",
-      "sourceSha256": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+      "sourceSha256": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -41717,7 +41717,7 @@
             "expanded"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -41884,7 +41884,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js#JsonTreeNode",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js",
       "symbol": "JsonTreeNode",
-      "sourceSha256": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+      "sourceSha256": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -41906,7 +41906,7 @@
             "tokens-expanded"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -42081,7 +42081,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js#PayloadMetadata",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js",
       "symbol": "PayloadMetadata",
-      "sourceSha256": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+      "sourceSha256": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -42100,7 +42100,7 @@
             "metadata"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -42267,7 +42267,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js#RequestDetailsTab",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js",
       "symbol": "RequestDetailsTab",
-      "sourceSha256": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+      "sourceSha256": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -42287,7 +42287,7 @@
             "loaded"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -42310,7 +42310,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5",
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751",
             "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx": "86de999f0d8f0c0164c2c38aa7c658007a007d79d696ce91d64bd97582ca5d05",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -42585,7 +42585,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx RecentAndSessions",
           "expectedVisibleText": "Recent requests",
@@ -42775,7 +42775,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Private token renderer rendered by RecentAndSessions",
           "expectedVisibleText": "Recent requests",
@@ -42968,7 +42968,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTrend",
           "expectedVisibleText": "Usage trend",
@@ -42992,7 +42992,7 @@
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/app/(dashboard)/dashboard/usage/components/UsageTable.js": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTrendEmpty",
           "expectedVisibleText": "No usage data",
@@ -43255,7 +43255,7 @@
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTableCollapsed",
           "expectedVisibleText": "Requests",
@@ -43277,7 +43277,7 @@
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "Direct cost-mode fixture.",
           "expectedVisibleText": "Usage by Model (cost)",
@@ -43300,7 +43300,7 @@
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTablePending resets and restores story:usage:pending in beforeEach and verifies genuine parent and nested table output.",
           "expectedVisibleText": "3 pending",
@@ -43653,7 +43653,7 @@
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTablePending expands pending-openai, scopes assertions to nested Items for pending-openai table, and asserts its headers and item content.",
           "expectedVisibleText": "gpt-5-pending",
@@ -43870,7 +43870,7 @@
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTablePending asserts actual pendingBadge output.",
           "expectedVisibleText": "3 pending",
@@ -44051,7 +44051,7 @@
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
             "src/shared/ui/components/DataTable.jsx": "321bcf8528eaae04635d1974eb1f70c62a8d17e6d0e3e36cb971baed03ae33a2",
-            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "eddda10a6d78c1ae30be1d01379b9dcf9ff49b713a2afcfe54489245833339d5"
+            "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js": "f4e9e64ff386e5f1a6d055b1750c167bd749644048242df9556371869fdb1751"
           },
           "proposedSourceEvidence": "UsageSurface.stories.jsx UsageTablePending clicks Expand Group pending-openai, asserts aria-expanded, then asserts nested table contents.",
           "expectedVisibleText": "gpt-5-pending",
@@ -103985,7 +103985,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "869d89f56f08f0a70354dd4080dfd4bc21e0eba73e8f92cb5946cc643be58f82",
+    "sourceCensusSha256": "f19659fa09b24778743ba96a3d84dd3072245e31ed267894faee8d5577dae30d",
     "pendingRows": 450,
     "retainedApprovedRows": 197,
     "pendingReferences": 1496,

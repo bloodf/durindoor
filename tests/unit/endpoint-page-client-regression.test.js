@@ -25,6 +25,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { get } from "../../src/shared/utils/api.js";
 
 const ENDPOINT_SRC = readFileSync(
   fileURLToPath(
@@ -72,5 +73,37 @@ describe("EndpointPageClient regression (2ff1c49b7)", () => {
     }
     // The undefined ref identifier must not appear anywhere.
     expect(ENDPOINT_SRC).not.toMatch(/setTunnelEverReachableRef/);
+  });
+
+  it("uses the shared JSON client for only the three background status reads", () => {
+    expect(ENDPOINT_SRC.match(/get\("\/api\/tunnel\/status"/g)).toHaveLength(3);
+    expect(ENDPOINT_SRC.match(/get\("\/api\/tunnel\/status",\s*\{\s*skipErrorBody:\s*true\s*\}\)/g)).toHaveLength(2);
+    expect(ENDPOINT_SRC).toMatch(/get\("\/api\/tunnel\/status",\s*\{\s*cache:\s*"no-store",\s*skipErrorBody:\s*true\s*\}\)/);
+    expect(ENDPOINT_SRC).toMatch(/requestJSON\("\/api\/tunnel\/status",\s*\{\s*cache:\s*"no-store"\s*\}\)/);
+    expect(ENDPOINT_SRC).toMatch(/Promise\.all\(\[[\s\S]*?requestJSON\("\/api\/tunnel\/status"/);
+    expect(ENDPOINT_SRC).toMatch(/clientPingUrl\(/);
+    expect(ENDPOINT_SRC).toMatch(/clientPingAny\(/);
+    expect(ENDPOINT_SRC).toMatch(/fetch\("\/api\/tunnel\/(?:enable|disable)"/);
+    expect(ENDPOINT_SRC).toMatch(/catch\s*\{\s*\/\* ignore poll errors \*\/\s*\}/);
+  });
+
+  it("keeps background-read failures swallowed and preserves the shared client's null JSON fallback", async () => {
+    const originalFetch = globalThis.fetch;
+    const options = { skipErrorBody: true };
+    try {
+      globalThis.fetch = async () => Response.json({ tunnel: { enabled: true } });
+      await expect(get("/api/tunnel/status", options)).resolves.toEqual({ tunnel: { enabled: true } });
+
+      globalThis.fetch = async () => new Response("not json", { status: 200 });
+      await expect(get("/api/tunnel/status", options)).resolves.toBeNull();
+
+      globalThis.fetch = async () => new Response("unavailable", { status: 503 });
+      await expect(get("/api/tunnel/status", options)).rejects.toMatchObject({ status: 503 });
+
+      globalThis.fetch = async () => { throw new TypeError("offline"); };
+      await expect(get("/api/tunnel/status", options)).rejects.toThrow("offline");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

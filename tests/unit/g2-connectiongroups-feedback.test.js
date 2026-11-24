@@ -24,6 +24,16 @@ describe("connection group failure feedback and retry", () => {
   });
 
 
+  it.each([
+    [json({ error: { detail: "Unexpected shape" } }, false), "[object Object]"],
+    [{ ok: false, status: 500, statusText: "Server Error", json: async () => null }, "Request failed"],
+    [{ ok: false, status: 500, json: async () => { throw new SyntaxError("Bad JSON"); } }, "Bad JSON"],
+  ])("shows the original response error on initial read", async (response, message) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    await act(async () => root.render(React.createElement(ConnectionGroupsPanel)));
+    expect(within(host).getByRole("alert").textContent).toBe(message);
+  });
+
   it("does not publish an initial read after the panel unmounts", async () => {
     let finishInitial;
     const onGroupsChange = vi.fn();
@@ -107,5 +117,8 @@ describe("connection group failure feedback and retry", () => {
     }
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method).map(([url, init]) => [url, init.method]))
       .toEqual([["/api/connection-groups/group-1", method], ["/api/connection-groups/group-1", method]]);
+    const writes = fetchMock.mock.calls.filter(([, init]) => init?.method);
+    expect(writes.map(([, init]) => init.body)).toEqual(method === "PUT"
+      ? ['{"connectionIds":[]}', '{"connectionIds":[]}'] : [undefined, undefined]);
   });
 });

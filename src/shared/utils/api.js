@@ -1,13 +1,17 @@
 /** Small JSON HTTP client. Empty or non-JSON responses return null. */
 const DEFAULT_HEADERS = { "Content-Type": "application/json" };
 
-async function request(method, url, options = {}, data, jsonParseFallback = null) {
+async function request(method, url, requestOptions, data, jsonParseFallback = null) {
+  // Mutation wrappers accept null options, as they did when spreading options directly.
+  const { strictJson = false, ...options } = requestOptions ?? {};
   const init = { ...options, method, headers: { ...DEFAULT_HEADERS, ...options.headers } };
   // Fetch defaults to GET; omit the explicit method for existing read callers.
   if (method === "GET") delete init.method;
   if (data !== undefined) init.body = JSON.stringify(data);
   const response = await fetch(url, init);
-  const body = await Promise.resolve().then(() => response.json()).catch(() => jsonParseFallback);
+  const body = strictJson
+    ? (response.status === 204 ? null : await response.json())
+    : await Promise.resolve().then(() => response.json()).catch(() => jsonParseFallback);
   if (!response.ok) {
     const error = new Error(body?.error || response.statusText);
     error.status = response.status;
@@ -17,7 +21,7 @@ async function request(method, url, options = {}, data, jsonParseFallback = null
   return body;
 }
 
-/** jsonParseFallback applies to parse failures only. A valid JSON null stays null. */
+/** jsonParseFallback applies to parse failures only. strictJson propagates parse errors (except 204). */
 export const get = (url, { jsonParseFallback = null, ...options } = {}) =>
   request("GET", url, options, undefined, jsonParseFallback);
 export const post = (url, data, options = {}) => request("POST", url, options, data);

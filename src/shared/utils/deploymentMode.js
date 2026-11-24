@@ -1,7 +1,6 @@
-import { createRequire } from "node:module";
+import parser from "../../lib/updater/deploymentMode.cjs";
 
-const require = createRequire(import.meta.url);
-const { isHosted } = require("../../lib/updater/deploymentMode.cjs");
+const { isHosted } = parser;
 
 /** Hosted deployments never treat a reverse proxy as a local operator. */
 export { isHosted };

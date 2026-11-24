@@ -8,14 +8,14 @@ Upstream also changes `src/lib/usage/usageHistory/helpers.ts` to aggregate speed
 
 ## Open PR overlap
 
-Checked open DurinDoor PRs with `gh pr list --repo bloodf/durindoor --state open --limit 300` on 2026-11-24 and inspected their changed paths. PRs #2481, #2430, #2112, #1809 and #1784 do not touch `open-sse/utils/generationThroughput.js` or `tests/unit/generation-throughput.test.js`.
+Checked open DurinDoor PRs with `gh pr list --repo bloodf/durindoor --state open --limit 300` on 2026-11-24 and inspected their changed paths. PRs #2481, #2430, #2112, #1809 and #1784 do not touch `open-sse/utils/generationThroughput.js` or `tests/unit/omni-21092-throughput.test.js`.
 
 ## Change and evidence
 
 The local helper now omits samples with generation windows below 250 ms or computed rates above 5,000 tok/s. The exact boundaries remain valid: 250 ms and 5,000 tok/s are accepted. Existing stream and usage attachment paths already call this helper, so both inherit the bounds without changes to gateway routing or stream handling.
 
-`tests/unit/generation-throughput.test.js` adds literal expected results for plausible rates, the exact window and rate boundaries, too-short windows, over-ceiling rates, burst-like rates, and omission from attached usage.
+`tests/unit/omni-21092-throughput.test.js` adds literal expected results for plausible rates, the exact window and rate boundaries, too-short windows, over-ceiling rates, burst-like rates, and omission from attached usage. The file name matches the scoped evidence gate filter.
 
-Focused verification passed: `cd tests && timeout 300 node node_modules/vitest/vitest.mjs run unit/generation-throughput.test.js --maxWorkers=2` — 1 file, 8 tests. `git diff --check` passed.
+Focused verification passed: `cd tests && timeout 300 node node_modules/vitest/vitest.mjs run unit/omni-21092-throughput.test.js --maxWorkers=2` — 1 file, 8 tests. `git diff --check` passed.
 
 PR status: no DurinDoor PR link is established by this report; this is not a claim that the port is complete or merged.

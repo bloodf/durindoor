@@ -12,11 +12,12 @@ const config = Object.freeze({
 export default {
   config,
   flowType: "device_code",
-  async requestDeviceCode(cfg = config) {
+  async requestDeviceCode(cfg = config, _codeChallenge, _options, proxyOptions) {
     const response = await credentialFetch(fetch, `${cfg.stateUrl}?platform=${encodeURIComponent(cfg.platform)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", "X-Product": "SaaS" },
       body: JSON.stringify({ platform: cfg.platform }),
+      proxyOptions,
     });
     if (!response.ok) throw new Error(`WorkBuddy state request failed (${response.status})`);
     const payload = await response.json();
@@ -26,9 +27,10 @@ export default {
     return { device_code: state, user_code: state, verification_uri: url,
       verification_uri_complete: url, expires_in: 600, interval: Math.max(1, Math.floor(cfg.pollInterval / 1000)) };
   },
-  async pollToken(cfg, state) {
+  async pollToken(cfg, state, _codeVerifier, _extraData, proxyOptions) {
     const response = await credentialFetch(fetch, `${cfg.tokenUrl}?state=${encodeURIComponent(state)}`, {
       headers: { Accept: "application/json", "X-Product": "SaaS" },
+      proxyOptions,
     });
     if (!response.ok) return { ok: false, data: { error: "request_failed" } };
     const payload = await response.json();

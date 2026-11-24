@@ -33,6 +33,27 @@ export const CURSOR_API_OPT_IN_KEY = "enableSessionDispatch";
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
 const FALLBACK_TTL_MS = 55 * 60 * 1000;
 const EXCHANGE_TIMEOUT_MS = 15_000;
+const MAX_SESSIONS = 200;
+
+function cancelBody(response) {
+  try {
+    const cancellation = response?.body?.cancel?.();
+    cancellation?.catch?.(() => {});
+  } catch {}
+}
+
+function raceWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason || new DOMException("The operation was aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason || new DOMException("The operation was aborted", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener("abort", abort); resolve(value); },
+      (error) => { signal.removeEventListener("abort", abort); reject(error); },
+    );
+  });
+}
 
 export class CursorApiError extends Error {
   constructor(status, code, message, type = null) {
@@ -123,7 +144,7 @@ export class CursorApiExecutor extends CursorExecutor {
     this.inflight = new Map();
   }
 
-  async #exchange(apiKey, { signal, proxyOptions } = {}) {
+  async #exchange(apiKey, { proxyOptions } = {}) {
     if (!isCursorApiKey(apiKey)) {
       throw new CursorApiError(400, "cursor_api_key_format", `Cursor API keys start with ${CURSOR_API_KEY_PREFIXES.join(" or ")}.`, "invalid_request_error");
     }
@@ -132,7 +153,7 @@ export class CursorApiExecutor extends CursorExecutor {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", accept: "application/json" },
       body: "{}",
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      signal: timeout,
     };
     let response;
     try {
@@ -146,11 +167,13 @@ export class CursorApiExecutor extends CursorExecutor {
     }
     const mapped = mapStatus(response.status, "key exchange");
     if (mapped) {
+      cancelBody(response);
       const retryAfter = Number(response.headers?.get?.("retry-after"));
       if (mapped.status === 429 && Number.isFinite(retryAfter) && retryAfter > 0) mapped.retryAfterSec = retryAfter;
       throw mapped;
     }
     if (!response.ok) {
+      cancelBody(response);
       throw new CursorApiError(response.status >= 500 ? 502 : response.status, "cursor_api_exchange_failed",
         `Cursor API key exchange failed with HTTP ${response.status}`);
     }
@@ -162,14 +185,23 @@ export class CursorApiExecutor extends CursorExecutor {
   async resolveSession(apiKey, options = {}) {
     const key = fingerprint(String(apiKey));
     const cached = this.sessions.get(key);
-    if (cached && cached.expiresAt - REFRESH_SKEW_MS > this.now()) return cached;
+    if (cached && cached.expiresAt - REFRESH_SKEW_MS > this.now()) return raceWithSignal(Promise.resolve(cached), options.signal);
     const pending = this.inflight.get(key);
-    if (pending) return pending;
+    if (pending) return raceWithSignal(pending, options.signal);
     const exchange = this.#exchange(apiKey, options)
-      .then((token) => { this.sessions.set(key, token); return token; })
+      .then((token) => {
+        const now = this.now();
+        for (const [sessionKey, session] of this.sessions) {
+          if (session.expiresAt - REFRESH_SKEW_MS <= now) this.sessions.delete(sessionKey);
+        }
+        this.sessions.delete(key);
+        this.sessions.set(key, token);
+        while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value);
+        return token;
+      })
       .finally(() => { this.inflight.delete(key); });
     this.inflight.set(key, exchange);
-    return exchange;
+    return raceWithSignal(exchange, options.signal);
   }
 
   invalidateSession(apiKey) {
@@ -245,6 +277,7 @@ export class CursorApiExecutor extends CursorExecutor {
     const mapped = mapStatus(status, "chat");
     if (!mapped) return result;
     const response = errorBodyResponse(mapped);
+    cancelBody(original);
     transferProviderAttemptDispatch(original, response);
     return { ...result, response };
   }

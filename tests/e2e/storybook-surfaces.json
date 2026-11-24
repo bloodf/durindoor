@@ -46575,35 +46575,49 @@
       "id": "src/i18n/RuntimeI18nProvider.js#RuntimeI18nProvider",
       "sourcePath": "src/i18n/RuntimeI18nProvider.js",
       "symbol": "RuntimeI18nProvider",
-      "sourceSha256": "261596f361fbea284e89f2338ddee402799842f082281d11fb93e517380396f4",
-      "proposedClassification": "nonvisual",
-      "approvedClassification": "nonvisual",
-      "proposedCoverageRationale": "Theme/runtime i18n provider supplies app context; no standalone visible surface.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
+      "sourceSha256": "a57ea5edb01be3f31063e7826367ba4d9c23c263a0f84e967c0677895ba7d92a",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [],
       "approvedScenarioIds": [],
       "storyScenarios": [],
-      "approvedException": {
-        "reason": "src/i18n/RuntimeI18nProvider.js initializes/reloads runtime i18n and returns children unmodified; no own UI.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "src/i18n/RuntimeI18nProvider.js initializes/reloads runtime i18n and returns children unmodified; no own UI.",
-        "runtimeStatus": "pending"
-      },
+      "approvedException": null,
+      "reviewEvidence": null,
       "proposedException": {
         "reason": "src/i18n/RuntimeI18nProvider.js initializes/reloads runtime i18n and returns children unmodified; no own UI."
       },
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedSourceReviewNotes": "Context-only provider returns children; document-wide translation mutation observer has no teardown API. Not mounted or mocked as standalone visual coverage. Parent real-route proof required for translation behavior.",
       "requiredIntegrationEvidence": [
         "Actual Next.js locale initialization and document translation behavior; Storybook child rendering is not standalone provider runtime proof."
       ],
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "261596f361fbea284e89f2338ddee402799842f082281d11fb93e517380396f4",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "nonvisual",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "src/i18n/RuntimeI18nProvider.js initializes/reloads runtime i18n and returns children unmodified; no own UI.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "storyScenarios": [],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "src/i18n/RuntimeI18nProvider.js initializes/reloads runtime i18n and returns children unmodified; no own UI.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/shared/components/AddCustomEmbeddingModal.js#AddCustomEmbeddingModal",
@@ -103971,9 +103985,9 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "36492a67ffa49ceebc5d6ac8093942fe4b655771c188ee11e2b0ed04aa5e66fb",
-    "pendingRows": 449,
-    "retainedApprovedRows": 198,
+    "sourceCensusSha256": "869d89f56f08f0a70354dd4080dfd4bc21e0eba73e8f92cb5946cc643be58f82",
+    "pendingRows": 450,
+    "retainedApprovedRows": 197,
     "pendingReferences": 1496,
     "runtimeStatus": "pending"
   }

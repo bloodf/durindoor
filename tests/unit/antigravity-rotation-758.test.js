@@ -487,6 +487,22 @@ describe("antigravity rotation route", () => {
     expect(await denied.text()).not.toContain(SECRET);
   });
 
+  it("keeps recovery status flags false when stored lease values are true", async () => {
+    const db = await openDb();
+    insertConnection(db, "stored-flags", SAME_TOKEN, "subject-1");
+    const { acquireAntigravityLease } = await import("../../src/lib/antigravity/leaseSql.js");
+    expect(acquireAntigravityLease(db, { connectionId: "stored-flags", refreshToken: SAME_TOKEN, owner: "status-test" }).ok).toBe(true);
+    db.run(
+      "UPDATE antigravityRefreshLeases SET recoveryEnabled = 1, subject = ? WHERE connectionId = ?",
+      ["stored-subject", "stored-flags"]
+    );
+
+    const { GET } = await route();
+    const response = await GET(request("GET", { connectionId: "stored-flags" }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ recoveryEnabled: false, subjectPresent: false });
+  });
+
   it("rejects editable subjects and legacy consent without writing credentials", async () => {
     const db = await openDb();
     insertConnection(db, "acct-1", SAME_TOKEN, "subject-1");

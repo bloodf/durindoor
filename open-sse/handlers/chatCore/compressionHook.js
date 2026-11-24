@@ -68,6 +68,13 @@ function engineStepOptions(engine, entry, log) {
   return options;
 }
 
+function bodyFormat(body) {
+  if (Array.isArray(body?.contents)) return "gemini";
+  if (body?.conversationState || body?.conversation_state) return "kiro";
+  if (body?.anthropic_version || (Array.isArray(body?.messages) && body?.max_tokens !== undefined && (body?.system !== undefined || body?.stop_sequences !== undefined))) return "claude";
+  return "openai";
+}
+
 /**
  * Run the compression engine loop.
  *
@@ -155,7 +162,10 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       // empty stackedPipeline, so synthesize a minimal {engine} step.
       const engine = getEngine(id);
       const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
-      const opts = { config: cfg.applyOpts || {}, stepConfig: step };
+      const opts = {
+        config: { format: cfg.applyOpts?.format ?? bodyFormat(working), ...(cfg.applyOpts || {}) },
+        stepConfig: step
+      };
       const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;
       const res = await engine.apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {

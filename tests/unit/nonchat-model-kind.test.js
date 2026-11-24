@@ -8,6 +8,7 @@ vi.mock("@/sse/services/auth.js", () => ({
   markAccountUnavailable: state.mark, clearAccountError: vi.fn(),
 }));
 vi.mock("@/sse/services/model.js", () => ({
+  filterDisabledComboModels: vi.fn(async (models) => models),
   getModelInfo: vi.fn(async (id) => {
     const resolved = id === "custom-prefix/catalog-only" ? "node-id/catalog-only" : id === "my-image" ? "openai/gpt-image-1" : id === "my-custom" ? "openai/gpt-4o" : id;
     const [provider, ...model] = resolved.split("/");

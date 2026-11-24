@@ -102,17 +102,47 @@ function makeQuota({ used, total, remaining, resetAt }) {
   };
 }
 
+/** Decode Kimi's fixed-point booster balance and monthly credit settings. */
+function kimiBilling(value) {
+  const wallet = isObject(value) ? value : {};
+  const balance = isObject(wallet.balance) ? wallet.balance : {};
+  const money = (v) => isObject(v) && Number.isFinite(Number(v.priceInCents)) && Number(v.priceInCents) >= 0 && /^[a-z]{3}$/i.test(v.currency || "") ? { cents: Math.trunc(Number(v.priceInCents)), currency: v.currency.toUpperCase() } : null;
+  const limit = money(wallet.monthlyChargeLimit);
+  const used = money(wallet.monthlyUsed);
+  const refill = money(wallet.autoRefillCharge) || money(wallet.autoRefillThreshold);
+  const status = { STATUS_ACTIVE: "enabled", STATUS_DISABLED: "disabled", STATUS_FROZEN: "frozen" }[wallet.status] || "unavailable";
+  const number = (v) => v != null && v !== "" && Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : null;
+  const amount = number(balance.amount);
+  const left = number(balance.amountLeft);
+  const base = { currency: limit?.currency || used?.currency || refill?.currency || "USD", extraUsageStatus: status, additionalCreditsUrl: "https://www.kimi.com/membership/subscription?tab=quota" };
+  if (balance.type !== "BOOSTER" || !(amount > 0 || left !== null || limit || used || status !== "unavailable")) return { ...base, extraUsageStatus: "unavailable" };
+  const cents = Math.max(0, left ?? 0) / 1000000;
+  return { ...base, extraCreditsMinorUnits: cents > 0 && cents < 1 ? 1 : Math.round(cents), monthlyUsedMinorUnits: used?.cents ?? 0, monthlyLimitEnabled: wallet.monthlyChargeLimitEnabled === true, monthlyLimitMinorUnits: limit?.cents ?? 0 };
+}
+
 /**
  * @param {string|null|undefined} accessToken
  * @param {string|null|undefined} apiKey
  * @param {object|null} proxyOptions
  * @param {object|null} providerSpecificData
  */
+/** Restrict regional overrides to Kimi's known API hosts. */
+export function resolveKimiUsageUrl(providerSpecificData, provider) {
+  try {
+    const host = new URL(providerSpecificData?.baseUrl).hostname.toLowerCase();
+    if (host === "api.kimi.ai" || host === "api.kimi.com") return `https://${host}/coding/v1/usages`;
+  } catch {
+    // Missing or invalid overrides use the provider's regional default.
+  }
+  return provider === "kimi-ai" ? "https://api.kimi.ai/coding/v1/usages" : KIMI_CODING_USAGE_URL;
+}
+
 export async function getKimiUsage(
 accessToken = null,
 apiKey = null,
 proxyOptions = null,
-providerSpecificData = null)
+providerSpecificData = null,
+provider = null)
 {
   const useApiKey = isString(apiKey) && apiKey.length > 0;
   const useOAuth = !useApiKey && isString(accessToken) && accessToken.length > 0;
@@ -130,7 +160,7 @@ providerSpecificData = null)
 
   try {
     const { response, text: responseText } = await fetchTextWithTimeout(
-      KIMI_CODING_USAGE_URL,
+      resolveKimiUsageUrl(providerSpecificData, provider),
       {
         method: "GET",
         headers: {
@@ -160,6 +190,7 @@ providerSpecificData = null)
       };
     }
 
+    const billing = kimiBilling(data?.boosterWallet ?? data?.booster_wallet);
     const quotas = {};
     const usageObj = data?.usage && isObject(data.usage) ? data.usage : {};
     const usageLimit = toFiniteNumber(usageObj.limit ?? usageObj.Limit, 0);
@@ -203,11 +234,12 @@ providerSpecificData = null)
     const planName = getKimiPlanName(membershipLevel) || "Kimi Coding";
 
     if (Object.keys(quotas).length > 0) {
-      return { plan: planName, quotas };
+      return { plan: planName, quotas, billing };
     }
 
     return {
       plan: planName,
+      billing,
       message: "Kimi Coding connected. Usage tracked per request."
     };
   } catch (error) {

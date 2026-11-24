@@ -26,7 +26,7 @@ Open PRs checked on 2026-11-24. #2493 changes `openai-to-antigravity.js` and `ge
 - Reasoning is not subtracted when `reasoningIsSubsetOfOutput` shows the upstream total counts it on top of the output. Upstream always subtracts.
 - A Responses report without `total_tokens` gets input + output.
 - Chat-format behavior is unchanged on the stream translator for subset reporting. Additive reporting now keeps the full output count as candidates. The non-stream projector and the bridge now report thoughts once and the cached count.
-- Behavior note: [v5-protocol-conformance.md](../v5-protocol-conformance.md). Tests: `tests/translator/omni-gemini-responses-usage.test.js`.
+- Behavior note: [v5-protocol-conformance.md](../v5-protocol-conformance.md). Tests: `tests/translator/omni-gemini-usage-names.test.js`.
 
 ## Not covered
 

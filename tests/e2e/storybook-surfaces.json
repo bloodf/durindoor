@@ -34439,34 +34439,176 @@
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "EventRow",
       "sourceSha256": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
-      "proposedClassification": "retired",
-      "approvedClassification": "retired",
-      "proposedCoverageRationale": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
-      "reviewStatus": "approved",
-      "reviewedBy": "Independent source review",
-      "requiredScenarioIds": [],
+      "proposedClassification": "nonvisual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-timeline-timelinedetailpage--loaded",
+        "production-timeline-timelinedetailpage--waterfall",
+        "production-timeline-timelinedetailpage--expand-sse-chunks",
+        "production-timeline-timelinedetailpage--copy-as-json",
+        "production-timeline-timelinedetailpage--missing-trace",
+        "production-timeline-timelinedetailpage--loading",
+        "production-timeline-timelinedetailpage--skeleton",
+        "production-timeline-timelinedetailpage--completed-without-duration",
+        "production-timeline-timelinedetailpage--running-without-duration"
+      ],
       "approvedScenarioIds": [],
-      "storyScenarios": [],
-      "approvedException": {
-        "reason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
-      "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
-        "runtimeStatus": "pending"
-      },
+      "storyScenarios": [
+        {
+          "id": "production-timeline-timelinedetailpage--loaded",
+          "storyId": "production-timeline-timelinedetailpage--loaded",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--loaded",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--waterfall",
+          "storyId": "production-timeline-timelinedetailpage--waterfall",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--waterfall",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--expand-sse-chunks",
+          "storyId": "production-timeline-timelinedetailpage--expand-sse-chunks",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--expand-sse-chunks",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--copy-as-json",
+          "storyId": "production-timeline-timelinedetailpage--copy-as-json",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--copy-as-json",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--missing-trace",
+          "storyId": "production-timeline-timelinedetailpage--missing-trace",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--missing-trace",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--loading",
+          "storyId": "production-timeline-timelinedetailpage--loading",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--loading",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--skeleton",
+          "storyId": "production-timeline-timelinedetailpage--skeleton",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--skeleton",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--completed-without-duration",
+          "storyId": "production-timeline-timelinedetailpage--completed-without-duration",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--completed-without-duration",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-timeline-timelinedetailpage--running-without-duration",
+          "storyId": "production-timeline-timelinedetailpage--running-without-duration",
+          "runtimeArtifactId": "production-timeline-timelinedetailpage--running-without-duration",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.js": "0cdd08806b2ebd4d48eb14966e7a329e7155261e03cbfee5d7a49a7575572dc6",
+            "src/app/(dashboard)/dashboard/timeline/[id]/page.stories.jsx": "7c7f896ce9a6429a40d30f365b0548650ed3d822738500b34afbb1f8a1d10dd3"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null,
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "pending-independent-source-review",
       "proposedException": {
         "reason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow."
       },
       "supersededBy": [
         "src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow"
       ],
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "unresolvedHistoricalScenarioIds": [],
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "481cdbf075fa9454b98a312065918021b9b606ace5df78f9a30421a586e6ed38",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "retired",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "storyScenarios": [],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current AST no longer declares EventRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.jsx#EventRow.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#TimelineDetailPage",
@@ -103711,8 +103853,8 @@
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "4de6e24b34a20c90f0a5ee0ac52b746fb81399b365b9fc2a08a93a51e046447b",
     "sourceCensusSha256": "c12259e70614583e08a2a0abd024a0a9ed334373832d3ed681f480f7ef0cb701",
-    "pendingRows": 448,
-    "retainedApprovedRows": 199,
+    "pendingRows": 449,
+    "retainedApprovedRows": 198,
     "pendingReferences": 1494,
     "runtimeStatus": "pending"
   }

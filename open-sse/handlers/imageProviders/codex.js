@@ -1,3 +1,4 @@
+import { createSseFrameReader } from "../../utils/sseFrames.js";
 // Codex (ChatGPT Plus/Pro) image generation via Responses API + SSE
 import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
@@ -71,7 +72,8 @@ function buildContent(prompt, refs, detail = CODEX_REF_DETAIL) {
 // with an image is success; an image item followed by EOF is not completion.
 async function* parseStream(reader, log, onReceipt) {
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
+  let frames = [];
   let imageB64 = null;
   let imageError;
   let hasText = false;
@@ -79,25 +81,19 @@ async function* parseStream(reader, log, onReceipt) {
   let lastProgressLogMs = 0;
   let eof = false;
   while (true) {
-    const separator = /\r?\n\r?\n/.exec(buffer);
-    if (!separator) {
+    if (!frames.length) {
       if (eof) throw new Error("Codex stream ended before response.completed");
       const { done, value } = await reader.read();
       eof = done;
       bytesReceived += value?.byteLength || 0;
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      frames = frameReader.push(done ? decoder.decode() : decoder.decode(value, { stream: true }));
+      if (done) frames.push(...frameReader.flush());
       continue;
     }
-    const block = buffer.slice(0, separator.index);
-    buffer = buffer.slice(separator.index + separator[0].length);
-    let eventName;
-    const lines = [];
-    for (const line of block.split(/\r?\n/)) {
-      if (line.startsWith("event:")) eventName = line.slice(6).trim();
-      if (line.startsWith("data:")) lines.push(line.slice(5).trimStart());
-    }
-    if (!lines.length) continue;
-    const text = lines.join("\n");
+    const frame = frames.shift();
+    if (!frame.hasData) continue;
+    let eventName = frame.eventName;
+    const text = frame.data;
     if (text === "[DONE]") throw new Error("Codex stream ended before response.completed");
     const data = JSON.parse(text);
     eventName ||= data.type;

@@ -1,7 +1,19 @@
-import { extractCompleteSseFrames } from "./streamHelpers.js";
 import { MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
 
 const sharedEncoder = new TextEncoder();
+
+/** Split complete SSE frames from an unterminated tail. */
+export function extractCompleteSseFrames(buffer) {
+  const frames = [];
+  const delimiter = /\r?\n\r?\n/g;
+  let cursor = 0;
+  let match;
+  while ((match = delimiter.exec(buffer)) !== null) {
+    frames.push(buffer.slice(cursor, match.index));
+    cursor = delimiter.lastIndex;
+  }
+  return { frames, remainder: buffer.slice(cursor) };
+}
 
 function createFrameLimitError() {
   const error = new Error("SSE frame exceeds size limit");
@@ -46,7 +58,8 @@ export function parseSseFrame(frame) {
 /**
  * Incrementally read SSE frames across chunk boundaries, applying the 64 MiB
  * pending-frame cap once in linear time. `flush()` parses any unterminated
- * trailing frame at end-of-stream.
+ * trailing frame at end-of-stream. Complete frames expose their original
+ * wire text as the non-enumerable `wire` string for transparent forwarding.
  */
 export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } = {}) {
   let pendingChunks = [];
@@ -85,7 +98,17 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
       pendingChunks = remainder ? [remainder] : [];
       pendingBytes = remainderBytes;
       scanTail = remainder.slice(-3);
-      return frames.map(parseSseFrame);
+      let offset = 0;
+      return frames.map((raw) => {
+        const frame = parseSseFrame(raw);
+        const delimiterStart = offset + raw.length;
+        const firstLength = buffer[delimiterStart] === "\r" ? 2 : 1;
+        const secondLength = buffer[delimiterStart + firstLength] === "\r" ? 2 : 1;
+        const end = delimiterStart + firstLength + secondLength;
+        Object.defineProperty(frame, "wire", { value: buffer.slice(offset, end) });
+        offset = end;
+        return frame;
+      });
     },
     flush() {
       if (pendingChunks.length === 0) return [];

@@ -92,12 +92,6 @@ export function getModelFallback(primaryModelStr, modelFallbacks) {
   return getModelFallbacks(primaryModelStr, modelFallbacks)[0] || null;
 }
 
-function providerFromModel(modelStr) {
-  if (!isString(modelStr)) return null;
-  const slash = modelStr.indexOf("/");
-  return slash > 0 ? modelStr.slice(0, slash) : null;
-}
-
 /** Read the error body to completion. A short race treated a slow body as empty. */
 async function readErrorPayload(response) {
   let errText = "";
@@ -123,8 +117,16 @@ async function readErrorPayload(response) {
  * (`requestScoped`), is a terminal state, or must not fall back (413, wrong
  * model, client close). Quota, auth, and transient errors still hop.
  */
-function stopsModelFallbackChain(status, errText, provider, headers, structuredError) {
-  const decision = checkFallbackError(status, errText, 0, provider, headers, structuredError);
+function stopsModelFallbackChain(status, errorText, modelStr, headers, structuredError) {
+  const slash = isString(modelStr) ? modelStr.indexOf("/") : -1;
+  const decision = checkFallbackError({
+    status,
+    errorText,
+    provider: slash > 0 ? modelStr.slice(0, slash) : null,
+    model: slash > 0 ? modelStr.slice(slash + 1) : modelStr,
+    headers,
+    structuredError,
+  });
   if (decision.requestScoped === true) return true;
   if (decision.terminal === true) return true;
   return decision.shouldFallback === false;
@@ -154,7 +156,7 @@ export async function runWithModelFallback(primaryModelStr, modelFallbacks, runn
   if (stopsModelFallbackChain(
     primaryResult.status,
     primaryError.errText,
-    providerFromModel(primaryModelStr),
+    primaryModelStr,
     primaryResult.headers,
     primaryError.structuredError
   )) return primaryResult;
@@ -176,7 +178,7 @@ export async function runWithModelFallback(primaryModelStr, modelFallbacks, runn
     if (stopsModelFallbackChain(
       result.status,
       fallbackError.errText,
-      providerFromModel(fallback),
+      fallback,
       result.headers,
       fallbackError.structuredError
     )) return result;

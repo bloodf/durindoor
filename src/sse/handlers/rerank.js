@@ -58,17 +58,19 @@ async function routeRerank(request, body, modelStr, url, { settings, apiKey, aut
 }
 
 async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId, usageContext, pinOptions) {
-  const modelInfo = await resolveTypedMediaModel(request, modelStr, body, apiKey, "rerank");
+  const modelInfo = await resolveTypedMediaModel(request, modelStr, body, apiKey, "rerank", {
+    // Reject unsupported routing before model policy consumes an RPM allowance.
+    async beforePolicy(provider) {
+      if (provider !== "openrouter") return null;
+      const policy = (await getSettings()).openrouterRouting;
+      if (policy?.zdr || policy?.quantizations?.length || body.provider?.zdr || body.provider?.quantizations) {
+        return errorResponse(HTTP_STATUS.BAD_REQUEST, "OpenRouter rerank cannot enforce the configured routing restrictions");
+      }
+      return null;
+    },
+  });
   if (modelInfo.error) return modelInfo.error;
-
   const { provider, model } = modelInfo;
-  // OpenRouter's dedicated rerank endpoint has no verified routing controls.
-  if (provider === "openrouter") {
-    const policy = (await getSettings()).openrouterRouting;
-    if (policy?.zdr || policy?.quantizations?.length || body.provider?.zdr || body.provider?.quantizations) {
-      return errorResponse(HTTP_STATUS.BAD_REQUEST, "OpenRouter rerank cannot enforce the configured routing restrictions");
-    }
-  }
 
   /** Record the core receipt without consuming the response or guessing document charges. */
   const recordSuccess = (result, credentials) => recordApiKeyUsageForResponse(apiKey, result.response, {

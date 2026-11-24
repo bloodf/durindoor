@@ -68,6 +68,19 @@ afterEach(async () => {
 });
 
 describe("rerank handler through the durable ledger to the next policy decision", () => {
+  it("does not spend RPM on an unsupported OpenRouter restriction", async () => {
+    adapter.run("UPDATE apiKeys SET policy = ? WHERE id = ?", [JSON.stringify({ rpmLimit: 1 }), "rerank-key"]);
+    const send = (provider) => new Request("http://localhost/v1/rerank", {
+      method: "POST", body: JSON.stringify({ ...body, model: "openrouter/cohere/rank", ...(provider ? { provider } : {}) }),
+    });
+    mocks.core.mockResolvedValue(success(0));
+    expect((await handleRerank(send({ zdr: true }))).status).toBe(400);
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect((await handleRerank(send())).status).toBe(200);
+    expect((await handleRerank(send())).status).toBe(429);
+    expect(mocks.core).toHaveBeenCalledOnce();
+  });
+
   it("persists an attributed paid record, then denies the next request before dispatch", async () => {
     mocks.core.mockResolvedValue(success(0.5));
     const first = await handleRerank(request());

@@ -23,7 +23,7 @@ export async function runMediaEndpoint(request, { kind, pinConnection = false, r
   return route(admission, pinOptions);
 }
 
-export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind } = {}) {
+export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind, beforePolicy } = {}) {
   const { provider, model } = await getModelInfo(modelStr);
   if (!provider) return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format") };
 
@@ -32,6 +32,9 @@ export async function resolveMediaModel(request, modelStr, body, apiKey, { onPol
     try { applyOpenRouterRouting(body, (await getSettings()).openrouterRouting, routingKind); }
     catch (error) { return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, error.message) }; }
   }
+
+  const earlyError = await beforePolicy?.(provider, model);
+  if (earlyError) return { error: earlyError };
 
   const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError) return { error: onPolicyError ? onPolicyError(policyError) : policyError };

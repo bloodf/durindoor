@@ -3,6 +3,7 @@ import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 import { resolveFallbackModelScope } from "./fallbackScope.js";
+import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
 
 /**
  * Identify Envoy retry-buffer overflow responses that are safe to replay on
@@ -289,8 +290,22 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
       // A provider rule may mark its own state terminal (billing/credit
       // exhausted, identity verification pending): the account still cools
       // down, but no client-facing Retry-After may be advertised for it.
-      ...(providerRule.terminal ? { terminal: true } : null)
+      ...(providerRule.terminal ? { terminal: true } : null),
+      // The denial names the requested model only (Kilo paid-model auth). The
+      // caller must not widen it to an account lock when the id is unbounded.
+      ...(providerRule.modelOnly ? { modelOnly: true } : null)
     };
+  }
+
+  // OmniRoute #21080: Cline's free-tier daily cap names the exact wait ("Try again
+  // in 19h 39m") for the model that ran out. Honor it instead of the 2 s backoff,
+  // scoped to that model so the other free models on the connection keep routing.
+  // Malformed or absent durations fall through to the generic 429 handling below.
+  if (status === 429) {
+    const clineHintMs = parseClineTryAgainInMs(ruleMatchText, provider, MAX_RATE_LIMIT_COOLDOWN_MS);
+    if (clineHintMs !== null) {
+      return { shouldFallback: true, cooldownMs: clineHintMs, newBackoffLevel: 0, scope: "model", retryHintSource: "body" };
+    }
   }
 
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an

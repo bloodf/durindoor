@@ -7,6 +7,7 @@ import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import { Chip } from "@/shared/ui/components/Chip.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
+import api from "@/shared/utils/api.js";
 
 /**
  * Connection groups panel (issue #747). Mounted directly on the existing
@@ -23,11 +24,15 @@ function connectionLabel(connection) {
   return `${connection.name || connection.email || connection.provider || "Connection"} (${connection.id.slice(0, 8)})`;
 }
 
-async function requestJson(url, init) {
-  const res = await fetch(url, init);
-  const body = res.status === 204 ? null : await res.json();
-  if (!res.ok) throw new Error(body?.error || "Request failed");
-  return body;
+// Keep the client's coerced HTTP message when the body supplies an error.
+const strictJson = { strictJson: true };
+async function withPanelError(request) {
+  try {
+    return await request();
+  } catch (error) {
+    if (error?.status !== undefined && !error.body?.error) error.message = "Request failed";
+    throw error;
+  }
 }
 
 export default function ConnectionGroupsPanel({ connections = [], onGroupsChange }) {
@@ -49,7 +54,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
   /** Initial reads stop on unmount; versioning protects newer mutation errors from stale refreshes. */
   const loadGroups = useCallback((signal) => {
     const startedErrorVersion = errorVersion.current;
-    return requestJson("/api/connection-groups", { signal }).then((data) => {
+    return withPanelError(() => api.get("/api/connection-groups", { ...strictJson, signal })).then((data) => {
       if (signal?.aborted) return;
       const nextGroups = data.groups || [];
       /** A successful refresh clears feedback only when no newer mutation failure was reported. */
@@ -77,11 +82,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
 
   const saveMembership = async (group, connectionIds) => {
     try {
-      await requestJson(`/api/connection-groups/${group.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionIds }),
-      });
+      await withPanelError(() => api.put(`/api/connection-groups/${group.id}`, { connectionIds }, strictJson));
       await loadGroups();
     } catch (err) {
       reportError(err.message);
@@ -90,11 +91,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
 
   const handleCreate = async (name) => {
     try {
-      await requestJson("/api/connection-groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
+      await withPanelError(() => api.post("/api/connection-groups", { name }, strictJson));
       setCreatePromptOpen(false);
       await loadGroups();
     } catch (err) {
@@ -104,7 +101,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
 
   const handleDelete = async () => {
     try {
-      await requestJson(`/api/connection-groups/${groupPendingDelete.id}`, { method: "DELETE" });
+      await withPanelError(() => api.del(`/api/connection-groups/${groupPendingDelete.id}`, strictJson));
       setGroupPendingDelete(null);
       await loadGroups();
     } catch (err) {

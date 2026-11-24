@@ -4,6 +4,8 @@ import { DEFAULT_LOCALE, LOCALE_COOKIE, getLocaleDirection, normalizeLocale } fr
 import { isBrowser, isRecord, isString, isUndefined } from "../shared/utils/typeChecks.js";
 
 let translationMap = {};
+let publishedKeyedLocale = DEFAULT_LOCALE;
+const keyedLocaleCallbacks = new Set();
 let currentLocale = DEFAULT_LOCALE;
 let reloadCallbacks = [];
 let observerHandle = null;
@@ -57,22 +59,22 @@ async function loadTranslations(locale) {
     const response = await fetch(`/i18n/literals/${locale}.json`);
     if (response.ok === false) {
       console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
-      return {};
+      return null;
     }
     try {
       const translations = await response.json();
-      const translationMapForLocale = isRecord(translations) ? translations : {};
-      if (translationMapForLocale !== translations) {
+      if (!isRecord(translations)) {
         console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+        return null;
       }
-      return translationMapForLocale;
+      return translations;
     } catch {
       console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
-      return {};
+      return null;
     }
   } catch {
     console.warn(`Failed to load translations for locale ${locale} (status unavailable)`);
-    return {};
+    return null;
   }
 }
 
@@ -86,8 +88,9 @@ async function refreshTranslations(onPublish) {
   const translations = await loadTranslations(currentLocale);
   if (lifecycle !== lifecycleVersion || locale !== localeVersion || request < publishedVersion) return;
 
-  translationMap = translations;
+  translationMap = translations || {};
   publishedVersion = request;
+  publishKeyedLocale(translations === null ? DEFAULT_LOCALE : currentLocale);
   onPublish();
 }
 
@@ -110,6 +113,21 @@ export function getMissingTranslationKeys() {
 // Get current locale - exported for use in components
 export function getCurrentLocale() {
   return currentLocale;
+}
+
+/** Locale from the last published result, with English for a failed result. */
+export function getPublishedKeyedLocale() {
+  return publishedKeyedLocale;
+}
+
+export function subscribeToKeyedLocale(callback) {
+  keyedLocaleCallbacks.add(callback);
+  return () => keyedLocaleCallbacks.delete(callback);
+}
+
+function publishKeyedLocale(locale) {
+  publishedKeyedLocale = locale;
+  keyedLocaleCallbacks.forEach((callback) => callback());
 }
 
 // Register callback for locale changes
@@ -230,6 +248,7 @@ export function teardownRuntimeI18n() {
   observerHandle = null;
   initPromise = null;
   missingKeys.clear();
+  if (publishedKeyedLocale !== DEFAULT_LOCALE) publishKeyedLocale(DEFAULT_LOCALE);
 }
 
 // Reload translations when locale changes

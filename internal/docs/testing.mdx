@@ -94,3 +94,17 @@ Dashboard Playwright is on [Local development](./local-development.mdx).
 See [local CI](./local-ci.md) for the one-command full run, workflow coverage, manual fallbacks and external owner verification. Full runs require registry-index, docs and catalog checks even without a website change, plus standalone and packed CLI smoke checks. Website selection includes shared dashboard/runtime/build inputs. The trigger migration cannot merge until its exact reviewed head passes the externally frozen full gate.
 
 Report acceptance and JUnit generation share terminal-state validation for the locked Vitest 4.1.12 JSON schema. Suites must be `passed` or `failed`; assertions must be `passed`, `failed`, `skipped` or `todo`. Explicit skipped/todo assertions remain valid. Pending, unknown, missing and malformed states fail before aggregation or JUnit output; diagnostic infrastructure failures remain failures.
+
+## V5 Storybook browser evidence
+
+Use a private, disposable environment with synthetic fixture data only. Keep `HOME`, `DATA_DIR`, browser caches and reports private, and exclude provider and publisher credentials from the process. Install the root and test dependencies with their frozen lockfiles, build Storybook with `pnpm run storybook:build`, and install the Playwright browsers matching the test package (for example, `cd tests && node node_modules/playwright/cli.js install chromium firefox webkit`). Browser system libraries must be provided by the environment; do not use sudo from the test run.
+
+From `tests/`, select one engine per run and a registered fixture route, for example:
+
+```sh
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=chromium V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/chromium.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=firefox V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/firefox.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=webkit V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/webkit.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+```
+
+Omitting `V5_BROWSER_ENGINE` selects Chromium; other names fail validation. `V5_STORYBOOK_DIR` can point to a private built Storybook. Reports identify the engine per case. Screenshots retain the existing Chromium path under `.impeccable/review/v5/production/<route>/`; Firefox and WebKit use `<engine>/<route>/` beneath that directory. Keep these artifacts private and inspect them for sensitive data before sharing.

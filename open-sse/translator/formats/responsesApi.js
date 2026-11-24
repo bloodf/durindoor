@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -74,16 +73,9 @@ export const MAX_RESPONSES_CALL_ID_LEN = 64;
 // function_call ↔ function_call_output correlation never collides.
 let responsesCallIdSeq = 0;
 
-// A plain cut would merge ids that differ only at the end (`name:0`, `name:1`), so an
-// over-long id keeps its first 55 characters, `_`, and 8 hex of a hash of the whole id.
-// Same id in, same id out: a call and its output stay paired (OmniRoute #20224).
-const CALL_ID_HASH_LEN = 8;
-
 export function clampResponsesCallId(id) {
   if (!isString(id) || !id) return `call_${Date.now()}_${(responsesCallIdSeq += 1)}`;
-  if (id.length <= MAX_RESPONSES_CALL_ID_LEN) return id;
-  const hash = createHash("sha256").update(id).digest("hex").slice(0, CALL_ID_HASH_LEN);
-  return `${id.slice(0, MAX_RESPONSES_CALL_ID_LEN - CALL_ID_HASH_LEN - 1)}_${hash}`;
+  return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
 }
 
 // Every caller that turns a tool name into a lookup/wire key trims and caps

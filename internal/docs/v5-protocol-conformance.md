@@ -19,7 +19,19 @@ Coverage is bounded to the four protocol families, their Chat pivot edges, and t
 
 ## Registration boundary
 
-[`translateRequest`](../../open-sse/translator/index.js) uses a direct registered route first, otherwise the OpenAI Chat pivot. Same-format requests skip conversion but still run normalization. [`translateResponse`](../../open-sse/translator/index.js) handles **chunks**, not complete JSON envelopes; same-format chunks pass through. Null flush forwarding occurs at lines 347–353. Static registrations are at lines 484–509.
+[`translateRequest`](../../open-sse/translator/index.js) uses a direct registered route first, otherwise the OpenAI Chat pivot. Same-format requests skip conversion but still run normalization. [`translateResponse`](../../open-sse/translator/index.js) handles **chunks**, not complete JSON envelopes; same-format chunks pass through. `translateResponse` also forwards null flushes through the pivot. The static side-effect imports in [`translator/index.js`](../../open-sse/translator/index.js) register the adapters.
+
+### Pivot exceptions
+
+Pairs are ordered in the direction of translation. The registered routes below bypass the OpenAI Chat pivot; the last row is a conditional response path rather than a registry entry.
+
+| Direction | Pair or condition | Justification |
+| --- | --- | --- |
+| Request | `claude:kiro` | Preserve Claude blocks, tool IDs, image sources and error results that the pivot can lose. |
+| Request | `claude:gemini` | Preserve Claude content and Gemini thought signatures through direct conversion. |
+| Response | `kiro:claude` | Kiro emits OpenAI-shaped chunks; direct conversion retains reasoning and tool information. |
+| Response | `gemini:claude` | Preserve Gemini thought signatures when producing Claude chunks. |
+| Response | `OPENAI_RESPONSES` → `CLAUDE` with `searchEnabled` | Direct `responsesToClaudeResponse` conversion handles search events. |
 
 [`registerAll.js`](../../tests/translator/registerAll.js) imports the real adapters. Its old comment about `require()` does not describe the current static imports; imports themselves remain usable. Both new files import it and use production entry points, with no mocked registry. Non-stream replies require [`translateNonStreamingResponse`](../../open-sse/handlers/chatCore/nonStreamingHandler.js), not feeding JSON into the chunk API.
 

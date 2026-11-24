@@ -1430,11 +1430,15 @@ export const REVIEW_SURFACES = [
     "states": [
       "Fresh",
       "Empty",
+      "StaleSnapshot",
+      "DiscoveryBeforeFirstSnapshot",
       "Error"
     ],
     "storyIds": [
       "v5-review-pages-providers-modelcatalogprovenance--fresh",
       "v5-review-pages-providers-modelcatalogprovenance--empty",
+      "v5-review-pages-providers-modelcatalogprovenance--stale-snapshot",
+      "v5-review-pages-providers-modelcatalogprovenance--discovery-before-first-snapshot",
       "v5-review-pages-providers-modelcatalogprovenance--error"
     ],
     "pathname": "/dashboard/providers/openai",

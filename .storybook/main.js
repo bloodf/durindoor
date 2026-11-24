@@ -79,16 +79,15 @@ const config = {
             code = `import ${named ? "{ ReviewLoginView as Replacement }" : "Replacement"} from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5", replacement))};\n` + code
               + `\n${named ? "export" : "export default"} function ${name}(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" ? <Replacement {...props} /> : <Incumbent${name} {...props} />; }\n`;
           }
-          if (id.endsWith("/providers/[id]/page.js")) {
-            for (const handler of ["handleRoundRobinToggle", "handleCacheAffinityToggle"]) {
-              const label = handler === "handleRoundRobinToggle" ? "Round Robin" : "Cache Affinity";
-              const pair = new RegExp(`(<span[^>]*>${label}</span>\\s*<Toggle[\\s\\S]*?onChange=\\{${handler}\\} />)`);
-              code = code.replace(pair, '<div className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "inline-flex items-center gap-2 whitespace-nowrap" : "contents"}>$1</div>');
+          if (id.endsWith("/providers/[id]/sections/ProviderDetailSections.jsx")) {
+            // The split source owns both layouts; select its review layout in Storybook.
+            for (const anchor of ["{uiV5 ? (", "{uiV5 ? autoSyncPanel : null}", "{!uiV5 ? autoSyncPanel : null}"]) {
+              const count = code.split(anchor).length - 1;
+              if (count !== (anchor === "{uiV5 ? (" ? 2 : 1)) throw new Error(`Provider review layout anchor changed: ${anchor}`);
             }
-            const panel = code.match(/\{!isCompatible &&\s*<ModelAutoSyncPanel[\s\S]*?\/>\s*\}/)?.[0];
-            if (!panel) throw new Error("Provider auto-sync placement changed");
-            code = code.replace(panel, `{globalThis.document?.documentElement.dataset.v5Review !== "true" && (${panel.slice(1, -1)})}`)
-              .replace("{/* Models */}", `{globalThis.document?.documentElement.dataset.v5Review === "true" && (${panel.slice(1, -1)})}\n      {/* Models */}`);
+            code = code.replaceAll("{uiV5 ? (", '{(uiV5 || globalThis.document?.documentElement.dataset.v5Review === "true") ? (')
+              .replace("{uiV5 ? autoSyncPanel : null}", '{(uiV5 || globalThis.document?.documentElement.dataset.v5Review === "true") ? autoSyncPanel : null}')
+              .replace("{!uiV5 ? autoSyncPanel : null}", '{!(uiV5 || globalThis.document?.documentElement.dataset.v5Review === "true") ? autoSyncPanel : null}');
           }
           if (id.endsWith("/token-saver/TokenSaverClient.jsx")) {
             code = code.replace("export default function TokenSaverClient(", "function IncumbentTokenSaverClient(");

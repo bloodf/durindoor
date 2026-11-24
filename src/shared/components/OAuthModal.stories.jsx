@@ -38,6 +38,7 @@ const meta = {
       pathname: "/dashboard/providers",
       params: {},
       routes: {
+        "GET /api/deployment-mode": { body: { hosted: false } },
         "POST /api/oauth/anthropic/authorize": { body: AUTHORIZE, status: 200 },
         "POST /api/oauth/anthropic/exchange": { body: { ok: true }, status: 200 },
         "POST /api/oauth/anthropic/cancel": { body: { ok: true }, status: 200 },
@@ -95,6 +96,7 @@ export const ProxyAndFingerprint = {
       pathname: "/dashboard/providers",
       params: {},
       routes: {
+        "GET /api/deployment-mode": { body: { hosted: false } },
         "POST /api/oauth/codex/authorize": { body: AUTHORIZE, status: 200 },
         "POST /api/oauth/codex/start-proxy": { body: { success: true, serverSide: true }, status: 200 },
         "POST /api/oauth/codex/poll-status": { body: { status: "pending" }, status: 200 },
@@ -120,6 +122,7 @@ export const DeviceCodeFlow = {
       pathname: "/dashboard/providers",
       params: {},
       routes: {
+        "GET /api/deployment-mode": { body: { hosted: false } },
         "POST /api/oauth/github/device-code": { body: DEVICE_CODE, status: 200 },
         "POST /api/oauth/github/poll": { body: { success: true }, status: 200 },
         "POST /api/oauth/github/cancel": { body: { ok: true }, status: 200 },
@@ -146,6 +149,7 @@ export const XaiCopiesAuthUrl = {
       pathname: "/dashboard/providers",
       params: {},
       routes: {
+        "GET /api/deployment-mode": { body: { hosted: false } },
         "POST /api/oauth/xai/authorize": { body: AUTHORIZE, status: 200 },
         "POST /api/oauth/xai/start-proxy": { body: { success: true, serverSide: true }, status: 200 },
         "POST /api/oauth/xai/poll-status": { body: { status: "pending" }, status: 200 },
@@ -172,6 +176,7 @@ export const AuthorizationFailure = {
       pathname: "/dashboard/providers",
       params: {},
       routes: {
+        "GET /api/deployment-mode": { body: { hosted: false } },
         "POST /api/oauth/anthropic/authorize": {
           body: { error: "OAuth provider is unavailable" },
           status: 503,

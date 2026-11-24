@@ -1,10 +1,7 @@
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { availableParallelism } from "node:os";
 import { createMDX } from "fumadocs-mdx/next";
-
-const siteRoot = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(siteRoot, "..");
+import { resolveAliases, repoRoot, siteRoot } from "./aliases.mjs";
 
 // Installed fumadocs-mdx defaults configPath to source.config.ts
 // (dist/core-BHawVsTm.js). This app is JavaScript, so the file is .mjs.
@@ -28,13 +25,7 @@ const nextConfig = {
     config.resolve.modules = [join(siteRoot, "node_modules"), "node_modules"];
     config.resolve.alias = {
       ...config.resolve.alias,
-      "@": join(repoRoot, "src"),
-      "open-sse": join(repoRoot, "open-sse"),
-      "@site": join(siteRoot, "src"),
-      "@source": join(siteRoot, ".source"),
-      // @designcodeio/threeui pins its own three@0.128 for a few backgrounds. Point
-      // it at the app's three so the homepage ships one Three.js instance.
-      three128: join(siteRoot, "node_modules", "three"),
+      ...resolveAliases(),
     };
     // open-sse/utils/kimchiUserAgent.js polls GitHub on server import; swap in a static stub.
     config.plugins.push(

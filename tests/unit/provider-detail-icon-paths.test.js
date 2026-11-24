@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const page = readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url), "utf8");
+const page = readFileSync(new URL("../../src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx", import.meta.url), "utf8");
 
 describe("provider detail icon selection", () => {
   // #1810 prefixes the compatible-node icon with NEXT_PUBLIC_BASE_PATH ("" at root).

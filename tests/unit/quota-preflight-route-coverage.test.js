@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -39,7 +39,11 @@ describe("quota preflight route coverage (OmniRoute #6742)", () => {
 
   for (const file of QUOTA_PREFLIGHT_ROUTES) {
     it(`${file} selects credentials through getProviderCredentialsWithQuotaPreflight only`, () => {
-      const source = readFileSync(join(handlersDir, file), "utf8");
+      // chat/singleModel.js delegates its account loop to the singleModel/ stage modules.
+      const stageDir = join(handlersDir, "chat/singleModel");
+      const source = file === "chat/singleModel.js" ?
+        [readFileSync(join(handlersDir, file), "utf8"), ...readdirSync(stageDir).map((name) => readFileSync(join(stageDir, name), "utf8"))].join("\n") :
+        readFileSync(join(handlersDir, file), "utf8");
       expect(source, `${file} must call the quota-preflight wrapper`).toMatch(
         /getProviderCredentialsWithQuotaPreflight\s*\(/
       );

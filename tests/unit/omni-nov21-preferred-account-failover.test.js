@@ -8,6 +8,12 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
+// singleModel.js is split into stage modules under singleModel/; the retry loop
+// source is the adapter plus every stage module.
+const readSingleModel = () => [
+  "src/sse/handlers/chat/singleModel.js",
+  ...readdirSync(join(ROOT, "src/sse/handlers/chat/singleModel")).sort().map((name) => `src/sse/handlers/chat/singleModel/${name}`),
+].map(read).join("\n");
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -34,7 +40,7 @@ describe("OmniRoute #20961: preferred-account response-start failover is not app
   });
 
   it("keeps preferredConnectionId meaning an explicit pin that is terminal on failure", () => {
-    const chat = read("src/sse/handlers/chat/singleModel.js");
+    const chat = readSingleModel();
     expect(chat).toMatch(/let preferredConnectionId = null;/);
     expect(chat).toContain("pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal");
     expect(chat).toContain("refusing rotation");
@@ -42,8 +48,8 @@ describe("OmniRoute #20961: preferred-account response-start failover is not app
   });
 
   it("keeps the retry loop free of a request-scoped response-start timeout branch", () => {
-    const chat = read("src/sse/handlers/chat/singleModel.js");
-    const loop = chat.slice(chat.indexOf("let accountAttempts = 0;"));
+    const chat = readSingleModel();
+    const loop = chat.slice(chat.indexOf("while (true) {"));
     expect(loop).toContain("while (true) {");
     expect(loop).toContain("excludeConnectionIds.add(credentials.connectionId);");
     expect(loop).not.toMatch(/responseStart|response-start|preferredHop|siblingHop|hintTimeout/i);

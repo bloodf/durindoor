@@ -106,7 +106,11 @@ const HANDLERS = [
 it.each(HANDLERS)("%s handler passes a dispatch snapshot to outcome writes", (name) => {
   const handlerPath = path.resolve(__dirname, `../../src/sse/handlers/${name}.js`);
   const pipelinePath = path.resolve(__dirname, "../../src/sse/handlers/media/pipeline.js");
-  const handler = fs.readFileSync(handlerPath, "utf8");
+  // chat/singleModel.js delegates its account loop to the singleModel/ stage modules.
+  const stageDir = path.resolve(__dirname, "../../src/sse/handlers/chat/singleModel");
+  const handler = name === "chat/singleModel" ?
+    [fs.readFileSync(handlerPath, "utf8"), ...fs.readdirSync(stageDir).map((file) => fs.readFileSync(path.join(stageDir, file), "utf8"))].join("\n") :
+    fs.readFileSync(handlerPath, "utf8");
   const migrated = ["tts", "stt", "embeddings", "moderations", "rerank", "imageEdit", "imageGeneration"].includes(name);
   if (migrated) {
     expect(handler).toMatch(/runMediaAccounts\s*\(/);

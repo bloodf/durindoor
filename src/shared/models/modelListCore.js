@@ -24,6 +24,7 @@ import { isModelExposureAllowed } from "../utils/modelExposureList.js";
 import { isRecord, KIMI_LIVE_MODEL_PROVIDERS, LIVE_MODEL_UNION_PROVIDERS, LIVE_MODEL_RESOLVERS, normalizeKimiPlatformModel, OPENAI_MODELS_FETCHER_TYPES, fetchLocalPassthroughModels } from "./modelCatalogSources.js";
 import { LLM_KIND, modelKind, inferKindFromUnknownModelId, customModelKind, getCompatiblePublicIds, providerMatchesKinds } from "./modelListKinds.js";
 import { comboMatchesKinds, comboToEntry, visibleComboMembers, buildComboOnlyModels } from "./modelListCombos.js";
+import { withCatalogDeadline } from "./catalogDeadline.js";
 
 const modelsInFlight = new Map();
 
@@ -299,7 +300,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     const hasAllowlist = Array.isArray(allowlist) && allowlist.length > 0;
 
     try {
-      const live = await resolveLiveOpenAIModels({
+      const live = await withCatalogDeadline(["keyless", providerId, token, registryFetcher.url, guard], () => resolveLiveOpenAIModels({
         id: "noauth",
         connectionId: "noauth",
         provider: providerId,
@@ -318,7 +319,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             isString(entry?.id) && entry.id !== "deepseek-v4-flash-free" && (entry.id.endsWith("-free") || entry.id === "big-pickle")
           ) : [];
         } : undefined,
-      });
+      }));
       if (!live?.models?.length) {
         addStaticProviderModels(providerId, alias);
         return;
@@ -588,9 +589,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // catalog (upstream decolua/9router #3880 / #3115).
         const hasCuratedCompatibleModels = isCompatibleProvider && customModelIds.length > 0;
         const liveResolver = syncedModels || hasCuratedCompatibleModels ? null : providerLiveResolver || openAIStyleLiveResolver;
+        // Taken before any lookup: a resolver may refresh the connection's tokens in place.
+        const catalogIdentity = [providerId, conn.id, conn.apiKey, conn.accessToken, conn.providerSpecificData, guard];
+        const resolveLive = () => withCatalogDeadline(["live", ...catalogIdentity], () => liveResolver(conn, guard));
         if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || openAIStyleLiveResolver)) {
           try {
-            const live = await liveResolver(conn, guard);
+            const live = await resolveLive();
             if (live?.models?.length) {
               /**
                * Registry `/models` catalogs are credential-scoped. Never add a
@@ -638,7 +642,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           // through to the LLM heuristic. Other providers keep their
           // no-network fast path.
           try {
-            const live = await liveResolver(conn, guard);
+            const live = await resolveLive();
             for (const m of live?.models ?? []) {
               if (!rawModelIds.includes(m.id)) continue;
               liveModelById.set(m.id, m);
@@ -658,7 +662,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         !AI_PROVIDERS[providerId]?.modelsFetcher)
         {
           try {
-            const localPassthroughIds = await fetchLocalPassthroughModels(conn, guard);
+            const localPassthroughIds = await withCatalogDeadline(
+              ["passthrough", ...catalogIdentity],
+              () => fetchLocalPassthroughModels(conn, guard)
+            ) ?? [];
             if (localPassthroughIds.length) rawModelIds = localPassthroughIds;
           } catch (err) {
             console.log(`Local passthrough model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);

@@ -118,9 +118,10 @@ const STRIP_RULES = [
 { provider: "opencode-go", match: /^gpt-/i, drop: ["temperature"] },
 
 // 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
+// decolua/9router#5070: its Chat wrapper also rejects the Responses `text` object.
 {
   provider: "nvidia",
-  drop: ["client_metadata", "prompt_cache_key", "service_tier", "anthropic_beta", "thinking_budget", "user_id", "custom_field"],
+  drop: ["client_metadata", "prompt_cache_key", "service_tier", "anthropic_beta", "thinking_budget", "user_id", "custom_field", "text"],
   renameMessageFields: { reasoning: "reasoning_content" }
 },
 // Mistral's OpenAI-compatible API validates the body strictly and rejects the

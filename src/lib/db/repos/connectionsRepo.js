@@ -8,6 +8,7 @@ import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/s
 import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
 import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
+import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS } from "open-sse/config/runtimeConfig.js";
 import {
   advanceAntigravityGeneration,
   deleteAntigravityRotationRows,
@@ -761,7 +762,7 @@ export async function recordProviderConnectionFallbackState(id, {
   // Caller-supplied diagnostics must already be secret-safe; this persistence
   // boundary accepts only the bounded single-line shape produced by
   // describeProviderError and otherwise falls back to the fixed reason code.
-  const validatedReason = isString(reason) && reason.trim() === reason && reason.length > 0 && reason.length <= 100 && !/[\r\n]/.test(reason) ? reason : null;
+  const validatedReason = isString(reason) && reason.trim() === reason && reason.length > 0 && reason.length <= ACCOUNT_ERROR_MESSAGE_MAX_CHARS && !/[\r\n]/.test(reason) ? reason : null;
   const storedReason = reasonCode === "rate_limited" ? safeReasons.rate_limited : validatedReason || safeReasons[reasonCode] || safeReasons.provider_error;
   const db = await getAdapter();
   let result = null;

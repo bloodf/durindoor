@@ -127,6 +127,16 @@ function resolveCodexWireEffort(effort, config) {
   return aliases[effort] ?? effort;
 }
 
+/** Codex rejects `content` on an `additional_tools` input item (decolua/9router#2796). */
+function stripAdditionalToolsContent(input) {
+  if (!Array.isArray(input)) return input;
+  return input.map((item) => {
+    if (item?.type !== "additional_tools" || !("content" in item)) return item;
+    const { content, ...envelope } = item;
+    return envelope;
+  });
+}
+
 function estimateCodexInputTokens(body, stopAt = Number.POSITIVE_INFINITY) {
   let json;
   try {
@@ -1105,7 +1115,7 @@ export class CodexExecutor extends BaseExecutor {
     // recovery in execute().
     dropForeignReasoningItems(body);
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
-    body.input = normalizeStatelessResponseInput(body.input);
+    body.input = stripAdditionalToolsContent(normalizeStatelessResponseInput(body.input));
 
     if (Array.isArray(body.input)) {
       body.input = repairCodexToolHistory(body.input);

@@ -192,7 +192,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
         format: { type: "json_schema", schema: responseFormat.json_schema.schema }
       };
     } else if (responseFormat.type === "json_object") {
-      systemParts.push("You must respond with valid JSON. Respond ONLY with a JSON object, no other text.");
+      systemParts.push("You must respond with valid JSON. Respond ONLY with a JSON object, no other text and no markdown code fences.");
     }
   }
 

@@ -85,6 +85,9 @@ export function hasValuableContent(chunk, format) {
       return delta.content && delta.content !== "" ||
       delta.reasoning_content && delta.reasoning_content !== "" ||
       isString(delta.reasoning) && delta.reasoning.trim() !== "" ||
+      // Structured reasoning can be the only payload, including opaque encrypted
+      // entries that the client has to replay (9router #4457).
+      Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0 ||
       delta.tool_calls && delta.tool_calls.length > 0 ||
       /** Generated images arrive as standalone OpenAI deltas and must survive the stream gate. */
       delta.images && delta.images.length > 0 ||

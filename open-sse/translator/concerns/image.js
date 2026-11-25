@@ -53,11 +53,16 @@ export function detectImageMime(buf) {
  * The deadline or caller signal also bounds DNS resolution. Returns null on failure.
  *
  * @param {string} imageUrl - HTTP(S) URL of the image
- * @param {object} options - { signal, timeoutMs, maxBytes }
+ * @param {object} options - { signal, timeoutMs, maxBytes, fetcher }. `fetcher(url, init)`
+ *   replaces the global fetch; keep `init.dispatcher` on any direct connection.
+ *   Injected rather than imported: proxyFetch patches the global fetch on import.
  * @returns {Promise<{url: string, mimeType: string}|null>}
  */
 export async function fetchImageAsBase64(imageUrl, options = {}) {
-  const { signal, timeoutMs = FETCH_TIMEOUT_MS, maxBytes = MAX_IMAGE_BYTES } = options;
+  const {
+    signal, timeoutMs = FETCH_TIMEOUT_MS, maxBytes = MAX_IMAGE_BYTES,
+    fetcher = (target, init) => fetch(target, init)
+  } = options;
   if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
     return null;
   }
@@ -91,8 +96,12 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
       connect: { lookup: (_h, _o, cb) => cb(null, [{ address: pinnedIps[0].address, family: pinnedIps[0].family }]) }
     });
     // redirect:"manual" prevents a public URL redirecting to a private one (SSRF bypass).
-    const response = await fetch(imageUrl, { signal: fetchSignal, redirect: "manual", dispatcher });
-    if (!response.ok || !response.body) return null;
+    const response = await fetcher(imageUrl, { signal: fetchSignal, redirect: "manual", dispatcher });
+    if (!response.ok || !response.body) {
+      // An unread body would hold a connection in a shared proxy pool.
+      response.body?.cancel?.().catch(() => {});
+      return null;
+    }
 
     // Stream-read with a hard byte cap to avoid loading huge payloads into memory.
     const reader = response.body.getReader();

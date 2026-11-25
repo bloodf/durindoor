@@ -39,6 +39,7 @@ const ALWAYS_PROTECTED = [
   "/api/oauth/commandcode/auto-import",
   "/api/oauth/kiro/auto-import",
   "/api/oauth/xiaomi-mimo/auto-import",
+  "/api/oauth/antigravity/rotation",
 ];
 const MANAGEMENT_API_PATHS = [
   "/api/settings",

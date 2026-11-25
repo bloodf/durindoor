@@ -459,6 +459,7 @@ export class GithubExecutor extends BaseExecutor {
           method: "POST",
           headers: this.buildHeaders(credentials, false, requestContext),
           body: JSON.stringify(transformedBody),
+          redirect: "error",
           signal: countSignal
         }, proxyOptions);
         if (countResponse.ok) {
@@ -545,6 +546,7 @@ export class GithubExecutor extends BaseExecutor {
           method: "POST",
           headers,
           body: JSON.stringify(transformedBody),
+          redirect: "error",
           signal: mergedSignal
         }, proxyOptions));
       } catch (error) {
@@ -802,6 +804,7 @@ export class GithubExecutor extends BaseExecutor {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
+      redirect: "error",
       signal
     }, proxyOptions));
 

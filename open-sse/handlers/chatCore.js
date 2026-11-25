@@ -185,9 +185,9 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const needsNativeServerTools = Array.isArray(body?.tools) && body.tools.some((tool) =>
     isString(tool?.type) && tool.type !== "function" && tool.type !== "custom" && tool.type !== "tool");
   const nativeMiniMax = provider === "minimax" || provider === "minimax-cn";
-  // Kimi Code's /responses serves Responses clients only; typed server tools from
-  // Chat/Claude clients must stay on their native transport (#1368).
-  const responsesClientsOnly = provider === "kimi-coding-apikey";
+  // Kimi Code and Kimi Platform /responses serve Responses clients only; typed
+  // server tools from Chat/Claude clients stay on their native transport (#1368).
+  const responsesClientsOnly = provider === "kimi-coding-apikey" || provider === "kimi";
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
     (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;

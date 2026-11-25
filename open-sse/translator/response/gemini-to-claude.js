@@ -28,6 +28,9 @@ export function geminiToClaudeResponse(chunk, state) {
     const message = sanitizeErrorMessage(isString(error) ? error : error.message || "Upstream provider error");
     return [{ type: "error", error: { type: "api_error", message } }];
   }
+  // message_stop closed the stream. A later chunk that repeats finishReason must not add
+  // events after it or a second message_stop.
+  if (state.claudeFinishEmitted) return null;
   if (!Array.isArray(state.standaloneSignatureQueue)) state.standaloneSignatureQueue = [];
   const results = [];
   if (!state.messageId) {
@@ -86,6 +89,7 @@ export function geminiToClaudeResponse(chunk, state) {
     const reason = candidate.finishReason.toUpperCase();
     const stopReason = state.hasToolUse || reason === "TOOL_CALLS" || GEMINI_ERROR_FINISH_REASONS.has(reason) ? "tool_use" : reason === "MAX_TOKENS" || reason === "LENGTH" ? "max_tokens" : "end_turn";
     results.push({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: state.usage || { input_tokens: 0, output_tokens: 0 } }, { type: "message_stop" });
+    state.claudeFinishEmitted = true;
   }
   return results.length ? results : null;
 }

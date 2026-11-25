@@ -84,6 +84,7 @@ export const ROUTE_POLICIES = Object.freeze([
     "/api/oauth/commandcode/auto-import",
     "/api/oauth/kiro/auto-import",
     "/api/oauth/xiaomi-mimo/auto-import",
+    "/api/oauth/antigravity/rotation",
   ], "JWT or CLI token only"),
 
   // Routes that spawn child processes or read host secrets — restrict to localhost.

@@ -49,6 +49,15 @@ export function isRefusedRedirect(error) {
   return /unexpected redirect/i.test(`${error?.message} ${error?.cause?.message}`);
 }
 
+/**
+ * Whether the connection is bound to a proxy or relay. A subprocess owns its own
+ * egress, so a CLI executor must refuse such a connection instead of going direct.
+ */
+export function bindsConnectionRoute(proxyOptions) {
+  return Boolean(proxyOptions?.strictProxy || proxyOptions?.proxyPoolId || proxyOptions?.connectionProxyPoolId ||
+    proxyOptions?.connectionProxyEnabled || proxyOptions?.vercelRelayUrl);
+}
+
 /** Release a discarded response without trusting provider-controlled cancel latency. */
 export function cancelDiscardedResponse(response) {
   try {

@@ -30,6 +30,8 @@ describe("OpenCode Go model catalog", () => {
 
     expect(ids).toEqual([
       MODEL_WITHOUT_FORMATS,
+      "glm-5.3",
+      "glm-5.3-flash",
       ...CHAT_ONLY.slice(0, 3),
       ...RESPONSES_CAPABLE,
       VISION_CAPABLE,

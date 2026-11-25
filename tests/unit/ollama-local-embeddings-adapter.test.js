@@ -73,6 +73,19 @@ describe("ollama-local embeddings adapter", () => {
     expect(sent).toEqual({ model: "nomic-embed-text", input: "Hello world" });
   });
 
+  it("sends the configured API key to an authenticated Ollama proxy", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      makeProviderResponse({ model: "nomic-embed-text", embeddings: [[0.1]] })
+    );
+    const result = await handleEmbeddingsCore(makeOptions({
+      credentials: { apiKey: "synthetic-ollama-key", providerSpecificData: { baseUrl: "http://ollama.test:11434" } },
+    }));
+    expect(result.success).toBe(true);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://ollama.test:11434/api/embed");
+    expect(init.headers.Authorization).toBe("Bearer synthetic-ollama-key");
+  });
+
   it("forwards dimensions when supplied", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       makeProviderResponse({

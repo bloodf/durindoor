@@ -82,6 +82,10 @@ export function createBetterSqliteAdapter(filePath) {
       process.removeListener("SIGTERM", onSignal);
       gracefulClose();
     },
+    // Per-handle state for releaseExclusiveLock(); better-sqlite3 reports
+    // both without throwing after close().
+    get open() {return db.open;},
+    get inTransaction() {return db.inTransaction;},
     raw: db
   };
 }

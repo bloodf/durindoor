@@ -36,7 +36,7 @@ const projects = browsers.flatMap((browserName) => themes.flatMap((colorScheme) 
 
 // Storybook mode selects only the storybook runner; app mode runs every other
 // e2e spec and ignores storybook.spec.js without a fragile negative regex.
-// One worker by default: each owns an isolated mutable backend.
+// Each worker owns an isolated mutable backend; cap concurrent workers at two.
 const testMatch = storybook ? "**/storybook.spec.js" : "**/*.spec.js";
 const testIgnore = storybook ? [] : ["**/storybook.spec.js"];
 
@@ -47,7 +47,7 @@ const runConfig = listingTests ? null : {
   forbidOnly: !!process.env.CI,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.PLAYWRIGHT_WORKERS ? Number(process.env.PLAYWRIGHT_WORKERS) : 1,
+  workers: Math.min(2, Math.max(1, Number(process.env.PLAYWRIGHT_WORKERS) || 2)),
   timeout: 60_000,
   expect: { timeout: 10_000 },
   // All artifacts land under the validated invocation root, so parallel

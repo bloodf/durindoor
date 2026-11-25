@@ -4,6 +4,7 @@ globalThis.React ??= React;
 
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { settleImages } from "../../../../../.storybook/settle-images.js";
 import CombosPage from "./page.js";
 import CombosError from "./error.js";
 
@@ -318,6 +319,8 @@ const assertSpacingModal = async () => {
   const model = await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ });
   await userEvent.click(model);
   await expect(model).toHaveAttribute("aria-pressed", "true");
+  // Closing the picker removes its provider logos; Firefox fails any still loading.
+  await expect(await settleImages(picker)).toBeGreaterThan(0);
   await userEvent.click(within(picker).getByRole("button", { name: "Close", exact: true }));
   await waitFor(() => expect(picker).not.toBeInTheDocument());
   const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });

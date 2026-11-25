@@ -52,6 +52,12 @@ function stageLegacy(adapter, day) {
   adapter.run("INSERT INTO usageDaily(dateKey, data) VALUES (?, ?)", [dateKey, JSON.stringify(day)]);
 }
 
+// Measured 10.6-12.1 s alone on a 20-core host (load ~11), 2026-11-25. The cost is inherent,
+// not a per-write regression: each event dirties ~28 SQLite pages (10 usageHistory
+// indexes plus 4 rollup upserts), so 2,000 commits trip ~100 WAL autocheckpoints at
+// 20-40 ms each (~2 s of the ~4 s write phase). The first report also pays ~2.3 s of cold module
+// transforms for the repos getUsageStats imports lazily, and the two 2,000-bucket
+// report rounds plus migration take ~3 s. The 15 s default flaked under suite load.
 it("keeps 2,000 high-cardinality writes flat and preserves legacy stats and charts", async () => {
   const events = Array.from({ length: 2000 }, (_, index) => event(index));
   const legacy = legacyDay(events);
@@ -114,7 +120,7 @@ it("keeps 2,000 high-cardinality writes flat and preserves legacy stats and char
     migration.up(db);
   });
   expect(await readReports()).toEqual(reports);
-});
+}, 40_000);
 
 it("converts a legacy fixture atomically and can be retried without double-counting", () => {
   const legacy = legacyDay([event(1), event(1), event(2)]);

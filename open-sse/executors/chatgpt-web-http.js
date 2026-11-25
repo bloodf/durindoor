@@ -917,12 +917,20 @@ async function* readChatGptSseEvents(body, signal) {
  * We collect every asset_pointer seen so the caller can resolve them once
  * the stream terminates.
  */
+// ChatGPT can announce a `file_upload` placeholder before the real image id.
+// It is not downloadable, and accepting it would end the async image wait early.
+const UPLOAD_PLACEHOLDER_POINTER_RE = /^(?:(?:file-service|sediment):\/\/)?file_upload/;
+
+function isImagePointer(value) {
+  return isString(value) && !UPLOAD_PLACEHOLDER_POINTER_RE.test(value);
+}
+
 function extractImagePointers(parts) {
   const out = [];
   for (const p of parts) {
     if (!p || !isObject(p)) continue;
     const obj = p;
-    if (obj.content_type === "image_asset_pointer" && isString(obj.asset_pointer)) {
+    if (obj.content_type === "image_asset_pointer" && isImagePointer(obj.asset_pointer)) {
       out.push(obj.asset_pointer);
     }
   }
@@ -2283,7 +2291,7 @@ async function waitForImageViaWebSocket(wssUrl, conversationId, timeoutMs, ctx) 
           if (m?.metadata && isObject(m.metadata)) {
             const md = m.metadata;
             const ptr = md.asset_pointer ?? md.image_asset_pointer;
-            if (isString(ptr)) {
+            if (isImagePointer(ptr)) {
               const existing = found.get(ptr);
               found.set(
                 ptr,

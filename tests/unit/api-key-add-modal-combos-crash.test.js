@@ -84,6 +84,9 @@ describe("API Keys page — Add Key modal with combos configured", () => {
       }
       if (target === "/api/combos") return Promise.resolve(response({ combos: baseCombos }));
       if (target.startsWith("/api/keys/policy-catalog")) return Promise.resolve(response({ models: [] }));
+      if (target === "/api/keys/k1" && options.method === "PUT") {
+        return Promise.resolve(response({ key: { ...baseKeys[0], ...JSON.parse(options.body) } }));
+      }
       if (target === "/api/keys" && options.method === "POST") {
         return Promise.resolve(response({ key: "sk-new", name: JSON.parse(options.body).name, id: "k2", allowedCombos: JSON.parse(options.body).allowedCombos, expiresAt: null }, 201));
       }
@@ -97,6 +100,7 @@ describe("API Keys page — Add Key modal with combos configured", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    baseKeys[0].allowedCombos = [];
     vi.restoreAllMocks();
   });
 
@@ -147,5 +151,17 @@ describe("API Keys page — Add Key modal with combos configured", () => {
     const post = calls.find((call) => call.url === "/api/keys" && call.method === "POST");
     expect(post).toBeDefined();
     expect(post.body.allowedCombos).toEqual(["fast"]);
+  });
+
+  it("lets an editor clear a deleted combo marker", async () => {
+    baseKeys[0].allowedCombos = ["(deleted combo)"];
+    await render();
+    await act(async () => container.querySelector('button[aria-label="Edit ci-deploy"]').click());
+    const marker = container.querySelector('input[aria-label="(deleted combo)"]');
+    expect(marker.checked).toBe(true);
+    await act(async () => marker.click());
+    const save = buttons().find((node) => node.textContent.trim() === "Save" && node.closest("dialog"));
+    await act(async () => save.click());
+    expect(calls.find((call) => call.url === "/api/keys/k1" && call.method === "PUT").body.allowedCombos).toEqual([]);
   });
 });

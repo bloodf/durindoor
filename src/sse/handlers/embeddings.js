@@ -7,6 +7,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { leasedAntigravityRefresher } from "./media/antigravityRefresh.js";
 import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js";
 import { resolveTypedMediaModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
@@ -102,6 +103,10 @@ async function routeEmbeddings(request, body, modelStr, { settings, apiKey, auth
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
     const dispatch = credentialDispatchSnapshot(refreshedCredentials);
+    // Cores and executors mutate the dispatched credentials before the callback runs.
+    const presentedRefreshToken = refreshedCredentials.refreshToken;
+    // Without a sent refresh token there is nothing to guard against.
+    const refreshGuard = presentedRefreshToken ? [{ presentedRefreshToken }] : [];
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
@@ -114,8 +119,9 @@ async function routeEmbeddings(request, body, modelStr, { settings, apiKey, auth
           ...newCreds,
           existingProviderSpecificData: credentials.providerSpecificData,
           testStatus: "active"
-        });
+        }, ...refreshGuard);
       },
+      refreshCredentials: leasedAntigravityRefresher(refreshedCredentials),
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       }

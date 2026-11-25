@@ -19,7 +19,7 @@
 //    time budget, and a 429, 5xx or dropped connection is retried with a backoff (once by
 //    default). Any other 4xx is never retried.
 import { DefaultExecutor } from "./default.js";
-import { buildErrorBody } from "../utils/error.js";
+import { buildErrorBody, readBoundedResponseText } from "../utils/error.js";
 import { MINIMAX_CODE_GATEWAY_URL, MINIMAX_CODE_MODELS } from "../providers/registry/minimax-code.js";
 import { normalizeMinimaxCodeRegion, refreshMinimaxCodeToken } from "../services/minimaxCodeAuth.js";
 import {
@@ -107,7 +107,8 @@ function bodyError(doc) {
 }
 
 async function readText(response) {
-  try { return (await response.text()).slice(0, 600); } catch { return ""; }
+  // The wait matches a non-streaming body that is still arriving; an over-cap body reads as "".
+  try { return (await readBoundedResponseText(response, { timeoutMs: 30_000 })).slice(0, 600); } catch { return ""; }
 }
 
 function messageOf(text, fallback) {

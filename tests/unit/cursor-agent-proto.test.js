@@ -296,7 +296,7 @@ describe("Cursor AgentService executor helpers (cursor.js)", () => {
       expect(run.has(4)).toBe(false);
     });
 
-    it("encodes conversation_history from prior turns including tool calls/results", () => {
+    it("includes prior turns and tool calls/results in the current user text", () => {
       const messages = [
         { role: "user", content: "weather in Tokyo?" },
         { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "get_weather", arguments: '{"city":"Tokyo"}' } }] },
@@ -307,9 +307,12 @@ describe("Cursor AgentService executor helpers (cursor.js)", () => {
       const run = decodeMessage(decodeMessage(frame).get(1)[0].value);
       const action = decodeMessage(run.get(2)[0].value);
       const userAction = decodeMessage(action.get(1)[0].value);
-      expect(userAction.has(7)).toBe(true); // conversation_history (field 7)
-      const history = decodeMessage(userAction.get(7)[0].value);
-      expect(history.get(1).length).toBeGreaterThanOrEqual(2); // prior turns
+      expect(userAction.has(7)).toBe(false);
+      const userMessage = decodeMessage(userAction.get(1)[0].value);
+      const text = Buffer.from(userMessage.get(1)[0].value).toString("utf8");
+      for (const value of ["weather in Tokyo?", "get_weather", "18C cloudy", "thanks"]) {
+        expect(text).toContain(value);
+      }
     });
   });
 });

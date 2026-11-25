@@ -79,25 +79,30 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
       render: (quota) => {
         if (quota.notReported) return <span className="text-dd-muted" title={quota.title}>—</span>;
         const isCreditBalance = quota.isCreditBalance === true;
-        const tone = isCreditBalance ? TONES.credit : toneFor(quota.remaining);
+        // Money already spent in a rolling window: not a balance and not a quota.
+        const isSpend = quota.isSpend === true;
+        const hasWindow = !isCreditBalance && !isSpend;
+        const tone = hasWindow ? toneFor(quota.remaining) : TONES.credit;
         const isMerged = quota.mergeMode === MERGE_MODE.ABSOLUTE || quota.mergeMode === MERGE_MODE.PERCENTAGE;
         // A DeepSeek-style credit balance is a running total, not a used/total
         // window — no bar, no percentage, just the balance and its currency.
-        const absoluteLabel = isCreditBalance
+        const absoluteLabel = isSpend
+          ? `${quota.total.toFixed(2)} ${quota.currency || "USD"} spent · ${(Number(quota.requestCount) || 0).toLocaleString()} req`
+          : isCreditBalance
           ? `Credit: ${quota.total.toFixed(2)} ${quota.currency || ""}`.trim()
           : quota.mergeMode === MERGE_MODE.PERCENTAGE
           ? `min across ${quota.accountCount} accounts`
           : `${quota.used.toLocaleString()} / ${quota.total > 0 ? quota.total.toLocaleString() : "∞"}${quota.unit ? ` ${quota.unit}` : ""}`;
         return (
           <div className="flex flex-col gap-1">
-            {isCreditBalance ? null : (
+            {hasWindow ? (
               <div className={`${compact ? "h-1" : "h-1.5"} overflow-hidden rounded-dd ${tone.surface}`} role="progressbar" aria-label={`${quota.name} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={quota.remaining}>
                 <div className={`h-full rounded-dd ${tone.bar} transition-[width] motion-reduce:transition-none`} style={{ width: `${Math.min(quota.remaining, 100)}%` }} />
               </div>
-            )}
+            ) : null}
             <div className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"} text-dd-muted`}>
               <span className="dd-tnum">{absoluteLabel}</span>
-              <span className={`dd-tnum font-medium ${tone.text}`}>{isCreditBalance ? "" : `${quota.remaining}%`}</span>
+              <span className={`dd-tnum font-medium ${tone.text}`}>{hasWindow ? `${quota.remaining}%` : ""}</span>
             </div>
             {isMerged ? <span className={`${compact ? "text-[10px]" : "text-xs"} italic text-dd-subtle`}>merged across {quota.accountCount} account{quota.accountCount !== 1 ? "s" : ""}</span> : null}
           </div>

@@ -1,6 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { nestResponsesReasoningEffort } from "../translator/concerns/responsesReasoning.js";
 import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { createHash } from "node:crypto";
 
@@ -136,6 +137,8 @@ export class XaiExecutor extends BaseExecutor {
     } else {
       delete out.stream_options;
     }
-    return out;
+    // API-key Responses clients take the "openai-responses" transport, not the OAuth one.
+    return responses || credentials?.runtimeTransport?.format === "openai-responses" ?
+      nestResponsesReasoningEffort(out) : out;
   }
 }

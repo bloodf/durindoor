@@ -241,6 +241,24 @@ function capCacheControlBlocks(body) {
   const keep = Math.max(0, 4 - headAnchors.length);
   for (const block of remaining.slice(0, Math.max(0, remaining.length - keep))) delete block.cache_control;
 }
+/**
+ * Anthropic rejects a 1h breakpoint after a 5m one in prefix order (tools, system,
+ * messages). The newest 1h marker is a client 1h request (#5860: the newest client
+ * marker sets the TTL; #5037: 5m unless the client asked), and it already covers
+ * every earlier prefix, so earlier 5m markers are raised to 1h. Markers after the
+ * last 1h stay as they are.
+ */
+function enforceCacheTtlOrder(body) {
+  const marked = [
+  ...(Array.isArray(body?.tools) ? body.tools : []),
+  ...(Array.isArray(body?.system) ? body.system : []),
+  ...(Array.isArray(body?.messages) ? body.messages.flatMap((m) => Array.isArray(m?.content) ? m.content : []) : [])].
+  filter((block) => block?.cache_control);
+  const lastHour = marked.findLastIndex((block) => block.cache_control.ttl === "1h");
+  for (const block of marked.slice(0, Math.max(0, lastHour))) {
+    if (block.cache_control.ttl !== "1h") block.cache_control = { ...CACHE_CONTROL_1H };
+  }
+}
 // Re-anchor cache breakpoints on a Claude passthrough body after transformations.
 export function anchorClaudeCache(body, provider = null) {
   if (!body || !isObject(body)) return body;
@@ -286,6 +304,7 @@ export function anchorClaudeCache(body, provider = null) {
   // when the request already fills Anthropic's four-breakpoint budget.
   if (countCacheControlBlocks(body) >= 4) {
     capCacheControlBlocks(body);
+    enforceCacheTtlOrder(body);
     return body;
   }
   if (Array.isArray(body.messages)) {
@@ -303,7 +322,7 @@ export function anchorClaudeCache(body, provider = null) {
       }
     }
   }
-
+  enforceCacheTtlOrder(body);
   return body;
 }
 

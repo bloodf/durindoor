@@ -3,6 +3,7 @@ import { spawnQuickTunnel, killCloudflared, isCloudflaredRunning, setUnexpectedE
 import { clearPid } from "./pid.js";
 import { waitForHealth, probeUrlAlive } from "./healthCheck.js";
 import { WORKER_URL } from "./config.js";
+import { workerFetch } from "./workerFetch.js";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { getAppPort } from "@/shared/constants/config";
 
@@ -21,7 +22,7 @@ let onUnexpectedExit = null;
 export function setTunnelUnexpectedExitCallback(cb) { onUnexpectedExit = cb; }
 
 async function registerTunnelUrl(shortId, tunnelUrl) {
-  await fetch(`${WORKER_URL}/api/tunnel/register`, {
+  await workerFetch(`${WORKER_URL}/api/tunnel/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ shortId, tunnelUrl })

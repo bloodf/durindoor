@@ -495,7 +495,12 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
-  body = applyProviderThinkingOverride(body, providerThinking);
+  // Native passthrough: CLI tool and provider are the same ecosystem
+  // Skip all translation/normalization — only model and Bearer are swapped
+  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
+  const passthrough = isNativePassthrough(clientTool, provider);
+
+  body = applyProviderThinkingOverride(body, providerThinking, { passthrough });
   // Suffix intent, then body effort/budget (including the provider-level
   // override injected above), select `<model>-<tier>` catalog rows (upstream
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when
@@ -619,11 +624,6 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientLogBody, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
-
-  // Native passthrough: CLI tool and provider are the same ecosystem
-  // Skip all translation/normalization — only model and Bearer are swapped
-  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
-  const passthrough = isNativePassthrough(clientTool, provider);
 
   const searchError = validateSearchRoute(body, sourceFormat, targetFormat, provider);
   if (searchError) {

@@ -406,6 +406,15 @@ export function computeThinkingBudget(current, cap) {
   return null;
 }
 
+// Opt into OpenRouter re-routing when a model's primary upstream is broken
+// (upstream decolua/9router#2887). A caller's explicit choice is left alone.
+function withOpenRouterFallbacks(body) {
+  if (!isRecord(body)) return body;
+  const preferences = body.provider ?? {};
+  if (!isRecord(preferences) || preferences.allow_fallbacks !== undefined) return body;
+  return { ...body, provider: { ...preferences, allow_fallbacks: true } };
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     const providerId = resolveProviderAlias(provider);
@@ -458,6 +467,7 @@ export class DefaultExecutor extends BaseExecutor {
     let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
 
     if (isOfficialAnthropicApiKey(this.provider, credentials)) transformed = stripClaudeIdentity(transformed);
+    if (this.provider === "openrouter") transformed = withOpenRouterFallbacks(transformed);
 
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({

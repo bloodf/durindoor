@@ -195,10 +195,22 @@ export function isWrongModelError(errorText) {
   return WRONG_MODEL_PATTERNS.some((re) => re.test(text));
 }
 
+/** CodeBuddy account-restriction cooldown: upstream 9router #5342 uses 30 minutes. */
+const CODEBUDDY_RESTRICTED_COOLDOWN_MS = 30 * 60 * 1000;
+export const CODEBUDDY_PROVIDERS = Object.freeze(["codebuddy-cn", "codebuddy-intl"]);
+// Plan and credit refusals describe this account, even on HTTP 400, so another account may serve.
+const CODEBUDDY_ERROR_RULES = [
+...["account has been restricted due to unusual activity", "账号存在异常行为"].
+map((text) => ({ provider: CODEBUDDY_PROVIDERS, text, cooldownMs: CODEBUDDY_RESTRICTED_COOLDOWN_MS })),
+...["model_not_in_plan", "当前账号类型暂不支持该模型", "your account type does not support this model",
+"is not allowed for user type", "credits exhausted", "额度已用尽"].
+map((text) => ({ provider: CODEBUDDY_PROVIDERS, text, cooldownMs: COOLDOWN.long }))];
+
 export const ERROR_RULES = [
 // --- Permanent wrong-model rules must precede 401/404 cooldowns (#750) ---
 ...WRONG_MODEL_TEXT.map((text) => ({ text, fallback: false })),
 ...WRONG_MODEL_PATTERNS.map((pattern) => ({ pattern, fallback: false })),
+...CODEBUDDY_ERROR_RULES,
 // --- Text-based rules (checked first, order = priority) ---
 { text: "no credentials", cooldownMs: COOLDOWN.long },
 { text: "request not allowed", cooldownMs: COOLDOWN.short },

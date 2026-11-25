@@ -1,4 +1,4 @@
-import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES, ACCOUNT_SCOPED_4XX_STATUSES } from "../config/errorConfig.js";
+import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES, ACCOUNT_SCOPED_4XX_STATUSES, CODEBUDDY_PROVIDERS } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
@@ -86,7 +86,7 @@ function stripEchoedRequestValues(text, echoedValues) {
  * @param {string|object|null|undefined} errorText
  * @returns {{ message: string, code: string, text: string }}
  */
-function extractProviderRuleText(structuredError, errorText) {
+function extractProviderRuleText(structuredError, errorText, provider = null) {
   const message = extractErrorMessage(structuredError, errorText);
   let body = structuredError;
   if (!body && isString(errorText)) {
@@ -94,7 +94,10 @@ function extractProviderRuleText(structuredError, errorText) {
   }
   const rawCode = body?.error?.code ?? body?.code;
   const code = isString(rawCode) ? rawCode : isNumber(rawCode) ? String(rawCode) : "";
-  const text = [code, message].filter(Boolean).join(" ");
+  // CodeBuddy explains a refusal in `msg` / `displayMsg`, not in `message`.
+  const vendorText = CODEBUDDY_PROVIDERS.includes(provider) ?
+  [body?.msg, body?.displayMsg?.en, body?.displayMsg?.zh].filter(isString) : [];
+  const text = [code, message, ...vendorText].filter(Boolean).join(" ");
   return { message, code, text: text || (isString(errorText) ? errorText : "") };
 }
 
@@ -182,7 +185,7 @@ function classifyFallbackError({
   // Text rules match the provider's own message/code with echoed request
   // values (the model id) removed, so a client-chosen id containing
   // billing/capacity phrases cannot bench shared accounts (#2315).
-  const providerSignal = extractProviderRuleText(structuredError, errorText);
+  const providerSignal = extractProviderRuleText(structuredError, errorText, provider);
   const echoedValues = collectEchoedRequestValues(model, provider, providerSignal.message);
   const ruleMatchText = stripEchoedRequestValues(
     providerSignal.text || normalizedText,

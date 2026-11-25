@@ -11,17 +11,8 @@ const routeDbMocks = vi.hoisted(() => ({
   deleteProviderConnection: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: dbMocks.getProviderConnections,
-  updateProviderConnection: dbMocks.updateProviderConnection,
-  getProviderConnectionById: vi.fn(),
-  getApiKeyByKey: vi.fn(),
-  validateApiKey: vi.fn(),
-  getSettings: vi.fn(),
-  getProxyPools: vi.fn(),
-  getQuotaReservationPressure: vi.fn(),
-}));
-vi.mock("@/models", () => routeDbMocks);
+
+vi.mock("@/lib/localDb", () => ({ ...routeDbMocks, getProviderConnections: dbMocks.getProviderConnections, updateProviderConnection: dbMocks.updateProviderConnection, getApiKeyByKey: vi.fn(), validateApiKey: vi.fn(), getSettings: vi.fn(), getProxyPools: vi.fn(), getQuotaReservationPressure: vi.fn() }));
 vi.mock("@/shared/services/quotaAutoPing", () => ({
   notifyQuotaAutoPingSettingChanged: vi.fn(),
 }));
@@ -63,7 +54,7 @@ beforeEach(() => {
     autoDisabledReason: "Qoder quota exhausted (code 112)",
     autoDisabledAt: AUTO_DISABLED_AT,
   });
-  routeDbMocks.updateProviderConnection.mockImplementation(async (_id, patch) => (
+  dbMocks.updateProviderConnection.mockImplementation(async (_id, patch) => (
     mergeProviderConnection(await routeDbMocks.getProviderConnectionById(), patch)
   ));
   dbMocks.getProviderConnections.mockResolvedValue([{
@@ -219,7 +210,7 @@ describe("Qoder quota exhaustion persistence", () => {
     const { connection } = await response.json();
 
     expect(response.status).toBe(200);
-    expect(routeDbMocks.updateProviderConnection).toHaveBeenCalledWith("qoder-a", {
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalledWith("qoder-a", {
       isActive: true,
     });
     expect(connection).toMatchObject({
@@ -238,7 +229,7 @@ describe("Qoder quota exhaustion persistence", () => {
       params: Promise.resolve({ id: "qoder-a" }),
     });
 
-    expect(routeDbMocks.updateProviderConnection).toHaveBeenCalledWith("qoder-a", {
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalledWith("qoder-a", {
       name: "renamed",
     });
   });

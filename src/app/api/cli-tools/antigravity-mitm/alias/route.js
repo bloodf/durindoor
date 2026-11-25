@@ -1,7 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
-import { getMitmAlias, setMitmAliasAll } from "@/models";
+import { getMitmAlias, setMitmAliasAll } from "@/lib/localDb";
 import { getMitmStatus } from "@/mitm/manager";
 import { writeAliasForTool } from "@/lib/mitmAliasCache";
 import aliasConfig from "@/mitm/aliasConfig";

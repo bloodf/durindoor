@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   isOperatorRequest: vi.fn(async () => true),
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProxyPool: mocks.createProxyPool,
   getProxyPoolById: mocks.getProxyPoolById,
   getProxyPools: vi.fn(),

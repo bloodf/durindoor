@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
 }));
 
@@ -30,7 +30,7 @@ vi.mock("open-sse/services/qoderModels.js", () => ({
   resolveQoderModels: vi.fn(),
 }));
 
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { GET } from "../../src/app/api/providers/[id]/models/route.js";
 
 afterEach(() => {

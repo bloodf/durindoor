@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { findAndReadCursorLocalAuth } from "@/lib/oauth/services/cursorLocalStore.js";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 
 /**
  * POST /api/oauth/cursor/import

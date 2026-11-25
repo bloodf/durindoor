@@ -4,7 +4,7 @@ import { resolveCustomCapabilities } from "../../src/sse/services/model.js";
 import { projectDiscoveryMetadata } from "../../open-sse/services/modelMetadata.js";
 
 const mocks = vi.hoisted(() => ({ add: vi.fn(), update: vi.fn() }));
-vi.mock("@/models", () => ({ getCustomModels: vi.fn(), addCustomModel: mocks.add, updateCustomModel: mocks.update, deleteCustomModel: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getCustomModels: vi.fn(), addCustomModel: mocks.add, updateCustomModel: mocks.update, deleteCustomModel: vi.fn() }));
 vi.mock("next/server", () => ({ NextResponse: { json: (body, init = {}) => Response.json(body, init) } }));
 
 describe("custom model token limits", () => {

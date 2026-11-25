@@ -71,7 +71,7 @@ beforeAll(async () => {
   process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-commandcode-live-"));
   vi.resetModules();
   ({ GET } = await import("@/app/api/providers/[id]/models/route.js"));
-  ({ createProviderConnection } = await import("@/models/index.js"));
+  ({ createProviderConnection } = await import("@/lib/localDb"));
 });
 
 afterAll(() => {

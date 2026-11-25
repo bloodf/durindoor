@@ -44,7 +44,7 @@ import {
   stopCodexProxy,
   stopXaiProxy } from
 "@/lib/oauth/utils/server";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 import { isFunction, isNumber, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { timingSafeCompare } from "../../../../../shared/utils/timingSafeCompare.js";
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildCloudflareWorkerUploadRequest } from "@/lib/cloudflare-worker-upload";
-import { createProxyPool } from "@/models";
+import { createProxyPool } from "@/lib/localDb";
 import {
   buildRelayWorkerCode,
   generateRelaySecret,

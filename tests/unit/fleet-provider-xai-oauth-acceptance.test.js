@@ -16,7 +16,7 @@ vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
   getKimchiUserAgent: vi.fn(() => "kimchi/0.1.01"),
   updateKimchiUserAgent: vi.fn(async () => "kimchi/0.1.01"),
 }));
-vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
   ...(await importOriginal()),
   proxyAwareFetch: vi.fn(),

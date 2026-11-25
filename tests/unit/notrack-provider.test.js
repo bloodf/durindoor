@@ -20,8 +20,9 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
     logError: vi.fn(),
   })),
 }));
-vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => ({})) }));
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn() }));
+
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() ,
+  getSettings: vi.fn(async () => ({}))}));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: transport }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({
@@ -35,7 +36,7 @@ import { getExecutor } from "../../open-sse/executors/index.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { buildRegistryProviderProbe, probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { GET as getConnectionModels } from "../../src/app/api/providers/[id]/models/route.js";
 import { AI_PROVIDERS, APIKEY_PROVIDERS, isRoutableProvider } from "../../src/shared/constants/providers.js";
 import { parseModel } from "../../open-sse/services/model.js";

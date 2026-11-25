@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({ getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), getProviderNodeById: vi.fn(), getProxyPoolById: vi.fn(), deleteProviderConnection: vi.fn() }));
-vi.mock("@/models", () => db);
+vi.mock("@/lib/localDb", () => db);
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: vi.fn(async () => true), canManageAccessConfig: vi.fn(async () => true) }));
 vi.mock("@/shared/services/quotaAutoPing", () => ({ notifyQuotaAutoPingSettingChanged: vi.fn() }));
 import { PUT } from "../../src/app/api/providers/[id]/route.js";

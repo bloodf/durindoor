@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as models from "../../src/models/index.js";
+import * as models from "../../src/lib/localDb.js";
 
 describe("model module export surface", () => {
   it("exports the complete custom-model CRUD contract", () => {

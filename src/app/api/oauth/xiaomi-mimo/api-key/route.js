@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProviderConnection, getProviderConnections, updateProviderConnection } from "@/models";
+import { createProviderConnection, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
 import { isObject, isString } from "@/shared/utils/typeChecks";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 

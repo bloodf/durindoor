@@ -19,7 +19,7 @@ const updateProviderConnection = vi.hoisted(() => vi.fn());
 const getProxyPoolById = vi.hoisted(() => vi.fn());
 const deleteProviderConnection = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById,
   updateProviderConnection,
   getProxyPoolById,

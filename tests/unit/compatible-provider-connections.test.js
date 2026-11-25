@@ -25,7 +25,7 @@ async function setupTestContext(nodeData) {
   const {
     createProviderNode,
     getProviderConnections,
-  } = await import("@/models/index.js");
+  } = await import("@/lib/localDb");
 
   const { disposeRequestDetailsRepo } = await import("@/lib/db/repos/requestDetailsRepo.js");
 

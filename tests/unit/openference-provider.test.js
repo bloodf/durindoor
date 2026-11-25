@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ transport: vi.fn(), save: vi.fn(), usage: vi.f
 vi.mock("open-sse/utils/proxyFetch.js", async (original) => ({ ...(await original()), proxyAwareFetch: mocks.transport }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "fixture", updateKimchiUserAgent: vi.fn() }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: mocks.save, getProxyPoolById: vi.fn(), getProviderNodeById: vi.fn(), updateProviderConnection: vi.fn(), getProviderConnectionById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.save, getProxyPoolById: vi.fn(), getProviderNodeById: vi.fn(), updateProviderConnection: vi.fn(), getProviderConnectionById: vi.fn() }));
 vi.mock("@/lib/oauth/utils/server", () => ({ clearCodexSession: vi.fn(), clearXaiSession: vi.fn(), getCodexSessionStatus: vi.fn(), getXaiSessionStatus: vi.fn(), registerCodexSession: vi.fn(), registerXaiSession: vi.fn(), startCodexProxy: vi.fn(), startXaiProxy: vi.fn(), stopCodexProxy: vi.fn(), stopXaiProxy: vi.fn() }));
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: mocks.usage }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));

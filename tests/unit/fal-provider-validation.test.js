@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() }));
 vi.mock("next/server", () => ({
   NextResponse: { json: (body, init = {}) => Response.json(body, init) },
 }));

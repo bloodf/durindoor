@@ -28,7 +28,7 @@ vi.mock("@/dashboardGuard", () => ({
   hasExactRequestOrigin: () => true,
 }));
 // Only adapter lookup is deferred: creation, transaction and encryption are real.
-vi.mock("@/models", async () => ({
+vi.mock("@/lib/localDb", async () => ({
   ...(await import("../../../src/lib/db/repos/connectionsRepo.js")),
   getProviderNodeById: vi.fn(), getProviderNodes: vi.fn(), getProxyPoolById: vi.fn(),
 }));

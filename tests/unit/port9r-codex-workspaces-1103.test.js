@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ create: vi.fn(), get: vi.fn(), update: vi.fn(), fetch: vi.fn(), proxyFetch: vi.fn() }));
 vi.mock("next/server", () => ({ NextResponse: { json: (body, init) => ({ status: init?.status || 200, body }) } }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: mocks.create, getProviderConnectionById: mocks.get, updateProviderConnection: mocks.update, getProxyPoolById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.create, getProviderConnectionById: mocks.get, updateProviderConnection: mocks.update, getProxyPoolById: vi.fn() }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.proxyFetch, default: vi.fn() }));
 vi.mock("@/lib/oauth/utils/server", () => ({
   clearCodexSession: vi.fn(), clearXaiSession: vi.fn(), getCodexSessionStatus: vi.fn(), getXaiSessionStatus: vi.fn(),

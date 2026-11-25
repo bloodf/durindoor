@@ -44,7 +44,7 @@ vi.mock("@/lib/usageDb.js", () => ({
 
 // The discovery path resolves the connection's proxy configuration. No proxy
 // pool is configured here, so the lookup must never reach a database.
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProxyPoolById: vi.fn(async () => null),
 }));
 

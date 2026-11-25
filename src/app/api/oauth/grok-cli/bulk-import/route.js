@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProviderConnection, getProviderConnections } from "@/models";
+import { createProviderConnection, getProviderConnections } from "@/lib/localDb";
 import { decodeXaiIdTokenEmail, extractEmailFromAccessToken } from "@/lib/oauth/providerHelpers";
 import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 

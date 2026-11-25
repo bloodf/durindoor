@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProxyPoolById, updateProxyPool } from "@/models";
+import { getProxyPoolById, updateProxyPool } from "@/lib/localDb";
 import { getSettings } from "@/lib/localDb";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";

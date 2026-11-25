@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/models";
+import { getProviderConnections } from "@/lib/localDb";
 import {
   FREE_PROVIDERS,
   FREE_TIER_PROVIDERS,

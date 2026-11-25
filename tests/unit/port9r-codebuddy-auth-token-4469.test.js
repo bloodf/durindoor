@@ -33,21 +33,16 @@ vi.mock("next/server", () => ({
   },
 }));
 
-vi.mock("@/models", () => ({
-  getProviderConnectionById: vi.fn(async (id) => mockConnections.get(id) ?? null),
-  getProviderConnections: vi.fn(async () => Array.from(mockConnections.values())),
-  createProviderConnection: mockCreate,
-  updateProviderConnection: mockUpdate,
-  getProviderNodeById: vi.fn(async () => null),
-  getProviderNodes: vi.fn(async () => []),
-  getProxyPoolById: vi.fn(async () => null),
-}));
+
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(async (id) => mockConnections.get(id) ?? null),
   getProviderConnections: vi.fn(async () => Array.from(mockConnections.values())),
   updateProviderConnection: mockUpdate,
-}));
+  createProviderConnection: mockCreate,
+  getProviderNodeById: vi.fn(async () => null),
+  getProviderNodes: vi.fn(async () => []),
+  getProxyPoolById: vi.fn(async () => null)}));
 
 vi.mock("@/dashboardGuard", () => ({
   isOperatorRequest: vi.fn(async () => true),

@@ -316,16 +316,32 @@ async function transcribeHuggingFace(cfg, file, model, token, proxyOptions, sign
   return jsonResponse({ text: data.text || "" }, data);
 }
 
+const TIMESTAMP_GRANULARITY_FIELDS = ["timestamp_granularities[]", "timestamp_granularities"];
+const TIMESTAMP_GRANULARITIES = new Set(["word", "segment"]);
+
+// OpenAI-compatible upstreams accept granularities only with verbose_json and only
+// under the array field name, so both client spellings are merged there (9router#5840).
+function appendTimestampGranularities(fd, formData) {
+  if (String(formData.get("response_format") ?? "").trim().toLowerCase() !== "verbose_json") return;
+  const values = TIMESTAMP_GRANULARITY_FIELDS.
+  flatMap((name) => formData.getAll(name)).
+  flatMap((value) => String(value).split(",")).
+  map((value) => value.trim().toLowerCase()).
+  filter((value) => TIMESTAMP_GRANULARITIES.has(value));
+  for (const value of new Set(values)) fd.append("timestamp_granularities[]", value);
+}
+
 // Default: OpenAI/Groq/Whisper-compatible multipart
 async function transcribeOpenAICompatible(cfg, file, model, token, formData, proxyOptions, signal) {
   const fd = new FormData();
   fd.append("file", file, file.name || "audio.wav");
   fd.append("model", model);
-  // Forward every client field as-is (covers timestamp_granularities[], include[], etc.); file/model set above
+  // Forward other client fields as-is (include[], etc.); file/model are set above
   for (const [k, v] of formData.entries()) {
-    if (k === "file" || k === "model") continue;
+    if (k === "file" || k === "model" || TIMESTAMP_GRANULARITY_FIELDS.includes(k)) continue;
     if (v !== null && v !== undefined && v !== "") fd.append(k, v);
   }
+  appendTimestampGranularities(fd, formData);
   // A user-supplied host is fetched through the outbound guard so DNS answers
   // are validated on the socket too: a hostname that passes the static check
   // can still resolve to a blocked address (DNS rebinding). Registry-fixed

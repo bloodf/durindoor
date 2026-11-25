@@ -22,6 +22,8 @@
  * use www.kimi.com.
  */
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
@@ -410,7 +412,13 @@ export class KimiWebExecutor extends BaseExecutor {
    * @param {object|null} [input.proxyOptions]
    * @returns {Promise<{response: Response, url: string, headers: Record<string,string>, transformedBody: object}>}
    */
-  async execute({ body, credentials, stream: wantStream, signal, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ body, credentials, stream: wantStream, signal, proxyOptions = null }, sender, billed) {
     const bodyObj = body || {};
 
     const { accessToken: jwt, origin } = resolveKimiTokens(credentials);
@@ -454,37 +462,23 @@ export class KimiWebExecutor extends BaseExecutor {
     const reqHeaders = this.buildKimiHeaders(jwt, origin);
     const framedBody = frameConnectMessage(reqBody);
 
-    // Combine chatCore's client-disconnect signal with a connect timeout so a
-    // stalled TCP/TLS/proxy handshake before response headers cannot hold the
-    // provider slot indefinitely (mirrors BaseExecutor's fetch guard).
-    const connectCtrl = new AbortController();
-    const connectTimer = setTimeout(
-      () => connectCtrl.abort(new Error("fetch connect timeout")),
-      FETCH_CONNECT_TIMEOUT_MS
-    );
-    const mergedSignal = signal ?
-    AbortSignal.any([signal, connectCtrl.signal]) :
-    connectCtrl.signal;
-
+    // The sender bounds the wait for response headers and then leaves the body alone.
     let upstream;
     try {
-      upstream = await proxyAwareFetch(chatUrl, {
+      upstream = billed(await sender.sendRequest(chatUrl, {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
-        signal: mergedSignal
-      }, proxyOptions);
+        signal
+      }, proxyOptions));
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       return {
         response: errorResponse(502, `Kimi fetch failed: ${err instanceof Error ? err.message : "unknown"}`),
         url: chatUrl,
         headers: {},
         transformedBody: bodyObj
       };
-    } finally {
-      // Headers have arrived (or fetch rejected) — stop the connect timer so it
-      // cannot abort the body stream mid-read.
-      clearTimeout(connectTimer);
     }
 
     if (!upstream.ok) {

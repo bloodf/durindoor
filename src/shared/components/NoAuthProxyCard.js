@@ -14,6 +14,7 @@ const STRATEGIES = [
   { value: "none", label: "None (single pool)" },
   { value: "round-robin", label: "Round-robin" },
   { value: "random", label: "Random" },
+  { value: "session", label: "Session" },
 ];
 
 export default function NoAuthProxyCard({ providerId }) {
@@ -112,8 +113,10 @@ export default function NoAuthProxyCard({ providerId }) {
               : isRotation
                 ? rotateStrategy === "round-robin"
                   ? `Rotating through all ${proxyPools.length} active pools in order. State is in-memory (resets on restart).`
-                  : `Picking a random pool from ${proxyPools.length} active pools each request.`
-                : "Uses selected pool above. Set to Round-robin or Random to rotate across all active pools."
+                  : rotateStrategy === "session"
+                    ? "Keeps each conversation on one active pool. Requests without a session rotate in order."
+                    : `Picking a random pool from ${proxyPools.length} active pools each request.`
+                : "Uses selected pool above. Choose a rotation strategy to use all active pools."
           }
         >
           <Select

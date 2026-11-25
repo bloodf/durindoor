@@ -40,6 +40,8 @@ external provenance requirements.
 
 ## Docker and platform exceptions
 
+Website Docker verification caches a labeled dependency and Chromium base image keyed by the lockfile and Dockerfile, and prunes older labeled tags after seven days. Each run builds from a read-only checkout with writable website files and artifacts under its private run root.
+
 Docker requires a separately authorized, disposable local builder. Do not expose
 its socket or registry configuration to Vitest or the local runner. On a host
 without Docker, record Docker as not run, never passed. macOS artifact smoke

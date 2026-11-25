@@ -1,8 +1,10 @@
 FROM node:24.22.2-bookworm
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@12.18.0 --activate
-COPY . .
-RUN pnpm -C website install --frozen-lockfile && \
-    pnpm -C website exec playwright install --with-deps chromium && \
-    pnpm -C website run build
+COPY website/package.json website/pnpm-lock.yaml website/pnpm-workspace.yaml website/.npmrc ./website/
+# The website postinstall needs source files, so run it during verification.
+RUN pnpm -C website install --frozen-lockfile --ignore-scripts && \
+    pnpm -C website rebuild esbuild && \
+    pnpm -C website exec playwright install --with-deps chromium
+RUN mv /repo/website/node_modules /deps
 WORKDIR /repo/website

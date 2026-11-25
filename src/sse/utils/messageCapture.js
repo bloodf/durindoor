@@ -23,7 +23,7 @@ function appendText(content, append) {
   }
 }
 
-function observeSse(format, expectedChoiceCount, append) {
+function observeSse(format, expectedChoiceCount, append, collectToolName) {
   const terminal = createUpstreamTerminalTracker({ format, expectedChoiceCount });
   let lineBuffer = "";
   let data = "";
@@ -43,6 +43,9 @@ function observeSse(format, expectedChoiceCount, append) {
         if (claudeStarted || chunk.message?.role !== ROLE.ASSISTANT) throw new Error("Invalid assistant message start");
         claudeStarted = true;
         chunk.message.content?.forEach((block, index) => appendText([block], (text) => append(index, text)));
+      }
+      if (chunk?.type === "content_block_start" && claudeStarted && chunk.content_block?.type === CLAUDE_BLOCK.TOOL_USE) {
+        collectToolName(chunk.content_block.name);
       }
       if (chunk?.type === "content_block_start" && claudeStarted && chunk.content_block?.type === CLAUDE_BLOCK.TEXT) {
         append(chunk.index, chunk.content_block.text);
@@ -141,7 +144,14 @@ export function prepareMessageCapture({ request, body, settings, auth, credentia
       count(text);
       assistant.set(index, (assistant.get(index) || "") + text);
     };
-    const stream = type === "text/event-stream" ? observeSse(format, expectedChoiceCount, append) : null;
+    const toolNames = new Set();
+    const collectToolName = (name) => {
+      if (isString(name) && name && toolNames.size < 20) {
+        count(name);
+        toolNames.add(name);
+      }
+    };
+    const stream = type === "text/event-stream" ? observeSse(format, expectedChoiceCount, append, collectToolName) : null;
     const decoder = new TextDecoder("utf-8", { fatal: true });
     let json = "";
     let observing = true;
@@ -189,10 +199,12 @@ export function prepareMessageCapture({ request, body, settings, auth, credentia
             }
           }
           const replies = [...assistant].sort(([left], [right]) => left - right).map(([, text]) => text);
-          if (!user.length && !replies.length) return;
+          if (!user.length && !replies.length && !toolNames.size) return;
           const assistantText = format === FORMATS.CLAUDE && replies.length ? [replies.join("")] : replies;
           const redactText = createCaptureTextRedactor(credentials);
-          const content = JSON.stringify({ user: user.map(redactText), assistant: assistantText.map(redactText) });
+          const content = JSON.stringify({ user: user.map(redactText), assistant: assistantText.map(redactText),
+            ...(toolNames.size ? { toolNames: [...toolNames].map(redactText) } : {}),
+          });
           // Start storage without awaiting it on the response path.
           void storeAdmittedCapture({ keyId, session, billingEpoch, content }).catch(() => {});
         } catch {

@@ -34,3 +34,6 @@ Session rows also include a `tokens` split: `input` includes `cacheRead` and
 `cacheCreation`, `uncachedInput` is the remainder, and `output` includes
 `reasoning`. `total` is input plus output. For older rows whose prompt count is
 smaller than the sum of cache counters, the cache counters are added to input.
+
+Opt-in message capture also stores up to 20 distinct tool names from Claude
+stream events delivered to the client. The stream itself is unchanged.

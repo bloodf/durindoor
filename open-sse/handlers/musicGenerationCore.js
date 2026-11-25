@@ -100,9 +100,9 @@ function musicStreamResult(response, provider, onComplete) {
   let terminal = null;
   let failed = false;
   let bytes = 0;
-  const consume = (text) => {
-    for (const { data } of frameReader.push(text)) {
-      if (!data || data === "[DONE]") continue;
+  const consume = (frames) => {
+    for (const { data } of frames) {
+      if (!data.trim() || data.trim() === "[DONE]") continue;
       const value = JSON.parse(data);
       if (value.error || (value.base_resp?.status_code !== undefined && value.base_resp.status_code !== 0)) failed = true;
       if (value.data?.status === 2) terminal = value;
@@ -111,14 +111,21 @@ function musicStreamResult(response, provider, onComplete) {
   const stream = new TransformStream({
     transform(chunk, controller) {
       bytes += chunk.byteLength;
-      if (sse) consume(decoder.decode(chunk, { stream: true }));
+      if (sse) consume(frameReader.push(decoder.decode(chunk, { stream: true })));
       controller.enqueue(chunk);
     },
     async flush() {
-      if (sse) consume(decoder.decode());
+      let truncated = false;
+      if (sse) {
+        consume(frameReader.push(decoder.decode()));
+        // A final CR is held until EOF. Frames it closes carry `wire`; an unterminated tail does not.
+        const rest = frameReader.flush();
+        consume(rest.filter((frame) => frame.wire !== undefined));
+        truncated = rest.some((frame) => frame.wire === undefined && frame.raw.trim() !== "");
+      }
       // EOF alone is not a successful SSE terminal. Binary bytes pass untouched;
       // a failed/cancelled transport never reaches flush and never records usage.
-      if (failed || (sse ? !terminal || frameReader.flush().some((frame) => frame.raw.trim() !== "") : bytes === 0)) return;
+      if (failed || (sse ? !terminal || truncated : bytes === 0)) return;
       Object.assign(accounting, musicAccounting(terminal, provider), { state: "complete" });
       await onComplete?.(accounting);
     },

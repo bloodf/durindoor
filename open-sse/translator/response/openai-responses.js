@@ -13,7 +13,7 @@ import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesText
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
-import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
+import { reasoningDelta, extractReasoningText, REASONING_PART_SEPARATOR } from "../concerns/reasoning.js";
 import { resolveInlineThinkingFormat } from "../../utils/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
 import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
@@ -809,6 +809,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
     state.respCustomToolKinds?.clear();
     for (const input of state.respCustomToolInput?.values() || []) releaseRetained(state, input.length);
     state.respCustomToolInput?.clear();
+    state.respReasoningEmitted = state.respReasoningNeedsBreak = false;
     if (state.responsesTextSnapshots) closeResponsesTextSnapshots(state);
     delete state.responsesTextSnapshots;
   }
@@ -1078,6 +1079,12 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
     return null;
   }
 
+  // Each summary part is a separate thought: break before the next one's text.
+  if (eventType === "response.reasoning_summary_part.added") {
+    if (state.respReasoningEmitted) state.respReasoningNeedsBreak = true;
+    return null;
+  }
+
   // Copilot can rotate reasoning item IDs between deltas and the final
   // snapshot. Match both identifiers to replay only summaries we never streamed.
   const reasoningEvents = state.responsesReasoningEvents ??= { ids: new Set(), indexes: new Set() };
@@ -1098,9 +1105,12 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
     if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
   }
   if (summary) {
+    const text = state.respReasoningNeedsBreak ? REASONING_PART_SEPARATOR + summary : summary;
+    state.respReasoningNeedsBreak = false;
+    state.respReasoningEmitted = true;
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      reasoningDelta(summary)
+      reasoningDelta(text)
     );
   }
 

@@ -14,7 +14,6 @@ const EXECUTORS_DIR = path.join(ROOT, "open-sse/executors");
 
 /** Deliberate direct `fetch(` call sites still awaiting the shared send-wrapper port. */
 const BARE_FETCH_ALLOWLIST = {
-  "deepseek-web.js": "DeepSeek web session bootstrap still uses direct fetch pending shared wrapper.",
   "websession-utils.js": "fetchWithTimeout falls back to global fetch only when proxyOptions is null."
 };
 

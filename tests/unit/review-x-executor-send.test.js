@@ -14,18 +14,6 @@ const { parse } = createRequire(new URL("../../package.json", import.meta.url))(
 const executorsDir = new URL("../../open-sse/executors/", import.meta.url);
 
 const overrideAllowlist = {
-  "chatgpt-web.js": "Selects between browser and HTTP ChatGPT transports.",
-  "cloudflare-playground.js": "Cloudflare Playground owns its session and inference requests.",
-  "cursor.js": "Cursor owns its binary Agent and Chat protocol transports.",
-  "deepseek-web.js": "DeepSeek Web manages session creation and proof of work.",
-  "devin-cli-agentic.js": "Dispatches through the Devin CLI bridge.",
-  "devin-cli.js": "Dispatches through the Devin CLI bridge.",
-  "devin-desktop.js": "Owns the Devin Desktop session and agent transport.",
-  "doubao-web.js": "Doubao owns its web-session chat transport.",
-  "duckduckgo-web.js": "DuckDuckGo obtains a chat token before inference.",
-  "freebuff.js": "Freebuff manages its Codebuff backend protocol.",
-  "gemini-web.js": "Gemini Web uses browser-session RPC requests.",
-  "grok-web.js": "Grok Web owns session chat and attachment requests.",
   "huggingchat.js": "HuggingChat creates conversations and handles its event protocol.",
   "hyperagent.js": "Hyperagent owns its session and agent message protocol.",
   "kimi-web.js": "Kimi Web uses its Connect RPC stream.",

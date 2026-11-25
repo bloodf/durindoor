@@ -81,6 +81,8 @@ Atomic capacity always needs one remaining request on a fresh bounded `requests:
 
 Opt-in per active Claude or Codex OAuth connection. DurinDoor sends a minimal request only when the five-hour session window is ready to restart. Codex also waits when a longer blocking quota is exhausted. API-key connections and other providers are never pinged.
 
+With the on-reset toggle on, DurinDoor also starts an idle Claude window: a five-hour window that reports no reset time. This needs a fresh weekly quota reading and no exhausted weekly window, including model-scoped ones. If the connection selects a proxy pool, that pool must be available. DurinDoor waits at least five hours after the connection's last successful ping before it starts an idle window again. This limit does not delay reset pings.
+
 The scheduler uses the same snapshots and tracker. A ping counts as success only after a native Claude `message_stop` or a valid Codex Responses terminal. Empty or truncated 200 streams do not update ping metadata. A request already accepted upstream cannot be recalled.
 
 ## Free limit resets (Claude Code)

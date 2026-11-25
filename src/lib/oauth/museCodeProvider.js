@@ -6,14 +6,14 @@
  * whose mint fails is still saved with the `dca:` token and MuseCodeExecutor
  * mints the key before the first request.
  */
-import { PROVIDER_OAUTH } from "open-sse/providers/index.js";
+import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
 import {
   MUSE_CODE_DEFAULT_POLL_INTERVAL_SEC,
   MUSE_CODE_DEVICE_GRANT,
   isMuseDcaToken,
   museCodeHeaders } from
-"open-sse/config/museCode.js";
-import { mintMuseApiKey, museMintMetadata } from "open-sse/services/museCodeAuth.js";
+"../../../open-sse/config/museCode.js";
+import { mintMuseApiKey, museMintMetadata } from "../../../open-sse/services/museCodeAuth.js";
 import { isNumber, isString } from "../../shared/utils/typeChecks.js";
 
 async function postForm(url, params, proxyOptions) {

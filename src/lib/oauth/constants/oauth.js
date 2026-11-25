@@ -2,9 +2,9 @@
  * OAuth Configuration Constants — static data lives in registry, re-exported here for consumers.
  */
 import { platform, arch } from "os";
-import { getKimiOAuthClientId } from "open-sse/config/appConstants.js";
-import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "open-sse/providers/shared.js";
-import { PROVIDER_OAUTH } from "open-sse/providers/index.js";
+import { getKimiOAuthClientId } from "../../../../open-sse/config/appConstants.js";
+import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "../../../../open-sse/providers/shared.js";
+import { PROVIDER_OAUTH } from "../../../../open-sse/providers/index.js";
 
 /**
  * Get the platform enum value based on the current OS.

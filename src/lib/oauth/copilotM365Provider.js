@@ -16,10 +16,10 @@ import {
   M365_OAUTH_CONFIG,
   isM365Guid,
   getM365ClientId } from
-"open-sse/config/copilotM365.js";
-import { credentialFetch } from "open-sse/utils/credentialFetch.js";
-import { m365IdentityFromAccessToken } from "open-sse/utils/m365Identity.js";
-import { readBoundedResponseText, sanitizeErrorMessage } from "open-sse/utils/error.js";
+"../../../open-sse/config/copilotM365.js";
+import { credentialFetch } from "../../../open-sse/utils/credentialFetch.js";
+import { m365IdentityFromAccessToken } from "../../../open-sse/utils/m365Identity.js";
+import { readBoundedResponseText, sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
 import { timingSafeCompare } from "../../shared/utils/timingSafeCompare.js";
 import { isNumber, isRecord, isString } from "../../shared/utils/typeChecks.js";
 

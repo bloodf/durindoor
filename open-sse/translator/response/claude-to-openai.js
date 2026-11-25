@@ -9,6 +9,7 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
 
 // Create OpenAI chunk helper
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained } from "../../utils/streamRetainedBudget.js";
 function createChunk(state, delta, finishReason = null) {
   return buildChunk(
     { id: `chatcmpl-${state.messageId}`, created: Math.floor(Date.now() / 1000), model: state.model },
@@ -124,14 +125,21 @@ export function claudeToOpenAIResponse(chunk, state) {
           results.push(createChunk(state, { content: delta.text }));
         } else if (delta?.type === "thinking_delta" && isString(delta.thinking)) {
           const block = state.claudeThinkingBlocks?.get(chunk.index);
-          if (block?.type === CLAUDE_BLOCK.THINKING) block.thinking += delta.thinking;
+          if (block?.type === CLAUDE_BLOCK.THINKING) {
+            chargeRetained(state, delta.thinking.length);
+            block.thinking += delta.thinking;
+          }
           if (delta.thinking) results.push(createChunk(state, reasoningDelta(delta.thinking)));
         } else if (delta?.type === "signature_delta" && isString(delta.signature)) {
           const block = state.claudeThinkingBlocks?.get(chunk.index);
-          if (block?.type === CLAUDE_BLOCK.THINKING) block.signature += delta.signature;
+          if (block?.type === CLAUDE_BLOCK.THINKING) {
+            chargeRetained(state, delta.signature.length);
+            block.signature += delta.signature;
+          }
         } else if (delta?.type === "input_json_delta" && delta.partial_json) {
           const toolCall = state.toolCalls.get(chunk.index);
           if (toolCall) {
+            chargeRetained(state, delta.partial_json.length);
             toolCall.function.arguments += delta.partial_json;
             results.push(createChunk(state, {
               tool_calls: [{

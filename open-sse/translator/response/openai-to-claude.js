@@ -13,6 +13,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 // for arg sanitization). Current request translator emits no prefix ("") — strip
 // is then a no-op. Kept intentionally; do NOT couple to request's empty prefix.
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained } from "../../utils/streamRetainedBudget.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
 
 // Detect and deduplicate doubled JSON (e.g. {"query":"x"}{"query":"x"})
@@ -365,6 +366,7 @@ export function openaiToClaudeResponse(chunk, state) {
         if (toolInfo) {
           // Buffer args instead of streaming — sanitize at finish to fix bad params
           if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
+          chargeRetained(state, tc.function.arguments.length);
           state.toolArgBuffers.set(idx, (state.toolArgBuffers.get(idx) || "") + tc.function.arguments);
         }
       }

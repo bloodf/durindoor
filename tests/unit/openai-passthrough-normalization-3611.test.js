@@ -232,7 +232,10 @@ describe("masked gateway errors in OpenAI passthrough streams (upstream #3611)",
 
   it.each([
     ["text", { content: "partial" }],
-    ["a tool call", { tool_calls: toolCalls }]
+    ["a tool call", { tool_calls: toolCalls }],
+    ["an image", { images: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] }],
+    ["structured reasoning", { reasoning_details: [{ type: "reasoning.text", text: "thinking" }] }],
+    ["a refusal", { refusal: "I can't help with that." }]
   ])("keeps the finish after the stream already delivered %s", async (_label, delta) => {
     const output = await passthrough(sse(
       { choices: [{ index: 0, delta, finish_reason: null }] },

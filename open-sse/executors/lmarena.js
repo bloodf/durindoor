@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { abortable, createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { tlsFetchLMArena } from "../services/lmarenaTlsClient.js";
+import { runWithTlsProxyOptions } from "../services/tlsClientBase.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const URL = "https://arena.ai/nextjs-api/stream/create-evaluation";
@@ -30,7 +31,9 @@ export class LmarenaExecutor extends BaseExecutor {
   async execute(input) {
     if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
     const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+    // The TLS client resolves its proxy from this scope, not from the send.
+    return runWithTlsProxyOptions(input.proxyOptions, () =>
+      withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed)));
   }
 
   async runChat(input, sender, billed) {

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { bindsConnectionRoute, createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { buildErrorBody, errorResponse } from "../utils/error.js";
 import auggieRegistry from "../providers/registry/auggie.js";
@@ -171,6 +171,10 @@ export class AuggieExecutor extends BaseExecutor {
   async execute(input) {
     const { model, body, stream, signal, log } = input;
     if (signal?.aborted) throw requestAbortError(signal.reason);
+    if (bindsConnectionRoute(input.proxyOptions)) {
+      const response = errorResponse(400, "Auggie cannot use gateway proxy or relay settings");
+      return { response, url: AUGGIE_URL, headers: {}, transformedBody: { error: true } };
+    }
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     const promptText = buildAuggiePrompt(messages);
     const auggieBin = resolveAuggieBin();

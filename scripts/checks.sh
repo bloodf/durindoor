@@ -20,16 +20,25 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 if [ "${ORQ_CHANGED_FILES+x}" = x ]; then
   cp -- "$ORQ_CHANGED_FILES" "$work/files" || exit 1
 else
-  base=$(git merge-base HEAD origin/main) || exit 1
+  base=${ORQ_BASE_SHA:-$(git merge-base HEAD origin/main)} || exit 1
   git diff --name-only --diff-filter=AMR "$base" HEAD > "$work/files" || exit 1
 fi
-node scripts/checks-select.mjs "$work/files" > "$work/selection" || exit 1
+if [ "${ORQ_DELETED_FILES+x}" = x ]; then
+  cp -- "$ORQ_DELETED_FILES" "$work/deleted" || exit 1
+elif [ "${ORQ_CHANGED_FILES+x}" != x ]; then
+  git diff --name-only --diff-filter=D "$base" HEAD > "$work/deleted" || exit 1
+else
+  : > "$work/deleted"
+fi
+node scripts/checks-select.mjs "$work/files" "$work/deleted" > "$work/selection" || exit 1
 for kind in eslint tests related; do
   node -e 'const fs = require("fs"); const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(data[process.argv[2]].join("\n"));' "$work/selection" "$kind" > "$work/$kind" || exit 1
 done
 set --
 while IFS= read -r file || [ -n "$file" ]; do [ -z "$file" ] || set -- "$@" "$file"; done < "$work/eslint"
-if [ "$#" -gt 0 ]; then run pnpm exec eslint "$@"; fi
+if node -e 'const fs=require("fs"); process.exit(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).fullLint ? 0 : 1)' "$work/selection"; then
+  run pnpm run lint
+elif [ "$#" -gt 0 ]; then run pnpm exec eslint "$@"; fi
 # Oxlint checks repository source, excluding tests and vendored/generated files.
 if node -e 'const fs=require("fs"); const files=fs.readFileSync(process.argv[1],"utf8").split(/\r?\n/); process.exit(files.some(f => /\.(?:[cm]?[jt]s|[jt]sx)$/.test(f) && !/^(tests|tools\/oxlint\/anti-slop|node_modules|website\/node_modules)\//.test(f) && !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f)) ? 0 : 1)' "$work/files"; then
   run pnpm run lint:anti-slop
@@ -42,6 +51,12 @@ fi
 set --
 while IFS= read -r file || [ -n "$file" ]; do [ -z "$file" ] || set -- "$@" "../$file"; done < "$work/related"
 if [ "$#" -gt 0 ]; then
-  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs related --run --passWithNoTests --maxWorkers=50% "$@") || { echo 'FAILED: related tests' >&2; failed=1; }
+  shards=${CHECKS_RELATED_SHARDS:-4}
+  case "$shards" in *[!0-9]*|''|0*) echo 'CHECKS_RELATED_SHARDS must be a positive integer without leading zeroes' >&2; exit 1 ;; esac
+  shard=1
+  while [ "$shard" -le "$shards" ]; do
+    (cd tests && timeout 300 node node_modules/vitest/vitest.mjs related --run --passWithNoTests --maxWorkers=50% "--shard=$shard/$shards" "$@") || { echo "FAILED: related tests shard $shard/$shards" >&2; failed=1; }
+    shard=$((shard + 1))
+  done
 fi
 exit "$failed"

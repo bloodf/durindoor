@@ -8,5 +8,5 @@ export {
   CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS,
 } from "./blocks.js";
 export { OPENAI_FINISH, CLAUDE_STOP, GEMINI_FINISH } from "./finishReasons.js";
-export { MODEL_FALLBACK, DEFAULT_IMAGE_MIME } from "./defaults.js";
+export { MODEL_FALLBACK, DEFAULT_IMAGE_MIME, OPENAI_SERVICE_TIERS, CLAUDE_TO_OPENAI_SERVICE_TIER } from "./defaults.js";
 export { COMMANDCODE_EVENT } from "./commandcode.js";

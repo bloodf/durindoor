@@ -275,3 +275,7 @@ export function buildKimiDeviceHeaders(deviceId) {
     "X-Msh-Device-Id": deviceId
   };
 }
+
+// The OpenAI Responses endpoint rejects a longer tool name with 400
+// "name must be at most 64 characters, got N" (9router#4545).
+export const MAX_TOOL_NAME_LEN = 64;

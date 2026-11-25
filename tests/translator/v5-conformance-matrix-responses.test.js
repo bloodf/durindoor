@@ -464,6 +464,7 @@ describe("#1089 Responses client conformance", () => {
     expect(toChat[0].choices[0]).toEqual({
       index: 0,
       delta: {
+        role: "assistant",
         tool_calls: [{
           index: 0,
           id: "c1",

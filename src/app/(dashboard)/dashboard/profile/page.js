@@ -16,6 +16,7 @@ import Tabs from "@/shared/ui/components/Tabs.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
+import { usePasswordPrompt } from "@/shared/hooks/usePasswordPrompt";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
@@ -120,6 +121,8 @@ export default function ProfilePage() {
   const [oidcRedirectUri, setOidcRedirectUri] = useState("/api/auth/oidc/callback");
   const [oidcExpanded, setOidcExpanded] = useState(false);
   const importFileRef = useRef(null);
+  const { confirmPassword, prompt: reauth } = usePasswordPrompt();
+  const [requireLoginError, setRequireLoginError] = useState("");
   const [proxyForm, setProxyForm] = useState({
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
@@ -558,16 +561,21 @@ export default function ProfilePage() {
   };
 
   const updateRequireLogin = async (requireLogin) => {
+    setRequireLoginError("");
     try {
       const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requireLogin })
+        body: JSON.stringify({ requireLogin }),
+        confirmPassword
       });
       if (res.ok) {
         setSettings((prev) => ({ ...prev, requireLogin }));
+      } else {
+        setRequireLoginError((await res.json()).error || "Failed to update require login");
       }
     } catch (err) {
+      setRequireLoginError("Failed to update require login");
       console.error("Failed to update require login:", err);
     }
   };
@@ -610,7 +618,8 @@ export default function ProfilePage() {
       const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        confirmPassword
       });
 
       const data = await res.json();
@@ -670,7 +679,8 @@ export default function ProfilePage() {
           oidcScopes: scopes || "openid profile email",
           oidcLoginLabel: oidcForm.oidcLoginLabel.trim() || "Sign in with OIDC",
           ...(secret ? { oidcClientSecret: secret } : null)
-        })
+        }),
+        confirmPassword
       });
 
       const saved = await saveRes.json().catch(() => ({}));
@@ -1047,7 +1057,7 @@ export default function ProfilePage() {
 
       <section role="tabpanel" aria-label="Security settings" hidden={activeTab !== "security"} className="flex flex-col gap-5">
 
-      <Card padding={false}><CardHeader icon="shield_lock" title="Security" subtitle="Protect access to this dashboard" /><CardContent className="flex flex-col gap-5"><Toggle label="Require login" description="When ON, dashboard requires password. When OFF, access without login." checked={settings.requireLogin === true} onChange={() => updateRequireLogin(!settings.requireLogin)} disabled={loading} />{settings.requireLogin === true ? <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><div className="grid gap-4 md:grid-cols-3"><Input id="profile-current-password" label="Current password" type="password" placeholder="Enter current password" value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} required /><Input id="profile-new-password" label="New password" type="password" placeholder="Enter new password" value={passwords.new} onChange={(e) => setPasswords({ ...passwords, new: e.target.value })} required /><Input id="profile-confirm-password" label="Confirm password" type="password" placeholder="Confirm new password" value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} required /></div>{passStatus.message ? <p role="status" className={`text-xs ${statusClass(passStatus)}`}>{passStatus.message}</p> : null}<div><Button type="submit" variant="primary" loading={passLoading}>{settings.hasPassword ? "Update Password" : "Set Password"}</Button></div></form> : null}</CardContent></Card>
+      <Card padding={false}><CardHeader icon="shield_lock" title="Security" subtitle="Protect access to this dashboard" /><CardContent className="flex flex-col gap-5"><Toggle label="Require login" description="When ON, dashboard requires password. When OFF, access without login." checked={settings.requireLogin === true} onChange={() => updateRequireLogin(!settings.requireLogin)} disabled={loading} />{requireLoginError ? <p role="alert" className="text-xs text-dd-danger">{requireLoginError}</p> : null}{settings.requireLogin === true ? <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><div className="grid gap-4 md:grid-cols-3"><Input id="profile-current-password" label="Current password" type="password" placeholder="Enter current password" value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} required /><Input id="profile-new-password" label="New password" type="password" placeholder="Enter new password" value={passwords.new} onChange={(e) => setPasswords({ ...passwords, new: e.target.value })} required /><Input id="profile-confirm-password" label="Confirm password" type="password" placeholder="Confirm new password" value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} required /></div>{passStatus.message ? <p role="status" className={`text-xs ${statusClass(passStatus)}`}>{passStatus.message}</p> : null}<div><Button type="submit" variant="primary" loading={passLoading}>{settings.hasPassword ? "Update Password" : "Set Password"}</Button></div></form> : null}</CardContent></Card>
 
       <MfaCard
         mfaEnabled={settings.mfaEnabled === true}
@@ -1108,6 +1118,7 @@ export default function ProfilePage() {
       <LanguageSwitcher hideTrigger isOpen={langOpen} onClose={(next) => { setLangOpen(false); setLocale(next); }} />
       <ConfirmDialog open={shutdownOpen} pending={isShuttingDown} onCancel={() => setShutdownOpen(false)} onConfirm={handleShutdown} title="Close Proxy" message="Are you sure you want to close the proxy server?" confirmLabel="Close" cancelLabel="Cancel" tone="danger" />
       <Modal open={dbAuth.open} onClose={() => setDbAuth({ open: false, mode: "", password: "" })} title="Confirm Password" size="sm" pending={dbLoading} footer={<><Button variant="secondary" onClick={() => setDbAuth({ open: false, mode: "", password: "" })} disabled={dbLoading}>Cancel</Button><Button variant="primary" onClick={handleDbAuthConfirm} loading={dbLoading} disabled={!dbAuth.password}>Confirm</Button></>}><div className="flex flex-col gap-3"><p className="text-[13px] text-dd-muted">Enter your current password to {dbAuth.mode === "export" ? "export" : "import"} the database.</p><Input type="password" value={dbAuth.password} onChange={(e) => setDbAuth((state) => ({ ...state, password: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter" && dbAuth.password) handleDbAuthConfirm(); }} placeholder="Current password" autoFocus /></div></Modal>
+      <Modal open={reauth.open} onClose={() => reauth.finish(null)} title="Confirm Password" size="sm" footer={<><Button variant="secondary" onClick={() => reauth.finish(null)}>Cancel</Button><Button variant="primary" onClick={() => reauth.finish(reauth.password)} disabled={!reauth.password}>Confirm</Button></>}><div className="flex flex-col gap-3"><p className="text-[13px] text-dd-muted">This change lowers protection or changes who can sign in. Enter your current dashboard password to continue.</p><Input id="profile-reauth-password" type="password" autoComplete="current-password" aria-label="Dashboard password" value={reauth.password} onChange={(e) => reauth.setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && reauth.password) reauth.finish(reauth.password); }} placeholder="Current password" autoFocus /></div></Modal>
     </main>
   );
 }

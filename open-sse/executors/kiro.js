@@ -8,6 +8,7 @@ import {
   KIRO_MAX_TOOL_CALL_WRAPPER_BYTES,
   KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS,
   KIRO_TOOL_CALL_REPAIR_INSTRUCTION,
+  KIRO_UNSUPPORTED_THINKING_FIELDS,
   resolveKiroModel } from
 "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
@@ -524,6 +525,15 @@ export class KiroExecutor extends BaseExecutor {
     {
       const { systemPrompt: _systemPrompt, ...rest } = body;
       transformed = rest;
+    }
+
+    // Last gate before Kiro: the generic thinking normalizer stamps these on the
+    // finished envelope for every client format.
+    if (transformed?.conversationState &&
+    KIRO_UNSUPPORTED_THINKING_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(transformed, field))) {
+      transformed = Object.fromEntries(
+        Object.entries(transformed).filter(([key]) => !KIRO_UNSUPPORTED_THINKING_FIELDS.includes(key))
+      );
     }
 
     if (!transformed?.conversationState?.conversationId || !isObject(transformed.conversationState)) return transformed;

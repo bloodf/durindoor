@@ -48,9 +48,12 @@ const MODEL_LOCK_PREFIX = "modelLock_";
 /**
  * Normalize an explicitly successful connection check into a fresh routing
  * lifecycle. Persist caller-supplied soft warnings, but clear stale failures,
- * rate limits, backoff, and every model-specific routing lock.
+ * rate limits and backoff. A model lock still in force survives a passed test or
+ * a token refresh (upstream #4389); a replaced credential clears every lock,
+ * because the old one's failures say nothing about it. A lock value in the
+ * patch itself always wins.
  */
-function resetHealthStateOnActivation(existing, patch) {
+function resetHealthStateOnActivation(existing, patch, replacesCredential) {
   if (patch?.testStatus !== "active") return patch;
 
   const normalized = {
@@ -68,15 +71,19 @@ function resetHealthStateOnActivation(existing, patch) {
     reauthAt: null
   };
 
-  for (const key of Object.keys(existing || {})) {
-    if (key.startsWith(MODEL_LOCK_PREFIX)) normalized[key] = null;
+  const replaced = replacesCredential || Boolean(patch.apiKey) && patch.apiKey !== existing?.apiKey;
+  const now = Date.now();
+  for (const [key, expiry] of Object.entries(existing || {})) {
+    if (!key.startsWith(MODEL_LOCK_PREFIX)) continue;
+    if (replaced) normalized[key] = null;else
+    if (!Object.hasOwn(patch, key) && !(new Date(expiry).getTime() > now)) normalized[key] = null;
   }
 
   return normalized;
 }
 
-function mergeProviderConnectionWithHealthReset(existing, patch) {
-  const normalized = resetHealthStateOnActivation(existing, patch);
+function mergeProviderConnectionWithHealthReset(existing, patch, { replacesCredential = false } = {}) {
+  const normalized = resetHealthStateOnActivation(existing, patch, replacesCredential);
   const merged = mergeProviderConnection(existing, normalized);
   if (existing.provider === "codex" && merged.providerSpecificData &&
       Object.hasOwn(merged.providerSpecificData, "codexRefreshAttempt")) {
@@ -316,7 +323,7 @@ function mergeCodexReauthorization(existing, data, now) {
     ...data,
     isActive: true,
     testStatus: "active"
-  });
+  }, { replacesCredential: true });
   return { ...merged, updatedAt: now };
 }
 
@@ -500,7 +507,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
       }
       const merged = data.provider === "codex" && data.authType === "oauth" && data.accessToken ?
       mergeCodexReauthorization(existing, data, now) :
-      { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: now };
+      { ...mergeProviderConnectionWithHealthReset(existing, data, { replacesCredential: true }), updatedAt: now };
       upsert(db, merged);
       if ((merged.provider === "antigravity" || merged.provider === "agy") && isString(data.refreshToken) && data.refreshToken && data.refreshToken !== existing.refreshToken) {
         advanceAntigravityGeneration(db, merged.id, data.refreshToken, data.providerSpecificData?.antigravitySubject || null);
@@ -558,6 +565,8 @@ export function applyProviderConnectionPatchInTx(db, id, data, {
   // Compatibility fallback writer (#1324/#1311): re-read under the write lock
   // and refuse demoting a concurrent durable reauth marker.
   refuseIfReauth = false,
+  // The patch carries a new sign-in or import, not a refresh of the stored one.
+  replacesCredential = false,
   antigravityLeaseCommit = false,
   advanceAntigravityGeneration: shouldAdvanceAntigravityGeneration = false
 } = {}) {
@@ -600,7 +609,7 @@ export function applyProviderConnectionPatchInTx(db, id, data, {
       error.code = "PROVIDER_IDENTITY_IMMUTABLE";
       throw error;
     }
-    const merged = { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: new Date().toISOString() };
+    const merged = { ...mergeProviderConnectionWithHealthReset(existing, data, { replacesCredential }), updatedAt: new Date().toISOString() };
     const selectedWorkspace = existing.provider === "codex" && existing.providerSpecificData?.codexSelectedWorkspaceId;
     if (selectedWorkspace && (
       merged.providerSpecificData?.codexSelectedWorkspaceId !== selectedWorkspace ||

@@ -168,6 +168,41 @@ describe("Pi settings POST", () => {
     expect(models()[0]).toMatchObject({ contextWindow: 500000, maxTokens: 40000 });
   });
 
+  it("9router#4278: keeps model settings, provider options and key from a legacy 9router entry", async () => {
+    const model = { id: "custom/keep", name: "Hand tuned", contextWindow: 500000, maxTokens: 40000, compat: { supportsStore: false } };
+    io.readFile.mockResolvedValue(JSON.stringify({ providers: { "9router": {
+      baseUrl: "http://localhost:20128/v1", apiKey: "sk-1a2b3c4d", headers: { "X-Custom": "test" }, models: [model],
+    } } }));
+
+    expect((await save({ models: [model.id] })).status).toBe(200);
+
+    expect(models()).toEqual([model]);
+    expect(written().providers.durindoor).toMatchObject({ apiKey: "sk-1a2b3c4d", headers: { "X-Custom": "test" } });
+    expect(written().providers["9router"]).toBeUndefined();
+  });
+
+  it("9router#4278: applies the saved api style and snake_case limits to a legacy entry too", async () => {
+    io.readFile.mockResolvedValue(JSON.stringify({ providers: { "9router": {
+      api: "anthropic-messages", models: [{ id: "custom/keep", context_window: 500000, max_tokens: 40000 }],
+    } } }));
+
+    expect((await save({ models: ["custom/keep"] })).status).toBe(200);
+
+    expect(written().providers.durindoor.api).toBe("anthropic-messages");
+    expect(models()[0]).toMatchObject({ contextWindow: 500000, maxTokens: 40000 });
+  });
+
+  it("9router#4278: prefers the durindoor entry over a legacy one", async () => {
+    io.readFile.mockResolvedValue(JSON.stringify({ providers: {
+      "9router": { models: [{ id: "custom/keep", contextWindow: 100000, maxTokens: 1000 }] },
+      durindoor: { models: [{ id: "custom/keep", contextWindow: 500000, maxTokens: 40000 }] },
+    } }));
+
+    expect((await save({ models: ["custom/keep"] })).status).toBe(200);
+
+    expect(models()[0]).toMatchObject({ contextWindow: 500000, maxTokens: 40000 });
+  });
+
   it("creates config when models.json does not exist", async () => {
     io.readFile.mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }));
 

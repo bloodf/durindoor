@@ -350,7 +350,7 @@ describe("DB SQLite layer — public API parity", () => {
       backoffLevel: 3,
       rateLimitedUntil: "2099-01-01T00:00:00.000Z",
       modelLock_modelA: "2099-01-01T00:00:00.000Z",
-      modelLock_modelB: "2099-01-01T00:00:00.000Z",
+      modelLock_modelB: "2020-01-01T00:00:00.000Z",
     });
 
     await sqliteDb.updateProviderConnection(connection.id, { testStatus: "active" });
@@ -363,7 +363,7 @@ describe("DB SQLite layer — public API parity", () => {
       errorCode: null,
       backoffLevel: 0,
       rateLimitedUntil: null,
-      modelLock_modelA: null,
+      modelLock_modelA: "2099-01-01T00:00:00.000Z",
       modelLock_modelB: null,
       accessToken: "access-secret",
       refreshToken: "refresh-secret",
@@ -426,6 +426,7 @@ describe("DB SQLite layer — public API parity", () => {
       errorCode: 503,
       rateLimitedUntil: "2099-01-01T00:00:00.000Z",
       modelLock_modelA: "2099-01-01T00:00:00.000Z",
+      modelLock_modelB: "2020-01-01T00:00:00.000Z",
     });
 
     const warningAt = "2026-09-06T00:00:00.000Z";
@@ -442,7 +443,8 @@ describe("DB SQLite layer — public API parity", () => {
       errorCode: null,
       backoffLevel: 0,
       rateLimitedUntil: null,
-      modelLock_modelA: null,
+      modelLock_modelA: "2099-01-01T00:00:00.000Z",
+      modelLock_modelB: null,
     });
   });
 

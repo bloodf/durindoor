@@ -22,6 +22,50 @@ function readResponseMetadata(response) {
   };
 }
 
+/** Delta event -> the draft field its fragments accumulate in. */
+const DELTA_FIELDS = new Map([
+  ["response.output_text.delta", { field: "text", type: "message" }],
+  ["response.reasoning_summary_text.delta", { field: "summary", type: "reasoning" }],
+  ["response.function_call_arguments.delta", { field: "arguments", type: "function_call" }],
+  ["response.custom_tool_call_input.delta", { field: "input", type: "custom_tool_call" }],
+]);
+
+const isOutputIndex = (value) => Number.isSafeInteger(value) && value >= 0 && value < MAX_RESPONSES_OUTPUT_ITEMS;
+
+/** Keep what `output_item.added` and the delta events say, for streams that never send a finished item. */
+function observeDraft(eventType, parsed, state) {
+  const delta = DELTA_FIELDS.get(eventType);
+  if (!delta && eventType !== "response.output_item.added") return;
+  const index = parsed.output_index ?? state.draftIds.get(parsed.item_id) ?? 0;
+  if (!isOutputIndex(index)) return;
+  const draft = state.drafts.get(index) || {};
+  if (!delta) {
+    if (!isRecord(parsed.item)) return;
+    if (isString(parsed.item.id)) state.draftIds.set(parsed.item.id, index);
+    state.drafts.set(index, { ...draft, item: parsed.item });
+  } else if (isString(parsed.delta)) {
+    state.drafts.set(index, { ...draft, type: delta.type, [delta.field]: (draft[delta.field] || "") + parsed.delta });
+  }
+}
+
+function itemFromDraft({ item, type, text, summary, arguments: args, input }) {
+  const base = item || (type === "message" ? { type, role: "assistant" } : { type });
+  if (text !== undefined) return { ...base, content: [{ type: "output_text", text }] };
+  if (summary !== undefined) return { ...base, summary: [{ type: "summary_text", text: summary }] };
+  if (args !== undefined) return { ...base, arguments: args };
+  if (input !== undefined) return { ...base, input };
+  return base;
+}
+
+/**
+ * Rebuild output only when the stream carried content in deltas and no finished
+ * item at all, neither as `output_item.done` nor in the terminal snapshot.
+ */
+function itemsFromDrafts(drafts) {
+  if (![...drafts.values()].some((draft) => draft.type)) return new Map();
+  return new Map([...drafts].map(([index, draft]) => [index, itemFromDraft(draft)]));
+}
+
 /**
  * Process a single SSE message and update state accordingly.
  */
@@ -62,6 +106,7 @@ function processSSEMessage(msg, state) {
   if (!eventType) {state.terminal.fail();return;}
 
   state.terminal.observe({ chunk: parsed, eventName: eventType });
+  observeDraft(eventType, parsed, state);
 
   if (eventType === "response.created") {
     const { id, created } = readResponseMetadata(parsed.response);
@@ -134,6 +179,8 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
     status: "in_progress",
     usage: { ...EMPTY_RESPONSE },
     items: new Map(),
+    drafts: new Map(),
+    draftIds: new Map(),
     terminal: createUpstreamTerminalTracker({ format: FORMATS.OPENAI_RESPONSES })
   };
 
@@ -144,6 +191,8 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
   }
 
   if (state.terminal.outcome !== "success") state.status = "failed";
+
+  if (state.status !== "failed" && state.items.size === 0) state.items = itemsFromDrafts(state.drafts);
 
   // Build only a bounded dense sequence. Sparse or duplicate provider indexes
   // are malformed and must never drive attacker-sized array allocation.

@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { CLIENT_STORE_TTL_MS } from "@/shared/constants/config";
 import api from "@/shared/utils/api";
 import { isRecord } from "@/shared/utils/typeChecks";
+import { REAUTH_REQUIRED_CODE } from "@/lib/auth/settingsReauth";
 
 let settingsRevision = 0;
 let patchSequence = 0;
@@ -54,6 +55,19 @@ async function readSettings(set, get, { revision, signal, cache, headers }) {
   }
 }
 
+// Security-weakening writes are refused until the current password is sent
+// with them: ask once and retry. A dismissed prompt keeps the refusal.
+async function sendSettingsPatch(patch, confirmPassword) {
+  try {
+    return await api.patch("/api/settings", patch);
+  } catch (error) {
+    if (!confirmPassword || error.body?.code !== REAUTH_REQUIRED_CODE) throw error;
+    const currentPassword = await confirmPassword();
+    if (!currentPassword) throw error;
+    return api.patch("/api/settings", { ...patch, currentPassword });
+  }
+}
+
 const useSettingsStore = create((set, get) => ({
   settings: null,
   loading: false,
@@ -89,11 +103,11 @@ const useSettingsStore = create((set, get) => ({
   },
 
   // Cache successful settings and expose server failures to callers.
-  patchSettings: async (patch, { onResult } = {}) => {
+  patchSettings: async (patch, { onResult, confirmPassword } = {}) => {
     const sequence = ++patchSequence;
     set({ error: null, errorStatus: null, errorBody: null });
     try {
-      const updated = await api.patch("/api/settings", patch);
+      const updated = await sendSettingsPatch(patch, confirmPassword);
       onResult?.({ ok: true, status: 200, body: updated });
       // Keep the newest successful PATCH response even while a newer request
       // is pending. If that request fails, this is the server-confirmed state.
@@ -118,7 +132,7 @@ export async function requestSettings(options = {}) {
   let result;
   const onResult = (value) => { result = value; };
   if (options.method === "PATCH") {
-    await useSettingsStore.getState().patchSettings(JSON.parse(options.body), { onResult });
+    await useSettingsStore.getState().patchSettings(JSON.parse(options.body), { onResult, confirmPassword: options.confirmPassword });
   } else {
     await useSettingsStore.getState().fetchSettings({
       force: true, signal: options.signal, cache: options.cache, headers: options.headers, onResult,

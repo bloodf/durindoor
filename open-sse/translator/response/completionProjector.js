@@ -231,6 +231,8 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { ch
     ...(cacheCreationTokens ? { cache_creation_tokens: cacheCreationTokens } : null)
   } :
   undefined;
+  // Reasoning is a subset of output_tokens: detail only, never added (upstream #4551).
+  const reasoningTokens = usage.output_tokens_details?.reasoning_tokens || 0;
   const message = {
     role: "assistant",
     content: textContent || (toolCalls.length > 0 ? null : "")
@@ -260,6 +262,7 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { ch
       prompt_tokens: inputTokens,
       ...(promptTokenDetails ? { prompt_tokens_details: promptTokenDetails } : null),
       completion_tokens: outputTokens,
+      ...(reasoningTokens > 0 ? { completion_tokens_details: { reasoning_tokens: reasoningTokens } } : null),
       total_tokens: usage.total_tokens || inputTokens + outputTokens
     }
   };

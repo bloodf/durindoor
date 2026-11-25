@@ -11,6 +11,8 @@ import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
+import { aliasLongResponsesToolNames } from "../utils/responsesToolNames.js";
+import { composeToolNameMaps } from "../translator/concerns/toolCall.js";
 
 /**
  * OpenCode free-tier executor (upstream #4041-adjacent cluster: 93837af0 +
@@ -296,11 +298,12 @@ export class OpenCodeExecutor extends BaseExecutor {
     if (body) body.stream = true;
     if (/muse/i.test(model) && body) {
       body.store = false;
+      const longNames = aliasLongResponsesToolNames(body);
       normalizeResponsesTools(body);
       // Strips prior-turn `reasoning` items and their encrypted_content (port of
       // decolua/9router eafac37d) as part of its existing item-shape pass.
       sanitizeResponsesItems(body);
-      const toolNameMap = ensureToolNameMap(body, applyFingerprintTools(body, "responses"));
+      const toolNameMap = ensureToolNameMap(body, composeToolNameMaps(longNames, applyFingerprintTools(body, "responses")));
       // Upstream #4128: the real client pins its Responses prompt cache to the
       // session it is running under. Mirror that with the same canonical
       // session id, so repeated turns of one conversation share a cache entry.

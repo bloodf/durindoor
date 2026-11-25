@@ -4,7 +4,8 @@ import {
   CLAUDE_ERROR_TYPES,
   ERROR_TYPES,
   DEFAULT_ERROR_MESSAGES,
-  MAX_RATE_LIMIT_COOLDOWN_MS } from
+  MAX_RATE_LIMIT_COOLDOWN_MS,
+  GEMINI_DAILY_QUOTA_PARK_MS } from
 "../config/errorConfig.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
@@ -224,6 +225,24 @@ function googleErrorInfoReset(root, now, maxDelayMs) {
   return null;
 }
 
+// Gemini can state its delay only in prose: "Please retry in 22.230404999s." (decolua/9router#4348).
+function geminiPromptReset(text, now, maxDelayMs) {
+  if (!isString(text) || text.length > 64 * 1024) return null;
+  const delay = text.match(/\bplease retry in\s+((?:\d{1,9}(?:\.\d{1,12})?(?:ms|[hms]))+)/i)?.[1];
+  return delay ? googleQuotaDelayReset(delay, now, maxDelayMs) : null;
+}
+
+/** True when a google.rpc.QuotaFailure names a per-day quota. Message prose is never consulted. */
+function hasGeminiDailyQuotaViolation(text) {
+  if (!isString(text) || text.length > 64 * 1024) return false;
+  let root;
+  try {root = JSON.parse(text);} catch {return false;}
+  const details = root?.error?.details ?? root?.details;
+  return Array.isArray(details) && details.slice(0, 50).some((detail) =>
+    isString(detail?.["@type"]) && detail["@type"].includes("QuotaFailure") && Array.isArray(detail.violations) &&
+    detail.violations.slice(0, 50).some((violation) => isString(violation?.quotaId) && /perday/i.test(violation.quotaId)));
+}
+
 function findJsonReset(value, now, maxDelayMs, provider) {
   let visited = 0;
   const visit = (node, depth) => {
@@ -299,7 +318,7 @@ function absoluteResetFromText(text, now, maxDelayMs, naiveZoneSuffix = "Z") {
   return resetAtMs;
 }
 
-function durationResetFromText(text, now, maxDelayMs) {
+function durationResetFromText(text, now, maxDelayMs, { allowTryAgain = false } = {}) {
   if (!isString(text) || text.length > 64 * 1024) return null;
   const unitMs = {
     w: 7 * 24 * 60 * 60 * 1000,
@@ -319,15 +338,16 @@ function durationResetFromText(text, now, maxDelayMs) {
     seconds: 1000
   };
   const durations = new Set();
-  const clausePattern = /\b(?:retry|retrying|reset|resets|resetting)\b[^\r\n]{0,32}?\b(?:in|after)\s+((?:\d{1,6}\s*(?:weeks?|days?|hours?|minutes?|seconds?|[wdhms])\s*){1,6})/gi;
+  const clausePattern = /\b(retry|retrying|reset|resets|resetting|try again)\b[^\r\n]{0,32}?\b(?:in|after)\s+((?:\d{1,6}(?:\.\d{1,9})?\s*(?:weeks?|days?|hours?|minutes?|seconds?|[wdhms])\s*){1,6})/gi;
   for (const clause of text.matchAll(clausePattern)) {
+    if (!allowTryAgain && clause[1].toLowerCase() === "try again") continue;
     let duration = 0;
     let matches = 0;
-    for (const match of clause[1].matchAll(/(\d{1,6})\s*(weeks?|days?|hours?|minutes?|seconds?|[wdhms])/gi)) {
+    for (const match of clause[2].matchAll(/(\d{1,6}(?:\.\d{1,9})?)\s*(weeks?|days?|hours?|minutes?|seconds?|[wdhms])/gi)) {
       const amount = Number(match[1]);
       const factor = unitMs[match[2].toLowerCase()];
-      if (!Number.isSafeInteger(amount) || !factor) continue;
-      duration += amount * factor;
+      if (!Number.isFinite(amount) || !factor) continue;
+      duration += Math.round(amount * factor);
       matches += 1;
       if (!Number.isSafeInteger(duration)) return null;
     }
@@ -386,15 +406,31 @@ export function parseRateLimitEvidence({
       if (resetAtMs) source = "structured_body";
     } catch {/* non-JSON provider body */}
   }
+  if (!resetAtMs && provider === "gemini") {
+    resetAtMs = geminiPromptReset(bodyText, safeNow, maxDelayMs);
+    if (resetAtMs) source = "quota_text";
+  }
   if (!resetAtMs) {
     const naiveZoneSuffix = NAIVE_RESET_TIMEZONES[provider] || "Z";
     resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs, naiveZoneSuffix) ||
-    durationResetFromText(bodyText, safeNow, maxDelayMs);
+    // "try again in N" is read for ordinary cooldowns only (upstream #3612):
+    // on an exhausted quota that wording stays with the Cline-scoped parser.
+    durationResetFromText(bodyText, safeNow, maxDelayMs, { allowTryAgain: !explicitQuota });
     if (resetAtMs) source = "quota_text";
   }
 
+  const dailyExhausted = provider === "gemini" && hasGeminiDailyQuotaViolation(bodyText);
+  if (dailyExhausted) {
+    const { min, max } = GEMINI_DAILY_QUOTA_PARK_MS;
+    const parkUntil = safeNow + Math.min(min + Math.floor(Math.random() * (max - min)), maxDelayMs);
+    if (!resetAtMs || resetAtMs < parkUntil) {
+      resetAtMs = parkUntil;
+      source = "structured_body";
+    }
+  }
+
   return {
-    state: explicitQuota ? "exhausted" : "cooldown",
+    state: explicitQuota || dailyExhausted ? "exhausted" : "cooldown",
     resetAtMs,
     source: source || "local_policy"
   };

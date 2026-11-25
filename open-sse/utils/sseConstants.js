@@ -1,6 +1,9 @@
 // Shared SSE primitives (no imports → safe for executors + stream.js)
 export const SSE_DONE = "data: [DONE]\n\n";
 
+// Neutral comment relayed for upstream SSE heartbeats; clients ignore comments.
+export const SSE_COMMENT_KEEPALIVE = ": keepalive\n\n";
+
 export const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",

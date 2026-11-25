@@ -2,7 +2,7 @@ import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
-import { FORMATS } from "../translator/formats.js";
+import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
@@ -1578,6 +1578,9 @@ export function createSSEStream(options = {}) {
               continue; // Skip this empty chunk
             }
 
+            // Chat items skip the buffered restore, so return the client's tool names here.
+            if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
+
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
@@ -1893,7 +1896,7 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        if (upstreamErrorForwarded) {
+        const finalizeFailedStream = () => {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => {});
           // Close the request-detail row as an error; without this call it kept
           // the "[Streaming in progress...]" placeholder with status "success".
@@ -1904,6 +1907,10 @@ export function createSSEStream(options = {}) {
               upstreamError: streamErrorPayload
             }, state?.usage, ttftAt, completionSummary(state?.usage));
           }
+        };
+
+        if (upstreamErrorForwarded) {
+          finalizeFailedStream();
           return;
         }
 
@@ -1939,6 +1946,7 @@ export function createSSEStream(options = {}) {
               if (!nativeGemini && translated?.length > 0) {
                 for (const item of translated) {
                   if (item === null || item === undefined) continue;
+                  if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
                   const output = formatSSE(item, sourceFormat);
                   reqLogger?.appendConvertedChunk?.(output);
                   controller.enqueue(sharedEncoder.encode(output));
@@ -1946,6 +1954,33 @@ export function createSSEStream(options = {}) {
               }
             }
           }
+        }
+
+        // A Gemini-family stream that reaches EOF without a finish reason or a prompt
+        // block was cut off. The null flush below would invent a successful end and
+        // release buffered tool calls, so end it with an error (upstream #4486).
+        // A translated Responses stream with no terminal event is cut off the same way
+        // (upstream #4490).
+        const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
+        const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
+        const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&
+          !state.finishReason && !openAIResponsesTerminalSeen && upstreamTerminal.outcome !== "success";
+        if (cutGemini || cutResponses) {
+          streamErrorPayload = {
+            type: sourceFormat === FORMATS.CLAUDE ? "api_error" : "server_error",
+            code: "incomplete_upstream_stream",
+            message: cutGemini ? "Gemini stream ended before a finish reason" : "Responses stream ended before a terminal event"
+          };
+          const output = formatTranslatedStreamError(streamErrorPayload, sourceFormat, errorSecrets);
+          reqLogger?.appendConvertedChunk?.(output);
+          controller.enqueue(sharedEncoder.encode(output));
+          // The partial output was still generated, so account for it.
+          if (!hasValidUsage(state.usage) && totalContentLength > 0) {
+            state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
+          }
+          if (hasValidUsage(state.usage)) logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
+          finalizeFailedStream();
+          return;
         }
 
         const flushed = translateResponse(targetFormat, sourceFormat, null, state);
@@ -1960,6 +1995,7 @@ export function createSSEStream(options = {}) {
         if (!nativeGemini && flushed?.length > 0) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
+            if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
             const output = formatSSE(item, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
@@ -1967,7 +2003,6 @@ export function createSSEStream(options = {}) {
         }
 
         // Synthesize response.failed if a Responses passthrough stream never reached a terminal event
-        const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
           const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
           reqLogger?.appendConvertedChunk?.(failedOutput);

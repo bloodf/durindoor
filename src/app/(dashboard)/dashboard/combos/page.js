@@ -18,6 +18,7 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { INHERIT_COMBO_STRATEGY, updateComboStrategy } from "@/shared/utils/comboStrategy";
 import { aggregateComboCapabilities, overlayComboCapabilities } from "open-sse/providers/capabilities.js";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
@@ -47,6 +48,7 @@ export default function CombosPage() {
   const [activeProviders, setActiveProviders] = useState([]);
   const [providerConnections, setProviderConnections] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const [globalComboStrategy, setGlobalComboStrategy] = useState("fallback");
   const [prunedCombos, setPrunedCombos] = useState({});
   const [confirmState, setConfirmState] = useState(null);
   const [groups, setGroups] = useState([]);
@@ -188,6 +190,7 @@ export default function CombosPage() {
         setActiveProviders(filterActiveConnections(connections));
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
+      setGlobalComboStrategy(settingsData.comboStrategy || "fallback");
       // A read overlapping a strategy write may contain the pre-write map.
       if (!v5 || (!writesInFlight && !strategyWrites.current && version === strategyVersion.current)) {
         setComboStrategies(settingsData.comboStrategies || {});
@@ -369,28 +372,10 @@ export default function CombosPage() {
     });
   };
 
-  // Merge a per-combo strategy patch into settings.comboStrategies. Passing an empty
-  // patch (strategy back to default "fallback") drops the entry entirely.
+  // An explicit fallback overrides the global strategy; only Inherit clears it.
   const handleSetComboStrategy = async (comboName, patch) => {
     try {
-      const update = (current) => {
-      const updated = { ...current };
-      const next = { ...(updated[comboName] || {}), ...patch };
-      // Prune to keep settings clean: default fallback with no extras = no entry.
-      if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
-        // Extras include timeout, sticky limit, fusion config — preserve when any are set.
-        if (!next.timeoutMs && !next.stickyLimit && !next.judgeModel && !next.fusionTuning) {
-          delete updated[comboName];
-        } else {
-          updated[comboName] = next;
-        }
-      } else {
-        updated[comboName] = next;
-      }
-
-      return updated;
-      };
-      await persistComboStrategies(update);
+      await persistComboStrategies((current) => updateComboStrategy(current, comboName, patch));
       return { ok: true };
     } catch (error) {
       console.log("Error updating combo strategy:", error);
@@ -403,21 +388,10 @@ export default function CombosPage() {
     if (selectedCombos.length === 0 || !strategy) return;
     setBulkBusy(true);
     try {
-      const update = (current) => {
-      const updated = { ...current };
-      for (const combo of selectedCombos) {
-        if (!strategy || strategy === "fallback") {
-          delete updated[combo.name];
-        } else {
-          updated[combo.name] = {
-            ...(updated[combo.name] || {}),
-            fallbackStrategy: strategy,
-          };
-        }
-      }
-      return updated;
-      };
-      await persistComboStrategies(update);
+      await persistComboStrategies((current) => selectedCombos.reduce(
+        (updated, combo) => updateComboStrategy(updated, combo.name, { fallbackStrategy: strategy }),
+        current
+      ));
     } catch (error) {
       console.log("Error bulk updating combo strategy:", error);
       alert("Failed to update strategy for selected combos");
@@ -531,7 +505,7 @@ export default function CombosPage() {
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <div className="w-full min-w-[160px] sm:w-[200px]">
                   <Select
-                    options={getStrategyOptions()}
+                    options={getStrategyOptions(globalComboStrategy)}
                     value=""
                     placeholder={translate("Set strategy…")}
                     disabled={bulkBusy}
@@ -583,6 +557,7 @@ export default function CombosPage() {
                   onEdit={() => setEditingCombo(combo)}
                   onDelete={() => handleDelete(combo.id)}
                   strategy={comboStrategies[combo.name] || {}}
+                  globalComboStrategy={globalComboStrategy}
                   prunedMembers={prunedCombos[combo.name] || []}
                   onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
                   selected={selectedIds.includes(combo.id)}
@@ -658,8 +633,8 @@ const fmtK = (n) => {
   return `${Math.round(n / 1000)}k`;
 };
 
-function getStrategyOptions() {
-  return [
+function getStrategyOptions(globalStrategy) {
+  const options = [
     { value: "fallback", label: translate("Fallback — try in order") },
     { value: "round-robin", label: translate("Round Robin — rotate") },
     { value: "weighted", label: translate("Weighted — random by member weight") },
@@ -667,9 +642,14 @@ function getStrategyOptions() {
     { value: "smart", label: translate("Smart — complexity-aware routing") },
     { value: "fusion", label: translate("Fusion — panel + judge") },
   ];
+  const globalLabel = options.find((option) => option.value === globalStrategy)?.label.split(" — ")[0];
+  return [
+    { value: INHERIT_COMBO_STRATEGY, label: `${translate("Inherit global")} (${globalLabel || globalStrategy})` },
+    ...options,
+  ];
 }
 
-function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
+function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, globalComboStrategy = "fallback", onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const [timeoutDraft, setTimeoutDraft] = useState(null);
   const [writeState, setWriteState] = useState({ pending: false, error: "", retry: false });
@@ -697,9 +677,9 @@ function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [],
     }
     savePatch({ timeoutMs: seconds * 1000 });
   };
-  const current = strategy.fallbackStrategy || "fallback";
+  const current = strategy.fallbackStrategy || INHERIT_COMBO_STRATEGY;
   const judge = strategy.judgeModel || "";
-  const isFusion = current === "fusion";
+  const isFusion = (strategy.fallbackStrategy || globalComboStrategy) === "fusion";
   const derivedCaps = aggregateComboCapabilities(combo.models, comboByName);
   const comboCaps = overlayComboCapabilities(derivedCaps, combo.capabilities);
 
@@ -782,7 +762,7 @@ function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [],
           <div className="w-full sm:w-[200px]">
             <Select
               aria-label={`Strategy for ${combo.name}`}
-              options={getStrategyOptions()}
+              options={getStrategyOptions(globalComboStrategy)}
               value={current}
               disabled={v5 && writeState.pending}
               onChange={(value) => v5 ? savePatch({ fallbackStrategy: value }) : onSetStrategy({ fallbackStrategy: value })}
@@ -791,7 +771,7 @@ function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [],
           </div>
 
           {/* Per-model timeout (fallback / round-robin only; fusion has its own panel timeout) */}
-          {current !== "fusion" && (
+          {!isFusion && (
             <div className="flex items-center gap-1.5">
               <span className="whitespace-nowrap text-[10px] text-dd-muted">{translate("Timeout")}</span>
               <Input

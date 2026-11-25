@@ -73,6 +73,41 @@ function parseSseEvents(rawSSE) {
   });
 }
 
+// Synthetic slots sort after any real provider index, in arrival order.
+const SYNTHETIC_TOOL_SLOT_BASE = 1_000_000;
+
+function isJson(text) {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Slot for one streamed tool-call fragment. `index` is optional and some providers
+ * reuse it, so distinct ids (or, without ids, distinct names) stay apart (upstream #4511).
+ */
+function resolveToolSlot(accumulator, toolCall) {
+  const slots = accumulator.slotByIndex ??= new Map();
+  const byIndex = Number.isInteger(toolCall.index);
+  const slot = byIndex ? slots.get(toolCall.index) ?? toolCall.index : accumulator.lastToolSlot ?? 0;
+  const current = accumulator.toolCallMap.get(slot);
+  const name = toolCall.function?.name;
+  const known = toolCall.id ?
+  [...accumulator.toolCallMap].find(([, call]) => call.id === toolCall.id)?.[0] :
+  undefined;
+  let next = known ?? slot;
+  const startsCall = known === undefined && current && (toolCall.id ?
+  current.id && (!byIndex || name) :
+  !byIndex && name && current.function.name && name !== current.function.name && isJson(current.function.arguments));
+  if (startsCall) next = SYNTHETIC_TOOL_SLOT_BASE + accumulator.toolCallMap.size;
+  if (byIndex) slots.set(toolCall.index, next);
+  accumulator.lastToolSlot = next;
+  return next;
+}
+
 function aggregateParsedChunks(chunks, fallbackModel, {
   format,
   providerBody,
@@ -151,7 +186,7 @@ function aggregateParsedChunks(chunks, fallbackModel, {
 
       // Tool-call indexes are scoped to a response choice, not the response.
       for (const toolCall of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
-        const toolIndex = toolCall.index ?? 0;
+        const toolIndex = resolveToolSlot(accumulator, toolCall);
         if (!accumulator.toolCallMap.has(toolIndex)) {
           accumulator.toolCallMap.set(toolIndex, {
             id: toolCall.id || "",
@@ -162,7 +197,8 @@ function aggregateParsedChunks(chunks, fallbackModel, {
         const existing = accumulator.toolCallMap.get(toolIndex);
         if (toolCall.id) existing.id = toolCall.id;
         if (toolCall.type) existing.type = toolCall.type;
-        if (toolCall.function?.name) existing.function.name += toolCall.function.name;
+        // Split names join, but an exact repeat of the whole name is skipped (upstream #4511).
+        if (toolCall.function?.name && toolCall.function.name !== existing.function.name) existing.function.name += toolCall.function.name;
         if (toolCall.function?.arguments) existing.function.arguments += toolCall.function.arguments;
       }
     }
@@ -207,7 +243,10 @@ function aggregateParsedChunks(chunks, fallbackModel, {
     return {
       index: accumulator.index,
       message,
-      finish_reason: accumulator.finishReason || "stop",
+      // A turn with tool calls must not read as a plain stop (upstream #4511).
+      finish_reason: accumulator.toolCallMap.size > 0 && (accumulator.finishReason || "stop") === "stop" ?
+      "tool_calls" :
+      accumulator.finishReason || "stop",
       ...(accumulator.nativeFinishReason ? { native_finish_reason: accumulator.nativeFinishReason } : null)
     };
   });
@@ -482,6 +521,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         // When the client asked for the Responses API format, return the converted JSON directly.
         // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
         if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          restoreOpenAIToolNames(jsonResponse, toolNameMap);
           logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
 
           const totalLatency = Date.now() - requestStartTime;

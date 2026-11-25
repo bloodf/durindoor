@@ -4,10 +4,10 @@ import { ROLE, CLAUDE_BLOCK, CLAUDE_STOP, MODEL_FALLBACK, OPENAI_FINISH } from "
 import { claudeStopReasonWithToolCalls } from "../concerns/finishReason.js";
 import { extractTextContent } from "../concerns/textContent.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
+import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
-import { resolveToolCallSlot } from "../concerns/toolCall.js";
 
 // Legacy "proxy_" prefix used by older request translators. Response strips it
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
@@ -127,35 +127,93 @@ function stopTextBlock(state, results) {
   state.textBlockStarted = false;
 }
 
-// Helper: flush buffered tool args + close every open tool_use block
-function flushToolBlocks(state, results) {
-  for (const [idx, toolInfo] of state.toolCalls) {
-    // A tool call whose name never arrived (with only an id or buffered arguments)
-    // still reserved a block index but deferred its content_block_start. Emit it now so
-    // the terminal content_block_stop is not orphaned (OmniRoute#6730 edge case).
-    if (!toolInfo.startEmitted) {
-      toolInfo.startEmitted = true;
-      results.push({
-        type: "content_block_start",
-        index: toolInfo.blockIndex,
-        content_block: { type: CLAUDE_BLOCK.TOOL_USE, id: toolInfo.id, name: toolInfo.name || "", input: {} }
-      });
-    }
-    // Emit buffered + sanitized args as single delta before stop
-    const buffered = state.toolArgBuffers?.get(idx);
-    if (buffered) {
-      const sanitized = sanitizeToolArgs(toolInfo.name, buffered, state.clientTools);
-      results.push({
-        type: "content_block_delta",
-        index: toolInfo.blockIndex,
-        delta: { type: "input_json_delta", partial_json: sanitized }
-      });
-    }
+// Helper: flush buffered tool args + close one tool_use block (once)
+function closeToolBlock(state, key, results) {
+  const toolInfo = state.toolCalls.get(key);
+  if (!toolInfo || toolInfo.closed) return;
+  toolInfo.closed = true;
+  // A tool call whose name never arrived (with only an id or buffered arguments)
+  // still reserved a block index but deferred its content_block_start. Emit it now so
+  // the terminal content_block_stop is not orphaned (OmniRoute#6730 edge case).
+  if (!toolInfo.startEmitted) {
+    toolInfo.startEmitted = true;
     results.push({
-      type: "content_block_stop",
-      index: toolInfo.blockIndex
+      type: "content_block_start",
+      index: toolInfo.blockIndex,
+      content_block: { type: CLAUDE_BLOCK.TOOL_USE, id: toolInfo.id, name: toolInfo.name || "", input: {} }
     });
   }
+  // Emit buffered + sanitized args as single delta before stop
+  const buffered = state.toolArgBuffers?.get(key);
+  if (buffered) {
+    const sanitized = sanitizeToolArgs(toolInfo.name, buffered, state.clientTools);
+    results.push({
+      type: "content_block_delta",
+      index: toolInfo.blockIndex,
+      delta: { type: "input_json_delta", partial_json: sanitized }
+    });
+  }
+  results.push({
+    type: "content_block_stop",
+    index: toolInfo.blockIndex
+  });
+}
+
+// Helper: close every still-open tool_use block
+function flushToolBlocks(state, results) {
+  for (const key of state.toolCalls.keys()) closeToolBlock(state, key, results);
+}
+
+function hasCompleteArgs(state, key) {
+  try {
+    JSON.parse(state.toolArgBuffers?.get(key));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Text or thinking is about to open: close the tool calls that are already whole,
+// so their arguments do not land after an unrelated block (upstream #4511). A call
+// with partial arguments stays open, because later fragments would be lost.
+function closeCompleteToolBlocks(state, results) {
+  for (const key of state.toolCalls?.keys() ?? []) {
+    if (hasCompleteArgs(state, key)) closeToolBlock(state, key, results);
+  }
+}
+
+// Internal keys for calls that cannot use the provider index; negative so they
+// never collide with a real one.
+function allocateToolKey(state) {
+  state.lastSyntheticToolKey = (state.lastSyntheticToolKey ?? 0) - 1;
+  return state.lastSyntheticToolKey;
+}
+
+// `index` is optional in the Chat stream and some providers reuse it, so a call is
+// identified by its id (and, without one, by its name) (upstream #4511).
+function resolveToolKey(state, tc, name) {
+  const byIndex = Number.isInteger(tc.index);
+  const keyByIndex = state.toolKeyByIndex ??= new Map();
+  const key = byIndex ? keyByIndex.get(tc.index) ?? tc.index : state.lastToolKey;
+  const current = state.toolCalls.get(key);
+  if (tc.id) {
+    for (const [knownKey, info] of state.toolCalls) {
+      if (info.id !== tc.id) continue;
+      if (byIndex) keyByIndex.set(tc.index, knownKey);
+      return knownKey;
+    }
+    // No call holds this key yet: arguments that arrived first stay with it.
+    if (!current) return key ?? 0;
+    // A new id starts a new call once it names one or the current call is whole.
+    // Some providers change the id mid-arguments; those fragments stay together.
+    if (byIndex && (current.syntheticId || !name && !hasCompleteArgs(state, key))) return key;
+    const fresh = allocateToolKey(state);
+    if (byIndex) keyByIndex.set(tc.index, fresh);
+    return fresh;
+  }
+  if (byIndex) return key;
+  if (key === undefined) return 0;
+  return name && current?.name && name !== current.name && hasCompleteArgs(state, key) ? allocateToolKey(state) : key;
 }
 
 // Convert OpenAI-shaped usage ({prompt_tokens, completion_tokens, ...}) to the
@@ -288,6 +346,7 @@ export function openaiToClaudeResponse(chunk, state) {
     stopTextBlock(state, results);
 
     if (!state.thinkingBlockStarted) {
+      closeCompleteToolBlocks(state, results);
       state.thinkingBlockIndex = state.nextBlockIndex++;
       state.thinkingBlockStarted = true;
       results.push({
@@ -310,6 +369,7 @@ export function openaiToClaudeResponse(chunk, state) {
     stopThinkingBlock(state, results);
 
     if (!state.textBlockStarted) {
+      closeCompleteToolBlocks(state, results);
       state.textBlockIndex = state.nextBlockIndex++;
       state.textBlockStarted = true;
       state.textBlockClosed = false;
@@ -330,8 +390,6 @@ export function openaiToClaudeResponse(chunk, state) {
   // Tool calls
   if (delta?.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const idx = resolveToolCallSlot(state, tc);
-
       // Strip the legacy proxy_ prefix from an incoming tool name (if any),
       // then normalize lowercase Anthropic built-ins (bash→Bash, read→Read, etc.).
       const incomingName = (() => {
@@ -340,19 +398,28 @@ export function openaiToClaudeResponse(chunk, state) {
         return normalizeClaudeToolName(stripped, state.toolNameMap);
       })();
 
+      const previousKey = Number.isInteger(tc.index) ? state.toolKeyByIndex?.get(tc.index) ?? tc.index : undefined;
+      const idx = resolveToolKey(state, tc, incomingName);
+      state.lastToolKey = idx;
+      // The provider moved this index to another call: finish the one it held.
+      if (previousKey !== undefined && previousKey !== idx) closeToolBlock(state, previousKey, results);
+
       // A tool call is identified by its id. Some OpenAI-compatible upstreams
       // (GLM 5.2) stream the id and function.name in SEPARATE SSE chunks. The
       // Claude protocol cannot patch a content_block_start after it is emitted,
       // so we register the tool call on the id chunk but DEFER content_block_start
       // until the name arrives (OmniRoute#6730 / decolua/9router#2077).
       // GLM/fireworks repeats id+null-name on every arg chunk; register once per idx.
-      if (tc.id && !state.toolCalls.has(idx)) {
+      // A named call without an id gets a generated one instead of being dropped.
+      if ((tc.id || incomingName) && !state.toolCalls.has(idx)) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
 
-        chargeRetained(state, retainedSize(tc.id) + retainedSize(incomingName));
+        const toolId = tc.id || fallbackToolCallId(idx);
+        chargeRetained(state, retainedSize(toolId) + retainedSize(incomingName));
         state.toolCalls.set(idx, {
-          id: tc.id,
+          id: toolId,
+          syntheticId: !tc.id,
           name: incomingName,
           blockIndex: state.nextBlockIndex++,
           startEmitted: false
@@ -392,12 +459,11 @@ export function openaiToClaudeResponse(chunk, state) {
       }
 
       if (tc.function?.arguments) {
-        if (toolInfo) {
-          // Buffer args instead of streaming — sanitize at finish to fix bad params
-          if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
-          chargeRetained(state, tc.function.arguments.length);
-          state.toolArgBuffers.set(idx, (state.toolArgBuffers.get(idx) || "") + tc.function.arguments);
-        }
+        // Buffer args instead of streaming — sanitize at finish to fix bad params.
+        // Fragments may arrive before the id or name that opens the call.
+        if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
+        chargeRetained(state, tc.function.arguments.length);
+        state.toolArgBuffers.set(idx, (state.toolArgBuffers.get(idx) || "") + tc.function.arguments);
       }
     }
   }

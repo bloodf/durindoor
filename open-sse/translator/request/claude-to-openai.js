@@ -1,6 +1,8 @@
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS, OPENAI_SERVICE_TIERS, CLAUDE_TO_OPENAI_SERVICE_TIER } from "../schema/index.js";
@@ -56,7 +58,9 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
 
   // Max tokens
   if (body.max_tokens) {
-    result.max_tokens = adjustMaxTokens(body);
+    // A model with a higher published output ceiling is not cut to the default (upstream #4511).
+    const maxOutput = getCapabilitiesForModel(opts.provider, opts.capabilityModel || model)?.maxOutput;
+    result.max_tokens = adjustMaxTokens(body, Math.max(DEFAULT_MAX_TOKENS, maxOutput || 0));
   }
 
   // Temperature

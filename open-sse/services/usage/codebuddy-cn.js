@@ -43,6 +43,23 @@ function refillCadence(acc) {
   return "Monthly";
 }
 
+const BILLING_ATTEMPTS = 3;
+const BILLING_RETRY_DELAY_MS = 400;
+
+// The billing gateway intermittently returns 5xx or drops the connection. Retry
+// only those; a 4xx is a real answer (upstream #4511).
+async function fetchBilling(url, options, proxyOptions) {
+  for (let attempt = 1;; attempt += 1) {
+    try {
+      const response = await proxyAwareFetch(url, options, proxyOptions);
+      if (response.status < 500 || attempt === BILLING_ATTEMPTS) return response;
+    } catch (error) {
+      if (attempt === BILLING_ATTEMPTS) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, BILLING_RETRY_DELAY_MS * attempt));
+  }
+}
+
 export async function getCodeBuddyCnUsage(accessToken, apiKey, providerSpecificData, proxyOptions = null) {
   const token = accessToken || apiKey;
   if (!token) {
@@ -50,7 +67,7 @@ export async function getCodeBuddyCnUsage(accessToken, apiKey, providerSpecificD
   }
 
   try {
-    const response = await proxyAwareFetch(U(PROVIDER_ID).url, {
+    const response = await fetchBilling(U(PROVIDER_ID).url, {
       method: "POST",
       headers: {
         ...(PROVIDERS[PROVIDER_ID]?.headers || {}),

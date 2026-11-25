@@ -11,7 +11,7 @@ import { getCapabilitiesForModel, isLegacyHaikuModel } from "../../providers/cap
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
-import { flattenRootSchemaUnion, toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
+import { flattenRootCombinators, toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../concerns/thinking.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
@@ -102,9 +102,9 @@ function lastCacheableToolIndex(tools) {
 
 // Passthrough tools skip toClaudeInputSchema, including the `custom` wrapper.
 function withFlatInputSchema(tool) {
-  const direct = flattenRootSchemaUnion(tool.input_schema);
+  const direct = flattenRootCombinators(tool.input_schema);
   if (direct !== tool.input_schema) return { ...tool, input_schema: direct };
-  const wrapped = flattenRootSchemaUnion(tool.custom?.input_schema);
+  const wrapped = flattenRootCombinators(tool.custom?.input_schema);
   return wrapped === tool.custom?.input_schema ? tool : { ...tool, custom: { ...tool.custom, input_schema: wrapped } };
 }
 

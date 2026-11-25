@@ -134,6 +134,29 @@ const STRIP_RULES = [
 { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
 { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true }];
 
+function flattenTextParts(parts) {
+  return parts.map((part) => {
+    if (part?.type === "text" && isString(part.text)) return part.text;
+    const got = isString(part?.type) ? part.type : "unknown";
+    throw new Error(
+      "Cloudflare Workers AI chat endpoint does not accept image/non-text content parts " +
+      `(got type "${got}"). Remove image/file attachments or route this request to a vision-capable provider.`
+    );
+  }).join("");
+}
+
+// A lone content-part object is treated as a one-part array. Returns a new
+// message when the content changes; the input is never mutated.
+function withCloudflareContent(msg, vision) {
+  const { content } = msg;
+  if (isString(content)) return msg;
+  if (content === undefined || content === null) return { ...msg, content: "" };
+  if (!isObject(content)) return { ...msg, content: String(content) };
+  const parts = Array.isArray(content) ? content : [content];
+  if (!vision) return { ...msg, content: flattenTextParts(parts) };
+  return Array.isArray(content) ? msg : { ...msg, content: parts };
+}
+
 // Test a rule's match (regex or predicate) against the model id.
 // A rule with no match clause applies to every model for its provider.
 function matches(rule, model) {
@@ -273,22 +296,13 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // included) natively. Flattening deleted images for every vision-capable model,
     // so content parts pass through unchanged when the model resolves vision: true.
     // Non-vision models keep the flatten-or-refuse contract above.
-    if (rule.flattenContent && Array.isArray(body.messages) &&
-        !(caps || getCapabilitiesForModel(provider, model)).vision) {
-      for (const msg of body.messages) {
-        if (msg && Array.isArray(msg.content)) {
-          msg.content = msg.content.
-          map((b) => {
-            if (b?.type === "text" && isString(b.text)) return b.text;
-            const got = isString(b?.type) ? b.type : "unknown";
-            throw new Error(
-              "Cloudflare Workers AI chat endpoint does not accept image/non-text content parts " +
-              `(got type "${got}"). Remove image/file attachments or route this request to a vision-capable provider.`
-            );
-          }).
-          join("");
-        }
-      }
+    // decolua/9router#4586: every outgoing message also needs a role and defined
+    // content, e.g. an assistant tool-call turn that omits `content` or sends null.
+    if (rule.flattenContent && Array.isArray(body.messages)) {
+      const vision = (caps || getCapabilitiesForModel(provider, model)).vision;
+      body.messages = body.messages.
+      filter((msg) => isString(msg?.role)).
+      map((msg) => withCloudflareContent(msg, vision));
     }
     if (rule.clampToModelMaxOutput || Number.isFinite(rule.maxOutputCap)) {
       const modelCeiling = (caps || getCapabilitiesForModel(provider, model)).maxOutput;

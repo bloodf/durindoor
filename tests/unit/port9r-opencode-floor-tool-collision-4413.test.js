@@ -122,6 +122,24 @@ describe("9router #4413 - Responses output cap floor on OpenCode routes", () => 
     expect(send({})).toBeUndefined();
   });
 
+  // The 64-character tool-name aliases (#4545) travel on the same body as the floor.
+  it.each([
+    ["opencode-go", () => new OpenCodeGoExecutor()],
+    ["opencode-zen", () => new OpenCodeZenExecutor()],
+  ])("keeps the tool-name map on %s when a retry reuses a floored body", (provider, build) => {
+    const model = responsesModel(provider);
+    const name = `tool_${"x".repeat(80)}`;
+    const body = { model, input, max_output_tokens: 1, tools: [{ type: "function", name, parameters: { type: "object", properties: {} } }] };
+    const executor = build();
+
+    for (const attempt of [1, 2]) {
+      const sent = executor.transformRequest(model, body, true, {});
+
+      expect(sent.max_output_tokens, `attempt ${attempt}`).toBe(16);
+      expect([...(sent._toolNameMap?.values() || [])], `attempt ${attempt}`).toEqual([name]);
+    }
+  });
+
   it("applies the floor to a Chat max_tokens that OpenCode Go renames", () => {
     const model = responsesModel("opencode-go");
     const sent = new OpenCodeGoExecutor().transformRequest(model, { model, input, max_tokens: 5 }, true, {});

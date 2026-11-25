@@ -142,6 +142,16 @@ function convertContent(content) {
   const toolResults = [];
   let reasoningContent = "";
 
+  // Gemini calls may carry no id. Derive one from the name and its occurrence, so
+  // parallel calls to one tool stay distinct and each response still pairs (upstream #4511).
+  const callCounts = new Map();
+  const responseCounts = new Map();
+  const deriveId = (name, counts) => {
+    const seen = counts.get(name) || 0;
+    counts.set(name, seen + 1);
+    return seen === 0 ? `call_${name}` : `call_${name}_${seen}`;
+  };
+
   for (const part of content.parts) {
     // Thinking content (thought: true)
     if (part.thought === true && part.text) {
@@ -175,8 +185,8 @@ function convertContent(content) {
     // Function call
     if (part.functionCall) {
       toolCalls.push({
-        // Deterministic id from name so the matching functionResponse pairs correctly.
-        id: part.functionCall.id || `call_${part.functionCall.name}`,
+        // Deterministic id so the matching functionResponse pairs correctly.
+        id: part.functionCall.id || deriveId(part.functionCall.name, callCounts),
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: part.functionCall.name,
@@ -189,7 +199,7 @@ function convertContent(content) {
     if (part.functionResponse) {
       toolResults.push({
         role: ROLE.TOOL,
-        tool_call_id: part.functionResponse.id || `call_${part.functionResponse.name}`,
+        tool_call_id: part.functionResponse.id || deriveId(part.functionResponse.name, responseCounts),
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
       });
     }
@@ -209,7 +219,8 @@ function convertContent(content) {
       if (toolCalls.length > 0) {
         assistantMsg.tool_calls = toolCalls;
       }
-      return [...toolResults, assistantMsg];
+      // Results must follow the assistant message that makes the calls.
+      return toolCalls.length > 0 ? [assistantMsg, ...toolResults] : [...toolResults, assistantMsg];
     }
     return toolResults;
   }

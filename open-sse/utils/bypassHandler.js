@@ -83,7 +83,7 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
   }
 
   const sourceFormat = detectFormat(body);
-  // Same default as chat core (resolveStreamFlag): an omitted flag means JSON.
+  // Only an explicit `stream: true` asks for SSE, as in resolveStreamFlag (upstream #4534).
   const stream = body.stream === true;
 
   // For naming bypass, generate title from user message

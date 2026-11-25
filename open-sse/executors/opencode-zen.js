@@ -3,6 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { aliasLongResponsesToolNames, attachToolNameMap } from "../utils/responsesToolNames.js";
 import { nestResponsesReasoningEffort } from "../translator/concerns/responsesReasoning.js";
 
 const BASE = "https://opencode.ai/zen/v1";
@@ -44,7 +45,14 @@ export class OpenCodeZenExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    const out = injectReasoningContent({ provider: this.provider, model, body });
-    return targetFormat(model) === "openai-responses" ? nestResponsesReasoningEffort(out) : out;
+    if (targetFormat(model) !== "openai-responses") {
+      return injectReasoningContent({ provider: this.provider, model, body });
+    }
+    // Alias a copy: the later steps may return a new object, so a repeat attempt
+    // over the same body must see the caller's names to rebuild the map.
+    const aliased = { ...body };
+    const toolNameMap = aliasLongResponsesToolNames(aliased);
+    const out = nestResponsesReasoningEffort(injectReasoningContent({ provider: this.provider, model, body: aliased }));
+    return attachToolNameMap(out, toolNameMap);
   }
 }

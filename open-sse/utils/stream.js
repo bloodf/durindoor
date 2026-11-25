@@ -1583,6 +1583,9 @@ export function createSSEStream(options = {}) {
               continue; // Skip this empty chunk
             }
 
+            // Chat items skip the buffered restore, so return the client's tool names here.
+            if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
+
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
@@ -1948,6 +1951,7 @@ export function createSSEStream(options = {}) {
               if (!nativeGemini && translated?.length > 0) {
                 for (const item of translated) {
                   if (item === null || item === undefined) continue;
+                  if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
                   const output = formatSSE(item, sourceFormat);
                   reqLogger?.appendConvertedChunk?.(output);
                   controller.enqueue(sharedEncoder.encode(output));
@@ -1996,6 +2000,7 @@ export function createSSEStream(options = {}) {
         if (!nativeGemini && flushed?.length > 0) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
+            if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
             const output = formatSSE(item, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));

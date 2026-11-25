@@ -70,6 +70,15 @@ const sseLineEvent = (line) => parseSseFrame(line).eventName?.trim() || null;
 /** Forwarded `data:x` lines are written as `data: x`. */
 const spaceDataField = (line) => line.replace(/^data:(?! )/, "data: ");
 
+// A gateway's own charge (Cheaper Inference `buyer_cost_micro`) is not part of the
+// Messages usage contract, so a native Claude stream does not relay it
+// (OmniRoute #21136). Returns whether the event changed.
+function omitBuyerCost(event) {
+  if (event?.type !== "message_delta" || !event.usage || !Object.hasOwn(event.usage, "buyer_cost_micro")) return false;
+  delete event.usage.buyer_cost_micro;
+  return true;
+}
+
 /** A `data:` line holding only the start of a JSON value split over several data lines. */
 function startsSplitData(line) {
   const value = sseLineData(line);
@@ -1061,6 +1070,8 @@ export function createSSEStream(options = {}) {
                 if (!parsed.created) {parsed.created = Math.floor(Date.now() / 1000);fieldsInjected = true;}
               }
 
+              if (omitBuyerCost(parsed)) fieldsInjected = true;
+
               // Strip Azure-specific non-standard fields from streaming chunks
               if (parsed.prompt_filter_results !== undefined) {
                 delete parsed.prompt_filter_results;
@@ -1832,7 +1843,7 @@ export function createSSEStream(options = {}) {
             } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
-              output = spaceDataField(buffer);
+              output = omitBuyerCost(parsed) ? `data: ${JSON.stringify(parsed)}` : spaceDataField(buffer);
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
             if (output && filterEmptyOpenAIFrames && sseLineData(trimmedBuffer) !== null) {

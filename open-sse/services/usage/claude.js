@@ -7,7 +7,7 @@
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS, CLAUDE_CLI_VERSION, buildClaudeOAuthAnthropicBeta } from "../../providers/shared.js";
-import { U, parseResetTime } from "./shared.js";
+import { U, fetchReadWithTimeout, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 // Claude API config (urls from registry, apiVersion is header logic kept here)
@@ -90,6 +90,9 @@ const OAUTH_QUOTA_RETENTION_MS = 3 * 60 * 60 * 1000;
 // resets the strike count.
 const OAUTH_RATE_LIMIT_COOLDOWN_BASE_MS = 15 * 60 * 1000;
 const OAUTH_RATE_LIMIT_COOLDOWN_MAX_MS = 2 * 60 * 60 * 1000;
+// Headers and body share one deadline. Concurrent callers join the in-flight
+// poll, so an unbounded one would pin the credential for all of them.
+const OAUTH_QUOTA_POLL_TIMEOUT_MS = 5_000;
 
 const oauthQuotaCache = new Map();
 const oauthQuotaInFlight = new Map();
@@ -176,6 +179,19 @@ async function parseErrorBody(response) {
   }
 }
 
+/** A 2xx quota body that is not a JSON object must not replace cached quota. */
+async function readQuotaBody(response) {
+  if (!response.ok) return parseErrorBody(response);
+  const data = await response.json();
+  if (!data || !isObject(data) || Array.isArray(data)) throw new Error("Invalid usage response");
+  return data;
+}
+
+/** Last-known quota after a failed poll that says nothing about rate limits. */
+function makeUnavailableResponse(entry) {
+  return { ...entry.data, stale: true, staleReason: "Claude usage temporarily unavailable; showing cached quota." };
+}
+
 function shouldFallbackToLegacy(status) {
   return status === 404 || status === 405;
 }
@@ -214,13 +230,13 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
 async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = DEFAULT_CLAUDE_PLAN) {
   try {
     // cedar_ember=1 adds the "limit reset" grant block (same flag Claude Code sends)
-    const oauthResponse = await proxyAwareFetch(`${CLAUDE_CONFIG.oauthUsageUrl}?cedar_ember=1`, {
+    const { response: oauthResponse, body } = await fetchReadWithTimeout(`${CLAUDE_CONFIG.oauthUsageUrl}?cedar_ember=1`, {
       method: "GET",
       headers: buildOAuthUsageHeaders(accessToken)
-    }, proxyOptions);
+    }, readQuotaBody, OAUTH_QUOTA_POLL_TIMEOUT_MS, proxyOptions);
 
     if (oauthResponse.ok) {
-      const data = await oauthResponse.json();
+      const data = body;
       const quotas = {};
 
       // utilization = % USED (e.g. 87 means 87% used, 13% remaining)
@@ -290,7 +306,6 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = 
     }
 
     const status = oauthResponse.status;
-    const body = await parseErrorBody(oauthResponse);
 
     if (status === 429) {
       recordOAuthRateLimit(cacheKey);
@@ -304,9 +319,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = 
 
     if (status >= 500 && status < 600) {
       const fallback = getOAuthFallbackEntry(cacheKey);
-      if (fallback) {
-        return { ...fallback.data, stale: true, staleReason: "Claude usage temporarily unavailable; showing cached quota." };
-      }
+      if (fallback) return makeUnavailableResponse(fallback);
       return { message: "Claude usage temporarily unavailable. Try again later." };
     }
 
@@ -321,6 +334,8 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = 
     const message = body?.error?.message || body?.message || `OAuth endpoint returned ${status}`;
     return { message: `Claude connected. Unable to fetch usage: ${message}` };
   } catch (error) {
+    const fallback = getOAuthFallbackEntry(cacheKey);
+    if (fallback) return makeUnavailableResponse(fallback);
     return { message: `Claude connected. Unable to fetch usage: ${error.message}` };
   }
 }

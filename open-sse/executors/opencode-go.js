@@ -3,6 +3,7 @@ import { DefaultExecutor } from "./default.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { readToolStrict } from "../translator/concerns/toolStrict.js";
 import {
   normalizeResponsesInput,
   normalizeStatelessResponseInput,
@@ -131,6 +132,7 @@ export function normalizeResponsesTools(body) {
     // the Chat Completions nested `function` wrapper.
     const preserved = { ...tool };
     delete preserved.function;
+    const strict = readToolStrict(tool);
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     tool.name = name.slice(0, MAX_TOOL_NAME_LEN);
@@ -139,6 +141,8 @@ export function normalizeResponsesTools(body) {
     for (const [k, v] of Object.entries(preserved)) {
       if (!(k in tool)) tool[k] = v;
     }
+    // The nested wrapper is gone, so lift a strict declared only inside it.
+    if (strict !== undefined) tool.strict = strict;
     validNames.add(tool.name);
     return true;
   });

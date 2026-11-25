@@ -101,12 +101,17 @@ function sha16(text) {
   return crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
-// Normalize a session id candidate (trim, length cap)
+// Normalize a session id candidate (trim, length cap). Ids end up in upstream
+// headers, which reject code points above U+00FF, so such an id is hashed: one
+// conversation keeps one stable, header-safe value (OmniRoute #21148). UTF-16
+// input keeps lone surrogates distinct. The `sid_` prefix is reserved: a literal
+// id carrying it is hashed too, so it cannot name another id's session.
 function normalizeSessionId(value) {
   if (!isString(value)) return null;
   const v = value.trim();
-  if (!v || v.length > 256) return null;
-  return v;
+  if (!v || v.length > 256 || /[\u0000-\u001f\u007f]/.test(v)) return null;
+  if (!v.startsWith("sid_") && !/[^\u0000-\u00ff]/.test(v)) return v;
+  return `sid_${crypto.createHash("sha256").update(v, "utf16le").digest("hex").slice(0, 32)}`;
 }
 
 // Extract Claude Code session id from metadata.user_id (_session_{uuid} | JSON {session_id})
@@ -145,7 +150,7 @@ function extractAntigravitySession(body) {
   return m ? normalizeSessionId(m[1]) : null;
 }
 
-function extractRawClientSessionId(headers, body, scope = "") {
+export function extractClientSessionId(headers, body, scope = "") {
   // Claude Code also sends the session in a header that survives translation to
   // formats that drop metadata (e.g. Responses API). Header fallback is Claude-scope only.
   const claude = extractClaudeCodeSession(body?.metadata?.user_id) || (
@@ -167,14 +172,6 @@ function extractRawClientSessionId(headers, body, scope = "") {
   normalizeSessionId(body?.conversation_id) || (
   scope === "kiro" ? null : normalizeSessionId(body?.metadata?.user_id));
   return fromBody || null;
-}
-
-/** Encode non-printable or non-ASCII client IDs, reserving the encoded prefix. */
-export function extractClientSessionId(headers, body, scope = "") {
-  const id = extractRawClientSessionId(headers, body, scope);
-  if (!id) return null;
-  if (/^[\x20-\x7e]+$/.test(id) && !id.startsWith("sid_")) return id;
-  return `sid_${crypto.createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
 }
 
 export function resolveClientSessionId({ headers, body, scope = "" } = {}) {

@@ -5,12 +5,12 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const FAMILY = "(?:claude|gpt|gemini|opus|sonnet|haiku|deepseek|qwen|llama|mistral|grok|glm|minimax|kimi|o[134])";
 const MODEL_NOTICE = new RegExp(
-  `\\b(?:(?:this\\s+)?model|${FAMILY}(?:-[a-z0-9._:/-]+)?)(?:\\s+[a-z0-9._:/-]+){0,4}\\s+is\\s+no\\s+longer\\s+available\\.\\s*Please\\s+switch\\s+to\\b`,
+  `^(?:(?:this\\s+)?model|${FAMILY}(?:-[a-z0-9._:/-]+)?)(?:\\s+[a-z0-9._:/-]+){0,4}\\s+is\\s+no\\s+longer\\s+available\\.\\s*Please\\s+switch\\s+to\\s+[a-z0-9_:/-]+(?:[.][a-z0-9_:/-]+|\\s+[a-z0-9_:/-]+)*[.!]?$`,
   "i"
 );
 // Anchored and limited to first-party client names, so "This version of Python
 // is no longer supported" stays an ordinary answer.
-const CLIENT_NOTICE = /^\s*this\s+version\s+of\s+(?:antigravity|agy)\s+is\s+no\s+longer\s+supported\b/i;
+const CLIENT_NOTICE = /^this\s+version\s+of\s+(?:antigravity|agy)\s+is\s+no\s+longer\s+supported[.!]?(?:\s+please\s+(?:update|download\s+and\s+install\s+the\s+latest\s+version)[.!]?)?$/i;
 const CLIENT_NOTICE_PHRASES = ["antigravity", "agy"].map((name) => `this version of ${name} is no longer supported`);
 const FAMILY_NAMES = ["claude", "gpt", "gemini", "opus", "sonnet", "haiku", "deepseek", "qwen", "llama", "mistral", "grok", "glm", "minimax", "kimi", "o1", "o3", "o4"];
 const FAMILY_TOKEN = new RegExp(`^${FAMILY}(?:-[a-z0-9._:/-]+)?$`);
@@ -19,13 +19,12 @@ const TAILS = ["is no longer available. please switch to", "is no longer availab
 const PREFIX_CHAR_CAP = 512;
 
 /**
- * Only the first 512 characters are read, for streamed and JSON answers alike:
- * a notice is short, and a long answer quoting one later on is a real answer.
+ * A notice must occupy the entire trimmed answer. Long answers are content.
  */
 export function isUnavailableNotice(text) {
   if (!isString(text)) return false;
-  const head = text.slice(0, PREFIX_CHAR_CAP);
-  return CLIENT_NOTICE.test(head) || MODEL_NOTICE.test(head);
+  const trimmed = text.trim();
+  return trimmed.length < PREFIX_CHAR_CAP && (CLIENT_NOTICE.test(trimmed) || MODEL_NOTICE.test(trimmed));
 }
 
 function couldBeModelNotice(text) {
@@ -56,7 +55,7 @@ function couldBeModelNotice(text) {
 function couldBecomeNotice(text) {
   if (text.length >= PREFIX_CHAR_CAP) return false;
   const normalized = text.trimStart().toLowerCase().replace(/\s+/g, " ");
-  return !normalized || CLIENT_NOTICE_PHRASES.some((phrase) => phrase.startsWith(normalized)) ||
+  return !normalized || CLIENT_NOTICE_PHRASES.some((phrase) => phrase.startsWith(normalized) || normalized.startsWith(phrase)) ||
     couldBeModelNotice(normalized);
 }
 
@@ -79,7 +78,8 @@ function textOnlyDelta(frame) {
 
 /**
  * Decides what to do with each content frame of one stream: "hold" while the
- * text can still be a notice, "notice" once it is one, otherwise "content".
+ * text can still be a notice, otherwise "content". A caller must wait for
+ * stream completion before classifying held text as a notice.
  */
 export function createNoticeGate() {
   let text = "";
@@ -88,9 +88,8 @@ export function createNoticeGate() {
     push(frame) {
       const delta = textOnlyDelta(frame);
       if (delta === null) return "content";
-      text += delta.slice(0, PREFIX_CHAR_CAP - text.length);
-      if (isUnavailableNotice(text)) return "notice";
-      return couldBecomeNotice(text) ? "hold" : "content";
+      text += delta;
+      return isUnavailableNotice(text) || couldBecomeNotice(text) ? "hold" : "content";
     },
     get text() { return text; }
   };

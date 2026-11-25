@@ -174,11 +174,14 @@ export async function updateSettings(updates) {
       [stringifyJson(next)]
     );
   });
-  // The sql.js fallback debounces disk writes. A session revocation must be on disk
-  // before logout reports success (9router#5191). Native adapters already commit, and
-  // their flush() is a WAL checkpoint that can fail while a reader is busy.
-  if (revokesSessions && db.driver === "sql.js") db.flush();
+  flushSessionRevocation(db, revokesSessions);
   return mergeWithDefaults(next);
+}
+
+// sql.js debounces writes, so persist epoch rotations before reporting success.
+// Native adapters already commit; their flush is a potentially blocking checkpoint.
+function flushSessionRevocation(db, revokesSessions) {
+  if (revokesSessions && db.driver === "sql.js") db.flush();
 }
 export class PasswordEpochMismatchError extends Error {
   constructor() {
@@ -214,6 +217,7 @@ export async function updateSettingsWithPasswordEpoch(updates, expectedEpoch) {
     );
   });
   if (!matched) throw new PasswordEpochMismatchError();
+  flushSessionRevocation(db, Object.hasOwn(sanitizedUpdates, "passwordSessionEpoch"));
   return mergeWithDefaults(next);
 }
 

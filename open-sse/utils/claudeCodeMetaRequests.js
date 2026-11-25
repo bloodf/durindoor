@@ -14,9 +14,8 @@ const TWO_WORD_TOOLS = new Set([
   "bun",
 ]);
 
-const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
-// Command-injection signals: ; | & ` $(   (newline handled separately)
-const INJECTION_RE = /[;|&`]|\$\(/;
+// Local prefix replies only cover plain tokens and simple flags, without shell syntax.
+const SIMPLE_COMMAND_RE = /^[A-Za-z0-9_./-]+(?:[ \t]+[A-Za-z0-9_./-]+)*$/;
 
 /** Tokenize a shell command on whitespace, respecting simple single/double quotes. */
 function tokenize(command        )           {
@@ -43,13 +42,8 @@ function tokenize(command        )           {
 }
 
 export function extractCommandPrefix(command        )         {
-  if (!isString(command) || !command.trim()) return "";
-  if (INJECTION_RE.test(command) || command.includes("\n")) {
-    return "command_injection_detected";
-  }
-  let tokens = tokenize(command);
-  // Strip leading FOO=bar env assignments.
-  while (tokens.length && ENV_ASSIGNMENT_RE.test(tokens[0])) tokens = tokens.slice(1);
+  if (!isString(command) || !SIMPLE_COMMAND_RE.test(command)) return "";
+  const tokens = tokenize(command);
   if (!tokens.length) return "";
   const head = tokens[0];
   // Only form a two-word prefix when the second token is an actual subcommand,
@@ -227,7 +221,12 @@ function detectPrefixRequest(prompt                         , enabled         ) 
   const { turnText, promptText } = prompt;
   if (!promptText.includes("<policy_spec>") || !turnText.includes("Command:")) return undefined;
   if (!enabled) return null;
-  const command = turnText.slice(turnText.lastIndexOf("Command:") + "Command:".length).trim();
+  const policyEnd = promptText.lastIndexOf("</policy_spec>");
+  if (policyEnd < 0) return null;
+  const afterPolicy = promptText.slice(policyEnd + "</policy_spec>".length);
+  const marker = /(?:^|\n)Command:[ \t]*/.exec(afterPolicy);
+  if (!marker || afterPolicy.indexOf("Command:") !== afterPolicy.lastIndexOf("Command:")) return null;
+  const command = afterPolicy.slice(marker.index + marker[0].length).replace(/[ \t]+$/, "");
   const prefix = command ? extractCommandPrefix(command) : "";
   return prefix ? { kind: "command-prefix", text: prefix } : null;
 }

@@ -532,7 +532,7 @@ async function showInterfaceMenu(latestVersion) {
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
-function startServer(updatePromise) {
+function startServer(updatePromise, installAccelerator) {
   // Accept either a Promise (parallel update check) or a resolved value.
   // Swallow update-check failures: a network blip must never crash startup or
   // surface an unhandled rejection; the existing update menu simply sees null.
@@ -663,7 +663,7 @@ function startServer(updatePromise) {
     if (headless) return;
     try {
       const { ensureTrayRuntime } = require("./hooks/trayRuntime");
-      Promise.resolve(ensureTrayRuntime({ silent: true, asynchronous: true })).then(() => {
+      return Promise.resolve(ensureTrayRuntime({ silent: true, asynchronous: true })).then(() => {
         const { initTray } = require("./src/cli/tray/tray");
         initTray({
           port,
@@ -685,6 +685,7 @@ function startServer(updatePromise) {
   if (headless) {
     attachServerEvents();
     console.log(`Server: http://${displayHost}:${port}`);
+    if (installAccelerator) waitServerReady(port, { host }).then((ready) => ready && !isShuttingDown && installAccelerator());
     return;
   }
 
@@ -702,10 +703,12 @@ function startServer(updatePromise) {
     waitServerReady(port, { host }).then((ready) => {
       if (recoveryInProgress || isShuttingDown) return;
       if (!ready) console.log("Server readiness could not be confirmed.");
-      initTrayIcon({
+      const trayStep = initTrayIcon({
         onReady: () => console.log("DurinDoor tray is available. Right-click the icon to open the dashboard or quit."),
         onError: (error) => console.error(`DurinDoor tray unavailable: ${error.message}`)
       });
+      // After the tray step: two npm installs must not share the runtime dir at once.
+      if (ready) Promise.resolve(trayStep).then(installAccelerator);
     });
 
     return;
@@ -726,8 +729,8 @@ function startServer(updatePromise) {
     }
     // Resolve parallel update check (already running); don't block server start on it.
     const latestVersion = await latestVersionPromise;
-    // Start tray icon alongside TUI
-    initTrayIcon();
+    // Start tray icon alongside TUI; the accelerator install follows the tray install.
+    Promise.resolve(initTrayIcon()).then(installAccelerator);
 
     try {
       while (true) {
@@ -960,8 +963,8 @@ Options:
   ({ killByPidFile } = require("./hooks/killByPidFile"));
 
   // Verify SQLite runtime deps. Missing sql.js may be repaired because it is the
-  // required fallback; optional better-sqlite3 installation is postinstall-only so
-  // ordinary startup never blocks on npm/node-gyp.
+  // required fallback; optional better-sqlite3 is installed in the background after
+  // the server is ready, so ordinary startup never blocks on npm/node-gyp.
   try { ensureSqliteRuntime({ silent: true }); } catch {}
 
   ({ port, host, noBrowser, skipUpdate, showLog, trayMode, headless } = parseArgsOrExit(argv));
@@ -991,7 +994,7 @@ Options:
     const portWasAvailable = await canBindLauncherPort(port, host);
     await killAllAppProcesses(port, !portWasAvailable);
     if (!portWasAvailable) await killProcessOnPort(port);
-    startServer(updatePromise);
+    startServer(updatePromise, () => require("./hooks/sqliteRuntime").installBetterSqliteInBackground().catch(() => {}));
   })().catch((error) => {
     console.error(`Startup cleanup failed: ${error.message}`);
     process.exitCode = 1;

@@ -1,7 +1,7 @@
 // Ensure better-sqlite3 is installed in USER_DATA_DIR/runtime/node_modules
 // (user-writable, avoids Windows EBUSY locks during npm i -g updates).
 // sql.js is bundled in bin/app already; node:sqlite / bun:sqlite are built-in.
-const { execSync, spawnSync } = require("child_process");
+const { execSync, spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -10,6 +10,7 @@ const path = require("path");
 // Must satisfy the app's better-sqlite3 range in package.json (guarded by tests/unit/node-version-alignment.test.js).
 const BETTER_SQLITE3_VERSION = "12.11.1";
 const BETTER_SQLITE3_INSTALL_TIMEOUT = 30000;
+const BACKGROUND_INSTALL_TIMEOUT = 120000;
 const SQL_JS_VERSION = "1.14.1";
 
 function getDataDir() {
@@ -78,11 +79,17 @@ function summarizeNpmError(stderr = "") {
   return lastLine ? lastLine.slice(0, 200) : "Unknown error";
 }
 
-function runNpmInstall({ cwd, pkgs, extraArgs = [], timeout = 180000 }) {
+function npmCommand() {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function npmInstallArgs(pkgs, extraArgs) {
   // Global npm lifecycle hooks inherit npm_config_global=true; cwd alone cannot override it.
-  const args = ["install", ...pkgs, "--global=false", "--no-audit", "--no-fund", "--prefer-online", ...extraArgs];
-  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  const res = spawnSync(npmCmd, args, {
+  return ["install", ...pkgs, "--global=false", "--no-audit", "--no-fund", "--prefer-online", ...extraArgs];
+}
+
+function runNpmInstall({ cwd, pkgs, extraArgs = [], timeout = 180000 }) {
+  const res = spawnSync(npmCommand(), npmInstallArgs(pkgs, extraArgs), {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
     timeout,
@@ -120,7 +127,7 @@ function isSqlJsWasmValid() {
 }
 
 function ensureSqliteRuntime({ silent = false, installBetterSqlite = false, allowInstall = true } = {}) {
-  ensureRuntimeDir();
+  if (allowInstall) ensureRuntimeDir();
 
   let sqlJsOk = isSqlJsWasmValid();
   if (!sqlJsOk && allowInstall) {
@@ -135,8 +142,8 @@ function ensureSqliteRuntime({ silent = false, installBetterSqlite = false, allo
   }
 
   // Native SQLite is an optional accelerator. Normal CLI startup must never block
-  // on npm/node-gyp; only postinstall explicitly opts into this bounded warm-up.
-  if (!installBetterSqlite) {
+  // on npm/node-gyp, so a blocking install happens only when explicitly requested.
+  if (!installBetterSqlite || !allowInstall) {
     return { betterSqlite: false, sqlJs: sqlJsOk };
   }
 
@@ -151,6 +158,36 @@ function ensureSqliteRuntime({ silent = false, installBetterSqlite = false, allo
   };
 }
 
+// Postinstall stays offline and startup must not block, so the launcher installs
+// the accelerator here once the server is up; the next start uses it. A failed
+// version is recorded so later starts do not retry it.
+function installBetterSqliteInBackground() {
+  if (hasModule("better-sqlite3") && isBetterSqliteBinaryValid()) return Promise.resolve(true);
+  const cwd = ensureRuntimeDir();
+  const marker = path.join(cwd, "better-sqlite3-install-failed.json");
+  try {
+    if (JSON.parse(fs.readFileSync(marker, "utf8")).version === BETTER_SQLITE3_VERSION) return Promise.resolve(false);
+  } catch {}
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (ok) => {
+      if (finished) return;
+      finished = true;
+      try {
+        if (ok) fs.rmSync(marker, { force: true });
+        else fs.writeFileSync(marker, JSON.stringify({ version: BETTER_SQLITE3_VERSION }));
+      } catch {}
+      resolve(ok);
+    };
+    try {
+      const child = spawn(npmCommand(), npmInstallArgs([`better-sqlite3@${BETTER_SQLITE3_VERSION}`], ["--save-exact"]),
+        { cwd, stdio: "ignore", shell: process.platform === "win32", timeout: BACKGROUND_INSTALL_TIMEOUT, windowsHide: true });
+      child.once("error", () => finish(false));
+      child.once("close", (code) => finish(code === 0));
+    } catch { finish(false); }
+  });
+}
+
 // Inject runtime + bundled node_modules into NODE_PATH so child Node processes
 // resolve sql.js (bundled in bin/app/node_modules) and better-sqlite3 (runtime).
 function buildEnvWithRuntime(baseEnv = process.env) {
@@ -163,6 +200,7 @@ function buildEnvWithRuntime(baseEnv = process.env) {
 
 module.exports = {
   ensureSqliteRuntime,
+  installBetterSqliteInBackground,
   buildEnvWithRuntime,
   getRuntimeDir,
   getRuntimeNodeModules,

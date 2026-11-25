@@ -1,5 +1,7 @@
-// Per-stream cap on the text the response translators keep while a stream is open
-// (tool-call arguments and names, reasoning text, thinking signatures). One SSE
+import { isString } from "../../src/shared/utils/typeChecks.js";
+
+// Per-stream cap on the content the response translators keep while a stream is open
+// (answer text, tool-call arguments and names, reasoning text, thinking signatures). One SSE
 // line is already capped (pendingSseLine.js), but these buffers grow across lines,
 // so many small frames could otherwise exhaust process memory. Port of
 // OmniRoute #21176. Sizes are string lengths (UTF-16 code units).
@@ -31,4 +33,23 @@ export function chargeRetained(state, length) {
     throw error;
   }
   budget.used += length;
+}
+
+/** Give back `length` units when the stream that owns `state` drops retained data. */
+export function releaseRetained(state, length) {
+  if (!(length > 0)) return;
+  const budget = budgets.get(state);
+  if (budget) budget.used = Math.max(0, budget.used - length);
+}
+
+/** Account for a retained value of `previousLength` units becoming `nextLength` units. */
+export function replaceRetained(state, previousLength, nextLength) {
+  if (nextLength > previousLength) chargeRetained(state, nextLength - previousLength);
+  else releaseRetained(state, previousLength - nextLength);
+}
+
+/** Retained units of a payload field: string length, or serialized length for anything else. */
+export function retainedSize(value) {
+  if (value === null || value === undefined) return 0;
+  return isString(value) ? value.length : JSON.stringify(value)?.length ?? 0;
 }

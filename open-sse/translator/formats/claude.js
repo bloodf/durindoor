@@ -15,8 +15,6 @@ import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../conce
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
-// Track carried markers without adding private fields to the wire payload.
-const carriedSystemMarkers = new WeakSet();
 
 /** Remove nameless assistant calls and their corresponding results in encounter order.
  * Other blocks, including custom content and valid calls sharing an ID, survive.
@@ -115,15 +113,26 @@ CLAUDE_BLOCK.TOOL_RESULT,
 CLAUDE_BLOCK.SEARCH_RESULT]
 );
 
-// Put a 5m breakpoint on the last cache-eligible block of a message.
+// Claude Code asks for a 1h TTL on its message breakpoints. Re-anchoring drops the
+// client's markers, so the TTL of the client's last message marker carries over: a 5m
+// tail expires during a pause and the whole conversation is cache-written again.
+// Read before markers are stripped.
+function clientMessageCacheControl(messages) {
+  const tail = Array.isArray(messages) ?
+  messages.flatMap((msg) => [msg?.content].flat()).findLast((block) => block?.cache_control) :
+  null;
+  return tail?.cache_control.ttl === "1h" ? CACHE_CONTROL_1H : CACHE_CONTROL_5M;
+}
+
+// Put a breakpoint (5m unless the client asked for 1h) on the last cache-eligible block of a message.
 // thinking/redacted_thinking blocks do not accept cache_control.
-function markLastCacheableBlock(msg) {
+function markLastCacheableBlock(msg, cacheControl) {
   if (!Array.isArray(msg?.content)) return false;
   for (let i = msg.content.length - 1; i >= 0; i--) {
     const block = msg.content[i];
     if (!isObject(block) || block === null) continue;
     if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) continue;
-    if (!carriedSystemMarkers.has(block)) block.cache_control = { ...CACHE_CONTROL_5M };
+    block.cache_control = { ...cacheControl };
     return true;
   }
   return false;
@@ -236,6 +245,7 @@ function capCacheControlBlocks(body) {
 export function anchorClaudeCache(body, provider = null) {
   if (!body || !isObject(body)) return body;
   if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
+  const messageCacheControl = clientMessageCacheControl(body.messages);
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       delete msg.cache_control;
@@ -283,13 +293,13 @@ export function anchorClaudeCache(body, provider = null) {
     for (let i = body.messages.length - 1; i >= 0; i--) {
       const msg = body.messages[i];
       if (!Array.isArray(msg.content)) continue;
-      for (const block of msg.content) {if (block && isObject(block) && !carriedSystemMarkers.has(block)) delete block.cache_control;}
+      for (const block of msg.content) {if (block && isObject(block)) delete block.cache_control;}
       if (anchored || msg.role !== ROLE.ASSISTANT) continue;
-      anchored = markLastCacheableBlock(msg);
+      anchored = markLastCacheableBlock(msg, messageCacheControl);
     }
     if (!anchored) {
       for (let i = body.messages.length - 1; i >= 0 && !anchored; i--) {
-        anchored = markLastCacheableBlock(body.messages[i]);
+        anchored = markLastCacheableBlock(body.messages[i], messageCacheControl);
       }
     }
   }
@@ -753,18 +763,15 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
     } else {
       // Never fold trailing system content backward into a completed user turn.
-      // Preserve its cache breakpoint on the last eligible user block instead.
-      const last = messages.at(-1);
-      const marker = buffered.map((block) => validCacheMarker(block?.cache_control)).filter(Boolean).at(-1);
-      if (marker && last?.role === ROLE.USER) {
-        if (isString(last.content) && last.content) last.content = [{ type: CLAUDE_BLOCK.TEXT, text: last.content }];
-        if (Array.isArray(last.content)) {
-          const target = last.content.findLast((block) => isObject(block) && block !== null && block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING);
-          if (target && !target.cache_control) {
-            target.cache_control = marker;
-            carriedSystemMarkers.add(target);
-          }
-        }
+      // Its cache marker still states the client's TTL (1h wins), so that alone
+      // moves to the last user turn for anchorClaudeCache to read.
+      const markers = buffered.map((block) => validCacheMarker(block?.cache_control)).filter(Boolean);
+      const marker = markers.find((entry) => entry.ttl === "1h") ?? markers.at(-1);
+      const lastUser = marker ? messages.findLast((m) => m.role === ROLE.USER && (Array.isArray(m.content) || isString(m.content) && m.content)) : null;
+      if (lastUser) {
+        const content = isString(lastUser.content) ? [{ type: CLAUDE_BLOCK.TEXT, text: lastUser.content }] : lastUser.content;
+        const tail = content.at(-1);
+        if (tail && !tail.cache_control) lastUser.content = [...content.slice(0, -1), { ...tail, cache_control: marker }];
       }
       body.messages = messages;
     }
@@ -933,6 +940,9 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     body.messages = removeNamelessToolHistory(body.messages);
     // Before pass 1 so a hoisted marker obeys the same message-marker policy as any other.
     if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
+    // Preserved client markers keep their own order, so a 1h breakpoint is not
+    // added behind them: Anthropic rejects 1h after 5m.
+    const messageCacheControl = preserveResponseCache ? CACHE_CONTROL_5M : clientMessageCacheControl(body.messages);
     const len = body.messages.length;
     const originalLastRole = clientRole;
     let filtered = [];
@@ -995,7 +1005,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           for (let j = msg.content.length - 1; j >= 0; j--) {
             const block = msg.content[j];
             if (block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING) {
-              block.cache_control = { type: "ephemeral" };
+              block.cache_control = { ...messageCacheControl };
               break;
             }
           }

@@ -1,14 +1,20 @@
 #!/usr/bin/env node
 
-// Postinstall: warm up SQLite deps into ~/.9router/runtime so normal CLI startup
-// never attempts to install the optional native accelerator. Failure is non-fatal.
+// Postinstall only checks existing runtime dependencies. It never installs them;
+// normal CLI startup can still prepare missing dependencies when needed.
 const { ensureSqliteRuntime } = require("./sqliteRuntime");
+const { ensureTrayRuntime } = require("./trayRuntime");
 
 try {
-  ensureSqliteRuntime({ silent: false, installBetterSqlite: true, allowInstall: false });
-  console.log("[durindoor] runtime SQLite deps ready");
+  ensureSqliteRuntime({ silent: false, allowInstall: false });
 } catch (e) {
   console.warn(`[durindoor] runtime warm-up skipped: ${e.message}`);
+}
+
+try {
+  ensureTrayRuntime({ silent: false, allowInstall: false });
+} catch (e) {
+  console.warn(`[durindoor] tray runtime skipped: ${e.message}`);
 }
 
 process.exit(0);

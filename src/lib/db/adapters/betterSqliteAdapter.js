@@ -39,8 +39,9 @@ export function createBetterSqliteAdapter(filePath) {
   }, CHECKPOINT_INTERVAL_MS);
   if (isFunction(checkpointTimer.unref)) checkpointTimer.unref();
 
-  function gracefulClose() {
-    try {db.pragma("wal_checkpoint(TRUNCATE)");} catch {}
+  // beforeExit passes an exit code here, so only an explicit false skips the checkpoint.
+  function gracefulClose(checkpoint) {
+    if (checkpoint !== false) try {db.pragma("wal_checkpoint(TRUNCATE)");} catch {}
     try {stmtCache.clear();} catch {}
     try {db.close();} catch {}
   }
@@ -75,12 +76,13 @@ export function createBetterSqliteAdapter(filePath) {
     flush() {
       return assertCheckpointComplete(db.pragma("wal_checkpoint(TRUNCATE)"), "better-sqlite3");
     },
-    close() {
+    // checkpoint: false skips the explicit pre-close checkpoint, not driver behavior.
+    close({ checkpoint } = {}) {
       clearInterval(checkpointTimer);
       process.removeListener("beforeExit", gracefulClose);
       process.removeListener("SIGINT", onSignal);
       process.removeListener("SIGTERM", onSignal);
-      gracefulClose();
+      gracefulClose(checkpoint);
     },
     // Per-handle state for releaseExclusiveLock(); better-sqlite3 reports
     // both without throwing after close().

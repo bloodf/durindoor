@@ -5,6 +5,7 @@
  * Trade-off: past the threshold the HTTP status is committed to 200, so late
  * errors (429, 5xx) arrive as a 200 body and upstream headers such as
  * retry-after and request-id are dropped, breaking client retry semantics.
+ * The early response retains the gateway's permissive CORS origin header.
  */
 const encoder = new TextEncoder();
 const space = encoder.encode(' ');
@@ -69,5 +70,5 @@ export async function withEarlyJsonKeepalive(handlerPromise, { thresholdMs, inte
       reader?.cancel().catch(() => {});
     }
   });
-  return new Response(stream, { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no', ...extraHeaders } });
+  return new Response(stream, { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no', 'Access-Control-Allow-Origin': '*', ...extraHeaders } });
 }

@@ -9,7 +9,21 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
 
 // Create OpenAI chunk helper
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-import { chargeRetained } from "../../utils/streamRetainedBudget.js";
+import { chargeRetained, releaseRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
+
+// A normal-sized call id is fixed metadata; only an oversized one counts against the budget.
+const UNCHARGED_ID_LENGTH = 64;
+
+// The type is counted so that empty blocks are not free.
+function thinkingBlockSize(block) {
+  if (!block) return 0;
+  return retainedSize(block.type) + retainedSize(block.thinking) + retainedSize(block.signature) + retainedSize(block.data);
+}
+
+function toolCallHeaderSize(toolCall) {
+  if (!toolCall) return 0;
+  return retainedSize(toolCall.function.name) + Math.max(0, retainedSize(toolCall.id) - UNCHARGED_ID_LENGTH);
+}
 function createChunk(state, delta, finishReason = null) {
   return buildChunk(
     { id: `chatcmpl-${state.messageId}`, created: Math.floor(Date.now() / 1000), model: state.model },
@@ -37,6 +51,7 @@ function flushThinking(state, results) {
   const blocks = [...state.claudeThinkingBlocks.entries()].sort(([a], [b]) => a - b).map(([, block]) => block);
   const envelope = encodeClaudeThinking(state.providerBody?.model || state.requestedModel || state.model, blocks);
   if (envelope) results.push(createChunk(state, { reasoning_encrypted_content: envelope }));
+  for (const block of state.claudeThinkingBlocks.values()) releaseRetained(state, thinkingBlockSize(block));
   state.claudeThinkingBlocks.clear();
 }
 
@@ -87,9 +102,11 @@ export function claudeToOpenAIResponse(chunk, state) {
           state.textBlockStarted = true;
         } else if (block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING) {
           const blocks = state.claudeThinkingBlocks ||= new Map();
-          blocks.set(chunk.index, block.type === CLAUDE_BLOCK.THINKING ?
+          const kept = block.type === CLAUDE_BLOCK.THINKING ?
             { type: block.type, thinking: block.thinking || "", signature: block.signature || "" } :
-            { type: block.type, data: block.data });
+            { type: block.type, data: block.data };
+          replaceRetained(state, thinkingBlockSize(blocks.get(chunk.index)), thinkingBlockSize(kept));
+          blocks.set(chunk.index, kept);
           // Track the thinking block internally only. Thinking text flows through
           // reasoning_content (see thinking_delta below) — never inject literal
           // <think>/</think> markers into content. They leak as visible text to any
@@ -110,6 +127,12 @@ export function claudeToOpenAIResponse(chunk, state) {
               arguments: ""
             }
           };
+          const replaced = state.toolCalls.get(chunk.index);
+          replaceRetained(
+            state,
+            toolCallHeaderSize(replaced) + retainedSize(replaced?.function.arguments),
+            toolCallHeaderSize(toolCall)
+          );
           state.toolCalls.set(chunk.index, toolCall);
           results.push(createChunk(state, { tool_calls: [toolCall] }));
         }
@@ -171,6 +194,7 @@ export function claudeToOpenAIResponse(chunk, state) {
         // non-streaming path. Arguments that were streamed are never touched.
         const stoppedToolCall = state.toolCalls?.get(chunk.index);
         if (stoppedToolCall && !stoppedToolCall.function.arguments) {
+          chargeRetained(state, 2);
           stoppedToolCall.function.arguments = "{}";
           results.push(createChunk(state, {
             tool_calls: [{

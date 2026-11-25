@@ -22,7 +22,7 @@ Ported:
 
 Already present: [codex.js](../../../open-sse/executors/codex.js) keeps a declared `strict`. [openai-responses.js](../../../open-sse/translator/request/openai-responses.js) sends `false` to Responses when a Chat tool declares none, and passes only booleans into Chat. [claude-to-openai.js](../../../open-sse/translator/request/claude-to-openai.js) carries only a boolean.
 
-Not applicable: [opencode-zen.js](../../../open-sse/executors/opencode-zen.js) has no tool rebuild here and sends tool declarations unchanged. The new test asserts that.
+Not applicable: [opencode-zen.js](../../../open-sse/executors/opencode-zen.js) has no tool rebuild here, so a declared `strict` reaches upstream as sent. It only shortens over-long tool names (the #4545 port), which keeps `strict`. The new test asserts both.
 
 ## #4389 notes
 

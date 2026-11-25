@@ -61,6 +61,28 @@ describe("upstream #4396 - opencode-zen leaves tool declarations untouched", () 
   });
 });
 
+describe("upstream #4396 - shortening a long tool name keeps strict", () => {
+  const name = `submit_${"x".repeat(200)}`;
+  const longTools = [flatTool({ name, strict: false }), { type: "function", function: { name: `${name}_nested`, parameters: PARAMETERS, strict: null } }];
+
+  it.each(EXECUTORS.filter(([id]) => id.startsWith("opencode")))("through %s", (_id, make, model, credentials) => {
+    const body = { model, input: userInput(), tools: structuredClone(longTools), stream: true };
+    const out = make().transformRequest(model, body, true, credentials) || body;
+    const renamed = out.tools.filter((tool) => tool.name?.startsWith("submit_"));
+    expect(renamed.map((tool) => tool.strict)).toEqual([false, null]);
+    expect(renamed.every((tool) => tool.name.length < name.length)).toBe(true);
+  });
+
+  it("through opencode-zen", () => {
+    const body = { model: "muse-spark-1.3", input: userInput(), tools: structuredClone(longTools), stream: true };
+    const [flat, nested] = (new OpenCodeZenExecutor().transformRequest("muse-spark-1.3", body, true, {}) || body).tools;
+    expect(flat.name.length).toBeLessThan(name.length);
+    expect(flat.strict).toBe(false);
+    expect(nested.function.name.length).toBeLessThan(name.length);
+    expect(nested.function.strict).toBeNull();
+  });
+});
+
 describe("upstream #4396 - translators spell out Chat strict semantics", () => {
   const request = (from, to, body) => translateRequest(from, to, "gpt-6-sol", { model: "gpt-6-sol", ...body });
   const messages = [{ role: "user", content: "hi" }];

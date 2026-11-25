@@ -13,9 +13,11 @@ function startup(args, isTTY = false, env = {}) {
   const tray = vi.fn();
   const sqlite = vi.fn();
   const context = {
+    __dirname: path.resolve("../cli"),
     process: { argv: ["node", "cli.js", ...args], env, stdin: { isTTY }, exit: (code) => { throw { exit: code }; } },
     console: { log: vi.fn() },
     require: (name) => {
+      if (name.endsWith("src/lib/startup/listenConfig.cjs")) return require("../../src/lib/startup/listenConfig.cjs");
       if (name === "./package.json") return { name: "durindoor", version: "4.11.0" };
       if (name === "./hooks/sqliteRuntime") return { ensureSqliteRuntime: sqlite };
       if (name === "./hooks/trayRuntime") return { ensureTrayRuntime: tray };

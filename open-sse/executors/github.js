@@ -13,10 +13,11 @@ import { stripUnsupportedParams, applyParamRenames } from "../translator/concern
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FORMATS } from "../translator/formats.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
+import { CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import { settleProviderAttemptDispatch, getCurrentProviderAttemptTimestamp, runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
+import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS, GITHUB_MESSAGES_BODY_FIELDS } from "../config/github.js";
 import { CONTEXT_LENGTH_EXCEEDED_CODE } from "../config/errorConfig.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import { checkGitHubCreditLimit } from "../services/githubCreditLimit.js";
@@ -89,7 +90,11 @@ export class GithubExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true, requestContext = null) {
     const token = credentials.copilotToken || credentials.providerSpecificData?.copilotToken || credentials.accessToken;
     // The latest turn identifies a continuation; earlier assistant turns do not.
-    const lastRole = requestContext?.copilotMessages?.at(-1)?.role;
+    const lastTurn = requestContext?.copilotMessages?.at(-1);
+    // A Claude-shaped tool continuation is a user turn holding only tool results.
+    const isToolResultTurn = Array.isArray(lastTurn?.content) && lastTurn.content.length > 0 &&
+      lastTurn.content.every((block) => block?.type === CLAUDE_BLOCK.TOOL_RESULT);
+    const lastRole = isToolResultTurn ? "tool" : lastTurn?.role;
     const headers = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -367,11 +372,34 @@ export class GithubExecutor extends BaseExecutor {
   }
 
   /**
+   * Copy a Claude-source body for /v1/messages. chatCore has already prepared it
+   * for the Claude wire; only the fields Copilot is known to take are forwarded.
+   * Where this provider rejects reasoning_effort, its Messages spelling
+   * (output_config.effort) goes too.
+   */
+  toNativeMessagesBody(model, body) {
+    const picked = Object.fromEntries(GITHUB_MESSAGES_BODY_FIELDS.
+      filter((key) => body[key] !== undefined).
+      map((key) => [key, body[key]]));
+    const native = stripUnsupportedParams("github", model, structuredClone(picked));
+    const rejectsEffort = stripUnsupportedParams("github", model, { reasoning_effort: "high" }).reasoning_effort === undefined;
+    if (rejectsEffort && native.output_config?.effort !== undefined) {
+      const { effort: _effort, ...rest } = native.output_config;
+      if (Object.keys(rest).length === 0) delete native.output_config;else
+      native.output_config = rest;
+    }
+    return native;
+  }
+
+  /**
    * Native Anthropic Messages dispatch for GitHub Copilot Claude models.
    *
-   * Claude models arrive here OpenAI-shaped (chatCore targets "openai" for github),
-   * so we translate to Anthropic-native ourselves. Hitting /v1/messages directly is
-   * what lets prepareClaudeRequest() (translator/formats/claude.js) inject
+   * OpenAI and Responses clients arrive here OpenAI-shaped (chatCore targets
+   * "openai" for them), so we translate to Anthropic-native ourselves and convert
+   * the stream back. Claude-source requests arrive already Claude-shaped
+   * (requestContext.upstreamBodyFormat) and get the upstream response unchanged,
+   * which keeps signed thinking blocks. Hitting /v1/messages directly is what
+   * lets prepareClaudeRequest() (translator/formats/claude.js) inject
    * cache_control — /chat/completions never gets there, so it never surfaces
    * prompt-cache token counts.
    *
@@ -386,11 +414,12 @@ export class GithubExecutor extends BaseExecutor {
    */
   async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, requestPolicy = null }) {
     const url = this.endpointUrl("messagesUrl", credentials);
-    // Force stream:true upstream regardless of client preference (headers AND body),
-    // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
-    // already knows how to buffer an SSE response into a single JSON reply when the
-    // client asked for stream:false.
-    const headers = this.buildHeaders(credentials, true, requestContext);
+    const isNativeBody = requestContext?.upstreamBodyFormat === FORMATS.CLAUDE;
+    // A translated request forces stream:true upstream (headers AND body), same as
+    // executeWithResponsesEndpoint below — chatCore's non-streaming handler already
+    // knows how to buffer an SSE response into a single JSON reply when the client
+    // asked for stream:false. A native body keeps the negotiated stream value.
+    const headers = this.buildHeaders(credentials, isNativeBody ? stream : true, requestContext);
 
     // Strip params GitHub's Claude route rejects (temperature, and thinking/
     // reasoning_effort for non-4.6 Claude) BEFORE translating — the normal
@@ -408,7 +437,9 @@ export class GithubExecutor extends BaseExecutor {
      */
     const forcedBeforeDowngrade = body.tool_choice === "required" ||
       (isObject(body.tool_choice) && body.tool_choice.type === "function");
-    const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, strippedBody, true, credentials, "github");
+    const transformedBody = isNativeBody ?
+    this.toNativeMessagesBody(model, body) :
+    translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, strippedBody, true, credentials, "github");
     // _toolNameMap is internal bookkeeping (see openai-to-claude.js) — chatCore
     // normally strips it before dispatch and threads it into the response state to
     // restore original tool names; do the same here or Anthropic's strict schema
@@ -648,7 +679,7 @@ export class GithubExecutor extends BaseExecutor {
      * gateway classifies the upstream answer instead of the executor rewriting
      * it into a `stream_error` frame with the upstream body lost.
      */
-    if (!this.isEventStreamResponse(response)) {
+    if (isNativeBody || !this.isEventStreamResponse(response)) {
       return {
         response,
         url,

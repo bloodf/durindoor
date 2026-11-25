@@ -16,7 +16,8 @@ export function estimateGeminiCountTokens(body) {
   let media = 0;
   const add = (value) => { if (value !== undefined) chars += (typeof value === 'string' ? value : JSON.stringify(value) || '').length; };
   const content = (item) => {
-    for (const part of item?.parts || []) {
+    for (const part of Array.isArray(item?.parts) ? item.parts : []) {
+      if (!part || typeof part !== "object") continue;
       add(part.text);
       if (part.functionCall) { add(part.functionCall.name); add(part.functionCall.args); }
       if (part.functionResponse) { add(part.functionResponse.name); add(part.functionResponse.response); }

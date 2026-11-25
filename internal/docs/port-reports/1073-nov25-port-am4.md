@@ -1,0 +1,15 @@
+# OmniRoute morning port AM4
+
+Status: **PARTIAL**. All seven upstream commit records were fetched with `gh api` and compared with this checkout. No behaviour was ported in this change. The remaining work exceeds the work order's roughly one-hour cutoff; the entries below are not final dispositions and must be revisited before closing the port.
+
+| Candidate | Upstream | Status | Evidence and remaining work |
+| --- | --- | --- | --- |
+| 152 | [2608d75c](https://github.com/cheaper-inference/OmniRoute/commit/2608d75c555ec9055e28429f4b39361bbf09dabc) | remaining | The merge adds a 64 MiB default cap on decoded non-streaming response bytes, including error-body reads. No equivalent `responseBodyCap` exists locally; review the distinct readers in `open-sse/handlers/chatCore/` and `open-sse/utils/error.js`, then test chunked and compressed responses. |
+| 174 | [7e1f2907](https://github.com/cheaper-inference/OmniRoute/commit/7e1f2907a751781d05d5a2fc5ad209e1daab7e94) | remaining | The upstream adds opt-in daily selection and a runner for long-lived model locks. No local daily revalidation runner was found. Port together with the four dependent quota rows below, including lock recovery and failure isolation. |
+| 176 | [4b47b2ea](https://github.com/cheaper-inference/OmniRoute/commit/4b47b2ea15287b121c25ab6e52c34fd481d71829) | remaining | The runner must exclude inactive connections and those with health checks disabled; the base runner from row 174 is absent. |
+| 177 | [a1ef4fd3](https://github.com/cheaper-inference/OmniRoute/commit/a1ef4fd38b28436dff6e149d6b27f9f0b76633e0) | remaining | Upstream reads eligible connections through its shared read cache. Determine the equivalent local cache and invalidation behaviour when implementing row 174. |
+| 185 | [12932dce](https://github.com/cheaper-inference/OmniRoute/commit/12932dce8da21cf586fb79e1fe3038cd37edaf13) | remaining | `src/shared/components/OAuthModal.js` already supports a missing Cline state for pasted callbacks and accepts pasted Zed Hosted URLs, while `src/lib/oauth/providers.js` still generates a state for both providers. The upstream change suppresses the generated state for Cline and Zed Hosted; local flow lifecycle requires a nonempty state, so equivalence and relayed callbacks need focused verification before changing it. |
+| 193 | [666a5e05](https://github.com/cheaper-inference/OmniRoute/commit/666a5e058f90f7388d6a14d5220e738d03a0692e) | remaining | The probe must target the locked model and isolate failures from connection and sibling-model state; this depends on row 174. |
+| 199 | [6c9e7c1b](https://github.com/cheaper-inference/OmniRoute/commit/6c9e7c1beeac87746556360add6ec95785a5b8b5) | remaining | Resolve family locks to a callable model in the same family, use a 16-token answer cap, and release the appropriate persisted family lock on recovery. This depends on row 174 and needs tests for nonmatching models and persistent state. |
+
+No provider calls were made. No tests were added because no behaviour was changed; the focused port tests remain part of the outstanding work.

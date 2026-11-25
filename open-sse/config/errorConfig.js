@@ -148,6 +148,13 @@ export const RESET_COOLDOWN_CAP_MS = {
   "amazon-q": KIRO_CREDIT_EXHAUSTION_PROBE_MS
 };
 
+/**
+ * Park window for an exhausted Gemini per-day quota (decolua/9router#4348). The
+ * seconds-scale retry hint on that 429 does not clear it; the random spread
+ * keeps parked keys from returning together.
+ */
+export const GEMINI_DAILY_QUOTA_PARK_MS = Object.freeze({ min: 60 * 60 * 1000, max: 3 * 60 * 60 * 1000 });
+
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,

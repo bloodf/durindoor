@@ -10,6 +10,7 @@ import {
 } from "@/lib/localDb";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
+import { normalizeComboModelId } from "./modelIds.js";
 
 import { isBoolean } from "@/shared/utils/typeChecks.js";
 
@@ -67,6 +68,22 @@ async function assertNameAvailable(name, excludeId) {
   }
 }
 
+/**
+ * Normalize `models`, and `members[].id` with it so weights still match.
+ * A non-array `models` is left for the repository to reject.
+ */
+function normalizeTargets(models, members) {
+  if (!Array.isArray(models)) return { models, members };
+  const ids = models.map(normalizeComboModelId);
+  if (ids.includes(null)) throw new ComboManagementError("Models must contain valid model IDs");
+  return {
+    models: ids,
+    members: Array.isArray(members)
+      ? members.map((member) => member ? { ...member, id: normalizeComboModelId(member.id) } : member)
+      : members
+  };
+}
+
 function normalizeCapabilities(capabilities) {
   const normalized = normalizeComboCapabilities(capabilities);
   if (!normalized.ok) throw new ComboManagementError(normalized.error);
@@ -86,12 +103,13 @@ export async function createComboManaged(body) {
     if (!name) throw new ComboManagementError("Name is required");
     assertValidName(name);
     const normalizedCapabilities = normalizeCapabilities(capabilities);
+    const targets = normalizeTargets(models || [], members);
     await assertNameAvailable(name);
 
     return await createCombo({
       name,
-      models: models || [],
-      members,
+      models: targets.models,
+      members: targets.members,
       kind: kind || null,
       capabilities: normalizedCapabilities,
       allowedConnectionIds,
@@ -119,6 +137,11 @@ export async function updateComboManaged(id, patch) {
     if (body.name) {
       assertValidName(body.name);
       await assertNameAvailable(body.name, id);
+    }
+    if (Object.hasOwn(body, "models")) {
+      const targets = normalizeTargets(body.models, body.members);
+      body.models = targets.models;
+      if (Object.hasOwn(body, "members")) body.members = targets.members;
     }
     if (Object.hasOwn(body, "capabilities")) {
       body.capabilities = normalizeCapabilities(body.capabilities);

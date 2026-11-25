@@ -67,6 +67,12 @@ Ten single-use backup codes are generated at enrollment and shown once, bcrypt-h
 
 `mfaSecret` and `mfaBackupCodes` are stored in the same settings row as the password hash. They never round-trip through `GET/PATCH /api/settings` (only a boolean `mfaEnabled` and a `mfaBackupCodesRemaining` count are exposed there) and are writable only through `/api/auth/mfa/{setup,enable,disable}`, each of which re-verifies the current password.
 
+## Changing security settings
+
+`PATCH /api/settings` asks for the current dashboard password, on top of the session, when a change would turn off `requireLogin` or `requireApiKey`, turn on `tunnelDashboardAccess`, or change who can sign in (`authMode`, `ssoType`, the OIDC issuer, client ID, client secret, scopes, or allowlists). Turning protection on and re-saving the stored value need no password.
+
+Without it the route answers `401` with `"code": "REAUTH_REQUIRED"` and the affected `fields`, and writes nothing. Send the password as `currentPassword` in the same body; it is checked and never stored. Wrong passwords count toward the login lockout (`429` with `Retry-After`). A valid machine-bound CLI token needs no password. The Profile and Endpoint pages prompt for it and retry.
+
 ## Rate limits
 
 Dashboard login: five failures from one IP, then a lock of 30s, 2m, 10m, 30m. A quiet hour since the last fail resets the bucket. At most 5000 IPs are tracked. HTTP 429 includes `Retry-After`.
@@ -109,6 +115,8 @@ Bootstrap grants are short-lived and single-use. The login cookie is host-only a
 ## Management routes
 
 `GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT, a machine-bound CLI token, or a DurinDoor application API key, including when `requireLogin` is false. Direct loopback requests keep open-dashboard access when login is disabled.
+
+The Headroom dashboard proxy (`/api/headroom/proxy`) forwards neither dashboard cookies, the caller's `Authorization` header, nor any internal `x-9r-*` header, so the CLI token and the server's locality proof never reach the configured `headroomUrl`.
 
 Only the exact OIDC `/api/auth/oidc/start` and `/api/auth/oidc/callback` login endpoints are public. `POST /api/auth/oidc/test` is operator-only because its probe can use the stored client secret; both middleware and the handler reject foreign-Origin cookie requests before discovery or probing. Explicit machine-bound CLI credentials remain supported.
 

@@ -15,12 +15,12 @@ import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "./inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
-import { appendReasoningText } from "../translator/concerns/reasoning.js";
+import { appendReasoningText, extractReasoningText } from "../translator/concerns/reasoning.js";
 import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { CLAUDE_STOP, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
-import { createUpstreamTerminalTracker } from "./streamTerminal.js";
+import { choiceHasOutput, classifyMaskedGatewayError, createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
 import { advancePendingSseLineBytes, MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
 import { isProviderKeepaliveEvent } from "./providerKeepalive.js";
@@ -33,7 +33,7 @@ import {
   stripClientReasoningDelta } from
 "./minimaxThinkingStream.js";
 
-import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
+import { SSE_COMMENT_KEEPALIVE, SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
@@ -442,7 +442,7 @@ export function createSSEStream(options = {}) {
         for (const [position, choice] of chunk.choices.entries()) {
           const delta = choice?.delta;
           content = append(content, delta?.content, MAX_TEXT);
-          reasoning = append(reasoning, delta?.reasoning_content ?? delta?.reasoning, MAX_REASONING);
+          reasoning = append(reasoning, extractReasoningText(delta), MAX_REASONING);
           finishReason = bounded(choice?.finish_reason, 64) || finishReason;
           for (const [toolPosition, toolCall] of (delta?.tool_calls || []).entries()) {
             const index = Number.isSafeInteger(toolCall.index) ? toolCall.index : toolPosition;
@@ -582,9 +582,7 @@ export function createSSEStream(options = {}) {
           totalContentLength += delta.content.length;
           appendContent(delta.content);
         }
-        const reasoning = isString(delta?.reasoning_content) && delta.reasoning_content ?
-        delta.reasoning_content :
-        isString(delta?.reasoning) && delta.reasoning.trim() ? delta.reasoning : "";
+        const reasoning = extractReasoningText(delta);
         if (reasoning) {
           totalContentLength += reasoning.length;
           appendThinking(reasoning);
@@ -652,6 +650,19 @@ export function createSSEStream(options = {}) {
     });
     changed = parsed.choices.length !== choiceCount || changed;
     return { changed, keep: choiceCount === 0 || parsed.choices.length > 0 || Boolean(parsed.usage) };
+  };
+
+  // An upstream gateway can hide its failure behind an HTTP 200 finish chunk
+  // (native_finish_reason). With no output before it, that finish becomes an
+  // in-band error, so the turn is not recorded as a blank success (upstream #3611).
+  let openAIOutputSeen = false;
+  const maskedGatewayErrorEnvelope = (parsed) => {
+    if (targetFormat !== FORMATS.OPENAI || !Array.isArray(parsed?.choices)) return null;
+    openAIOutputSeen ||= parsed.choices.some(choiceHasOutput);
+    const reason = openAIOutputSeen ? null : classifyMaskedGatewayError(parsed);
+    return reason ?
+    { error: { message: `Upstream provider error: ${reason}`, type: "upstream_error", code: reason } } :
+    null;
   };
 
   let claudeTerminalSeen = false;
@@ -986,7 +997,9 @@ export function createSSEStream(options = {}) {
 
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? dataValue : trimmed)) {
             try {
-              const parsed = JSON.parse(isDataLine ? dataValue : trimmed);
+              const upstreamChunk = JSON.parse(isDataLine ? dataValue : trimmed);
+              const gatewayError = maskedGatewayErrorEnvelope(upstreamChunk);
+              const parsed = gatewayError ?? upstreamChunk;
               // A replayed Responses frame re-sends a sequence_number that was
               // already forwarded. Forwarding it again duplicates its content,
               // and its held event label has to go with it.
@@ -1032,7 +1045,7 @@ export function createSSEStream(options = {}) {
               // from the thinking block start. Strict Messages clients deserialize
               // that field before the later signature_delta arrives, so inject an
               // empty placeholder when the provider quirk requests it (#2706).
-              let fieldsInjected = false;
+              let fieldsInjected = gatewayError !== null;
               if (
               PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
               parsed.type === "content_block_start" &&
@@ -1346,6 +1359,14 @@ export function createSSEStream(options = {}) {
         // Translate mode
         if (!trimmed) continue;
 
+        // parseSSELine drops comments, so a long upstream wait would send the client
+        // nothing and a reverse proxy would time out (decolua/9router#4376). The
+        // upstream comment text is not relayed.
+        if (trimmed.startsWith(":")) {
+          controller.enqueue(sharedEncoder.encode(SSE_COMMENT_KEEPALIVE));
+          continue;
+        }
+
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) {
           if (mayHold && targetFormat !== FORMATS.OLLAMA && startsSplitData(trimmed)) holdSplitData(line);else
@@ -1480,11 +1501,8 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.choices[0].delta.content.length;
           appendContent(parsed.choices[0].delta.content);
         }
-        // OpenAI format - reasoning (reasoning_content preferred, `reasoning` fallback)
-        const openAIReasoningDelta = parsed.choices?.[0]?.delta;
-        const openAIReasoning = isString(openAIReasoningDelta?.reasoning_content) && openAIReasoningDelta.reasoning_content ?
-        openAIReasoningDelta.reasoning_content :
-        isString(openAIReasoningDelta?.reasoning) && openAIReasoningDelta.reasoning.trim() ? openAIReasoningDelta.reasoning : "";
+        // OpenAI format - reasoning, in any vendor shape (reasoning_content preferred)
+        const openAIReasoning = extractReasoningText(parsed.choices?.[0]?.delta);
         if (openAIReasoning) {
           totalContentLength += openAIReasoning.length;
           appendThinking(openAIReasoning);
@@ -1582,6 +1600,9 @@ export function createSSEStream(options = {}) {
             if (!hasValuableContent(item, sourceFormat)) {
               continue; // Skip this empty chunk
             }
+
+            // Chat items skip the buffered restore, so return the client's tool names here.
+            if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
@@ -1755,7 +1776,8 @@ export function createSSEStream(options = {}) {
 
           if (buffer) {
             const trimmedBuffer = buffer.trim();
-            const parsed = parseSSELine(trimmedBuffer, targetFormat);
+            const bufferedChunk = parseSSELine(trimmedBuffer, targetFormat);
+            const parsed = maskedGatewayErrorEnvelope(bufferedChunk) ?? bufferedChunk;
             const bufferedError = extractStreamErrorPayload(parsed);
             let output = "";
             if (parsed?.done) {
@@ -1948,6 +1970,7 @@ export function createSSEStream(options = {}) {
               if (!nativeGemini && translated?.length > 0) {
                 for (const item of translated) {
                   if (item === null || item === undefined) continue;
+                  if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
                   const output = formatSSE(item, sourceFormat);
                   reqLogger?.appendConvertedChunk?.(output);
                   controller.enqueue(sharedEncoder.encode(output));
@@ -1996,6 +2019,7 @@ export function createSSEStream(options = {}) {
         if (!nativeGemini && flushed?.length > 0) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
+            if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
             const output = formatSSE(item, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));

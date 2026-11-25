@@ -191,7 +191,7 @@ export async function handleCookieImport(request) {
     if (contract.cookieNames.length) update.apiKey = built.header;
     else update.apiKey = null;
     if (hasStoredValues) update.providerSpecificData = { ...(existing.providerSpecificData || {}), ...stored.values };
-    const updated = await updateProviderConnection(target.connectionId, update);
+    const updated = await updateProviderConnection(target.connectionId, update, { replacesCredential: true });
     if (!updated) return json({ error: "Connection not found" }, 404);
     return json({ ok: true, action: "update", connection: { id: updated.id, provider: updated.provider, name: updated.name } });
   } catch (error) {

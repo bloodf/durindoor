@@ -422,6 +422,7 @@ exports[`GOLDEN response stream: OpenAI-Responses (codex) → OpenAI > error eve
       {
         "delta": {
           "content": "[Error] model_not_found",
+          "role": "assistant",
         },
         "finish_reason": "stop",
         "index": 0,
@@ -442,6 +443,7 @@ exports[`GOLDEN response stream: OpenAI-Responses (codex) → OpenAI > text + re
       {
         "delta": {
           "content": "Hello",
+          "role": "assistant",
         },
         "finish_reason": null,
         "index": 0,

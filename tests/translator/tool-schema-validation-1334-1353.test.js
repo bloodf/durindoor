@@ -43,7 +43,7 @@ describe("#1353 non-object tool schemas on Claude-bound paths", () => {
 
   it("does not reject a typeless combinator root", () => {
     const schema = { anyOf: [{ type: "object", properties: { a: { type: "string" } } }, { type: "object", properties: { b: { type: "number" } } }] };
-    // Anthropic rejects a root combinator, so the variants are merged (upstream #4490).
+    // Anthropic rejects a root combinator, so the variants are merged (upstream #4490, #4472).
     expect(toClaude(schema).tools[0].input_schema).toEqual({ type: "object", properties: { a: { type: "string" }, b: { type: "number" } } });
   });
 

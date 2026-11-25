@@ -241,9 +241,15 @@ function attachNativeBlocks(message, nativeBlocks) {
 }
 
 // Invalid or over-budget nested media retains only a bounded media-type label.
-function describeOmittedMedia(mediaType) {
-  const label = isString(mediaType) && mediaType ? mediaType.slice(0, 100) : "image";
-  return `[tool result omitted image: ${label}]`;
+function describeOmittedMedia(mediaType, kind = "image") {
+  const label = isString(mediaType) && mediaType ? mediaType.slice(0, 100) : kind;
+  return `[tool result omitted ${kind}: ${label}]`;
+}
+
+// Any image shape, or another block holding base64 bytes (MCP audio, blobs).
+function carriesBinaryPayload(block) {
+  return block.type === CLAUDE_BLOCK.IMAGE || block.source?.type === "base64" ||
+    isString(block.resource?.blob) || (block.type === "audio" && isString(block.data));
 }
 
 /**
@@ -404,6 +410,13 @@ function convertClaudeMessage(msg, opts, imageBudget) {
                 // A URL costs no tokens to forward, so it is lifted as a real image.
                 toolResultImages.push(urlImagePart(c));
                 textParts.push("[tool returned an image; see attached]");
+              } else if (carriesBinaryPayload(c)) {
+                // Falling through to JSON.stringify would send the raw bytes as text.
+                textParts.push(describeOmittedMedia(
+                  c.source?.media_type || c.mimeType || c.resource?.mimeType,
+                  isString(c.type) ? c.type.slice(0, 40) : "media"
+                ));
+                hasOmittedMedia = true;
               }
             }
             resultContent = textParts.join("\n") || (hasOmittedMedia ? "[tool result omitted media]" : JSON.stringify(block.content));

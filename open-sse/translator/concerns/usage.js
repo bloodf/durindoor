@@ -98,7 +98,16 @@ const USAGE_EXTRACTORS = {
   commandcode(raw) {
     const input = n(raw.inputTokens),output = n(raw.outputTokens);
     const total = isNumber(raw.totalTokens) ? raw.totalTokens : input + output;
-    return { promptTokens: input, completionTokens: output, totalTokens: total };
+    // `inputTokens` already includes cache reads (noCacheTokens + cacheReadTokens),
+    // so the cached count is a detail only: adding it would bill it twice.
+    // Reasoning is likewise a detail of `outputTokens`.
+    return {
+      promptTokens: input,
+      completionTokens: output,
+      totalTokens: total,
+      cachedTokens: n(raw.cachedInputTokens) || n(raw.inputTokenDetails?.cacheReadTokens) || n(raw.cacheReadTokens),
+      reasoningTokens: n(raw.reasoningTokens) || n(raw.outputTokenDetails?.reasoningTokens)
+    };
   }
 };
 

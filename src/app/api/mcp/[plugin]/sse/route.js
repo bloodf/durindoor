@@ -25,6 +25,10 @@ export async function GET(request, { params }) {
     return new Response(`Unknown plugin: ${plugin}`, { status: 404 });
   }
 
+  // The client can leave during the awaits above. An abort listener added to an
+  // already-aborted signal never fires, so do not register (and spawn) at all.
+  if (request.signal.aborted) return new Response(null, { status: 499 });
+
   const encoder = new TextEncoder();
   let sid = null;
 
@@ -57,8 +61,7 @@ export async function GET(request, { params }) {
   });
 
   // Client disconnect: cancel() is not always invoked in Next.js; wire
-  // request.signal the same way /api/mcp-gateway/sse does. If the signal is
-  // already aborted, the listener runs on the next tick after start() registered.
+  // request.signal the same way /api/mcp-gateway/sse does.
   request.signal.addEventListener("abort", onAbort, { once: true });
 
   return new Response(stream, {

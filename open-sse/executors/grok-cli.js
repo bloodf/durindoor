@@ -10,6 +10,7 @@ import {
 import { normalizeResponsesInput } from "../translator/formats/responsesApi.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { readToolStrict } from "../translator/concerns/toolStrict.js";
 import { getConsistentMachineId } from "../shared/machineId.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { flattenGrokCliNamespaceTools, restoreGrokCliNamespaceIdentity } from "./grokCliNamespaceTools.js";
@@ -245,11 +246,13 @@ function normalizeGrokCliTools(body) {
     fn.parameters :
     { type: "object", properties: {} };
 
+    const strict = readToolStrict(tool);
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = parameters;
+    if (strict !== undefined) tool.strict = strict;
     validNames.add(name);
     return true;
   });

@@ -1,6 +1,7 @@
 // Stream handler with disconnect detection - shared for all providers
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS, STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { SSE_COMMENT_KEEPALIVE } from "./sseConstants.js";
 import { sanitizeErrorMessage } from "./error.js";
 import { colorStreamStatus } from "./streamStatusColor.js";
 
@@ -122,6 +123,13 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
   return streamController;
 }
 
+const COMMENT_KEEPALIVE_BYTES = new TextEncoder().encode(SSE_COMMENT_KEEPALIVE);
+
+function isCommentKeepalive(value) {
+  return value?.byteLength === COMMENT_KEEPALIVE_BYTES.byteLength &&
+    COMMENT_KEEPALIVE_BYTES.every((byte, index) => value[index] === byte);
+}
+
 /**
  * Create transform stream with disconnect detection
  * Wraps existing transform stream and adds abort capability.
@@ -225,8 +233,11 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           controller.close();
           return;
         }
-        clientBytesStarted = true;
-        stopKeepalive();
+        // A relayed heartbeat is not a first byte: the client-format ping stays armed.
+        if (!isCommentKeepalive(value)) {
+          clientBytesStarted = true;
+          stopKeepalive();
+        }
         terminalTracker?.observeClientFrame(decoder.decode(value, { stream: true }));
         forward(controller, value);
       } catch (error) {

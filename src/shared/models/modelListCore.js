@@ -649,7 +649,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
               if (isCompatibleProvider) {
                 rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));
               } else if (!hasExplicitEnabledModels) {
-                if (unionRegistryLiveModels || LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
+                if (providerId === "codex") {
+                  // The account catalog decides which chat models exist (upstream #4292). It never
+                  // lists image or transcription rows, or the review aliases of the models it lists.
+                  const listed = new Set(liveModels.map((m) => m.id));
+                  const registryOnly = providerModels.filter((m) => modelKind(m) !== LLM_KIND ||
+                    m.quotaFamily === "review" && listed.has(m.upstreamModelId));
+                  rawModelIds = Array.from(new Set([...listed, ...registryOnly.map((m) => m.id)]));
+                } else if (unionRegistryLiveModels || LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
                   rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));
                 } else if (!enrichExistingOnly) {
                   rawModelIds = liveModels.map((m) => m.id);

@@ -959,6 +959,9 @@ export const PATTERN_CAPABILITIES = [
 
 // ── OpenAI GPT-5.x (vision + thinking + web search) ──────────────
 { pattern: "*gpt-5*image*", caps: { imageOutput: true } },
+// Spark's effort-suffixed ids (`-high`) miss the exact codex entries and would take
+// the 400K family window below (decolua/9router#3664).
+{ pattern: "*gpt-5.3-codex-spark*", caps: { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null } },
 { pattern: "*gpt-5*codex*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
 { pattern: "*gpt-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
 { pattern: "*gpt-4o*", caps: { vision: true, search: true, contextWindow: 128000, maxOutput: 16384 } },

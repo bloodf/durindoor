@@ -3,7 +3,11 @@ export function getCachedTokens(tokens) {
 }
 
 export function getCacheCreationTokens(tokens) {
-  return tokens?.cache_creation_input_tokens || 0;
+  // Translated streams persist the count only under the token details
+  // (OmniRoute #21107). A reported flat zero still wins.
+  return tokens?.cache_creation_input_tokens ??
+    tokens?.prompt_tokens_details?.cache_creation_tokens ??
+    tokens?.input_tokens_details?.cache_creation_tokens ?? 0;
 }
 
 export function getInputTokens(tokens) {

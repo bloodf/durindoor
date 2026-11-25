@@ -31,6 +31,18 @@ describe("upstream PR #5279 - Codex tool history", () => {
     ]);
   });
 
+  it("replaces an interrupted computer_call with a note and drops an orphan screenshot", () => {
+    const computer = (type, call_id) => ({ type, call_id });
+    const input = transform([
+      user,
+      computer("computer_call", "cu_done"), computer("computer_call_output", "cu_done"),
+      computer("computer_call", "cu_cut"),
+      computer("computer_call_output", "cu_orphan"),
+    ]);
+    expect(input.map((item) => item.type)).toEqual(["message", "computer_call", "computer_call_output", "message"]);
+    expect(input[3]).toMatchObject({ role: "assistant", content: [{ type: "output_text", text: expect.stringContaining("cu_cut") }] });
+  });
+
   it("normalizes call ids so each call and result stay paired", () => {
     const long = `call_${"x".repeat(80)}`;
     const input = transform([

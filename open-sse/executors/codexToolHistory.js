@@ -11,9 +11,18 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 const OUTPUT_TYPE_BY_CALL_TYPE = new Map([
   [RESPONSES_ITEM.FUNCTION_CALL, RESPONSES_ITEM.FUNCTION_CALL_OUTPUT],
   [RESPONSES_ITEM.CUSTOM_TOOL_CALL, RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT],
+  [RESPONSES_ITEM.COMPUTER_CALL, RESPONSES_ITEM.COMPUTER_CALL_OUTPUT],
 ]);
 const OUTPUT_TYPES = new Set(OUTPUT_TYPE_BY_CALL_TYPE.values());
 const INTERRUPTED_TOOL_OUTPUT = "[No tool output recorded: the tool call was interrupted before it produced a result.]";
+
+// A computer result must be a real screenshot, so an interrupted call cannot be
+// answered with a placeholder; it becomes assistant history text instead.
+const interruptedComputerCall = (callId) => ({
+  type: RESPONSES_ITEM.MESSAGE,
+  role: ROLE.ASSISTANT,
+  content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, text: `[Computer call interrupted before a screenshot was recorded; call_id=${callId}]` }],
+});
 
 const pairKey = (outputType, callId) => `${outputType}\0${callId}`;
 
@@ -29,7 +38,8 @@ function normalizeCallId(id) {
 
 /**
  * Normalize call ids, drop results with no call of the same kind, and add a
- * placeholder result after each call that has none.
+ * placeholder result after each function or custom call that has none. An
+ * unanswered computer call is replaced with a note.
  *
  * @param {Array} input Responses API input items.
  * @returns {Array} repaired items; the caller's items are not mutated.
@@ -60,6 +70,7 @@ export function repairCodexToolHistory(input) {
     }
     const outputType = OUTPUT_TYPE_BY_CALL_TYPE.get(item?.type);
     if (!outputType || !isString(item.call_id) || !item.call_id || answered.has(pairKey(outputType, item.call_id))) return [item];
+    if (outputType === RESPONSES_ITEM.COMPUTER_CALL_OUTPUT) return [interruptedComputerCall(item.call_id)];
     return [item, { type: outputType, call_id: item.call_id, output: INTERRUPTED_TOOL_OUTPUT }];
   });
 }

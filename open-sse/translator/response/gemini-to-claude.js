@@ -1,7 +1,7 @@
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_BLOCK } from "../schema/blocks.js";
-import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";
+import { GEMINI_ERROR_FINISH_REASONS, OPENAI_FINISH } from "../schema/finishReasons.js";
 import { buildGeminiThoughtSignatureKey, storeGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
@@ -25,6 +25,10 @@ export function geminiToClaudeResponse(chunk, state) {
     // Candidate-less error (incl. one nested in promptFeedback): end with a Claude
     // error event, never a silent stream or a content filter (#1342).
     const error = response?.error || chunk.error || response?.promptFeedback?.error;
+    // Record terminal prompt feedback so the stream EOF guard does not report a cut stream.
+    if (error || response?.promptFeedback?.blockReason) {
+      state.finishReason = error ? OPENAI_FINISH.ERROR : OPENAI_FINISH.CONTENT_FILTER;
+    }
     if (!error) return null;
     const message = sanitizeErrorMessage(isString(error) ? error : error.message || "Upstream provider error");
     return [{ type: "error", error: { type: "api_error", message } }];
@@ -94,6 +98,7 @@ export function geminiToClaudeResponse(chunk, state) {
     if (isNumber(usage.cachedContentTokenCount) && usage.cachedContentTokenCount > 0) state.usage.cache_read_input_tokens = usage.cachedContentTokenCount;
   }
   if (candidate.finishReason) {
+    state.finishReason = candidate.finishReason;
     if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
     const reason = candidate.finishReason.toUpperCase();
     const stopReason = state.hasToolUse || reason === "TOOL_CALLS" || GEMINI_ERROR_FINISH_REASONS.has(reason) ? "tool_use" : reason === "MAX_TOKENS" || reason === "LENGTH" ? "max_tokens" : "end_turn";

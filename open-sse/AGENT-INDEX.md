@@ -446,6 +446,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `t3-web` | openai | webCookie | `https://t3.chat/api/chat` |
 | `tabitoken` | claude | apikey | `https://tabitoken.com/v1/messages` |
 | `tavily` |  | apikey | `` |
+| `teamorouter` | openai | apikey | `https://api.teamorouter.com/v1/chat/completions` |
 | `tencent` |  | freeTier | `https://api.hunyuan.cloud.tencent.com/v1/chat/completions` |
 | `tencent-aistudio-web` | openai | webCookie | `https://aistudio.tencent.ai/api/chat` |
 | `thebai` |  | apikey | `https://api.theb.ai/v1/chat/completions` |

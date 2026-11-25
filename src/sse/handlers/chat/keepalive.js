@@ -6,7 +6,7 @@ import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { SSE_KEEPALIVE_MS } from "open-sse/config/runtimeConfig.js";
 import { ANTHROPIC_PING_FRAME, withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
 import { withEarlyJsonKeepalive, resolveJsonKeepaliveThresholdMs } from "open-sse/utils/earlyJsonKeepalive.js";
-import { decodeInboundRequest } from "../../utils/inboundGzip.js";
+import { decodeAnthropicRequest } from "../../utils/inboundGzip.js";
 import { handleChat } from "../chat.js";
 
 function chatWithKeepalive(request, streaming, keepalive) {
@@ -23,7 +23,7 @@ export async function handleMessages(request) {
   const ctRejection = requireJsonContentType(request);
   if (ctRejection) return ctRejection;
 
-  const decoded = await decodeInboundRequest(request, { abortedStatus: 499 });
+  const decoded = await decodeAnthropicRequest(request, { abortedStatus: 499 });
   if (decoded.response) return decoded.response;
   request = decoded.request;
 
@@ -51,7 +51,7 @@ export async function handleMessages(request) {
  */
 export async function handleResponses(request) {
   // Codex clients compress Responses bodies; decode before reading `stream`.
-  const decoded = await decodeInboundRequest(request, { abortedStatus: 499 });
+  const decoded = await decodeAnthropicRequest(request, { abortedStatus: 499 });
   if (decoded.response) return decoded.response;
   request = decoded.request;
 

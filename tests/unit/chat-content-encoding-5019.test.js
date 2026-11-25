@@ -1,6 +1,6 @@
 import * as zlib from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
-import { decodeInboundRequest } from "../../src/sse/utils/inboundGzip.js";
+import { decodeAnthropicRequest } from "../../src/sse/utils/inboundGzip.js";
 import { getRequestId } from "../../src/sse/utils/requestCorrelation.js";
 
 vi.mock("open-sse/translator/index.js", () => ({ initTranslators: vi.fn() }));
@@ -60,7 +60,7 @@ describe("9router #5019 compressed JSON request bodies", () => {
     const bytes = zlib.zstdCompressSync(json);
     const original = request("/v1/responses", bytes, " ZSTD ", { "content-length": String(bytes.length), authorization: "Bearer fixture" });
     const requestId = getRequestId(original);
-    const { request: decoded } = await decodeInboundRequest(original);
+    const { request: decoded } = await decodeAnthropicRequest(original);
 
     expect(await decoded.text()).toBe(json);
     expect(decoded.headers.get("content-encoding")).toBeNull();

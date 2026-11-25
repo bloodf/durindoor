@@ -1,6 +1,6 @@
 import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
-import { decodeInboundRequest } from "@/sse/utils/inboundGzip.js";
+import { decodeAnthropicRequest } from "@/sse/utils/inboundGzip.js";
 import { handleCountTokens } from "@/sse/handlers/countTokens.js";
 
 const CORS_HEADERS = {
@@ -14,7 +14,7 @@ async function OPTIONSHandler() {
 
 /** POST /v1/messages/count_tokens — native for Claude-compatible providers, else heuristic estimate. */
 async function POSTHandler(request) {
-  const decoded = await decodeInboundRequest(request);
+  const decoded = await decodeAnthropicRequest(request);
   if (decoded.response) return decoded.response;
   return await handleCountTokens(decoded.request);
 }

@@ -18,10 +18,11 @@ const DECODERS = new Map([
 
 /**
  * Decode a compressed JSON request before the entry point parses it. A plain
- * request is returned as is; a decoded one keeps the original request id.
+ * request is returned as is; a decoded one keeps the original request id. The
+ * name predates the OpenAI entry points, which now share this decoder.
  * @returns {Promise<{ request: Request } | { response: Response }>}
  */
-export async function decodeInboundRequest(request, { abortedStatus = null } = {}) {
+export async function decodeAnthropicRequest(request, { abortedStatus = null } = {}) {
   const encoding = (request.headers.get("content-encoding") || "").trim().toLowerCase();
   if (!encoding || encoding === "identity") return { request };
   const decoder = zlib[DECODERS.get(encoding)];

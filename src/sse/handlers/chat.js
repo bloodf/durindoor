@@ -22,7 +22,7 @@ import { detectFormat } from "open-sse/services/provider.js";
 import * as log from "../utils/logger.js";
 import { holdReservationForResponse, releaseLifetimeTokens, reserveLifetimeTokens } from "@/lib/apiKeyTokenReservations.js";
 import { getBatchRequestKeyId } from "../services/batchKeyIdentity.js";
-import { decodeInboundRequest } from "../utils/inboundGzip.js";
+import { decodeAnthropicRequest } from "../utils/inboundGzip.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
@@ -264,7 +264,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
 
 async function handleChatWithTokenReservation(inbound, ...rest) {
   // Plain requests come back unchanged; reservations are keyed on what is parsed.
-  const decoded = await decodeInboundRequest(inbound, { abortedStatus: 499 });
+  const decoded = await decodeAnthropicRequest(inbound, { abortedStatus: 499 });
   if (decoded.response) return decoded.response;
   const { request } = decoded;
   try {

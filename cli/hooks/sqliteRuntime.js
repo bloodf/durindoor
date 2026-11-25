@@ -119,11 +119,11 @@ function isSqlJsWasmValid() {
   return fs.existsSync(runtimeWasm);
 }
 
-function ensureSqliteRuntime({ silent = false, installBetterSqlite = false } = {}) {
-  ensureRuntimeDir();
+function ensureSqliteRuntime({ silent = false, installBetterSqlite = false, allowInstall = true } = {}) {
+  if (allowInstall) ensureRuntimeDir();
 
   let sqlJsOk = isSqlJsWasmValid();
-  if (!sqlJsOk) {
+  if (!sqlJsOk && allowInstall) {
     sqlJsOk = npmInstall([`sql.js@${SQL_JS_VERSION}`], { silent });
     if (sqlJsOk) sqlJsOk = isSqlJsWasmValid();
   }
@@ -136,7 +136,7 @@ function ensureSqliteRuntime({ silent = false, installBetterSqlite = false } = {
 
   // Native SQLite is an optional accelerator. Normal CLI startup must never block
   // on npm/node-gyp; only postinstall explicitly opts into this bounded warm-up.
-  if (!installBetterSqlite) {
+  if (!installBetterSqlite || !allowInstall) {
     return { betterSqlite: false, sqlJs: sqlJsOk };
   }
 

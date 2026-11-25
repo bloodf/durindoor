@@ -11,7 +11,7 @@ describe("OpenCode free client compatibility (#5776)", () => {
   });
 
   it("updates the public version while preserving caller-supplied versions", () => {
-    expect(OPENCODE_UA).toBe("opencode/latest/2.3.2/cli");
+    expect(OPENCODE_UA).toBe("opencode/latest/2.4.1/cli");
     expect(executor.buildHeaders({}, true, { clientHeaders: { "user-agent": "opencode/latest/2.1.0/cli" } })["User-Agent"]).toBe("opencode/latest/2.1.0/cli");
   });
 

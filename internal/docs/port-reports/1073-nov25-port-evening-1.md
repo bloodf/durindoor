@@ -1,0 +1,11 @@
+# OmniRoute evening ports, 2026-11-25
+
+The five candidates in [the source report](1073-nov25-evening-commits-1.md) were checked against the exact GitHub commit diffs and this checkout. Token counting is a local estimate, not a provider call. Launcher contracts are outside DurinDoor's product surface.
+
+| Source row | Commit | Final disposition | Evidence |
+|---|---|---|---|
+| 2 | [489e749](https://github.com/cheaper-inference/OmniRoute/commit/489e7499ee4159acec082eeee18805f7c988ff96) | Ported in this change | [Responses transformer](../../../open-sse/transformer/responsesTransformer.js) and [focused stream tests](../../../tests/unit/port-omniroute-responses-stream.test.js) cover usage and terminal events. |
+| 3 | [a50e5b7](https://github.com/cheaper-inference/OmniRoute/commit/a50e5b7904b9d686fd278b4fc6facb6f4da64d3b) | Ported in this change | [Gemini route](../../../src/app/api/v1beta/models/%5B...path%5D/route.js), [helpers](../../../src/app/api/v1beta/models/%5B...path%5D/geminiRouteHelpers.js), and [focused route tests](../../../tests/unit/port-omniroute-gemini-route.test.js) cover counting and model paths. |
+| 5 | [94b116c](https://github.com/cheaper-inference/OmniRoute/commit/94b116c281041500c5e18799500d25c66c8b877a) | Ported in this change | Its exact diff repeats row 2, covered by the same transformer and tests. |
+| 6 | [6053c64](https://github.com/cheaper-inference/OmniRoute/commit/6053c642b45d5f61efea77b55e6949ab11a7fbd9) | Ported in this change | Its exact diff repeats row 3, covered by the same route and tests. |
+| 7 | [0df42ff](https://github.com/cheaper-inference/OmniRoute/commit/0df42ff539797cb4acfca79937d1a29a4e36585d) | Not applicable | The exact merge diff contains launcher contract, launch view, and launcher tests only. It does not contain the gateway changes attributed to it in the earlier report. DurinDoor has no equivalent launcher contract. |

@@ -2,7 +2,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const DATA_DIR_MODE = 0o700;
+// The CLI build copies the shared resolver beside this file for published packages.
+const sharedResolver = path.join(__dirname, "dataDir.cjs");
+const { ensurePrivateDir } = require(fs.existsSync(sharedResolver)
+  ? sharedResolver : "../../../src/lib/updater/dataDir.cjs");
 
 /** Match the server data-directory contract, including isolated DATA_DIR. */
 function getAppDataDir({
@@ -20,29 +23,12 @@ function getAppDataDir({
     ? pathImpl.join(env.APPDATA || pathImpl.join(homedir(), "AppData", "Roaming"), "9router")
     : pathImpl.join(homedir(), ".9router");
 
-  /**
-   * Create the data dir owner-only (0700) and repair an existing one whose
-   * mode is broader. GHSA-2pg2-xm9r-8544 (ported from OmniRoute): a
-   * directory created without an explicit mode inherits the process umask
-   * (0755 under the common 022), letting other local users read whatever
-   * is stored under it. No-op repair on Windows (no POSIX mode bits);
-   * repair failures never block startup.
-   */
-  function ensurePrivateDir(dir) {
-    mkdir(dir, { recursive: true, mode: DATA_DIR_MODE });
-    if (platform === "win32") return;
-    try {
-      const current = stat(dir).mode & 0o777;
-      if (current & 0o077) chmod(dir, current & ~0o077);
-    } catch {
-      // best-effort
-    }
-  }
+  const protect = (dir) => ensurePrivateDir(dir, { platform, mkdir, chmod, stat, warn });
 
   const configured = env.DATA_DIR;
   if (!configured) {
     try {
-      ensurePrivateDir(fallback);
+      protect(fallback);
     } catch {
       // best-effort; a real failure surfaces from the next file write instead
     }
@@ -54,7 +40,7 @@ function getAppDataDir({
   }
   const resolved = pathImpl.resolve(cwd(), configured);
   try {
-    ensurePrivateDir(resolved);
+    protect(resolved);
     return resolved;
   } catch (error) {
     if (error?.code === "EACCES" || error?.code === "EPERM") {

@@ -19,7 +19,7 @@ it("persists saved proxy settings rather than resolved runtime proxy fields on r
   }, null, { force: true });
   expect(mocks.update).toHaveBeenCalledWith("connection", expect.objectContaining({
     providerSpecificData: { proxyPoolId: "pool", account: "refreshed" },
-  }));
+  }), expect.objectContaining({ returnCommitResult: true }));
 });
 
 it("keeps saved proxy settings when a Copilot token rotates", async () => {

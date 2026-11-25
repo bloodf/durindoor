@@ -103,6 +103,12 @@ export async function handleImageGenerationCore({
     );
   }
 
+  // OpenAI names the JPEG container "jpeg" only (OmniRoute #21078).
+  if (provider === "openai" && isString(body.output_format) &&
+      body.output_format.trim().toLowerCase() === "jpg") {
+    body = { ...body, output_format: "jpeg" };
+  }
+
   // OpenAI GIF output cannot be combined with output compression.
   if (provider === "openai" && isString(body.output_format) &&
       body.output_format.trim().toLowerCase() === "gif" && body.output_compression != null) {

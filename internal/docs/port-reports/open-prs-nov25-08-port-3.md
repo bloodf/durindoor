@@ -32,6 +32,6 @@ Now, in [connectionsRepo.js](../../../src/lib/db/repos/connectionsRepo.js):
 
 - A passed test, a token refresh or another activation clears only expired or unreadable locks.
 - A lock value in the update itself always wins. Upstream copies the stored lock over it, which would undo the explicit clears made after a Codex reset credit.
-- A replaced credential still clears every lock. This covers saving a connection again, a changed API key, and updates marked `replacesCredential` by [OAuth reconnect](../../../src/lib/oauth/flowCompletion.js), [cookie import](../../../src/lib/providers/cookieImport/handlers.js) and [Cursor login](<../../../src/app/api/oauth/cursor/login/poll/route.js>). Upstream does not make this distinction.
+- A replaced credential still clears every lock. This covers saving a connection again, a changed API key, and updates marked `replacesCredential` by [OAuth reconnect](../../../src/lib/oauth/flowCompletion.js), [cookie import](../../../src/lib/providers/cookieImport/handlers.js) and [Cursor login](../../../src/app/api/oauth/cursor/login/poll/route.js). Upstream does not make this distinction.
 
 This changes behaviour from the earlier #3830 port: testing a connection no longer lifts a cooldown that is still running. In [db-sqlite-vs-lowdb.test.js](../../../tests/unit/db-sqlite-vs-lowdb.test.js), two update-path tests now expect a future lock to stay and an expired one to clear. The two credential-resave tests are unchanged.

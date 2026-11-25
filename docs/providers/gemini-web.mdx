@@ -3,7 +3,7 @@ title: Gemini Web
 description: Connect a gemini.google.com session with your own Google cookies, capture them with the extension or a pasted header, and understand the limits.
 ---
 
-Gemini Web (`gemini-web`, alias `gweb`) sends chat requests through your signed-in gemini.google.com session. You supply your own Google cookies once; DurinDoor opens the Gemini page in a headless Chromium with those cookies, types your prompt, and returns the answer the page itself receives. There is no API key and nothing is sent to Google except what the Gemini web app would send for you.
+Gemini Web (`gemini-web`, alias `gweb`) sends chat requests through your signed-in gemini.google.com session. You supply your own Google cookies once; DurinDoor opens the Gemini page in a headless Chromium with those cookies, types your prompt, and returns the answer the page itself receives or renders. There is no API key and nothing is sent to Google except what the Gemini web app would send for you.
 
 <Callout type="warn">
 This drives the consumer Gemini web app, not the Gemini API. It depends on gemini.google.com's page and its private `StreamGenerate` endpoint, which change without notice, and it spends your account's own limits. Your Google cookies are a full login for that account. Use it for a personal gateway, keep it behind scoped DurinDoor keys, and expect Google to rate limit automated use.
@@ -63,7 +63,9 @@ The **Check** button makes one read-only `GET https://gemini.google.com/app` wit
 
 - **Isolation.** One Chromium process is shared, but every request gets a fresh browser context with that connection's cookies and closes it afterwards. Two connections never share a page or a cookie jar. The process closes after 60 seconds idle.
 - **Conversation.** Each request is a new Gemini chat. The history in `messages[]` is flattened into one prompt (`System:`, `Previous conversation:`, `Current user message:`), so follow-ups keep context without a stored conversation id.
-- **Streaming.** Gemini's `StreamGenerate` answers one body of cumulative snapshots. DurinDoor keeps the last snapshot and replays it as one content chunk, a `stop` chunk and `[DONE]`. `stream: true` therefore delivers the whole answer at once. The Anthropic Messages route translates the same chunks into Messages events.
+- **Answer capture.** Some accounts get no `StreamGenerate` response and only render the answer. DurinDoor also reads the newest `model-response` once it has finished rendering and stayed unchanged for two seconds, and rebuilds it as Markdown with fenced code kept exactly. A `StreamGenerate` answer or error status still wins when it arrives first.
+- **Submitting.** A composer that Gemini re-rendered is queried again. If the page shows no new prompt within five seconds, DurinDoor presses Enter once more.
+- **Streaming.** Gemini's `StreamGenerate` answers one body of cumulative snapshots. DurinDoor keeps the last snapshot (or the rendered answer) and replays it as one content chunk, a `stop` chunk and `[DONE]`. `stream: true` therefore delivers the whole answer at once. The Anthropic Messages route translates the same chunks into Messages events.
 - **Rotation.** Google rotates `__Secure-1PSID*` while a session is open. When it does, the new values are written back to the connection. Other cookies are never stored.
 - **Tools.** Native function calling is not available. Tools are prompt-emulated: the model is asked to answer with a `<tool>{...}</tool>` block, which is parsed into `tool_calls`. A malformed block stays plain text.
 
@@ -72,11 +74,12 @@ The **Check** button makes one read-only `GET https://gemini.google.com/app` wit
 | Status | Cause | What to do |
 | --- | --- | --- |
 | `401` | No cookie, a redirect to the Google sign-in page, or a `401` from `StreamGenerate` | Capture the cookies again |
+| `401` `gemini_web_signed_out` | The page opened signed out: the stored cookie expired or was rotated away | Export a fresh cookie from a signed-in browser |
 | `403` | Google rejected the session | Capture the cookies again; check the account |
 | `429` | Account usage limit or Google rate limit | Wait, or route to another connection |
 | `400` | A forced `tool_choice` (`required`, `any`, a named function), an unconfirmed model mode, `reasoning_effort` above `minimal` that the page cannot confirm, or no readable user message | Remove the control or change the model |
 | `499` / `504` | The client cancelled, or the request timed out | Retry |
-| `502` | `StreamGenerate` never answered, or answered a body that could not be read | Retry; the error body lists the endpoints the page called |
+| `502` | Neither `StreamGenerate` nor the page produced a readable answer in time | Retry; the error body lists the endpoints the page called |
 | `503` | Chromium is not installed | Run `npx playwright install chromium` |
 
 ## Limits

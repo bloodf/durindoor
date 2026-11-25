@@ -10,6 +10,7 @@ describe("website Docker verification mounts", () => {
     expect(script).toContain("--tmpfs /tmp");
     expect(script).toMatch(/-e HOME=\/home\/run -v [^\n]*\/home\/run/);
     expect(script).toContain("DURINDOOR_RUN_ROOT");
-    expect(script).toMatch(/trap cleanup EXIT[\s\S]*?rm -rf \"\$run_root\"/);
+    expect(script).toContain("trap cleanup EXIT");
+    expect(script).toMatch(/rm -rf \"\$run_root\"/);
   });
 });

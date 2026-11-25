@@ -33,11 +33,13 @@ import {
 // round-trip (workspaceId, nested oauthProxy, ...), so an exhaustive allowlist would hide them. Instead a
 // key is shown only when it is not an explicit secret and does not look like one: a new secret stored under
 // a credential-shaped name (copilotToken, dcaToken, ...) stays hidden without being listed here.
-const SECRET_LIKE_PROVIDER_SPECIFIC_KEY = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid/i;
+const SECRET_LIKE_PROVIDER_SPECIFIC_KEY = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid|jwt/i;
 const NON_SECRET_PROVIDER_SPECIFIC_FIELDS = new Set([
 "tokenEndpoint", "token_endpoint", "enablePromptCacheKey", "copilotTokenExpiresAt"]
 );
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"jwt",
+"storageState",
 "opendesignControlKey",
 "chatgptPlanAccount",
 "chatgptPlanBindingRevision",

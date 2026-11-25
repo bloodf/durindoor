@@ -7,7 +7,7 @@ Antigravity refresh protection is incomplete. Some stored-credential refresh pat
 
 ## Refresh lease
 
-The shared credential coordinator and generic provider refresh acquire a lease for a stored connection. Direct executor refreshes used by translator send, image and embeddings handlers, and standalone chat can bypass it. The provider test route and `agy` model discovery also contain direct Google refresh calls. These paths can dispatch while a lease is active or uncertain. Do not rely on the lease as a cross-route safety guarantee until those paths are integrated and tested. The lease holds a unique owner, a generation, an expiry, and a fencing token. Database time decides expiry. The in-process refresh lock is not cross-process safety.
+The shared credential coordinator and generic provider refresh acquire a lease for a stored connection. Direct executor refreshes used by image and embeddings handlers and standalone chat can bypass it. The provider test route and `agy` model discovery also contain direct Google refresh calls. These paths can dispatch while a lease is active or uncertain. Do not rely on the lease as a cross-route safety guarantee until those paths are integrated and tested. The lease holds a unique owner, a generation, an expiry, and a fencing token. Database time decides expiry. The in-process refresh lock is not cross-process safety.
 
 For leased paths, attempt states are `idle`, `claimed`, `dispatched`, `uncertain`, and `reauth`. The following behavior does not apply to bypassing paths.
 

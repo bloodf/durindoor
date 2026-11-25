@@ -17,7 +17,8 @@ export default {
     baseUrl: "https://www.codebuddy.ai/v2/chat/completions",
     forceStream: true,
     thinkingFormat: "openai",
-    headers: { "X-Product": "SaaS", "x-requested-with": "XMLHttpRequest", "x-codebuddy-request": "1" },
+    // The international gateway checks the CLI identity on chat requests.
+    headers: { "User-Agent": "CLI/2.175.0 CodeBuddy/2.175.0", "X-IDE-Type": "CLI", "X-IDE-Name": "CLI", "X-IDE-Version": "2.175.0", "X-Product": "SaaS", "x-requested-with": "XMLHttpRequest", "x-codebuddy-request": "1" },
     auth: { combined: true, header: "X-Api-Key", scheme: "raw", hooks: ["codebuddyHeaders"] },
   },
   // Curated upstream fallback, not an account-specific entitlement list.

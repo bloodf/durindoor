@@ -99,6 +99,7 @@ flowClaim = null)
     };
     const codexAccountId = provider === "codex" ? resolveCodexAccountId(existing.providerSpecificData, existing.idToken) : null;
     const commit = await updateProviderConnection(connectionId, updateData, {
+      replacesCredential: true,
       ...(provider === "antigravity" || provider === "agy" ? { advanceAntigravityGeneration: true } : null),
       ...(flowClaim ? { shouldCommit: () => isOAuthFlowClaimActive(flowClaim) } : null),
       ...(provider === "codex" ? { shouldCommitConnection: (current) =>

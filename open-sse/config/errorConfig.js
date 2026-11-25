@@ -159,6 +159,9 @@ export const GEMINI_DAILY_QUOTA_PARK_MS = Object.freeze({ min: 60 * 60 * 1000, m
 const COOLDOWN = {
   long: 2 * 60 * 1000,
   short: 5 * 1000,
+  // 500/502/503/504 usually clear within seconds. The 30 s default outlasts the
+  // whole retry budget of fast clients such as Codex (upstream #4393).
+  transientServer: 5 * 1000,
   day: 24 * 60 * 60 * 1000
 };
 
@@ -288,7 +291,8 @@ export const ERROR_RULES = [
 { status: 403, cooldownMs: COOLDOWN.long },
 { status: 404, cooldownMs: COOLDOWN.long },
 { status: 413, fallback: false },
-{ status: 429, backoff: true }];
+{ status: 429, backoff: true },
+...[500, 502, 503, 504].map((status) => ({ status, cooldownMs: COOLDOWN.transientServer }))];
 
 
 // Backward compat: COOLDOWN_MS object (used by index.js re-export)

@@ -104,7 +104,8 @@ vi.mock("../../src/lib/oauth/services/cursorLocalStore.js", () => {
     },
     readCursorLocalAuthSync: (_dbPath) => {
       if (mockDbInstance.__throwOnConstruct) {
-        throw new Error("SQLITE_CANTOPEN: unable to open database file");
+        const custom = typeof mockDbInstance.__throwOnConstruct === "string" ? mockDbInstance.__throwOnConstruct : null;
+        throw new Error(custom || "SQLITE_CANTOPEN: unable to open database file");
       }
       try {
         return {
@@ -159,6 +160,15 @@ describe("GET /api/oauth/cursor/auto-import", () => {
     expect(response.body.found).toBe(false);
     expect(response.body.error).toContain("could not open it");
     expect(response.body.error).toContain("SQLITE_CANTOPEN");
+  });
+
+  it("port(upstream) #5238: keeps raw driver messages out of the open error", async () => {
+    vi.mocked(fsPromises.access).mockResolvedValue();
+    mockDbInstance.__throwOnConstruct = "SQLITE_CORRUPT: malformed row cursorAuth/accessToken=secret-token";
+
+    const response = await GET();
+
+    expect(response.body.error).toBe("could not open it (SQLITE_CORRUPT)");
   });
 
   // ── Token extraction ──────────────────────────────────────────────────

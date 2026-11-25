@@ -19,6 +19,21 @@ vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   };
 });
 
+// Pass-through admission with an optional one-shot hold; auth itself stays real.
+const admissionHold = vi.hoisted(() => ({ next: null }));
+vi.mock("../../src/sse/services/admission.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    admit: async (...args) => {
+      const hold = admissionHold.next;
+      admissionHold.next = null;
+      if (hold) await hold();
+      return actual.admit(...args);
+    },
+  };
+});
+
 const envNames = ["HOME", "DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"];
 const globalNames = [
   "_dbAdapter", "_proxyTimelineAdapter", "_pendingRequests", "_lastErrorProvider",
@@ -1068,19 +1083,25 @@ describe("ef75 auth-wrapper coverage and selected Ollama transfer", () => {
   });
 
   it.each(["messages", "responses"].flatMap((route) => ["EOF", "abort-after-enqueue"].map((terminal) => [route, terminal])))("keeps actual %s delayed denial frames and selected %s accounting", async (route, terminal) => {
-    // Load the real decorator/route before controlling time. Only this input
-    // Request's original JSON read is delayed; handleChat/auth/policy stay real.
+    // Load the real decorator/route before controlling time. Only handleChat is
+    // held: Messages at this input Request's original JSON read, Responses at
+    // admission (it reuses the wrapper's parse). Auth and policy stay real.
     const selected = await (route === "messages" ? import("../../src/app/api/v1/messages/route.js") : import("../../src/app/api/v1/responses/route.js"));
     const abort = new AbortController();
     const req = new Request(request(route === "messages" ? { ...chatBody, stream: true, max_tokens: 8 }
       : { model, input: "fixture", stream: true }, {}, `/v1/${route}`), { signal: abort.signal });
     const reading = deferred(), release = deferred();
-    const originalJson = req.json.bind(req);
-    vi.spyOn(req, "json").mockImplementation(async () => {
+    const hold = async () => {
       reading.resolve();
       await release.promise;
-      return originalJson();
-    });
+    };
+    if (route === "messages") {
+      const originalJson = req.json.bind(req);
+      vi.spyOn(req, "json").mockImplementation(async () => {
+        await hold();
+        return originalJson();
+      });
+    } else admissionHold.next = hold;
     vi.useFakeTimers();
     const pending = selected.POST(req);
     await reading.promise;

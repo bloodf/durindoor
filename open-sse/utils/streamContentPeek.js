@@ -12,6 +12,7 @@ import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { isSafetyStopPayload } from "./safetyStopFrame.js";
+import { createNoticeGate } from "./unavailableNotice.js";
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
@@ -154,15 +155,20 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  * - "empty": the stream closed before any content
  * - "error": the stream errored before any content
  * - "timeout": nothing yet within timeoutMs; body continues the live stream
+ * - "unavailable_notice": only with detectUnavailableNotice; the visible text is
+ *   a model/client-unavailable notice (`notice` holds it, hasContent is false).
+ *   Text that could still become one is held until it diverges or the stream
+ *   stops, and then counts as content.
  *
  * streamError is the first in-stream error envelope seen before content.
  *
  * @param {Response} response
  * @param {number} [timeoutMs]
+ * @param {{detectUnavailableNotice?: boolean}} [options]
  * @returns {Promise<{hasContent:boolean, outcome:string, body:ReadableStream|null,
  *   streamError: {type?: string, code?: string, message?: string}|null}>}
  */
-export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
+export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, { detectUnavailableNotice = false } = {}) {
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   if (!contentType.includes(SSE_CONTENT_TYPE) || !response.body) {
     return { hasContent: true, outcome: "content", body: null, streamError: null };
@@ -179,21 +185,34 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
   const timeout = new Promise((resolve) => {
     timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
   });
-  const result = (outcome, replay = {}) => {
+  const gate = detectUnavailableNotice ? createNoticeGate() : null;
+  let notice = null;
+  const result = (verdict, replay = {}) => {
+    // Held text is real output when the stream stops before it becomes a notice.
+    let outcome = verdict;
+    if (notice) outcome = "unavailable_notice";else
+    if (gate?.holding && ["empty", "error", "timeout"].includes(verdict)) outcome = "content";
     const body = replayStream(reader, chunks, replay);
     if (hasTokenLimitTerminal) trackStreamTokenLimit(body, hasTokenLimitTerminal);
     return {
       hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop",
       outcome,
       body,
-      streamError
+      streamError,
+      ...(notice ? { notice } : null)
     };
   };
   let safetyStop = false;
   // True when the line carries output or an explicit safety stop; records the
   // first error envelope otherwise.
   const inspect = (line) => {
-    if (frameCarriesContent(line)) return true;
+    if (frameCarriesContent(line)) {
+      const frame = gate ? parseDataLine(line) : null;
+      if (!frame) return true;
+      const decision = gate.push(frame);
+      if (decision === "notice") notice = gate.text;
+      return decision !== "hold";
+    }
     const parsed = parseDataLine(line);
     if (isSafetyStopPayload(parsed)) {
       safetyStop = true;

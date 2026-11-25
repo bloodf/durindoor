@@ -8,10 +8,11 @@ import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
-import { errorResponse, unavailableResponse, getClientStatusFromError } from "../utils/error.js";
+import { errorResponse, unavailableResponse, getClientStatusFromError, sanitizeErrorMessage } from "../utils/error.js";
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
 import { hasTokenLimitCompletion } from "../utils/streamTerminal.js";
 import { peekStreamForContent } from "../utils/streamContentPeek.js";
+import { isUnavailableNotice } from "../utils/unavailableNotice.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
@@ -1391,6 +1392,18 @@ export async function detectUpstreamError(response) {
   }
 }
 
+/** The model/client-unavailable notice a 2xx JSON completion carries as its answer, or null. */
+async function detectUnavailableNotice(response) {
+  if (!response.headers?.get?.("content-type")?.toLowerCase().includes("json")) return null;
+  try {
+    const payload = await response.clone().json();
+    const text = extractPanelText(payload?.response ?? payload);
+    return isUnavailableNotice(text) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Whether a successful (2xx) NON-STREAMING response has a meaningful body.
  * Returns true when the body is empty or a known "empty output" shape despite
@@ -1784,10 +1797,29 @@ export async function handleComboChat({
           continue;
         }
 
+        // OmniRoute #21066: a 200 saying the model is gone is a failed member.
+        const failOverNotice = (notice) => {
+          const message = sanitizeErrorMessage(notice).slice(0, 300);
+          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.GONE);
+          releaseFailedAffinity(modelStr, i);
+          recordFailure(HTTP_STATUS.GONE, message);
+          log.warn("COMBO", `Model ${modelStr} answered 200 with an unavailable notice, trying next`);
+        };
+        const jsonNotice = await detectUnavailableNotice(result);
+        if (jsonNotice) {
+          failOverNotice(jsonNotice);
+          continue;
+        }
+
         let successfulResult = result;
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
-          const { hasContent, body: replayBody, streamError } = await peekStreamForContent(result);
+          const { hasContent, body: replayBody, streamError, notice } = await peekStreamForContent(result, undefined, { detectUnavailableNotice: true });
+          if (notice) {
+            replayBody?.cancel("combo member reported itself unavailable").catch(() => {});
+            failOverNotice(notice);
+            continue;
+          }
           if (!hasContent && result.claudeFast === true) {
             releaseFailedAffinity(modelStr, i);
             return replayBody ? new Response(replayBody, {

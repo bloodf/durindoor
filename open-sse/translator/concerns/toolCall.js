@@ -23,7 +23,7 @@ import { coerceResponsesArguments, buildDeclaredToolTypes, resolveDeclaredCustom
  * @param {Set<string>|null} [options.reservedNames=null] - Complete original namespace, when known before allocation.
  * @returns {{alias: (name: unknown) => unknown, aliases: Map<string,string>, memo: Map<string,string>}} Alias function, changed alias-to-original map, and complete original-to-outbound memo.
  */
-function createToolNameAliaser({ invalidCharacters, validLeadingCharacter = null, maxLength = 64, hashLength = 12, fallbackName = null, reservedNames = null }) {
+export function createToolNameAliaser({ invalidCharacters, validLeadingCharacter = null, maxLength = 64, hashLength = 12, fallbackName = null, reservedNames = null }) {
   const aliases = new Map();
   const memo = new Map();
   const assigned = new Map();
@@ -238,8 +238,27 @@ export function restoreClaudeToolNames(body, aliases) {
   return changed;
 }
 
-export function restoreOpenAIToolNames(body, aliases) {
+/**
+ * Restore aliases on Responses shapes: a stream item, the arguments-done event,
+ * and the output list of a buffered body or terminal event.
+ */
+function restoreResponsesCallNames(body, aliases) {
+  if (!(aliases instanceof Map) || !aliases.size || !body) return false;
   let changed = false;
+  const calls = [body.item, ...(Array.isArray(body.output) ? body.output : []),
+    ...(Array.isArray(body.response?.output) ? body.response.output : [])];
+  if (body.type === "response.function_call_arguments.done") calls.push(body);
+  for (const call of calls) {
+    if (call && aliases.has(call.name)) {
+      call.name = aliases.get(call.name);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+export function restoreOpenAIToolNames(body, aliases) {
+  let changed = restoreResponsesCallNames(body, aliases);
   const restoreCalls = (calls) => {
     if (!Array.isArray(calls)) return;
     for (const call of calls) {
@@ -278,6 +297,37 @@ const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // Fallback streaming tool_call id when provider omits one (index optional)
 export function fallbackToolCallId(index) {
   return index === undefined ? `call_${Date.now()}` : `call_${index}_${Date.now()}`;
+}
+
+function isCompleteJsonObject(text) {
+  if (!isString(text) || !text.trimEnd().endsWith("}")) return false;
+  try {JSON.parse(text);return true;} catch {return false;}
+}
+
+/**
+ * Pick the `state.toolCalls` key for one streamed tool_call delta. This is the
+ * upstream index, unless a second call reuses an occupied one (9router #4413);
+ * it then gets a free key, and later fragments on that upstream index follow it.
+ * An unnamed fragment that carries arguments for a still-unfinished call stays
+ * on that call even if the upstream changed its id.
+ */
+export function resolveToolCallSlot(state, toolCall) {
+  const upstreamIndex = toolCall.index ?? 0;
+  const current = state.toolIndexRemap?.get(upstreamIndex) ?? upstreamIndex;
+  const openId = state.toolCalls.get(current)?.id;
+  if (!toolCall.id || !openId || toolCall.id === openId) return current;
+
+  let slot = [...state.toolCalls].find(([, info]) => info.id === toolCall.id)?.[0];
+  if (slot === undefined) {
+    const continuesOpenCall = !toolCall.function?.name && Boolean(toolCall.function?.arguments) &&
+    !isCompleteJsonObject(state.toolArgBuffers?.get(current));
+    if (continuesOpenCall) return current;
+    slot = 0;
+    while (state.toolCalls.has(slot)) slot++;
+  }
+  state.toolIndexRemap ??= new Map();
+  state.toolIndexRemap.set(upstreamIndex, slot);
+  return slot;
 }
 
 // Generate deterministic tool call ID from position + tool name (cache-friendly)

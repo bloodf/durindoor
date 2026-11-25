@@ -244,6 +244,16 @@ export function resolveKiroProfileArn(credentials) {
 
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 
+/**
+ * Top-level thinking members generateAssistantResponse rejects with 400
+ * REQUEST_BODY_INVALID (decolua/9router#3746). Thinking intent reaches Kiro through
+ * the <thinking_mode> prefix and the nested additionalModelRequestFields.
+ */
+export const KIRO_UNSUPPORTED_THINKING_FIELDS = Object.freeze([
+  "thinking", "reasoning", "reasoning_effort", "thinkingConfig",
+  "enable_thinking", "thinking_budget", "output_config", "think"
+]);
+
 export const KIRO_AGENTIC_SYSTEM_PROMPT = `
 # CRITICAL: CHUNKED WRITE PROTOCOL (MANDATORY)
 

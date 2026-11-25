@@ -347,8 +347,10 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           delete message.reasoning;
         }
       }
-      // Same-format Chat skips translateResponse; restore request-side aliases here
-      // so clients never see the upstream-safe rewrite (#1343).
+    }
+    // Same-format bodies skip translateResponse; restore request-side aliases here
+    // so clients never see the upstream-safe rewrite (#1343).
+    if (targetFormat === FORMATS.OPENAI || targetFormat === FORMATS.OPENAI_RESPONSES) {
       restoreOpenAIToolNames(responseBody, options.toolNameMap);
     }
     return responseBody;
@@ -428,15 +430,15 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       for (const part of content.parts) {
         if (part.thought === true && part.text) reasoningContent += part.text;else
         if (part.text !== undefined) textContent += part.text;
-        if (part.thought === true && !part.functionCall) {
-          const signature = part.thoughtSignature || part.thought_signature;
-          if (signature) pendingThoughtSignature = signature;
-        }
+        // As in the streaming translator, any part may carry the signature, including
+        // a standalone one ahead of the call, with or without `thought` (decolua/9router#3645).
+        const signature = part.thoughtSignature || part.thought_signature;
+        if (isString(signature) && signature) pendingThoughtSignature = signature;
         if (part.functionCall) {
           // Mirror the streaming translator (#676): prefer the upstream call id
           // and carry any provider-issued thought signature in the transport id
           // so the next-turn request translator can replay it.
-          const partSignature = part.thoughtSignature || part.thought_signature || pendingThoughtSignature;
+          const partSignature = pendingThoughtSignature;
           pendingThoughtSignature = null;
           const rawId = part.functionCall.id || `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`;
           toolCalls.push({

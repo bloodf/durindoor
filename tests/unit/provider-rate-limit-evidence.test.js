@@ -262,6 +262,27 @@ describe("bounded 429 evidence parsing", () => {
   });
 });
 
+describe("relative reset prose (upstream #3612)", () => {
+  it.each([
+    ["Too many requests, try again in 5 minutes.", 5 * 60_000],
+    ["Please try again after 1.5 hours", 90 * 60_000],
+    ["Rate limit exceeded, retry in 2.5 seconds", 2_500],
+  ])("parses %s", (bodyText, delayMs) => {
+    expect(parseRateLimitEvidence({ status: 429, bodyText, now: NOW }))
+      .toMatchObject({ resetAtMs: NOW + delayMs, source: "quota_text" });
+  });
+
+  it("leaves 'try again' wording on an exhausted quota to the provider-scoped parser", () => {
+    expect(parseRateLimitEvidence({ status: 429, bodyText: "Your daily usage limit was reached. Try again in 19h 39m", now: NOW }))
+      .toMatchObject({ resetAtMs: null, source: "local_policy", state: "exhausted" });
+  });
+
+  it("does not read a bare 'try again' as a reset", () => {
+    expect(parseRateLimitEvidence({ status: 429, bodyText: "Busy, try again later (limit 5 hours)", now: NOW }))
+      .toMatchObject({ resetAtMs: null, source: "local_policy" });
+  });
+});
+
 describe("runtime rate-limit repository writer", () => {
   beforeEach(() => resetProviderAttemptClockForTests());
 

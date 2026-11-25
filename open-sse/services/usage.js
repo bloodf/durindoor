@@ -21,6 +21,7 @@ import { getOpenDesignUsage } from "./usage/opendesign.js";
 import { getSyntheticUsage } from "./usage/synthetic.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
+import { getCommandCodeUsage } from "./usage/commandcode.js";
 import { getOpenCodeGoUsage } from "./usage/opencode-go.js";
 import { getBailianCodingPlanUsage } from "./usage/bailian.js";
 import {
@@ -84,6 +85,7 @@ const USAGE_HANDLERS = {
   "kimi-ai": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData, "kimi-ai"),
   "kimi-coding-apikey": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
+  commandcode: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
   "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions),
   "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.apiKey || c.accessToken, c.providerSpecificData, c.proxyOptions),
   sensenova: (c) => getSensenovaUsage(c.connection, c.proxyOptions)

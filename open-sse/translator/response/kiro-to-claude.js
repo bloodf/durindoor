@@ -15,6 +15,7 @@
  */
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
+import { resolveToolCallSlot } from "../concerns/toolCall.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { chargeRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 
@@ -176,7 +177,7 @@ export function kiroToClaudeResponse(chunk, state) {
     if (!state.toolCalls) state.toolCalls = new Map();
     if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
     for (const tc of delta.tool_calls) {
-      const idx = tc.index ?? 0;
+      const idx = resolveToolCallSlot(state, tc);
       // Kiro echoes the sanitized name; restore what the client sent.
       const sanitizedName = tc.function?.name || "";
       const toolName = state?.toolNameMap?.get(sanitizedName) ?? sanitizedName;

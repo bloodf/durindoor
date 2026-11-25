@@ -324,6 +324,16 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
   return body;
 }
 
+// The Responses API rejects an output cap below 16 (9router #4413). Only an
+// explicit cap is raised: inventing one would truncate uncapped requests.
+const RESPONSES_MIN_OUTPUT_TOKENS = 16;
+
+export function floorResponsesOutputCap(body) {
+  return body?.max_output_tokens < RESPONSES_MIN_OUTPUT_TOKENS && isNumber(body.max_output_tokens) ?
+  { ...body, max_output_tokens: RESPONSES_MIN_OUTPUT_TOKENS } :
+  body;
+}
+
 // Model families that reject legacy `max_tokens` and only accept
 // `max_completion_tokens`. DurinDoor keeps its dev-parity reasoning-model set
 // (o1/o3/o4 + the whole gpt-5.x family, matching the pre-port GitHub rule

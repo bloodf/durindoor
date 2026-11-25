@@ -178,9 +178,10 @@ const appendDescription = (description, notes) =>
  * object variants into one property superset; nested unions stay (upstream #4490).
  * Unions that cannot merge cleanly are also described in `description`. A schema
  * past the expansion limits keeps only what its root declares (#2571).
+ * Anything without a root union is returned as is (also used for passthrough tools).
  */
-function flattenRootCombinators(schema) {
-  if (!ROOT_COMBINATORS.some((keyword) => Array.isArray(schema[keyword]))) return schema;
+export function flattenRootCombinators(schema) {
+  if (!isPlainObject(schema) || !ROOT_COMBINATORS.some((keyword) => Array.isArray(schema[keyword]))) return schema;
   const state = createState(schema);
   try {
     const { base, properties, required, closed } = flattenObjectNode(schema, state, 0);

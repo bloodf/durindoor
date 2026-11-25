@@ -140,9 +140,13 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
 
   it("allows an identity-proved caller to persist auth-critical settings", async () => {
     mocks.canModifySecurityCriticalSettings.mockResolvedValue(true);
+    // 9router#4286: weakening these also needs the current dashboard password.
+    mocks.verifyDashboardPassword.mockResolvedValue(true);
 
     await PATCH({
+      headers: new Headers(),
       json: async () => ({
+        currentPassword: "current-password",
         requireLogin: false,
         requireApiKey: false,
         authMode: "oidc",

@@ -1,4 +1,4 @@
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 // An odd backslash run introduces \p{...}/\P{...}; an even run leaves literal text.
 const UNICODE_PROPERTY_ESCAPE = /(^|[^\\])(\\\\)*\\[pP]\{/;
@@ -46,6 +46,35 @@ const NUMBER_KEYWORDS = new Set([
   "multipleOf",
 ]);
 
+const JSON_SCHEMA_TYPES = new Set(["array", "boolean", "integer", "null", "number", "object", "string"]);
+
+// A bare value where a Schema belongs. A known type name means "any value of this
+// type"; anything else degrades to a string so the parameter stays usable.
+function schemaFromTypeHint(value) {
+  const hint = isString(value) ? value.trim() : "";
+  return { type: JSON_SCHEMA_TYPES.has(hint) ? hint : "string" };
+}
+
+function informativeness(schema) {
+  if (schema.type === "object" || schema.properties) return 3;
+  if (schema.type === "array" || schema.items) return 2;
+  return schema.type && schema.type !== "null" ? 1 : 0;
+}
+
+// Codex cannot express tuples: keep the most informative member, if any is a schema.
+function pickTupleMember(items) {
+  let best;
+  for (const item of items) {
+    if (isRecord(item) && (!best || informativeness(item) > informativeness(best))) best = item;
+  }
+  return best;
+}
+
+function stripPropertySchema(schema) {
+  // Boolean subschemas are valid and keep their meaning.
+  return isBoolean(schema) || isRecord(schema) ? stripSchemaNode(schema) : schemaFromTypeHint(schema);
+}
+
 // Turn a numeric string into a number of the wanted kind. Anything else, including
 // a value that would lose precision as a JS number, is returned unchanged.
 function toSchemaNumber(value, kind) {
@@ -64,12 +93,12 @@ function normalizeNumericValue(node, key, value) {
   return value;
 }
 
-function stripSchemaMap(map) {
+function stripSchemaMap(map, stripEntry = stripSchemaNode) {
   if (!map || !isObject(map) || Array.isArray(map)) return map;
 
   let cleaned = map;
   for (const [name, schema] of Object.entries(map)) {
-    const nextSchema = stripSchemaNode(schema);
+    const nextSchema = stripEntry(schema);
     if (nextSchema === schema) continue;
     if (cleaned === map) cleaned = { ...map };
     cleaned[name] = nextSchema;
@@ -99,7 +128,16 @@ function stripSchemaNode(node) {
     }
 
     let nextValue = normalizeNumericValue(node, key, value);
-    if (SCHEMA_MAP_KEYWORDS.has(key)) nextValue = stripSchemaMap(value);
+    if (key === "items" && Array.isArray(value)) {
+      if (cleaned === node) cleaned = { ...node };
+      const member = pickTupleMember(value);
+      if (member) cleaned.items = stripSchemaNode(member);
+      else delete cleaned.items;
+      continue;
+    }
+    if (key === "items" && isString(value)) nextValue = schemaFromTypeHint(value);
+    else if (key === "properties" && isRecord(value)) nextValue = stripSchemaMap(value, stripPropertySchema);
+    else if (SCHEMA_MAP_KEYWORDS.has(key)) nextValue = stripSchemaMap(value);
     else if (SCHEMA_VALUE_KEYWORDS.has(key)) nextValue = stripSchemaNode(value);
     if (nextValue === value) continue;
     if (cleaned === node) cleaned = { ...node };
@@ -116,7 +154,9 @@ function stripSchemaNode(node) {
  * `\p{...}` or `\P{...}`. This schema-aware, copy-on-write walk strips only
  * those constraints and uniqueItems. Codex also rejects numeric keywords (and the
  * `default` of an integer or number schema) encoded as strings, so those are
- * converted. Schema-map keys remain names, annotation/data values are
+ * converted. A property or `items` given as a bare type name becomes a schema,
+ * and tuple `items` collapse to one member, because Codex requires a single
+ * Schema in both places. Schema-map keys remain names, annotation/data values are
  * opaque, and compatible schemas retain their original reference.
  *
  * @param {unknown} schema Tool parameter schema.

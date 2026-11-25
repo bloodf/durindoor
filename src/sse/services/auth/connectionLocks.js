@@ -71,7 +71,10 @@ export function summarizeBlockedConnections(connections, decisions, rawModel, bo
   legacyLocked.find((connection) => lockStatus(connection) !== 429);
   if (legacy) {
     const code = lockStatus(legacy);
-    const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : 503;
+    // A wrong-model 404 never locks, so a locked 404 is a cooldown this router
+    // set. Answering 404 would tell clients never to retry (decolua/9router#3771).
+    const cooldownNotFound = code === 404;
+    const status = !cooldownNotFound && Number.isInteger(code) && code >= 400 && code <= 599 ? code : 503;
     const message = modelError(legacy)?.message || (status === 429 ?
     "Rate limited" :
     status === 401 ?
@@ -79,7 +82,7 @@ export function summarizeBlockedConnections(connections, decisions, rawModel, bo
     status === 403 ?
     "Access forbidden" :
     "Provider unavailable");
-    const retryAfter = status === 429 ?
+    const retryAfter = status === 429 || cooldownNotFound ?
     requestedModelLockUntil(legacy, rawModel, boundedModel, now) :
     null;
     return {

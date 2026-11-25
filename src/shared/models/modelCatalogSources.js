@@ -39,7 +39,6 @@ export const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "claude",
 "cline",
 "chutes",
-"codex",
 "groq",
 "minimax",
 "minimax-cn",

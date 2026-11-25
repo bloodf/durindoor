@@ -45,7 +45,7 @@ describe("thin v1 routes", () => {
     const imports = [...source.matchAll(/\bfrom\s+"([^"]+)"/g)].map((match) => match[1]);
     expect(imports).toContain(handlerModule);
     expect(imports.filter((name) => name !== handlerModule && !ROUTE_IMPORTS.includes(name))).toEqual([]);
-    expect(source).not.toMatch(/\b(admit|handleChat|requireJsonContentType|decodeAnthropicRequest|withEarlyStreamKeepalive|TransformStream)\b|\.json\(\)/);
+    expect(source).not.toMatch(/\b(admit|handleChat|requireJsonContentType|decodeInboundRequest|withEarlyStreamKeepalive|TransformStream)\b|\.json\(\)/);
   });
 
   it("applies the chat keepalive wrapper from exactly one module under src/", () => {

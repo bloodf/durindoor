@@ -37,7 +37,7 @@ describe.each([["messages", messages, mocks.provider], ["count tokens", countTok
       expect(provider.mock.calls[0][1].get("content-length")).toBeNull();
     }
   });
-  it.each(["br", "gzip, identity", "zstd"])("rejects %s", async (encoding) => {
+  it.each(["compress", "gzip, identity", "gzip, zstd"])("rejects %s", async (encoding) => {
     expect((await post(request(gzipSync(json), encoding))).status).toBe(415);
     expect(provider).not.toHaveBeenCalled();
   });

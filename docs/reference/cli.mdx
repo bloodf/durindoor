@@ -84,7 +84,7 @@ NINEROUTER_MAX_OLD_SPACE_SIZE=8192 durindoor
 
 `DATA_DIR` defaults to `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. Windows ignores a Unix-style configured path. An unwritable configured directory falls back to the platform default. See [Data management](../operations/data-management.mdx) for files and backups.
 
-Optional dependencies live under `DATA_DIR/runtime/node_modules`. A missing bundled WASM triggers installation of `sql.js@1.14.1`. Postinstall can install `better-sqlite3@12.10.1`; startup does not wait for a native build. macOS and Linux use `systray2@2.1.4`; Windows uses PowerShell `NotifyIcon`. Optional-install failure does not prevent server startup.
+Optional dependencies live under `DATA_DIR/runtime/node_modules`. A missing bundled WASM triggers installation of `sql.js@1.14.1`. Postinstall only checks these dependencies and installs nothing. Once the server is ready, the launcher installs `better-sqlite3@12.11.1` in the background, and the next start uses it; startup does not wait for a native build. A failed background install is recorded in `DATA_DIR/runtime` and not retried for that version; delete `better-sqlite3-install-failed.json` (or `tray-install-failed.json` for the tray) to retry. macOS and Linux use `systray2@2.1.4`; Windows uses PowerShell `NotifyIcon`. Optional-install failure does not prevent server startup.
 
 ## Tray and terminal menu
 

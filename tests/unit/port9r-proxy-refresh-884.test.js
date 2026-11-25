@@ -17,7 +17,16 @@ it("persists saved proxy settings rather than resolved runtime proxy fields on r
     _connection: { providerSpecificData: { proxyPoolId: "pool", account: "old" } },
     providerSpecificData: { proxyPoolId: "pool", account: "old", connectionProxyPoolId: "pool", connectionProxyUrl: "http://runtime", strictProxy: true },
   }, null, { force: true });
+  // Without a presented refresh token the write is unguarded and takes two arguments.
+  await checkAndRefreshToken("codex", {
+    connectionId: "connection", accessToken: "old", projectId: "project",
+    _connection: { providerSpecificData: { proxyPoolId: "pool", account: "old" } },
+    providerSpecificData: { proxyPoolId: "pool", account: "old", connectionProxyPoolId: "pool", connectionProxyUrl: "http://runtime", strictProxy: true },
+  }, null, { force: true });
   expect(mocks.update).toHaveBeenCalledWith("connection", expect.objectContaining({
+    providerSpecificData: { proxyPoolId: "pool", account: "refreshed" },
+  }));
+  expect(mocks.update).toHaveBeenNthCalledWith(1, "connection", expect.objectContaining({
     providerSpecificData: { proxyPoolId: "pool", account: "refreshed" },
   }), { returnCommitResult: true, shouldCommitConnection: expect.any(Function) });
   // The write is guarded by the presented token: a newer stored rotation is kept.

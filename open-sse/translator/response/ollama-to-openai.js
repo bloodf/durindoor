@@ -51,14 +51,6 @@ export function ollamaToOpenAIResponse(chunk, state) {
   // usage/finish_reason survive even when they carry no message payload.
   if (!chunk.done && !content && !thinking && !toolCalls) return null;
 
-  // Accumulate content in state
-  if (content) {
-    state.accumulatedContent = (state.accumulatedContent || "") + content;
-  }
-  if (thinking) {
-    state.accumulatedThinking = (state.accumulatedThinking || "") + thinking;
-  }
-
   const delta = {};
   if (content) delta.content = content;
   if (thinking) delta.reasoning_content = thinking;

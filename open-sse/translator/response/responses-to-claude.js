@@ -12,6 +12,7 @@ import { openAIResponsesBodyToClaude } from "./openai-responses-nonstream.js";
 import { openaiResponsesToOpenAIResponse } from "./openai-responses.js";
 import { openaiToClaudeResponse } from "./openai-to-claude.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
+import { replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 
 // Close answer content before inserting standalone search blocks into its index sequence.
 function closeContent(state, events) {
@@ -89,6 +90,20 @@ function terminalStatus(data) {
   return null;
 }
 
+// Search actions and citations are kept until the stream ends; repeats replace entries.
+function keepEvidence(state, map, key, value) {
+  replaceRetained(state, retainedSize(map.get(key)), retainedSize(value));
+  map.set(key, value);
+}
+
+function keepSearchItem(state, item) {
+  const searches = new Map();
+  const citations = new Map();
+  collectSearchItem(item, searches, citations);
+  for (const [id, search] of searches) keepEvidence(state, state.hostedSearches, id, search);
+  for (const [url, citation] of citations) keepEvidence(state, state.searchCitations, url, citation);
+}
+
 // Collect evidence from incremental events and final output. Shared maps deduplicate
 // repeated actions and retain final sources that the incremental events did not expose.
 function collectEvent(data, state) {
@@ -98,14 +113,14 @@ function collectEvent(data, state) {
   if (["response.completed", "response.done", "response.incomplete"].includes(data?.type)) {
     state.responsesCompleted = !data.response?.status || data.response.status === "completed";
     for (const item of data.response?.output || []) {
-      collectSearchItem(item, state.hostedSearches, state.searchCitations);
+      keepSearchItem(state, item);
     }
   }
   if (data?.type === "response.output_item.done") {
-    collectSearchItem(data.item, state.hostedSearches, state.searchCitations);
+    keepSearchItem(state, data.item);
   }
   if (data?.annotation?.type === "url_citation" && data.annotation.url) {
-    state.searchCitations.set(data.annotation.url, data.annotation);
+    keepEvidence(state, state.searchCitations, data.annotation.url, data.annotation);
   }
 }
 

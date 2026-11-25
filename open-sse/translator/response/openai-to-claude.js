@@ -13,7 +13,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 // for arg sanitization). Current request translator emits no prefix ("") — strip
 // is then a no-op. Kept intentionally; do NOT couple to request's empty prefix.
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-import { chargeRetained } from "../../utils/streamRetainedBudget.js";
+import { chargeRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
 
 // Detect and deduplicate doubled JSON (e.g. {"query":"x"}{"query":"x"})
@@ -328,6 +328,7 @@ export function openaiToClaudeResponse(chunk, state) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
 
+        chargeRetained(state, retainedSize(tc.id) + retainedSize(incomingName));
         state.toolCalls.set(idx, {
           id: tc.id,
           name: incomingName,
@@ -341,8 +342,14 @@ export function openaiToClaudeResponse(chunk, state) {
         // Capture a late-arriving id or name (streamed after the initial chunk).
         // A name may arrive after arguments have been buffered; record it before
         // deciding whether to emit the deferred content_block_start.
-        if (tc.id && !toolInfo.id) toolInfo.id = tc.id;
-        if (incomingName && !toolInfo.name) toolInfo.name = incomingName;
+        if (tc.id && !toolInfo.id) {
+          chargeRetained(state, retainedSize(tc.id));
+          toolInfo.id = tc.id;
+        }
+        if (incomingName && !toolInfo.name) {
+          chargeRetained(state, retainedSize(incomingName));
+          toolInfo.name = incomingName;
+        }
 
         // Emit content_block_start once we have a name. Arguments that arrive
         // before the name are buffered without opening the block, so the first

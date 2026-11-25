@@ -1,6 +1,7 @@
 import { isObject, isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
 import { RESPONSES_ITEM, ROLE, CLAUDE_STOP, MODEL_FALLBACK } from "../schema/index.js";
 import { buildChunk } from "../concerns/chunk.js";
+import { chargeRetained, releaseRetained } from "../../utils/streamRetainedBudget.js";
 
 /**
  * Compatibility contract for Responses text recovery (#1073).
@@ -177,7 +178,7 @@ function resolvePart(item, contentIndex, allowAnonymous, snapshot) {
   }
   return part;
 }
-function reconcile(t, part, snapshot) {
+function reconcile(state, t, part, snapshot) {
   if (snapshot.length < part.length) return "";
   let offset = 0;
   for (const fragment of part.fragments) {
@@ -185,6 +186,7 @@ function reconcile(t, part, snapshot) {
     offset += fragment.text.length;
   }
   const suffix = snapshot.slice(part.length);
+  chargeRetained(state, suffix.length);
   // Compact only at a snapshot, never on each streamed delta (linear retained text).
   part.fragments = snapshot ? [{ text: snapshot, order: t.sequence++ }] : [];
   part.length = snapshot.length;
@@ -268,6 +270,7 @@ export function recordResponsesTextDelta(state, identity, text) {
     part = { fragments: [], length: 0 };
     item.parts.set(key, part);
   }
+  chargeRetained(state, text.length);
   part.fragments.push({ text, order: t.sequence++ });
   part.length += text.length;
   if (blockerFor(t, item)) {
@@ -293,7 +296,7 @@ export function reconcileResponsesTextDone(state, identity, text) {
   const part = resolvePart(item, identity.content_index, false, text);
   if (!part) return [];
   part.closed = true;
-  holdText(t, item, reconcile(t, part, text), "content");
+  holdText(t, item, reconcile(state, t, part, text), "content");
   return releaseHeld(t, state);
 }
 
@@ -307,7 +310,7 @@ export function bindResponsesTextItem(state, value, outputIndex) {
     resolveItem(tracker(state), { item_id: item.id, output_index: outputIndex });
   }
 }
-function recoverItem(t, item, snapshot) {
+function recoverItem(state, t, item, snapshot) {
   if (!Array.isArray(snapshot.content)) return [];
   const parts = snapshot.content
     .map((part, contentIndex) => ({ part: object(part), contentIndex }))
@@ -321,7 +324,7 @@ function recoverItem(t, item, snapshot) {
     const text = part.type === CLAUDE_STOP.REFUSAL ? part.refusal : part.text;
     const tracked = resolvePart(item, contentIndex, parts.length === 1, text);
     if (!tracked) continue;
-    const suffix = reconcile(t, tracked, text);
+    const suffix = reconcile(state, t, tracked, text);
     if (suffix)
       recovered.push({ text: suffix, field: part.type === CLAUDE_STOP.REFUSAL ? "refusal" : "content" });
   }
@@ -344,7 +347,7 @@ export function synthesizeTextItemSnapshot(state, value, outputIndex) {
   );
   item.closed = true;
   if (t.anonymous && t.items.size > 1) return [];
-  for (const { text, field } of recoverItem(t, item, snapshot)) holdText(t, item, text, field);
+  for (const { text, field } of recoverItem(state, t, item, snapshot)) holdText(t, item, text, field);
   return releaseHeld(t, state);
 }
 
@@ -375,7 +378,7 @@ export function finalizeResponsesTextSnapshots(state, output) {
   for (const item of t.items) item.closed = true;
   if (!(t.anonymous && t.items.size > 1)) {
     for (const { snapshot, item } of resolved) {
-      for (const { text, field } of recoverItem(t, item, snapshot)) holdText(t, item, text, field);
+      for (const { text, field } of recoverItem(state, t, item, snapshot)) holdText(t, item, text, field);
     }
   }
   return releaseHeld(t, state);
@@ -397,6 +400,9 @@ export function flushResponsesTextSnapshots(state) {
 export function closeResponsesTextSnapshots(state) {
   const t = tracker(state);
   t.closed = true;
+  for (const item of t.items) {
+    for (const part of item.parts.values()) releaseRetained(state, part.length);
+  }
   t.items.clear();
   t.byId.clear();
   t.byIndex.clear();

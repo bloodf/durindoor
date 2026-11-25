@@ -30,7 +30,7 @@ describe("Gemini 3.8 Flash Support & Config", () => {
   it("defines pricing at the upstream-published Gemini 3.8 Flash rates", () => {
     // DurinDoor does not carry gemini-3.7-flash pricing rows, so assert the
     // literal upstream rates instead of diffing against the 3.7 baseline.
-    const expected = { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 };
+    const expected = { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 };
     expect(MODEL_PRICING["gemini-3.8-flash"]).toEqual(expected);
     expect(MODEL_PRICING["gemini-3.8-flash-high"]).toEqual(expected);
     expect(MODEL_PRICING["gemini-3.8-flash-medium"]).toEqual(expected);

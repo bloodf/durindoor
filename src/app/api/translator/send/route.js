@@ -102,10 +102,10 @@ async function POSTHandler(request) {
       let committed = false;
       if (provider === "antigravity" || provider === "agy") {
         // Stored Antigravity credentials must be dispatched and committed under the shared lease.
-        const result = await refreshAndUpdateCredentials(connection, true, proxyOptions);
+        const result = await refreshAndUpdateCredentials(connection, true, proxyOptions).catch(() => null);
         // A joined in-flight operation may have started with an older snapshot.
         // Retry only when its successful result still matches the stored credentials.
-        if (result.refreshed) {
+        if (result?.refreshed) {
           const current = await getProviderConnectionById(connection.id);
           if (current && current.isActive !== false && current.provider === connection.provider &&
               providerRefreshContextMatches(current, providerRefreshContext(result.connection))) {

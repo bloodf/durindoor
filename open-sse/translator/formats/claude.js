@@ -15,6 +15,8 @@ import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../conce
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
+// Track carried markers without adding private fields to the wire payload.
+const carriedSystemMarkers = new WeakSet();
 
 /** Remove nameless assistant calls and their corresponding results in encounter order.
  * Other blocks, including custom content and valid calls sharing an ID, survive.
@@ -121,7 +123,7 @@ function markLastCacheableBlock(msg) {
     const block = msg.content[i];
     if (!isObject(block) || block === null) continue;
     if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) continue;
-    block.cache_control = { ...CACHE_CONTROL_5M };
+    if (!carriedSystemMarkers.has(block)) block.cache_control = { ...CACHE_CONTROL_5M };
     return true;
   }
   return false;
@@ -281,7 +283,7 @@ export function anchorClaudeCache(body, provider = null) {
     for (let i = body.messages.length - 1; i >= 0; i--) {
       const msg = body.messages[i];
       if (!Array.isArray(msg.content)) continue;
-      for (const block of msg.content) {if (block && isObject(block)) delete block.cache_control;}
+      for (const block of msg.content) {if (block && isObject(block) && !carriedSystemMarkers.has(block)) delete block.cache_control;}
       if (anchored || msg.role !== ROLE.ASSISTANT) continue;
       anchored = markLastCacheableBlock(msg);
     }
@@ -751,6 +753,19 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
     } else {
       // Never fold trailing system content backward into a completed user turn.
+      // Preserve its cache breakpoint on the last eligible user block instead.
+      const last = messages.at(-1);
+      const marker = buffered.map((block) => validCacheMarker(block?.cache_control)).filter(Boolean).at(-1);
+      if (marker && last?.role === ROLE.USER) {
+        if (isString(last.content) && last.content) last.content = [{ type: CLAUDE_BLOCK.TEXT, text: last.content }];
+        if (Array.isArray(last.content)) {
+          const target = last.content.findLast((block) => isObject(block) && block !== null && block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING);
+          if (target && !target.cache_control) {
+            target.cache_control = marker;
+            carriedSystemMarkers.add(target);
+          }
+        }
+      }
       body.messages = messages;
     }
   }

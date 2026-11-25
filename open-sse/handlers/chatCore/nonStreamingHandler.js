@@ -347,8 +347,10 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           delete message.reasoning;
         }
       }
-      // Same-format Chat skips translateResponse; restore request-side aliases here
-      // so clients never see the upstream-safe rewrite (#1343).
+    }
+    // Same-format bodies skip translateResponse; restore request-side aliases here
+    // so clients never see the upstream-safe rewrite (#1343).
+    if (targetFormat === FORMATS.OPENAI || targetFormat === FORMATS.OPENAI_RESPONSES) {
       restoreOpenAIToolNames(responseBody, options.toolNameMap);
     }
     return responseBody;

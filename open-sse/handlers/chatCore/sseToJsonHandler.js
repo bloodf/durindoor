@@ -482,6 +482,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         // When the client asked for the Responses API format, return the converted JSON directly.
         // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
         if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          restoreOpenAIToolNames(jsonResponse, toolNameMap);
           logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
 
           const totalLatency = Date.now() - requestStartTime;

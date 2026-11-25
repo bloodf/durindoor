@@ -3,6 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { aliasLongResponsesToolNames, attachToolNameMap } from "../utils/responsesToolNames.js";
 
 const BASE = "https://opencode.ai/zen/v1";
 
@@ -43,6 +44,10 @@ export class OpenCodeZenExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    return injectReasoningContent({ provider: this.provider, model, body });
+    if (targetFormat(model) !== "openai-responses") {
+      return injectReasoningContent({ provider: this.provider, model, body });
+    }
+    const toolNameMap = aliasLongResponsesToolNames(body);
+    return attachToolNameMap(injectReasoningContent({ provider: this.provider, model, body }), toolNameMap);
   }
 }

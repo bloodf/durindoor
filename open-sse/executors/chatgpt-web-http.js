@@ -17,6 +17,9 @@
  */
 
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { describeChatGptWebHttpError } from "./chatgptWebErrors.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
@@ -45,6 +48,16 @@ const redirectPolicy = new AsyncLocalStorage();
 const tlsFetchChatGpt = (url, options) => tlsFetchChatGptRaw(
   url, redirectPolicy.getStore() === true ? { ...options, sameOriginRedirects: true } : options
 );
+
+// The TLS client buffers non-streaming replies, so the header deadline must not
+// undercut its own 120s conversation timeout and 10s grace.
+const SEND_DEADLINE_MS = 130_000;
+
+/** Send one TLS-client request through the shared sender. */
+const sendTls = (sender, url, options, quotaBearing = false) => sender.sendRequest(url, { signal: options.signal }, null, {
+  quotaBearing,
+  transport: ({ signal }) => tlsFetchChatGpt(url, { ...options, signal })
+});
 
 async function proxyAgentForWebSocket(proxyUrl) {
   try {
@@ -181,7 +194,7 @@ function tokenStore(cookie, entry) {
 
 // ─── /api/auth/session — exchange cookie for JWT ────────────────────────────
 
-async function exchangeSession(cookie, signal) {
+async function exchangeSession(cookie, signal, sender) {
   const cached = tokenLookup(cookie);
   if (cached) return cached;
 
@@ -191,7 +204,7 @@ async function exchangeSession(cookie, signal) {
     Cookie: buildNextAuthSessionCookie(cookie),
   };
 
-  const response = await tlsFetchChatGpt(SESSION_URL, {
+  const response = await sendTls(sender, SESSION_URL, {
     method: "GET",
     headers,
     timeoutMs: 30_000,
@@ -248,7 +261,7 @@ const warmupCache = new Map();
 const WARMUP_TTL_MS = 60_000;
 const WARMUP_CACHE_MAX = 200;
 
-async function runSessionWarmup(accessToken, accountId, sessionId, deviceId, cookie, signal, log) {
+async function runSessionWarmup(accessToken, accountId, sessionId, deviceId, cookie, signal, log, sender) {
   const key = cookieKey(cookie) + ":" + accessToken.slice(-8);
   const now = Date.now();
   const last = warmupCache.get(key);
@@ -279,7 +292,7 @@ async function runSessionWarmup(accessToken, accountId, sessionId, deviceId, coo
 
   for (const url of urls) {
     try {
-      const r = await tlsFetchChatGpt(url, {
+      const r = await sendTls(sender, url, {
         method: "GET",
         headers,
         timeoutMs: 15_000,
@@ -315,7 +328,8 @@ async function prepareChatRequirements(
   cookie,
   dplInfo,
   signal,
-  log
+  log,
+  sender
 ) {
   const config = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
   const prekey = await buildPrepareToken(config, log);
@@ -331,7 +345,7 @@ async function prepareChatRequirements(
   if (accountId) headers["chatgpt-account-id"] = accountId;
 
   // Stage 1: POST /chat-requirements/prepare → { prepare_token, ... }
-  const prepResp = await tlsFetchChatGpt(SENTINEL_PREPARE_URL, {
+  const prepResp = await sendTls(sender, SENTINEL_PREPARE_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({ p: prekey }),
@@ -359,7 +373,7 @@ async function prepareChatRequirements(
   }
 
   const crBody = { p: prekey, prepare_token: prepData.prepare_token };
-  const crResp = await tlsFetchChatGpt(SENTINEL_CR_URL, {
+  const crResp = await sendTls(sender, SENTINEL_CR_URL, {
     method: "POST",
     headers,
     body: JSON.stringify(crBody),
@@ -406,7 +420,7 @@ class SentinelBlockedError extends Error {
 let dplCache = null;
 const DPL_TTL_MS = 60 * 60 * 1000;
 
-async function fetchDpl(cookie, signal) {
+async function fetchDpl(cookie, signal, sender) {
   if (dplCache && Date.now() < dplCache.expiresAt) {
     return { dpl: dplCache.dpl, scriptSrc: dplCache.scriptSrc };
   }
@@ -415,7 +429,7 @@ async function fetchDpl(cookie, signal) {
     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     Cookie: buildNextAuthSessionCookie(cookie),
   };
-  const response = await tlsFetchChatGpt(`${CHATGPT_BASE}/`, {
+  const response = await sendTls(sender, `${CHATGPT_BASE}/`, {
     method: "GET",
     headers,
     timeoutMs: 20_000,
@@ -2463,9 +2477,16 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
    * stream's start(), inherits the connection's proxy options.
    */
   async execute(input) {
-    return redirectPolicy.run(input.sameOriginRedirects === true, () =>
-      runWithTlsProxyOptions(input.proxyOptions ?? null, () => this.executeDirect(input))
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender({ provider: this.provider, config: { timeoutMs: SEND_DEADLINE_MS } }, input);
+    // The conversation reply; every result after it carries its quota ticket.
+    let upstream = null;
+    const result = await redirectPolicy.run(input.sameOriginRedirects === true, () =>
+      runWithTlsProxyOptions(input.proxyOptions ?? null, () =>
+        this.executeDirect(input, sender, (reply) => { upstream = reply; }))
     );
+    transferProviderAttemptDispatch(upstream, result.response);
+    return { ...result, attemptStartedAt: sender.attemptStartedAt };
   }
 
   async executeDirect({
@@ -2481,7 +2502,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     clientHeaders: explicitClientHeaders,
     requestContext,
     proxyOptions = null,
-  }) {
+  }, sender, onConversationReply) {
     const clientHeaders = explicitClientHeaders ?? requestContext?.clientHeaders ?? null;
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -2522,7 +2543,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     // 1. Token exchange
     let tokenEntry;
     try {
-      tokenEntry = await exchangeSession(cookie, signal);
+      tokenEntry = await exchangeSession(cookie, signal, sender);
     } catch (err) {
       if (err instanceof SessionAuthError) {
         log?.warn?.("CGPT-WEB", err.message);
@@ -2568,7 +2589,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
     // 2a. Warmup — GET / to scrape DPL + script src so the prekey looks legit.
     let dplInfo;
     try {
-      dplInfo = await fetchDpl(cookie, signal);
+      dplInfo = await fetchDpl(cookie, signal, sender);
     } catch (err) {
       log?.warn?.(
         "CGPT-WEB",
@@ -2594,7 +2615,8 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
       deviceId,
       cookie,
       signal,
-      log
+      log,
+      sender
     );
 
     // 2b. Sentinel chat-requirements
@@ -2608,7 +2630,8 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
         cookie,
         dplInfo,
         signal,
-        log
+        log,
+        sender
       );
     } catch (err) {
       if (err instanceof SentinelBlockedError) {
@@ -2723,7 +2746,7 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await tlsFetchChatGpt(CONV_URL, {
+      response = await sendTls(sender, CONV_URL, {
         method: "POST",
         headers,
         body: JSON.stringify(cgptBody),
@@ -2734,8 +2757,10 @@ export class ChatGptWebHttpExecutor extends BaseExecutor {
         // otherwise long generations buffer entirely before the client sees
         // anything (and the downstream HTTP request can time out).
         stream,
-      });
+      }, true);
+      onConversationReply(response);
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("CGPT-WEB", `Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
       const code = err instanceof TlsClientUnavailableError ? "TLS_UNAVAILABLE" : undefined;
       return {

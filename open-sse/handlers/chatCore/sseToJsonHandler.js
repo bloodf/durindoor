@@ -24,6 +24,7 @@ import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../trans
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
+import { unfenceJsonChoices } from "../../utils/jsonFence.js";
 import { claudeToOpenAIResponse } from "../../translator/response/claude-to-openai.js";
 import { claudeMessageDocumentToEventStream, parseJsonDocumentBehindEventStream } from "./nonStreamingJsonDocument.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
@@ -566,7 +567,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
         await markSuccess();
-        return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
+        return { success: true, response: new Response(JSON.stringify(unfenceJsonChoices(body, finalResp)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
       } catch (err) {
         console.error(`[ChatCore] Responses API SSE→JSON failed: ${err?.name || "Error"}`);
         return {
@@ -740,7 +741,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
       const responseHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) };
       if (nativeGemini) responseHeaders["x-durindoor-internal-gemini-native"] = "1";
-      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: responseHeaders }) };
+      return { success: true, response: new Response(JSON.stringify(unfenceJsonChoices(body, finalResp)), { headers: responseHeaders }) };
     } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);
       const status = err?.name === "AbortError" ?

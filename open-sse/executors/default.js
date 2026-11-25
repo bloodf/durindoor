@@ -693,7 +693,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     const schema = rf.json_schema?.schema;
     const schemaJson = schema ? JSON.stringify(schema, null, 2) : null;
-    const prompt = schemaJson ? `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.` : "Respond with valid JSON only.";
+    const prompt = schemaJson ? `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text and no markdown code fences.` : "Respond with valid JSON only, with no markdown code fences.";
 
     const messages = Array.isArray(body.messages) ? body.messages.map((m) => ({ ...m })) : [];
     const sys = messages.find((m) => m.role === "system");

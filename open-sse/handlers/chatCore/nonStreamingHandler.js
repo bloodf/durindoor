@@ -40,6 +40,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
 import { CLAUDE_STOP, GEMINI_FINISH } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
+import { unfenceJsonChoices } from "../../utils/jsonFence.js";
 import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
 import { evictResponseDispatcher } from "../../utils/proxyFetch.js";
 
@@ -887,6 +888,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (!isClaudeMessageResponse && isOpenAIChatResponse) {
       applyReasoningVisibility(translatedResponse, clientRawRequest);
     }
+    translatedResponse = unfenceJsonChoices(body, translatedResponse);
 
     reqLogger.logConvertedResponse(translatedResponse);
 

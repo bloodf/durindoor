@@ -560,7 +560,10 @@ function startServer(updatePromise, installAccelerator) {
     const child = spawn(RUNTIME, buildNodeArgs(serverPath, process.env), {
       cwd: standaloneDir,
       stdio: showLog ? "inherit" : ["ignore", "ignore", "pipe"],
-      detached: true,
+      // POSIX needs its own process group for the group kill in cleanup(). On
+      // Windows a detached worker gets its own console group and can outlive
+      // the launcher (upstream #3026).
+      detached: process.platform !== "win32",
       windowsHide: true,
       env: {
         ...buildEnvWithRuntime(process.env),
@@ -804,6 +807,18 @@ function startServer(updatePromise, installAccelerator) {
             windowsHide: true,
             env: { ...process.env }
           });
+          // spawn() reports failure asynchronously: exiting right away would
+          // announce a tray that never started (upstream #3026).
+          try {
+            await new Promise((resolve, reject) => {
+              bgProcess.once("error", reject);
+              bgProcess.once("spawn", resolve);
+            });
+          } catch (error) {
+            console.error(`Could not start the background tray: ${error.message}. The server is stopped; start ${DISPLAY_NAME} again.`);
+            process.exit(1);
+            return;
+          }
           bgProcess.unref();
 
           console.log(`🔔 ${DISPLAY_NAME} is now running in background (PID: ${bgProcess.pid})`);

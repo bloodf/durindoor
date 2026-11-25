@@ -140,7 +140,7 @@ function installTrayAsync() {
     try {
       const child = spawn(process.platform === "win32" ? "npm.cmd" : "npm",
         ["install", `${SYSTRAY_PKG}@${SYSTRAY_VERSION}`, "--global=false", "--no-audit", "--no-fund", "--prefer-online", "--save-exact"],
-        { cwd, stdio: "ignore", shell: process.platform === "win32", timeout: 120000 });
+        { cwd, stdio: "ignore", shell: process.platform === "win32", timeout: 120000, windowsHide: true });
       child.once("error", () => finish(false));
       child.once("close", (code) => finish(code === 0));
     } catch { finish(false); }

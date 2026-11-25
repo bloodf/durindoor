@@ -10,15 +10,15 @@ function copyToClipboard(text) {
     const platform = process.platform;
     
     if (platform === "darwin") {
-      execSync("pbcopy", { input: text });
+      execSync("pbcopy", { input: text, windowsHide: true });
     } else if (platform === "win32") {
-      execSync("clip", { input: text });
+      execSync("clip", { input: text, windowsHide: true });
     } else {
       // Linux - try xclip first, then xsel
       try {
-        execSync("xclip -selection clipboard", { input: text });
+        execSync("xclip -selection clipboard", { input: text, windowsHide: true });
       } catch {
-        execSync("xsel --clipboard --input", { input: text });
+        execSync("xsel --clipboard --input", { input: text, windowsHide: true });
       }
     }
     return true;

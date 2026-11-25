@@ -17,6 +17,8 @@ import {
   transformOpenAISSEToGeminiSSE,
 } from "./geminiBridge.js";
 
+import { estimateGeminiCountTokens, parseGeminiModelPath } from "./geminiRouteHelpers.js";
+
 const GEMINI_NATIVE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 // Gemini model id charset (matches sanitizeGeminiFunctionName); blocks path traversal in upstream URL.
 const GEMINI_NATIVE_MODEL_PATTERN = /^[a-zA-Z0-9_.:-]+$/;
@@ -36,6 +38,7 @@ export async function OPTIONS() {
 /**
  * POST /v1beta/models/{model}:generateContent        — non-streaming
  * POST /v1beta/models/{model}:streamGenerateContent  — streaming (SSE)
+ * POST /v1beta/models/{model}:countTokens — local input token estimate
  *
  * Streaming intent is determined by the URL action suffix (canonical Gemini API
  * convention), NOT by a body field. generationConfig.stream is not a real
@@ -49,34 +52,18 @@ async function POSTHandler(request, { params }) {
 
   try {
     const { path } = await params;
-    // path = ["provider", "model:action"] or ["model:action"]
-
-    let model;
-    let action; // ":generateContent" | ":streamGenerateContent"
-
-    if (path.length >= 2) {
-      // Format: /v1beta/models/provider/model:generateContent
-      const provider = path[0];
-      const modelAction = path[1];
-      action = modelAction.includes(":streamGenerateContent")
-        ? ":streamGenerateContent"
-        : ":generateContent";
-      const modelName = modelAction
-        .replace(":streamGenerateContent", "")
-        .replace(":generateContent", "");
-      model = provider + "/" + modelName;
-    } else {
-      // Format: /v1beta/models/model:generateContent
-      const modelAction = path[0];
-      action = modelAction.includes(":streamGenerateContent")
-        ? ":streamGenerateContent"
-        : ":generateContent";
-      model = modelAction
-        .replace(":streamGenerateContent", "")
-        .replace(":generateContent", "");
+    const parsed = parseGeminiModelPath(path);
+    if (!parsed) {
+      return Response.json({ error: { message: "Missing model in path", code: 400, status: "INVALID_ARGUMENT" } }, { status: 400 });
     }
-
+    const { model, action } = parsed;
     const body = await request.json();
+
+    if (action === ":countTokens") {
+      const { error } = await admit(request, { kind: "geminiNative" });
+      if (error) return error;
+      return Response.json({ totalTokens: estimateGeminiCountTokens(body) });
+    }
 
     if (isGeminiNativeTtsRequest(model, body)) {
       return await forwardGeminiNativeRequest(request, body, model, action);

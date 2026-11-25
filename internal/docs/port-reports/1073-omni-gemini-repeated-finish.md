@@ -1,8 +1,8 @@
 # 1073: Gemini repeated-finish protections (OmniRoute #20224)
 
-Closes two verified gaps from the row 91 complete comparison (`1073-nov24-row-91-complete.md`, on the `orq/tows9a/integration` branch, not yet on `main`). Compared on 2026-11-24 against `origin/main` (this branch is based on it, not on the integration branch).
+Closes two verified gaps from [the row 91 complete comparison](1073-nov24-row-91-complete.md). Compared on 2026-11-24 against integration HEAD `0d6e283699`.
 
-**Status: implemented on this branch; not a completed port until the PR below merges.** PR: [DurinDoor #2493](https://github.com/bloodf/durindoor/pull/2493) (draft, open, unmerged).
+**Status: implemented on this branch; not a completed port until the PR below merges.** PR: [DurinDoor #2493](https://github.com/bloodf/durindoor/pull/2493) (draft, open, unmerged; the same change on a branch based on `origin/main`).
 
 ## Upstream
 

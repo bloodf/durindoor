@@ -202,7 +202,66 @@ function buildGisooRules() {
   }];
 }
 
+/**
+ * Kilo (OmniRoute #21082). A caller without an entitled account that asks for a
+ * paid model gets `PAID_MODEL_AUTH_REQUIRED`, usually on a 401 or 403. The free
+ * models on the same connection still work, so the denial describes the requested
+ * model, not the credential: lock that model only. Only the exact code decides
+ * (top-level `error_type`/`code`/`type` or `error.code`/`error.type`, case-
+ * insensitive); the free-text message never does, and a message that names a bad
+ * credential keeps the shared authentication path. `modelOnly` tells the caller
+ * not to widen the lock when the requested id has no bounded model scope.
+ */
+const KILO_PAID_MODEL_AUTH_REQUIRED = "paid_model_auth_required";
+const KILO_INVALID_CREDENTIAL_MESSAGE =
+/\b(?:invalid|expired|revoked|missing)\s+(?:api[ -]?key|access[ -]?token|bearer[ -]?token)\b|\bauthentication expired\b/i;
+const KILO_PROVIDER_IDS = ["kilo-gateway", "kg", "kilocode", "kc"];
+
+function parseKiloBody(value) {
+  if (isObject(value)) return value;
+  if (!isString(value)) return null;
+  const trimmed = value.slice(0, MAX_ERROR_ENVELOPE_BYTES).trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectKiloFields(...sources) {
+  const codes = [];
+  const messages = [];
+  for (const source of sources) {
+    const root = parseKiloBody(source);
+    if (isString(source) && !root) messages.push(source.slice(0, MAX_ERROR_ENVELOPE_BYTES));
+    if (!root) continue;
+    const inner = isObject(root.error) ? root.error : null;
+    codes.push(root.error_type, root.code, root.type, inner?.code, inner?.type);
+    messages.push(root.message, inner?.message, isString(root.error) ? root.error : null);
+  }
+  return {
+    codes: codes.filter((value) => isString(value)).map((value) => value.trim().toLowerCase()),
+    messages: messages.filter((value) => isString(value))
+  };
+}
+
+function buildKiloRules() {
+  return [{
+    id: "kilo-paid-model-auth-required",
+    match: ({ status, body, errorText }) => {
+      if (status !== 401 && status !== 402 && status !== 403) return null;
+      const { codes, messages } = collectKiloFields(body, errorText);
+      if (!codes.includes(KILO_PAID_MODEL_AUTH_REQUIRED)) return null;
+      if (KILO_INVALID_CREDENTIAL_MESSAGE.test(messages.join(" "))) return null;
+      return { reason: "model_access_denied", scope: "model", cooldownMs: 2 * 60 * 1000, modelOnly: true };
+    }
+  }];
+}
+
 export const providerRuleRegistry = new Map([
+...KILO_PROVIDER_IDS.map((provider) => [provider, buildKiloRules()]),
 ["agentrouter", buildAgentrouterRules()],
 ["y-api", buildYApiRules()],
 ...["opencode", "opencode-go", "opencode-zen"].map((provider) => [provider, [{

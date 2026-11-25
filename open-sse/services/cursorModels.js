@@ -13,6 +13,7 @@ import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { appendBoundedCursorChunk, decodeMessage } from "../utils/cursorProtobuf.js";
 import { isNumber, isString, isObject } from "../../src/shared/utils/typeChecks.js";
 import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
+import { createCatalogCache } from "./catalogCache.js";
 
 import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
 
@@ -38,10 +39,6 @@ const AVAILABLE_MODEL_IS_CHAT_ONLY_FIELD = 4;
 const AVAILABLE_MODEL_SUPPORTS_AGENT_FIELD = 5;
 const AVAILABLE_MODEL_IS_HIDDEN_FIELD = 35;
 
-/** @type {Map<string, { expiresAt: number, models: { id: string, name: string }[] }>} */
-const catalogCache = new Map();
-const negativeCache = new Map();
-
 function getCursorModelsUrl() {
   const config = PROVIDER_OAUTH.cursor;
   if (!config?.agentEndpoint || !config?.modelsEndpoint) return null;
@@ -65,6 +62,13 @@ function cacheKey(credentials, proxyUrl) {
   ];
   return crypto.createHash("sha256").update(JSON.stringify(seed)).digest("hex");
 }
+
+// Failed lookups are cached briefly so /v1/models does not re-dial Cursor on every request.
+const catalogCache = createCatalogCache({
+  ttlMs: CACHE_TTL_MS,
+  negativeTtlMs: NEGATIVE_CACHE_TTL_MS,
+  keyFn: cacheKey,
+});
 
 function firstString(fields, fieldNumber) {
   const value = fields.get(fieldNumber)?.[0]?.value;
@@ -330,40 +334,40 @@ export async function resolveCursorModels(credentials, options = {}) {
   };
   let proxyUrl;
   try { proxyUrl = cursorProxyUrl(getCursorModelsUrl(), proxyOptions); } catch { return null; }
-  const key = cacheKey(credentials, proxyUrl);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached?.expiresAt > now) return { models: cached.models };
-    // Failed lookups are cached briefly so /v1/models does not re-dial Cursor on every request.
-    if (negativeCache.get(key) > now) return null;
-  }
+  const key = catalogCache.keyFor(credentials, proxyUrl);
 
-  try {
-    let models;
-    try { models = await fetchCursorCatalog(credentials, options.signal, proxyOptions); } catch (error) {
+  const loadCatalog = async () => {
+    try {
+      let models;
+      try { models = await fetchCursorCatalog(credentials, options.signal, proxyOptions); } catch (error) {
+        if (options.signal?.aborted) throw error;
+        models = null;
+      }
+      if (!models?.length) {
+        const fallbackProxy = proxyUrl ? { ...proxyOptions, strictProxy: true } : proxyOptions;
+        models = await fetchAvailableModels(credentials, options.signal, fallbackProxy);
+      }
+      return models?.length ? { models } : null;
+    } catch (error) {
+      options.log?.warn?.("CURSOR_MODELS", `Live model fetch failed: ${sanitizeErrorMessage(error?.message || error)}`);
+      // An aborted lookup says nothing about the account, so it must not be negatively cached.
       if (options.signal?.aborted) throw error;
-      models = null;
-    }
-    if (!models?.length) {
-      const fallbackProxy = proxyUrl ? { ...proxyOptions, strictProxy: true } : proxyOptions;
-      models = await fetchAvailableModels(credentials, options.signal, fallbackProxy);
-    }
-    if (!models?.length) {
-      negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
       return null;
     }
-    negativeCache.delete(key);
-    catalogCache.set(key, { expiresAt: now + CACHE_TTL_MS, models });
-    return { models };
-  } catch (error) {
-    if (!options.signal?.aborted) negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
-    options.log?.warn?.("CURSOR_MODELS", `Live model fetch failed: ${sanitizeErrorMessage(error?.message || error)}`);
+  };
+
+  try {
+    const catalog = await catalogCache.load(key, loadCatalog, {
+      force: Boolean(options.forceRefresh),
+      ageFromStart: true,
+      flightKey: options.signal ? null : JSON.stringify([key, proxyOptions]),
+    });
+    return catalog ? { models: catalog.models } : null;
+  } catch {
     return null;
   }
 }
 
 export function clearCursorModelCache() {
   catalogCache.clear();
-  negativeCache.clear();
 }

@@ -1,10 +1,9 @@
-import { admit } from "../services/admission.js";
+import { refreshMediaCredentials, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
-  markAccountUnavailable,
   clearAccountError,
 } from "../services/auth.js";
 import { getCombos, getComboForModel, getApiKeyByKey } from "@/lib/localDb";
@@ -13,7 +12,6 @@ import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getAutoComboCatalog, filterDisabledComboModels } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
@@ -45,17 +43,24 @@ async function handleSearchHandler(request) {
 
   log.request("POST", `${url.pathname} | ${providerInput}`);
 
-  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "search" });
+  return runMediaEndpoint(request, {
+    kind: "search",
+    rejectAborted: true,
+    onAdmission: logAdmission,
+    route: (admission) => routeSearch(request, body, { url, providerInput, query }, admission),
+  });
+}
+
+function logAdmission({ apiKey, auth, error }) {
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (admissionError) {
-    log.warn("AUTH", apiKeyAuth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
-    return admissionError;
-  }
+  if (error) log.warn("AUTH", auth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
+}
 
+async function routeSearch(request, body, { url, providerInput, query }, { settings, apiKey, auth: apiKeyAuth }) {
   if (!wantsDefaultRoute(providerInput) && !isString(providerInput)) {
     log.warn("SEARCH", "Invalid provider/model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid field: provider (or model) must be a string");
@@ -78,6 +83,7 @@ async function handleSearchHandler(request) {
       models: route.models,
       handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings),
       log,
+      signal: request.signal,
       ...defaultRouteComboOptions("webSearch")
     });
   }
@@ -127,6 +133,7 @@ async function handleSearchHandler(request) {
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings, comboRouting),
       log,
+      signal: request.signal,
       comboName,
       comboStrategy,
       comboStickyLimit,
@@ -231,23 +238,22 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     return result.response;
   }
 
-  // Credential + fallback loop
-  const excludeConnectionIds = new Set();
-  let lastError = null;
-  let lastStatus = null;
   // A failed search must not lock the same connection's chat traffic.
   // Read, write, and clear the same search-only model lock.
   const searchLockKey = `websearch:${providerId}`;
 
-  while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds, searchLockKey, {
+  return runMediaAccounts({
+    provider: providerId,
+    model: searchLockKey,
+    signal: request.signal,
+    selectionOptions: {
       apiKeyId,
       allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
       restrictionApplied: comboRouting?.restrictionApplied === true,
       webSearch: true
-    });
-
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+    },
+    selectCredentials: (excluded, lockKey, options) => getProviderCredentialsWithQuotaPreflight(providerId, excluded, lockKey, options),
+    buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("SEARCH", `[${providerId}] free no-auth provider disabled by settings`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
@@ -258,52 +264,36 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
         log.warn("SEARCH", `[${providerId}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${providerId}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) {
+      if (attempted === 0) {
         log.error("AUTH", `No credentials for provider: ${providerId}`);
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${providerId}`);
       }
       log.warn("SEARCH", "No more accounts available", { provider: providerId });
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
+    },
+    async runAttempt(credentials) {
+      log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
 
-    log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
+      const { refreshed, persist } = await refreshMediaCredentials(providerId, credentials);
+      const dispatch = credentialDispatchSnapshot(refreshed);
 
-    const refreshedCredentials = await checkAndRefreshToken(providerId, credentials);
-    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
+      const result = await handleSearchCore({
+        body: coreBody,
+        provider: resolvedProvider,
+        providerConfig,
+        credentials: refreshed,
+        log,
+        onCredentialsRefreshed: persist,
+        onRequestSuccess: async () => {
+          await clearAccountError(credentials.connectionId, credentials, searchLockKey, { provider: providerId, webSearch: true, ...dispatch });
+        }
+      });
 
-    const result = await handleSearchCore({
-      body: coreBody,
-      provider: resolvedProvider,
-      providerConfig,
-      credentials: refreshedCredentials,
-      log,
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          accessToken: newCreds.accessToken,
-          refreshToken: newCreds.refreshToken,
-          providerSpecificData: newCreds.providerSpecificData,
-          testStatus: "active"
-        });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, searchLockKey, { provider: providerId, webSearch: true, ...dispatch });
-      }
-    });
-
-    if (result.success) return recordSuccess(result, credentials);
-
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, searchLockKey, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, webSearch: true, ...dispatch });
-
-    if (shouldFallback) {
-      log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
-    }
-
-    return result.response;
-  }
+      if (result.success) return { response: await recordSuccess(result, credentials) };
+      return { result, dispatch, failureContext: { usedCredential: credentials.accessToken || credentials.apiKey || null, webSearch: true } };
+    },
+    onFallback: (result, credentials) => log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`)
+  });
 }
 
 /** Normalize advertised `<alias>/search` model IDs to their provider alias. */

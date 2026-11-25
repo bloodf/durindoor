@@ -55,6 +55,10 @@ function createSpinner(text) {
   };
 }
 
+// The installed launcher keeps the shared startup module in its app bundle.
+const listenConfigPath = fs.existsSync(path.join(__dirname, "app/src/lib/startup/listenConfig.cjs"))
+  ? "./app/src/lib/startup/listenConfig.cjs" : "../src/lib/startup/listenConfig.cjs";
+const { DEFAULT_CLI_HOST: DEFAULT_HOST, DEFAULT_SERVER_PORT: DEFAULT_PORT, resolveListenConfig } = require(listenConfigPath);
 const pkg = require("./package.json");
 const args = process.argv.slice(2);
 
@@ -62,8 +66,6 @@ const args = process.argv.slice(2);
 const APP_NAME = pkg.name; // Use from package.json
 const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
-const DEFAULT_PORT = 20128;
-const DEFAULT_HOST = "0.0.0.0";
 
 for (let i = 0; i < args.length; i++) {
   if (["--port", "-p", "--host", "-H"].includes(args[i])) {
@@ -155,7 +157,7 @@ function getLanIp() {
 const MAX_PORT_ATTEMPTS = 10;
 
 // Parse arguments
-let port = DEFAULT_PORT;
+let port;
 let host = DEFAULT_HOST;
 let noBrowser = false;
 let skipUpdate = false;
@@ -182,6 +184,13 @@ for (let i = 0; i < args.length; i++) {
     trayMode = true;
     process.env.TRAY_MODE = "1";
   }
+}
+
+try {
+  ({ port, host } = resolveListenConfig({ argv: [], port, host }));
+} catch (error) {
+  console.error(`Error: ${error.message}`);
+  process.exit(2);
 }
 
 // Auto-relaunch after update: detached process has no TTY → fallback to tray

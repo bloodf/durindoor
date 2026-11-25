@@ -358,12 +358,13 @@ describe("web cookie usage reporting", () => {
 
     outbound.mockImplementation(async () => new Response(grokEvent({ token: "hello world" }) + grokEvent({ modelResponse: { message: "hello world" } })));
     chatgptExecutor.deps = { browser: { createSession: async () => ({}), runTurn: async () => ({ text: "hello world", status: "finished_successfully", endTurn: true }), readSessionCookies: async () => [] } };
+    // The chat response schedules usage persistence without awaiting it.
+    const usageWrite = vi.spyOn(await import("@/lib/usageDb.js"), "saveRequestUsage");
     expect((await chat(model)).status).toBe(200);
-    await vi.waitFor(async () => {
-      const summary = await (await usage(mine.id)).json();
-      expect(summary.displayMessage).toBe(`${label} connected. 1 requests in the last 30 days.`);
-    });
+    expect(usageWrite).toHaveBeenCalledOnce();
+    await usageWrite.mock.results[0].value;
     const summary = await (await usage(mine.id)).json();
+    expect(summary.displayMessage).toBe(`${label} connected. 1 requests in the last 30 days.`);
     expect(Object.keys(summary.quotas)).toEqual(expect.arrayContaining(["Total tokens (30d)"]));
     expect((await (await usage(other.id)).json()).message).toBe(`${label} connected. No requests recorded in the last 30 days.`);
   });

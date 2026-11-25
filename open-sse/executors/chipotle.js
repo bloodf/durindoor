@@ -1,5 +1,9 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, createRequestSender, requestAbortError } from "./sendRequest.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://amelia.chipotle.com";
@@ -7,6 +11,15 @@ const DOMAIN_CODE = "chipotle";
 
 function sanitizeErrorMessage(message) {
   return String(message || "Upstream error").replace(/Bearer\s+[A-Za-z0-9._:-]+/gi, "Bearer [redacted]");
+}
+
+async function createProxyAgent(proxyUrl) {
+  if (new URL(proxyUrl).protocol.startsWith("socks")) {
+    const { SocksProxyAgent } = await import("socks-proxy-agent");
+    return new SocksProxyAgent(proxyUrl);
+  }
+  const { HttpsProxyAgent } = await import("https-proxy-agent");
+  return new HttpsProxyAgent(proxyUrl);
 }
 
 export function randomServerId() {
@@ -43,7 +56,7 @@ export function extractAmeliaText(body) {
 }
 
 export class AmeliaClient {
-  constructor({ webSocketFactory, connectTimeoutMs } = {}) {
+  constructor({ webSocketFactory, connectTimeoutMs, proxyOptions = null } = {}) {
     this.session = null;
     this.ws = null;
     this.stompConnected = false;
@@ -51,17 +64,27 @@ export class AmeliaClient {
     this.connectPromise = null;
     this.webSocketFactory = webSocketFactory;
     this.connectTimeoutMs = Math.max(1, isNumber(connectTimeoutMs) ? connectTimeoutMs : 15_000);
+    // One client keeps one egress route for its session cookie and socket.
+    this.proxyOptions = proxyOptions;
   }
 
-  async init() {
-    const res = await fetch(`${BASE_URL}/Amelia/api/init`, {
+  /** Create the Amelia session and socket, unless already connected. */
+  async open({ sendRequest, signal } = {}) {
+    if (this.stompConnected) return;
+    await this.init({ sendRequest, signal });
+    await this.connect(signal);
+  }
+
+  async init({ sendRequest = createRequestSender().sendRequest, signal } = {}) {
+    const res = await sendRequest(`${BASE_URL}/Amelia/api/init`, {
       headers: {
         "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36",
         Origin: BASE_URL,
         Referer: `${BASE_URL}/Amelia/ui/chipotle/chat?embed=iframe`
       },
-      redirect: "manual"
-    });
+      redirect: "manual",
+      signal
+    }, this.proxyOptions, { quotaBearing: false });
     if (!res.ok) throw new Error(`Amelia init failed: ${res.status}`);
     const data = await res.json();
     const setCookies = res.headers.getSetCookie?.() ?? [];
@@ -72,10 +95,10 @@ export class AmeliaClient {
     };
   }
 
-  async connect() {
+  async connect(signal = null) {
     if (!this.session) throw new Error("Call init() first");
     if (this.connectPromise) return this.connectPromise;
-    this.connectPromise = this._connect();
+    this.connectPromise = this._connect(signal);
     try {
       await this.connectPromise;
     } finally {
@@ -83,25 +106,38 @@ export class AmeliaClient {
     }
   }
 
-  async _connect() {
+  async _connect(signal = null) {
     const { WebSocket } = await import("ws");
     const wsUrl = `wss://amelia.chipotle.com/Amelia/api/sock/${randomServerId()}/${randomSessionId()}/websocket`;
+    const route = resolveWebSocketProxyRoute(wsUrl, this.proxyOptions);
+    const agent = route.enabled ? await createProxyAgent(route.url) : null;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     return new Promise((resolve, reject) => {
       const headers = {
         Cookie: this.session.cookieHeader,
         Origin: BASE_URL,
         "User-Agent": "Mozilla/5.0 AppleWebKit/537.36"
       };
-      const ws = this.webSocketFactory ? this.webSocketFactory(wsUrl, { headers }) : new WebSocket(wsUrl, { headers });
+      const options = { headers, ...(agent ? { agent } : null) };
+      const ws = this.webSocketFactory ? this.webSocketFactory(wsUrl, options) : new WebSocket(wsUrl, options);
+      const settle = (done) => (value) => {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", onAbort);
+        done(value);
+      };
+      const succeed = settle(resolve);
+      const fail = settle(reject);
       const timeout = setTimeout(() => {
         ws.close();
-        reject(new Error("WS connect timeout"));
+        fail(new Error("WS connect timeout"));
       }, this.connectTimeoutMs);
-      ws.on("message", (raw) => this.handleSockJSFrame(raw.toString(), resolve, reject, timeout));
-      ws.on("error", (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
+      const onAbort = () => {
+        fail(requestAbortError(signal.reason));
+        ws.close();
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      ws.on("message", (raw) => this.handleSockJSFrame(raw.toString(), succeed, fail, timeout));
+      ws.on("error", fail);
       ws.on("close", () => {
         this.stompConnected = false;
         this.ws = null;
@@ -152,10 +188,7 @@ export class AmeliaClient {
   }
 
   async chat(message, timeoutMs = 15_000, signal = null) {
-    if (!this.stompConnected) {
-      await this.init();
-      await this.connect();
-    }
+    if (!this.stompConnected) await this.open({ signal: signal || undefined });
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const callbackId = randomUUID();
     return new Promise((resolve, reject) => {
@@ -212,11 +245,13 @@ export class AmeliaClient {
 
 const pool = [];
 
-async function getClient() {
-  if (pool.length > 0) return pool.pop();
-  const client = new AmeliaClient();
-  await client.init();
-  await client.connect();
+// Pooled clients are only reused on the egress route they were opened with.
+async function getClient({ proxyOptions = null } = {}) {
+  const egressKey = JSON.stringify(proxyOptions);
+  const index = pool.findIndex((client) => client.egressKey === egressKey);
+  if (index >= 0) return pool.splice(index, 1)[0];
+  const client = new AmeliaClient({ proxyOptions });
+  client.egressKey = egressKey;
   return client;
 }
 
@@ -244,7 +279,9 @@ export class ChipotleExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log } = input;
+    const { model, stream, body, signal, log, proxyOptions = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input);
     const messages = body?.messages ?? [];
     const lastUser = [...messages].reverse().find((message) => message.role === "user");
     const prompt = (() => {
@@ -258,48 +295,59 @@ export class ChipotleExecutor extends BaseExecutor {
     })();
     let client = null;
     try {
-      client = await this.clientFactory();
+      const context = { proxyOptions, signal: signal || undefined, sendRequest: sender.sendRequest };
+      client = await this.clientFactory(context);
+      // Session setup happens before the quota-bearing send, never inside it.
+      await client.open?.(context);
       log?.info?.("CHIPOTLE", `Sending to Pepper (model=${model})`);
-      const content = await client.chat(prompt, 15_000, signal);
+      const sent = await sender.sendRequest(this.buildUrl(), { signal }, proxyOptions, {
+        transport: async () => {
+          if (client.stompConnected === false) throw new Error("WebSocket not open");
+          return { content: await client.chat(prompt, 15_000, signal) };
+        }
+      });
+      const { content } = sent;
       if (this.clientFactory === getClient) {
         releaseClient(client);
         client = null;
       }
       const id = `chatcmpl-${Date.now()}`;
       const created = Math.floor(Date.now() / 1000);
-      if (stream) {
+      const result = (response) => {
+        transferProviderAttemptDispatch(sent, response);
         return {
-          response: new Response(
-            [
-            `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`,
-            `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
-            "data: [DONE]\n\n"].
-            join(""),
-            { status: 200, headers: { "Content-Type": "text/event-stream" } }
-          ),
+          response,
           url: this.buildUrl(),
           headers: this.buildHeaders(),
-          transformedBody: body
+          transformedBody: body,
+          attemptStartedAt: sender.attemptStartedAt
         };
-      }
-      return {
-        response: new Response(
-          JSON.stringify({
-            id,
-            object: "chat.completion",
-            created,
-            model,
-            choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        ),
-        url: this.buildUrl(),
-        headers: this.buildHeaders(),
-        transformedBody: body
       };
+      if (stream) {
+        return result(new Response(
+          [
+          `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`,
+          `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
+          "data: [DONE]\n\n"].
+          join(""),
+          { status: 200, headers: { "Content-Type": "text/event-stream" } }
+        ));
+      }
+      return result(new Response(
+        JSON.stringify({
+          id,
+          object: "chat.completion",
+          created,
+          model,
+          choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      ));
     } catch (err) {
       if (client && this.clientFactory === getClient) client.close().catch(() => {});
+      if (isQuotaDispatchUnavailable(err)) throw err;
+      if (signal?.aborted) throw requestAbortError(signal.reason);
       const msg = err instanceof Error ? err.message : String(err);
       return {
         response: new Response(

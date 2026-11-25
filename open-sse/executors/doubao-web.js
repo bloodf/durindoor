@@ -1,6 +1,7 @@
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./web-session-executor.js";
 import { errorResponse } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { requestAbortError } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 const BASE = "https://www.dola.com";
 const CHAT = `${BASE}/chat/completion`;
@@ -12,9 +13,9 @@ const textOf = (value) => {
 };
 const promptOf = (messages) => (messages || []).map((m) => `${m.role}: ${textOf(m.content)}`).join("\n\n");
 
-export class DoubaoWebExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("doubao-web", { id: "doubao-web", baseUrl: BASE }); this.fetch = deps.fetch || ((...args) => proxyAwareFetch(...args)); }
-  async execute(input) {
+export class DoubaoWebExecutor extends WebSessionExecutor {
+  constructor(deps = {}) { super("doubao-web", { id: "doubao-web", baseUrl: BASE }, { observePatchedFetch: false }); this.fetch = deps.fetch || null; }
+  async runSession(input, { sendBillable }) {
     const cookie = String(input.credentials?.apiKey || "").replace(/^Cookie:\s*/i, "");
     const model = String(input.body?.model || input.model || "dola-speed").split("/").pop();
     const fingerprint = cookieValue(cookie, "s_v_web_id") || cookieValue(cookie, "fp");
@@ -24,18 +25,24 @@ export class DoubaoWebExecutor extends BaseExecutor {
     const url = `${CHAT}?${query}`;
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Cookie: cookie, Origin: BASE, Referer: `${BASE}/chat/`, "Agw-Js-Conv": "str", "User-Agent": "Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36" };
     let upstream;
-    try { upstream = await this.fetch(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, input.proxyOptions); }
-    catch (e) { return { response: errorResponse(502, e.message || "Dola request failed"), url, headers, transformedBody: payload }; }
-    if (upstream.status >= 300 && upstream.status < 400) return { response: errorResponse(401, "Dola session was rejected"), url, headers, transformedBody: payload };
-    if (!upstream.ok) return { response: errorResponse(upstream.status, `Dola error: ${await upstream.text()}`), url, headers, transformedBody: payload };
+    const transport = this.fetch ? { transport: (options) => this.fetch(url, options, input.proxyOptions) } : undefined;
+    const result = (response) => ({ response, url, headers, transformedBody: payload });
+    try { upstream = await sendBillable(url, { method: "POST", headers, body: JSON.stringify(payload) }, transport); }
+    catch (e) {
+      if (isQuotaDispatchUnavailable(e)) throw e;
+      if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+      return result(errorResponse(502, e.message || "Dola request failed"));
+    }
+    if (upstream.status >= 300 && upstream.status < 400) return result(errorResponse(401, "Dola session was rejected"));
+    if (!upstream.ok) return result(errorResponse(upstream.status, `Dola error: ${await upstream.text()}`));
     const extract = (obj) => { const out = []; const blocks = [...(obj?.content?.content_block || obj?.data?.content?.content_block || [])]; for (const op of obj?.patch_op || obj?.data?.patch_op || []) blocks.push(...(op?.patch_value?.content_block || [])); for (const b of blocks) if (b?.content?.text_block?.text) out.push(b.content.text_block.text); return out; };
     const chunk = (content) => `data: ${JSON.stringify({ id: "chatcmpl-dola", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`;
     const raw = await upstream.text();
     const deltas = [];
     for (const block of raw.split(/\r?\n\r?\n/)) { const data = block.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("\n"); if (!data || data === "[DONE]") continue; try { deltas.push(...extract(JSON.parse(data))); } catch {} }
     const content = deltas.join("");
-    if (input.stream) return { response: new Response(`${deltas.map(chunk).join("")}data: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } }), url, headers, transformedBody: payload };
-    return { response: new Response(JSON.stringify({ id: "chatcmpl-dola", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }), { headers: { "Content-Type": "application/json" } }), url, headers, transformedBody: payload };
+    if (input.stream) return result(new Response(`${deltas.map(chunk).join("")}data: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } }));
+    return result(new Response(JSON.stringify({ id: "chatcmpl-dola", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }), { headers: { "Content-Type": "application/json" } }));
   }
 }
 export default DoubaoWebExecutor;

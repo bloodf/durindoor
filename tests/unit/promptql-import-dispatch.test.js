@@ -109,7 +109,9 @@ function chat(id, format, stream) {
 function mockPlayground(names, { authStatus = 200, gqlStatus = 200 } = {}) {
   const tokens = new Map(names.map((name) => [name, token(name)]));
   return fetchMock.mockImplementation(async (url, init) => {
-    expect(init.redirect).toBe("manual");
+    // Chat runs under quota dispatch, so the message send refuses redirects outright.
+    const sendsMessage = String(init.body).includes('"operationName":"StartThreadRoomless"');
+    expect(init.redirect).toBe(sendsMessage ? "error" : "manual");
     expect(init.method).toBe("POST");
     const headers = new Headers(init.headers);
     if (url === AUTH) {

@@ -160,8 +160,8 @@ function event(id, cost = 0.25, extra = {}) {
 }
 async function snapshot() {
   const result = {};
-  for (const table of ['usageHistory', 'usageDaily', 'apiKeyUsageTotals']) {
-    result[table] = (await sql.query(`SELECT * FROM "${table}" ORDER BY 1`)).rows;
+  for (const table of ['usageHistory', 'usageDailyRollups', 'apiKeyUsageTotals']) {
+    result[table] = (await sql.query(`SELECT * FROM "${table}" ORDER BY ${table === "usageDailyRollups" ? '"dateKey", id' : "1"}`)).rows;
   }
   result.receipts = (await sql.query("SELECT key, value FROM kv WHERE scope='usageEventReceipts' ORDER BY key")).rows;
   result.lifetime = (await sql.query("SELECT value FROM _meta WHERE key='totalRequestsLifetime'")).rows;
@@ -174,15 +174,15 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     fs.mkdirSync(diagnosticsDirectory, { recursive: true, mode: 0o700 });
     // Compile the same production imports for a plain Node child. Runtime
     // aliases and the shared CommonJS source need no loader hooks or flags.
-    const cache = path.join(repo, 'tests/node_modules/.cache');
-    fs.mkdirSync(cache, { recursive: true });
-    bundleDirectory = fs.mkdtempSync(path.join(cache, 'pg-accounting-'));
+    bundleDirectory = fs.mkdtempSync(path.join(directory, 'pg-accounting-'));
+    fs.symlinkSync(path.join(repo, 'node_modules'), path.join(bundleDirectory, 'node_modules'), 'dir');
     workerEntry = path.join(bundleDirectory, 'worker.mjs');
     const realtimeConfig = path.join(bundleDirectory, 'realtimeConfig.cjs');
     fs.copyFileSync(path.join(repo, 'src/shared/utils/realtimeConfig.js'), realtimeConfig);
     await build({
       entryPoints: [path.join(repo, 'tests/fixtures/postgres-accounting-worker.mjs')],
       outfile: workerEntry, bundle: true, platform: 'node', format: 'esm', packages: 'external',
+      banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
       alias: { '@': path.join(repo, 'src'), 'open-sse': path.join(repo, 'open-sse') },
       plugins: [{ name: 'shared-commonjs-source', setup(builder) {
         builder.onResolve({ filter: /realtimeConfig\.js$/ }, () => ({ path: realtimeConfig }));
@@ -213,7 +213,7 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     await sql.query('INSERT INTO "apiKeys"(id,key,name,"isActive","allowedCombos","createdAt") VALUES($1,$2,$3,1,$4,$5)', [keyId, apiKey, 'Synthetic fixture', '[]', timestamp]);
   }, 60_000);
   beforeEach(async () => {
-    await sql.query('TRUNCATE "usageHistory", "usageDaily", "usageLastSeen", "apiKeyUsageTotals" RESTART IDENTITY');
+    await sql.query('TRUNCATE "usageHistory", "usageDailyRollups", "usageLastSeen", "apiKeyUsageTotals" RESTART IDENTITY');
     await sql.query("DELETE FROM kv WHERE scope IN ('usageEventReceipts','mediaJobs','billing','pricing')");
     await sql.query("INSERT INTO kv(scope,key,value) VALUES('billing','epoch',$1)", [JSON.stringify(epoch)]);
     await sql.query("DELETE FROM _meta WHERE key='totalRequestsLifetime'");
@@ -287,7 +287,20 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       totals: { totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 },
       window: { day: { requests: 0 }, month: { requests: 0 } }
     } });
-    expect((await sql.query('SELECT "apiKey", status FROM "usageHistory"')).rows).toEqual([{ apiKey, status: 'error' }]);
+    expect((await sql.query('SELECT "apiKey", status FROM "usageHistory"')).rows).toEqual([{ apiKey: expect.stringMatching(/^hmac:[a-f0-9]{64}$/), status: 'error' }]);
+    const attribution = await sql.query(`SELECT history."apiKey" AS "historyKey",
+        rollup.metadata::jsonb ->> 'apiKey' AS "rollupKey", rollup.requests
+      FROM "usageHistory" AS history
+      JOIN "usageDailyRollups" AS rollup
+        ON rollup."dateKey" = LEFT(history.timestamp, 10)
+        AND rollup.dimension = 'byApiKey'
+      WHERE history.status = 'error'`);
+    expect(attribution.rows).toHaveLength(1);
+    expect(attribution.rows[0]).toEqual({
+      historyKey: attribution.rows[0].rollupKey,
+      rollupKey: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+      requests: 1,
+    });
     const failedStats = await a.call('stats');
     expect(failedStats.ok).toBe(true);
     expect(failedStats.value.totalRequests).toBe(1);
@@ -353,7 +366,7 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       expect(state.usageHistory).toHaveLength(4 * n);
       expect(state.receipts).toHaveLength(4 * n);
       expect(state.lifetime).toEqual([{ value: String(4 * n) }]);
-      const day = JSON.parse(state.usageDaily[0].data);
+      const day = state.usageDailyRollups.find((row) => row.dimension === 'total');
       expect(day).toMatchObject({ requests: 4 * n, cost: 1.25 * n, unknownCostRequests: n });
       expect((await sql.query('SELECT key FROM "apiKeys" WHERE id = $1', [keyId])).rows).toEqual([{ key: apiKey }]);
     }
@@ -437,8 +450,7 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       expect(state.lifetime).toEqual([{
         value: String(7 * n)
       }]);
-      for (const row of state.usageDaily) {
-        const day = JSON.parse(row.data);
+      for (const day of state.usageDailyRollups.filter((row) => row.dimension === 'total')) {
         expect(day).toMatchObject({
           requests: 7,
           cost: 0.5,
@@ -447,7 +459,8 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
           unknownCostRequests: 2
         });
         for (const dimension of ['byProvider', 'byModel', 'byAccount', 'byApiKey', 'byEndpoint']) {
-          expect(Object.values(day[dimension])).toEqual([expect.objectContaining({
+          const buckets = state.usageDailyRollups.filter((row) => row.dateKey === day.dateKey && row.dimension === dimension);
+          expect(buckets).toEqual([expect.objectContaining({
             requests: 7,
             cost: 0.5,
             unknownCostRequests: 2

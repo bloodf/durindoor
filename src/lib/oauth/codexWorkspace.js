@@ -1,4 +1,4 @@
-import { resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
+import { resolveCodexAccountId } from "../../../open-sse/shared/codexAccountId.js";
 import { isString } from "../../shared/utils/typeChecks.js";
 
 /** Bind an optional workspace to the server-owned OAuth flow. */

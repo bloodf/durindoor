@@ -42,12 +42,12 @@ it("leaves ordinary ChatGPT Web TLS calls at their default redirect behavior", a
   expect(wire).toHaveBeenCalledTimes(1);
   expect(wire.mock.calls[0][1].redirect).toBeUndefined();
 });
-it("leaves ordinary ChatGPT Web executor calls unguarded", async () => {
-  const wire = vi.fn(async () => result(401));
+it("guards ordinary ChatGPT Web TLS sends that carry the session cookie", async () => {
+  const wire = vi.fn(async () => result(302, "", { location: "https://other.invalid/collect" }));
   setChat(wire);
   await new ChatGptWebExecutor().execute(chatInput);
-  expect(wire.mock.calls[0][1].sameOriginRedirects).toBeUndefined();
-  expect(wire.mock.calls[0][1].redirect).toBeUndefined();
+  expect(wire.mock.calls[0][1]).toMatchObject({ sameOriginRedirects: true, redirect: "manual" });
+  expect(wire.mock.calls.some(([url]) => new URL(url).hostname === "other.invalid")).toBe(false);
 });
 describe("ChatGPT Web Codex browser redirects", () => {
   it.each([false, true])("intercepts same-origin redirect: %s", async (sameOrigin) => {

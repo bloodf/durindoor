@@ -71,6 +71,7 @@ describe("encoded protected route gates", () => {
     ["/api/oauth/commandcode/auto-import", "/api/oauth/commandcode/%61uto-import"],
     ["/api/oauth/kiro/auto-import", "/api/oauth/kiro/%61uto-import"],
     ["/api/oauth/xiaomi-mimo/auto-import", "/api/oauth/xiaomi-mimo/%61uto-import"],
+    ["/api/oauth/antigravity/rotation", "/api/oauth/antigravity/%72otation"],
   ])("gives plain and encoded ALWAYS_PROTECTED paths the same denial", async (plain, encoded) => {
     const plainResponse = await proxy(request(plain));
     const encodedResponse = await proxy(request(encoded));

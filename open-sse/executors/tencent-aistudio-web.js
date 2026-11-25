@@ -7,9 +7,10 @@
 // Completions. This port keeps that wire contract, adds the session and error
 // handling the source lacks (expired session, quota, redirect to login) and
 // normalises JSON/SSE so the reply always matches what the caller asked for.
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./web-session-executor.js";
 import { errorResponse } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isRefusedRedirect } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -91,12 +92,12 @@ function completionToSse(payload, model) {
   return chunk({ role: "assistant" }, null) + chunk({ content: text }, null) + chunk({}, choice?.finish_reason ?? "stop", payload.usage ? { usage: payload.usage } : {}) + "data: [DONE]\n\n";
 }
 
-export class TencentAIStudioWebExecutor extends BaseExecutor {
-  constructor() { super("tencent-aistudio-web", { id: "tencent-aistudio-web", baseUrl: TENCENT_AISTUDIO_ORIGIN }); }
+export class TencentAIStudioWebExecutor extends WebSessionExecutor {
+  constructor() { super("tencent-aistudio-web", { id: "tencent-aistudio-web", baseUrl: TENCENT_AISTUDIO_ORIGIN }, { observePatchedFetch: false }); }
 
   buildUrl(model) { return `${TENCENT_AISTUDIO_ORIGIN}/api/chat/${MODEL_MAP[modelKey(model)] || "HunyuanDefault"}`; }
 
-  async execute(input) {
+  async runSession(input, { sendBillable }) {
     const key = modelKey(input.model);
     const url = this.buildUrl(key);
     const cookie = tencentAIStudioCookie(input.credentials?.apiKey);
@@ -107,9 +108,11 @@ export class TencentAIStudioWebExecutor extends BaseExecutor {
     const body = { model: MODEL_MAP[key] || "HunyuanDefault", messages: Array.isArray(input.body?.messages) ? input.body.messages : [], stream: wantsStream };
     let upstream;
     try {
-      upstream = await proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(body), redirect: "manual", signal: input.signal }, input.proxyOptions);
+      upstream = await sendBillable(url, { method: "POST", headers, body: JSON.stringify(body) });
     } catch (error) {
-      if (error?.name === "AbortError") throw error;
+      if (error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
+      // The sign-in redirect an expired session receives.
+      if (isRefusedRedirect(error)) return reply(failure(401), { cookie: "[REDACTED]" });
       return reply(errorResponse(502, "Tencent AI Studio request failed: network error", { type: "upstream_error", code: "network_error" }), { cookie: "[REDACTED]" });
     }
     const shownHeaders = { ...headers, cookie: "[REDACTED]" };

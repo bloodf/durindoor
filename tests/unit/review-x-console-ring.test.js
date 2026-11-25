@@ -34,13 +34,14 @@ describe("console capture ring", () => {
     expect(buffer.getConsoleLogSnapshot()).toEqual({ logs: [], revision: 3 });
   });
 
-  it("defers serialization and bounds retained entries after 100k calls", async () => {
+  it("snapshots values and bounds retained entries after 100k calls", async () => {
     const buffer = await import("@/lib/consoleLogBuffer");
     buffer.initConsoleLogCapture();
     const toJSON = vi.fn(() => ({ payload: "x".repeat(10000) }));
     for (let index = 0; index < 100000; index += 1) console.log(index);
-    console.log({ toJSON });
-    expect(toJSON).not.toHaveBeenCalled();
+    const value = { toJSON };
+    console.log(value);
+    value.toJSON = () => ({ payload: "changed" });
     expect(global._consoleLogBufferState.logs).toHaveLength(CONSOLE_LOG_CONFIG.maxLines);
     expect(global._consoleLogBufferState.pendingLines).toHaveLength(0);
     const logs = buffer.getConsoleLogs();

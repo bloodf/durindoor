@@ -35,6 +35,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { refreshCapabilities } from "./tokenRefresh/capabilities.js";
 
 // ponytail: `groupTail` below is a process-local in-memory Map keyed by
 // rotation group. The ceiling is single-process: a multi-process deployment
@@ -48,19 +49,6 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // split serving across processes). Upgrade path if we ever multi-process:
 // persist groupTail to a shared store (Redis SETNX + TTL, or a SQLite
 // advisory lock keyed by rotation-group).
-
-// Providers mapped to the same string share one serialized lane.
-const ROTATION_LOCK_GROUP = {
-  codex: "openai-auth0",
-  openai: "openai-auth0",
-  claude: "anthropic-oauth",
-  "gitlab-duo": "gitlab-duo",
-  kiro: "kiro",
-  "amazon-q": "kiro",
-  "kimi-coding": "kimi-coding",
-  "kimi-ai": "kimi-ai",
-  qwen: "qwen",
-};
 
 // Protective settle gap (ms) between two consecutive sibling refreshes when
 // the env var is unset. Conservative by default; bursts are rare and
@@ -112,7 +100,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Returns the serialization group for a provider, or null when it is not a rotating provider. */
 export function rotationGroupFor(provider) {
-  return ROTATION_LOCK_GROUP[provider] ?? null;
+  return refreshCapabilities(provider).rotationGroup ?? null;
 }
 
 /**

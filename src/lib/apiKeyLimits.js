@@ -16,7 +16,7 @@
 // windows by the id keeps a key's budget intact across a secret change, and
 // keeps two keys that once shared a secret apart.
 import { getApiKeyByKey, getApiKeyUsageLimitStatus, getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
-import { getAdapterSync } from "@/lib/db/driver.js";
+import { findApiKeyIdSync } from "@/lib/db/repos/reportQueriesRepo.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
@@ -91,8 +91,7 @@ if (!state.listening) {
 function resolveKeyIdSync(apiKey) {
   if (!apiKey) return null;
   try {
-    const row = getAdapterSync().get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey]);
-    return row?.id || null;
+    return findApiKeyIdSync(apiKey);
   } catch {
     return null;
   }

@@ -134,6 +134,21 @@ function hasAntigravityQuotaSignal(bodyText) {
   return isString(bodyText) && ANTIGRAVITY_QUOTA_SIGNAL_MARKERS.some((marker) => bodyText.includes(marker));
 }
 
+/**
+ * decolua/9router#3394: Antigravity names an empty Google One AI credit balance
+ * only in `google.rpc.ErrorInfo.reason`. The 429 body is redacted after this
+ * module, so account fallback can only learn it from the evidence.
+ */
+function hasAntigravityCreditExhaustion(bodyText) {
+  if (!isString(bodyText) || bodyText.length > 64 * 1024) return false;
+  let root;
+  try {root = JSON.parse(bodyText);} catch {return false;}
+  const details = root?.error?.details ?? root?.details;
+  return Array.isArray(details) && details.slice(0, 50).some((detail) =>
+    isString(detail?.["@type"]) && detail["@type"].includes("ErrorInfo") &&
+    String(detail.reason || "").toUpperCase() === "INSUFFICIENT_G1_CREDITS_BALANCE");
+}
+
 function isAntigravityContentRejection(bodyText) {
   return isString(bodyText) && bodyText.includes(ANTIGRAVITY_CONTENT_REJECTION_TEXT) && !hasAntigravityQuotaSignal(bodyText);
 }
@@ -426,10 +441,14 @@ export function parseRateLimitEvidence({
     }
   }
 
+  // An upstream reset stays authoritative; the flag only covers an open-ended one.
+  const creditsExhausted = isAntigravityProvider && !resetAtMs && hasAntigravityCreditExhaustion(bodyText);
+
   return {
-    state: explicitQuota || dailyExhausted ? "exhausted" : "cooldown",
+    state: explicitQuota || dailyExhausted || creditsExhausted ? "exhausted" : "cooldown",
     resetAtMs,
-    source: source || "local_policy"
+    source: source || "local_policy",
+    ...(creditsExhausted ? { creditsExhausted: true } : null)
   };
 }
 

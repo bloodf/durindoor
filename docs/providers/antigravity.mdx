@@ -57,7 +57,8 @@ The [Quota Tracker](../features/quota-tracking.mdx) shows one row per model from
 | 503 `MODEL_CAPACITY_EXHAUSTED` or "No capacity available for model" | Treated as Google-side capacity, not an account problem. Falls back to the next account with no cooldown, and sweeps all accounts again up to two times. |
 | 403 "has not been used in project", `SERVICE_DISABLED`, `accessNotConfigured` | Treated as a project setup problem. Falls back with no cooldown. Finish onboarding or enable the API in that project. |
 | 403 saying the account is disabled, suspended, or in breach of terms | Normal two minute cooldown. Reconnecting will not help. |
-| 429 | Cooldown from Google's reset hint when present, otherwise exponential backoff. |
+| 429 whose error details give the reason `INSUFFICIENT_G1_CREDITS_BALANCE` and no reset time | The Google One AI credit balance is empty. DurinDoor locks the whole account for 24 hours and falls back to the next one. If the refreshed quota already blocks the account, it moves on without adding this lock. |
+| Other 429 | Cooldown from Google's reset hint when present, otherwise exponential backoff. |
 
 The project-403 check currently matches `antigravity` and `gemini-cli` only, so an `agy` connection gets the normal cooldown for the same error.
 

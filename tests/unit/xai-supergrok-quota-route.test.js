@@ -26,6 +26,11 @@ vi.mock("open-sse/services/usage.js", () => ({ getUsageForProvider: mocks.getUsa
 vi.mock("open-sse/services/usage/grok-cli.js", () => ({
   fetchGrokCliCreditsConfig: mocks.fetchGrokCliCreditsConfig,
 }));
+// The OAuth billing read (upstream #2672) is covered separately; keep it offline here.
+vi.mock("@/lib/usage/xaiQuotaAdapter.js", () => ({
+  fetchXaiQuota: vi.fn(),
+  fetchXaiOAuthAccount: vi.fn(async () => ({ outcome: "unknown", quotas: {} })),
+}));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig }));
 vi.mock("@/shared/constants/providers", () => ({ USAGE_APIKEY_PROVIDERS: [] }));
 vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({

@@ -1,6 +1,7 @@
 import { isString } from "../../shared/utils/typeChecks.js";
 import { connectionData, createProviderRequest, providerFailure } from "../../../open-sse/services/quota/providerHelpers.js";
-import { parseGrokCliBilling } from "../../../open-sse/services/usage/grok-cli.js";
+import { buildGrokCliHeaders, parseGrokCliBilling } from "../../../open-sse/services/usage/grok-cli.js";
+import { proxyAwareFetch } from "../../../open-sse/utils/proxyFetch.js";
 
 const SOURCE_ID = "xai:management-prepaid:v1";
 
@@ -59,4 +60,24 @@ export async function fetchXaiOAuthQuota(context) {
   const parsed = parseGrokCliBilling(result.data);
   if (!Object.keys(parsed.quotas || {}).length) return { outcome: "malformed", sourceId, quotas: {} };
   return { outcome: "success", sourceId, plan: parsed.plan, quotas: parsed.quotas };
+}
+
+/**
+ * OAuth billing quota plus the account's subscription plan
+ * (upstream decolua/9router#2672). Both reads keep the connection's egress
+ * policy. The profile read is best-effort: billing alone is still a result.
+ */
+export async function fetchXaiOAuthAccount(context) {
+  const live = { ...context, fetchImpl: context.fetchImpl || proxyAwareFetch };
+  const token = context.connection?.accessToken;
+  const [snapshot, user] = await Promise.all([
+    fetchXaiOAuthQuota(live),
+    isString(token) && token.trim() ?
+    createProviderRequest(live)("https://cli-chat-proxy.grok.com/v1/user?include=subscription", {
+      method: "GET", headers: buildGrokCliHeaders(token.trim(), connectionData(context.connection))
+    }) :
+    null
+  ]);
+  if (snapshot.outcome !== "success" || !user?.ok) return snapshot;
+  return { ...snapshot, plan: parseGrokCliBilling({}, user.data).plan };
 }

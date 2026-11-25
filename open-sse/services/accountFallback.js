@@ -322,6 +322,16 @@ function classifyFallbackError({
     }
   }
 
+  // OmniRoute ce3d869: CodeBuddy International states its unlock time in UTC
+  // prose even when the message does not identify an exhausted quota.
+  if (status === 429 && provider === "codebuddy-intl") {
+    const now = Date.now();
+    const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, provider, now });
+    if (evidence?.source === "quota_text" && Number.isFinite(evidence.resetAtMs)) {
+      return { shouldFallback: true, cooldownMs: evidence.resetAtMs - now, newBackoffLevel: 0, scope: "connection", rateLimitEvidence: evidence };
+    }
+  }
+
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
   // exhausted daily/weekly/monthly quota must honor the real reset window, not
   // the generic exponential backoff. Reuse the native evidence parser so an

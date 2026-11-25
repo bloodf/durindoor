@@ -763,12 +763,16 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
     } else {
       // Never fold trailing system content backward into a completed user turn.
-      // Its 1h cache marker still states the client's TTL, so that alone moves to
-      // the last user block for anchorClaudeCache to read.
-      const hourMarker = buffered.find((block) => block.cache_control?.ttl === "1h")?.cache_control;
-      const lastUser = hourMarker ? messages.findLast((m) => m.role === ROLE.USER && Array.isArray(m.content)) : null;
-      const tail = lastUser?.content.at(-1);
-      if (tail && !tail.cache_control) lastUser.content = [...lastUser.content.slice(0, -1), { ...tail, cache_control: { ...hourMarker } }];
+      // Its cache marker still states the client's TTL (1h wins), so that alone
+      // moves to the last user turn for anchorClaudeCache to read.
+      const markers = buffered.map((block) => validCacheMarker(block?.cache_control)).filter(Boolean);
+      const marker = markers.find((entry) => entry.ttl === "1h") ?? markers.at(-1);
+      const lastUser = marker ? messages.findLast((m) => m.role === ROLE.USER && (Array.isArray(m.content) || isString(m.content) && m.content)) : null;
+      if (lastUser) {
+        const content = isString(lastUser.content) ? [{ type: CLAUDE_BLOCK.TEXT, text: lastUser.content }] : lastUser.content;
+        const tail = content.at(-1);
+        if (tail && !tail.cache_control) lastUser.content = [...content.slice(0, -1), { ...tail, cache_control: marker }];
+      }
       body.messages = messages;
     }
   }

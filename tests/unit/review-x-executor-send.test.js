@@ -14,18 +14,8 @@ const { parse } = createRequire(new URL("../../package.json", import.meta.url))(
 const executorsDir = new URL("../../open-sse/executors/", import.meta.url);
 
 const overrideAllowlist = {
-  "adapta-web.js": "Adapta browser-session chat transport awaits migration.",
-  "blackbox-web.js": "Blackbox has separate session, subscription, and chat requests.",
-  "chatgpt-web-http.js": "ChatGPT Web owns its browser-session HTTP protocol.",
   "chatgpt-web.js": "Selects between browser and HTTP ChatGPT transports.",
-  "chatplayground.js": "ChatPlayground owns its session and chat stream requests.",
-  "claude-web.js": "Claude Web owns its organization and conversation requests.",
-  "cliproxyapi.js": "Talks to an operator-managed CLIProxyAPI backend.",
   "cloudflare-playground.js": "Cloudflare Playground owns its session and inference requests.",
-  "codex-app-server.js": "Uses the local Codex app server RPC transport.",
-  "conol-web.js": "Conol creates sessions and resolves models before posting messages.",
-  "copilot-m365-web.js": "Microsoft 365 Copilot owns its web-session conversation transport.",
-  "copilot-web.js": "Copilot Web owns its web-session authentication and conversation transport.",
   "cursor.js": "Cursor owns its binary Agent and Chat protocol transports.",
   "deepseek-web.js": "DeepSeek Web manages session creation and proof of work.",
   "devin-cli-agentic.js": "Dispatches through the Devin CLI bridge.",

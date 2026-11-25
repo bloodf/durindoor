@@ -6,9 +6,10 @@ import { resolveCredentialProxyOptions } from "../services/oauthCredentialManage
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting } from "./mediaAccounting.js";
 import { createSseFrameReader } from "../utils/sseFrames.js";
+import { createMediaRegistry, lookupMediaAdapter } from "./mediaRegistry.js";
 
 
-const MUSIC_PROVIDERS = {
+export const MUSIC_ADAPTERS = createMediaRegistry({
   suno: {
     baseUrl: "https://studio-api.suno.ai/api/generate/v2/",
     referer: "https://suno.ai/",
@@ -17,7 +18,7 @@ const MUSIC_PROVIDERS = {
     baseUrl: "https://www.udio.com/api/generate-proxy",
     referer: "https://www.udio.com/",
   },
-};
+});
 
 function cookieHeader(credentials) {
   const raw = credentials?.apiKey || credentials?.accessToken || "";
@@ -170,7 +171,7 @@ async function handleMinimaxMusicGeneration({ provider, model, body, credentials
 
 export async function handleMusicGenerationCore({ provider, model, body, credentials, requestId = null, signal, onComplete }) {
   if (provider === "minimax" || provider === "minimax-cn") return handleMinimaxMusicGeneration({ provider, model, body, credentials, signal, onComplete });
-  const config = MUSIC_PROVIDERS[provider];
+  const config = lookupMediaAdapter(MUSIC_ADAPTERS, provider);
   if (!config) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support music generation`);
   if (!requestId && !body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
   if (requestId && !/^[\w-]+(?:,[\w-]+)*$/.test(requestId)) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Invalid music request id");

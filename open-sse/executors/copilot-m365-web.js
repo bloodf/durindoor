@@ -1,5 +1,8 @@
 import WebSocket from "ws";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -258,17 +261,26 @@ export class CopilotM365WebExecutor extends BaseExecutor {
 
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    // The latest chat turn on the wire; every result after it carries its quota ticket.
+    let sent = null;
+    let dispatch = null;
     const body = input.body || {};
     const model = input.model || body.model || "copilot-m365";
     const stream = input.stream !== false;
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const diagnosticUrl = "wss://substrate.office.com/m365Copilot/Chathub";
-    const wrap = (response, url = diagnosticUrl, transformedBody = null) => ({
-      response,
-      url,
-      headers: {},
-      transformedBody
-    });
+    const wrap = (response, url = diagnosticUrl, transformedBody = null) => {
+      transferProviderAttemptDispatch(sent, response);
+      return {
+        response,
+        url,
+        headers: {},
+        transformedBody,
+        attemptStartedAt: sender.attemptStartedAt
+      };
+    };
 
     let history;
     try {
@@ -351,7 +363,9 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           conversationId: ids.conversationId,
           image,
           signal: input.signal,
-          proxyOptions: input.proxyOptions
+          proxyOptions: input.proxyOptions,
+          // An upload is setup: it uses the transport policy but charges no quota.
+          send: (url, init, proxyOptions) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false })
         }));
       }
     } catch (error) {
@@ -383,9 +397,20 @@ export class CopilotM365WebExecutor extends BaseExecutor {
       const message = extractFinalResultMessage(frame);
       if (message) finalResultMessage = message;
     };
+    // Starting a socket turn is the physical send. It stands in for response headers,
+    // so the socket's own stall timers bound the turn, not the header deadline.
+    const sendTurn = async (url, turnInvocation, signal, onFrame) => {
+      dispatch = sender.sendRequest(redactWsUrl(url), { signal }, input.proxyOptions, {
+        transport: ({ signal: turnSignal }) => ({
+          done: runM365Socket({ wsUrl: url, proxyOptions: input.proxyOptions, invocation: turnInvocation, signal: turnSignal, onFrame })
+        })
+      });
+      sent = await dispatch;
+      await sent.done;
+    };
     const runTurn = async (onFrame, signal = input.signal) => {
       try {
-        await runM365Socket({ wsUrl, proxyOptions: input.proxyOptions, invocation, signal, onFrame });
+        await sendTurn(wsUrl, invocation, signal, onFrame);
       } catch (error) {
         if (error?.code !== "M365_INTERNAL_ERROR" || composer.text || finalResultMessage || signal?.aborted) throw error;
         // InternalError leaves the current conversation unusable. Retry once with entirely new
@@ -404,7 +429,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         args.message.requestId = freshParts.searchParams.get("chatsessionid");
         composer = new M365TurnComposer();
         finalResultMessage = "";
-        await runM365Socket({ wsUrl: freshUrl, proxyOptions: input.proxyOptions, invocation: freshInvocation, signal, onFrame });
+        await settleProviderAttemptDispatch(sent, { reason: "fallback" });
+        await sendTurn(freshUrl, freshInvocation, signal, onFrame);
       }
     };
     const output = m365Output(model);
@@ -457,8 +483,11 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         }
       }, { highWaterMark: 16384 });
       const earlyError = await first;
+      // The first frame can beat the sender's bookkeeping; the ticket must be bound before wrapping.
+      await dispatch?.catch(() => {});
       if (earlyError) {
         await relay.cancel().catch(() => {});
+        if (isQuotaDispatchUnavailable(earlyError)) throw earlyError;
         return wrap(failureResponse(earlyError, model), redactedUrl, logged);
       }
       return wrap(new Response(relay, {
@@ -472,6 +501,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           composer.push(frame);
         });
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       return wrap(failureResponse(error, model), redactedUrl, logged);
     }
 

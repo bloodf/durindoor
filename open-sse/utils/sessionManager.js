@@ -145,7 +145,7 @@ function extractAntigravitySession(body) {
   return m ? normalizeSessionId(m[1]) : null;
 }
 
-export function extractClientSessionId(headers, body, scope = "") {
+function extractRawClientSessionId(headers, body, scope = "") {
   // Claude Code also sends the session in a header that survives translation to
   // formats that drop metadata (e.g. Responses API). Header fallback is Claude-scope only.
   const claude = extractClaudeCodeSession(body?.metadata?.user_id) || (
@@ -167,6 +167,14 @@ export function extractClientSessionId(headers, body, scope = "") {
   normalizeSessionId(body?.conversation_id) || (
   scope === "kiro" ? null : normalizeSessionId(body?.metadata?.user_id));
   return fromBody || null;
+}
+
+/** Encode non-printable or non-ASCII client IDs, reserving the encoded prefix. */
+export function extractClientSessionId(headers, body, scope = "") {
+  const id = extractRawClientSessionId(headers, body, scope);
+  if (!id) return null;
+  if (/^[\x20-\x7e]+$/.test(id) && !id.startsWith("sid_")) return id;
+  return `sid_${crypto.createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
 }
 
 export function resolveClientSessionId({ headers, body, scope = "" } = {}) {

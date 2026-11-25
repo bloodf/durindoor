@@ -76,6 +76,37 @@ function collectImageRefs(body, sourceFormat) {
 }
 
 /**
+ * One request's image allowance: at most MAX_IMAGES_PER_REQUEST fetch attempts
+ * and MAX_IMAGE_BYTES of fetched data. Await each call before starting the next.
+ * Resolves null, without fetching, once the allowance is spent or the signal aborts.
+ *
+ * @param {object} options - fetchImageAsBase64 options
+ * @returns {(url: string) => Promise<{url: string, mimeType: string}|null>}
+ */
+export function createBudgetedImageFetcher(options = {}) {
+  let attempted = 0;
+  let totalBytes = 0;
+  return async (url) => {
+    const remainingBytes = MAX_IMAGE_BYTES - totalBytes;
+    if (attempted >= MAX_IMAGES_PER_REQUEST || remainingBytes <= 0 || options.signal?.aborted) return null;
+    attempted++;
+    const configuredMaxBytes = options.maxBytes ?? MAX_IMAGE_BYTES;
+    const fetchOptions = totalBytes === 0 && configuredMaxBytes <= MAX_IMAGE_BYTES ? options : {
+      ...options,
+      maxBytes: Math.min(configuredMaxBytes, remainingBytes),
+    };
+    const fetched = await fetchImageAsBase64(url, fetchOptions);
+    if (!fetched) return null;
+    const payload = fetched.url.split(",")[1] || "";
+    const imageBytes = Math.max(0, Math.floor(payload.length * 3 / 4) -
+      (payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0));
+    if (totalBytes + imageBytes > MAX_IMAGE_BYTES) return null;
+    totalBytes += imageBytes;
+    return fetched;
+  };
+}
+
+/**
  * Replace remote image URLs with base64 data when the target needs inline data.
  * No-op when target accepts remote URLs (e.g. openai, claude) or body has none.
  * @returns {Promise<number>} count of images converted
@@ -86,23 +117,12 @@ export async function prefetchRemoteImages(body, sourceFormat, targetFormat, opt
   if (!refs.length) return 0;
 
   let converted = 0;
-  let totalBytes = 0;
-  for (const ref of refs.slice(0, MAX_IMAGES_PER_REQUEST)) {
+  const fetchImage = createBudgetedImageFetcher(options);
+  for (const ref of refs) {
     const url = ref.get();
     if (parseDataUri(url)) continue; // already inline
-    const remainingBytes = MAX_IMAGE_BYTES - totalBytes;
-    const configuredMaxBytes = options.maxBytes ?? MAX_IMAGE_BYTES;
-    const fetchOptions = totalBytes === 0 && configuredMaxBytes <= MAX_IMAGE_BYTES ? options : {
-      ...options,
-      maxBytes: Math.min(configuredMaxBytes, remainingBytes),
-    };
-    const fetched = await fetchImageAsBase64(url, fetchOptions);
+    const fetched = await fetchImage(url);
     if (!fetched) continue;
-    const payload = fetched.url.split(",")[1] || "";
-    const imageBytes = Math.max(0, Math.floor(payload.length * 3 / 4) -
-      (payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0));
-    if (totalBytes + imageBytes > MAX_IMAGE_BYTES) continue;
-    totalBytes += imageBytes;
     if (ref.set) ref.set(fetched.url);else
     if (ref.part) {delete ref.part.fileData;ref.part.inlineData = { mimeType: fetched.mimeType, data: fetched.url.split(",")[1] };} else
     if (ref.claudeBlock) ref.claudeBlock.source = { type: "base64", media_type: fetched.mimeType, data: fetched.url.split(",")[1] };

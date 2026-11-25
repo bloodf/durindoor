@@ -26,37 +26,72 @@ const interruptedComputerCall = (callId) => ({
 
 const pairKey = (outputType, callId) => `${outputType}\0${callId}`;
 
-function normalizeCallId(id) {
-  if (!isString(id) || !id) return id;
-  // Composite `call|item` ids correlate on the first part only.
-  const base = id.split(/[\n|]/).find(Boolean) || id;
+// Composite `call|item` ids correlate on the first part only.
+const correlationId = (id) => isString(id) && id ? (id.split(/[\n|]/).find(Boolean) || id) : id;
+
+function normalizeCallId(base) {
   const safe = base.replace(/[^A-Za-z0-9_-]/g, "_");
   if (safe === base) return clampResponsesCallId(safe);
   // Hash the raw value so `a.b` and `a_b` cannot merge.
   return clampResponsesCallId(`${safe}_${createHash("sha256").update(base).digest("hex").slice(0, 8)}`);
 }
 
-// Every id path (Responses `call_id`, chat `tool_calls[].id`, chat
-// `tool_call_id`) goes through the same normalization so a call and its result
-// still match when the two use different item shapes.
-function normalizeItemIds(item) {
+// Every id path: Responses `call_id`, chat `tool_calls[].id`, chat `tool_call_id`.
+function itemIds(item) {
+  const ids = [];
+  if (OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)) ids.push(item.call_id);
+  for (const toolCall of Array.isArray(item?.tool_calls) ? item.tool_calls : []) ids.push(toolCall?.id);
+  if (item?.role === ROLE.TOOL) ids.push(item.tool_call_id);
+  return ids.filter((id) => isString(id) && id);
+}
+
+// One mapping for the whole request, so a call and its result still match when
+// the two use different item shapes. Already-valid ids are reserved first so a
+// normalized id can never take one of them.
+function buildCallIdMapping(input) {
+  const ids = input.flatMap(itemIds).map(correlationId);
+  const mapping = new Map();
+  const used = new Set();
+  for (const id of ids) {
+    if (/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
+      mapping.set(id, id);
+      used.add(id);
+    }
+  }
+  for (const id of ids) {
+    if (mapping.has(id)) continue;
+    const normalized = normalizeCallId(id);
+    let candidate = normalized;
+    let counter = 2;
+    while (used.has(candidate)) {
+      const suffix = `_${counter++}`;
+      candidate = `${normalized.slice(0, 64 - suffix.length)}${suffix}`;
+    }
+    mapping.set(id, candidate);
+    used.add(candidate);
+  }
+  return (id) => mapping.get(correlationId(id)) ?? id;
+}
+
+function normalizeItemIds(item, mapped) {
   if (OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)) {
-    return { ...item, call_id: normalizeCallId(item.call_id) };
+    return { ...item, call_id: mapped(item.call_id) };
   }
   let next = item;
   if (Array.isArray(item?.tool_calls)) {
     next = { ...next, tool_calls: item.tool_calls.map((toolCall) => isString(toolCall?.id)
-      ? { ...toolCall, id: normalizeCallId(toolCall.id) }
+      ? { ...toolCall, id: mapped(toolCall.id) }
       : toolCall) };
   }
   if (item?.role === ROLE.TOOL && isString(item.tool_call_id)) {
-    next = { ...next, tool_call_id: normalizeCallId(item.tool_call_id) };
+    next = { ...next, tool_call_id: mapped(item.tool_call_id) };
   }
   return next;
 }
 
 /**
- * Normalize call ids, drop results with no call of the same kind, and add a
+ * Reserve valid IDs and assign unique, deterministic IDs across the request,
+ * then drop results with no call of the same kind and add a
  * placeholder result after each function or custom call that has none. An
  * unanswered computer call is replaced with a note.
  *
@@ -64,7 +99,8 @@ function normalizeItemIds(item) {
  * @returns {Array} repaired items; the caller's items are not mutated.
  */
 export function repairCodexToolHistory(input) {
-  const items = input.map(normalizeItemIds);
+  const mapped = buildCallIdMapping(input);
+  const items = input.map((item) => normalizeItemIds(item, mapped));
 
   const calls = new Set();
   const answered = new Set();

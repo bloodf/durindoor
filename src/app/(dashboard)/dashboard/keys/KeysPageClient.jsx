@@ -1056,7 +1056,7 @@ export default function KeysPageClient() {
             checked={editKeyIsAdmin}
             onChange={(checked) => { setEditKeyIsAdmin(checked); setEditKeyStatus(null); }}
           />
-          {combos.length > 0 ? (
+          {combos.length > 0 || editKeyAllowedCombos.length > 0 ? (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-dd-muted">Select which combos this key can access. Leave empty to allow all.</p>
               <div tabIndex={0} aria-label="Allowed combos for key" className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-dd-lg border border-dd-border p-2" role="region">
@@ -1073,6 +1073,15 @@ export default function KeysPageClient() {
                     }}
                     label={combo.name}
                     hint={combo.kind}
+                  />
+                ))}
+                {editKeyAllowedCombos.filter((name) => !combos.some((combo) => combo.name === name)).map((name) => (
+                  <Checkbox
+                    key={name}
+                    checked
+                    onChange={() => setEditKeyAllowedCombos((prev) => prev.filter((entry) => entry !== name))}
+                    label={name}
+                    hint="Unavailable combo; clear to remove this grant."
                   />
                 ))}
               </div>

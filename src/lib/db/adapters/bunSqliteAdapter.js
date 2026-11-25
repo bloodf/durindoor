@@ -29,8 +29,9 @@ export async function createBunSqliteAdapter(filePath) {
 
   // bun:sqlite exposes no open flag; track our own close outcome.
   let isOpen = true;
-  function gracefulClose() {
-    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
+  // beforeExit passes an exit code here, so only an explicit false skips the checkpoint.
+  function gracefulClose(checkpoint) {
+    if (checkpoint !== false) try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
     try {stmtCache.clear();} catch {}
     // close(true) makes bun throw on pending queries instead of staying silently open.
     try {db.close(true); isOpen = false;} catch {}
@@ -70,9 +71,10 @@ export async function createBunSqliteAdapter(filePath) {
       const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
       return assertCheckpointComplete(row, "bun:sqlite");
     },
-    close() {
+    // checkpoint: false skips the explicit pre-close checkpoint, not driver behavior.
+    close({ checkpoint } = {}) {
       clearInterval(checkpointTimer);
-      gracefulClose();
+      gracefulClose(checkpoint);
     },
     // Per-handle state for releaseExclusiveLock(). bun:sqlite throws when
     // inTransaction is read after close, so our own flag guards the read.

@@ -1,14 +1,16 @@
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { HuggingChatStreamError, readJsonlResponse, streamJsonlToOpenAi } from "./huggingchat/jsonlStream.js";
 import {
   errorJson,
   estimateTokens,
   extractTextFromContent,
-  fetchWithTimeout,
   jsonResponse,
   mergeUpstreamExtraHeaders,
   normalizeSessionCookieHeader,
-  sanitizeErrorMessage } from
+  sanitizeErrorMessage,
+  WEBSESSION_FETCH_TIMEOUT_MS } from
 "./websession-utils.js";
 import huggingchatRegistry from "../providers/registry/huggingchat.js";
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -114,8 +116,8 @@ async function readUpstreamErrorDetails(response) {
   }
 }
 
-async function fetchInitialParentMessageId(conversationId, headers, signal, proxyOptions = null) {
-  const res = await fetchWithTimeout(`${API_CONVERSATIONS_URL}/${conversationId}`, { method: "GET", headers, signal }, { proxyOptions });
+async function fetchInitialParentMessageId(conversationId, headers, signal, send) {
+  const res = await send(`${API_CONVERSATIONS_URL}/${conversationId}`, { method: "GET", headers, signal });
   if (!res.ok) return { id: null, status: res.status };
   const text = await res.text().catch(() => "");
   if (!text) return { id: null, status: 200 };
@@ -128,11 +130,21 @@ async function fetchInitialParentMessageId(conversationId, headers, signal, prox
 
 export class HuggingChatExecutor extends BaseExecutor {
   constructor() {
-    super("huggingchat", { id: "huggingchat", baseUrl: HUGGINGFACE_BASE });
+    super("huggingchat", { id: "huggingchat", baseUrl: HUGGINGFACE_BASE, timeoutMs: WEBSESSION_FETCH_TIMEOUT_MS });
   }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const { model, body, stream, credentials = {}, signal, log, upstreamExtraHeaders, proxyOptions = null } = input;
+    // Conversation setup is not charged; only the message send is quota-bearing.
+    // Without a connection route the send goes through the (patched) global fetch.
+    const send = (url, init, quotaBearing = false) =>
+      sender.sendRequest(url, init, proxyOptions, { quotaBearing, globalFetch: !proxyOptions });
     const messages = body?.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
       return { response: errorJson(400, "Missing or empty messages array", "invalid_request"), url: CONVERSATION_URL, headers: {}, transformedBody: body };
@@ -162,12 +174,12 @@ export class HuggingChatExecutor extends BaseExecutor {
     try {
       const createBody = { model: resolvedModel };
       if (systemPrompt) createBody.preprompt = systemPrompt;
-      const createRes = await fetchWithTimeout(CONVERSATION_URL, {
+      const createRes = await send(CONVERSATION_URL, {
         method: "POST",
         headers: { ...baseHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(createBody),
         signal
-      }, { proxyOptions });
+      });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
         let message = upstreamFailureMessage(createRes.status, `HuggingChat conversation creation failed (HTTP ${createRes.status})`);
@@ -188,7 +200,7 @@ export class HuggingChatExecutor extends BaseExecutor {
 
     let parent;
     try {
-      parent = await fetchInitialParentMessageId(conversationId, baseHeaders, signal, proxyOptions);
+      parent = await fetchInitialParentMessageId(conversationId, baseHeaders, signal, send);
     } catch (err) {
       log?.error?.("HUGGINGCHAT", `Conversation lookup failed: ${err?.message || err}`);
       return { response: errorJson(502, `HuggingChat connection failed: ${err?.message || err}`), url: `${API_CONVERSATIONS_URL}/${conversationId}`, headers: baseHeaders, transformedBody: body };
@@ -217,8 +229,9 @@ export class HuggingChatExecutor extends BaseExecutor {
 
     let upstreamResponse;
     try {
-      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: baseHeaders, body: formData, signal }, { proxyOptions });
+      upstreamResponse = billed(await send(messageUrl, { method: "POST", headers: baseHeaders, body: formData, signal }, true));
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("HUGGINGCHAT", `Message send failed: ${err?.message || err}`);
       return { response: errorJson(502, `HuggingChat connection failed: ${err?.message || err}`), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
     }

@@ -288,6 +288,19 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       window: { day: { requests: 0 }, month: { requests: 0 } }
     } });
     expect((await sql.query('SELECT "apiKey", status FROM "usageHistory"')).rows).toEqual([{ apiKey: expect.stringMatching(/^hmac:[a-f0-9]{64}$/), status: 'error' }]);
+    const attribution = await sql.query(`SELECT history."apiKey" AS "historyKey",
+        rollup.metadata::jsonb ->> 'apiKey' AS "rollupKey", rollup.requests
+      FROM "usageHistory" AS history
+      JOIN "usageDailyRollups" AS rollup
+        ON rollup."dateKey" = LEFT(history.timestamp, 10)
+        AND rollup.dimension = 'byApiKey'
+      WHERE history.status = 'error'`);
+    expect(attribution.rows).toHaveLength(1);
+    expect(attribution.rows[0]).toEqual({
+      historyKey: attribution.rows[0].rollupKey,
+      rollupKey: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+      requests: 1,
+    });
     const failedStats = await a.call('stats');
     expect(failedStats.ok).toBe(true);
     expect(failedStats.value.totalRequests).toBe(1);

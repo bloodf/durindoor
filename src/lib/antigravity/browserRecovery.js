@@ -1,3 +1,4 @@
+// This helper is gated future work and is not wired into the production path.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

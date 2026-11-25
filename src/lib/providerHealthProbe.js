@@ -56,30 +56,30 @@ const usesSignedAwsAuth = (connection) =>
  */
 async function proxyAware(url, options, effectiveProxy, fetcher) {
   const opts = { ...options, redirect: "manual" };
-  let routedFetcher = fetcher ?? fetch;
-  if (effectiveProxy?.vercelRelayUrl) {
-    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    routedFetcher = (target, init) => proxyAwareFetch(target, init, {
-      vercelRelayUrl: effectiveProxy.vercelRelayUrl,
-    });
-  } else if (effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl) {
-    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    routedFetcher = (target, init) => proxyAwareFetch(target, init, {
-      connectionProxyEnabled: true,
-      connectionProxyUrl: effectiveProxy.connectionProxyUrl,
-      connectionNoProxy: effectiveProxy.connectionNoProxy || "",
-    });
-  }
-  // A real configured proxy resolves the provider host at its egress hop, so
-  // the local DNS-pinning dispatcher cannot be attached to that request.
-  // Keep the URL policy check above each probe, then let proxyAwareFetch route
-  // it. Injected fetchers remain guarded for deterministic tests and callers.
   const hasConfiguredProxy = Boolean(
     effectiveProxy?.vercelRelayUrl ||
     effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl
   );
-  if (hasConfiguredProxy && routedFetcher === fetch && (!fetcher || fetcher === fetch)) {
-    return routedFetcher(url, opts);
+  // Proxy egress resolves the provider host; the direct DNS-pinning dispatcher
+  // cannot be combined with it. URL policy still applies before dispatch, and
+  // strict proxy routing prevents an unguarded direct fallback.
+  if (hasConfiguredProxy && (!fetcher || fetcher === fetch)) {
+    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
+    try {
+      return await proxyAwareFetch(url, opts, { ...effectiveProxy, strictProxy: true });
+    } catch (error) {
+      if (error instanceof OutboundUrlGuardError) throw error;
+      throw new OutboundUrlGuardError("Configured proxy probe failed", {
+        code: "OUTBOUND_URL_GUARD_BLOCKED", url: String(url),
+      });
+    }
+  }
+  // Caller-injected fetchers retain the guarded dispatcher, including when a
+  // proxy is configured, so they cannot silently replace the egress guard.
+  let routedFetcher = fetcher ?? fetch;
+  if (hasConfiguredProxy) {
+    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
+    routedFetcher = (target, init) => proxyAwareFetch(target, init, { ...effectiveProxy, strictProxy: true });
   }
   return guardedProbeFetch(url, opts, getProviderValidationGuard(), routedFetcher);
 }

@@ -1750,10 +1750,9 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       }
     }
 
-    // Recovery succeeded — the OK path below handles the streamed response.
-    if (providerResponse.ok) {
-      finishProviderRequest();
-    } else {
+    // Recovery succeeded: the OK path below handles the streamed response and
+    // releases the slot only once it has been delivered.
+    if (!providerResponse.ok) {
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");

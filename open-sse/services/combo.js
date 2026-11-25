@@ -8,6 +8,7 @@ import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
+import { isWrongModelError } from "../config/errorConfig.js";
 import { errorResponse, unavailableResponse, getClientStatusFromError, sanitizeErrorMessage } from "../utils/error.js";
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
 import { hasTokenLimitCompletion } from "../utils/streamTerminal.js";
@@ -36,6 +37,9 @@ const SSE_CONTENT_TYPE = "text/event-stream";
 // fallback classifier. The message is diagnostic context, never a payload.
 const PLAIN_ERROR_TEXT_LIMIT = 500;
 const CONNECTION_RECOVERY_MESSAGE = "Connection recovery in progress";
+
+/** Statuses on which a wrong-model rejection lets the next combo member serve (upstream #4340). */
+const MODEL_REJECTION_STATUSES = new Set([HTTP_STATUS.BAD_REQUEST, HTTP_STATUS.NOT_FOUND, HTTP_STATUS.GONE]);
 
 /** True only for the local recovery admission response emitted by chat routing. */
 export function isConnectionRecoveryDiagnostic(status, message) {
@@ -1969,8 +1973,11 @@ export async function handleComboChat({
       // means this member cannot serve THIS request, not that its credential is
       // unhealthy. Try the next member without cooldown, waiting, or a smart-scoring
       // penalty (same rule as request-scoped stream refusals above). Upstream
-      // 9router 5cdcddf5 (#5057).
-      if (!shouldFallback && requestScoped) {
+      // 9router 5cdcddf5 (#5057). A wrong-model rejection is terminal for account
+      // rotation (#750), but the next member names another model (upstream #4340).
+      // 401/403 stay terminal: they include local key and model access denials.
+      const modelRejected = MODEL_REJECTION_STATUSES.has(result.status) && isWrongModelError(errorText);
+      if (!shouldFallback && (requestScoped || modelRejected)) {
         releaseFailedAffinity(modelStr, i);
         requestScopedResult ??= result;
         recordFailure(result.status, errorText || String(result.status));

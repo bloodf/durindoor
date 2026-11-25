@@ -107,7 +107,7 @@ describe("filterPaidModels", () => {
   it("drops paid, keeps free + catalog-listed when enabled", () => {
     const all = [
       "anthropic/claude-sonnet-5",            // paid (no free roster)
-      "af/google/gemini-2.5-flash",       // free marker
+      "af/google/gemini-2.5-flash",             // free marker
       "aug/claude-sonnet-4.6",                // no-auth free provider
       "mystery/never-seen-before",            // unknown provider → paid (hidden)
     ];

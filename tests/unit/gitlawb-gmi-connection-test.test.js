@@ -9,12 +9,12 @@ const mocks = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({ getProviderConnections: mocks.getProviderConnections }));
+
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
-}));
+  getProviderConnections: mocks.getProviderConnections}));
 
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn().mockResolvedValue({

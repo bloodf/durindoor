@@ -4,7 +4,7 @@ import { runWithProviderAttemptContext, settleProviderAttemptDispatch } from "op
 import { QuotaDispatchUnavailableError } from "open-sse/services/quota/dispatch.js";
 import { __clearProxyDispatchersForTesting, __setOriginalFetchForTesting, __setProxyDispatcherForTesting } from "open-sse/utils/proxyFetch.js";
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []), getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []), getProxyPoolById: vi.fn(), getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(async (data) => ({ id: "connection-1", ...data })),
@@ -100,7 +100,7 @@ describe("expiry and errors", () => {
 
 it("saves an operator-supplied session through the provider entry point without returning it", async () => {
   const { POST } = await import("../../src/app/api/providers/route.js");
-  const models = await import("@/models");
+  const models = await import("@/lib/localDb");
   const response = await POST(new Request("http://localhost/api/providers", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider: "adapta-web", name: "Adapta", apiKey: "__client=fake-cookie" }),

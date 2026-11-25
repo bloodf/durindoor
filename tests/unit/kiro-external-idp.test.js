@@ -19,7 +19,7 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
 
   afterEach(() => {
     vi.doUnmock("next/server");
-    vi.doUnmock("@/models");
+    vi.doUnmock("@/lib/localDb");
     vi.doUnmock("../../open-sse/utils/proxyFetch.js");
     global.fetch = originalFetch;
   });
@@ -197,7 +197,7 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
         },
       },
     }));
-    vi.doMock("@/models", () => ({
+    vi.doMock("@/lib/localDb", () => ({
       createProviderConnection: vi.fn(async (data) => {
         const connection = { id: "conn-1", ...data };
         createdConnections.push(connection);

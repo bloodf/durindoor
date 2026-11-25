@@ -308,7 +308,7 @@ describe("Kiro unified SSO cache resolution (9router #2615)", () => {
 
 /**
  * Load the /api/oauth/kiro/import route with all its boundaries mocked:
- * fs/os for the SSO cache, next/server for NextResponse, @/models for
+ * fs/os for the SSO cache, next/server for NextResponse, @/lib/localDb for
  * createProviderConnection. Returns { POST, created }.
  */
 async function loadImportRoute(fsImpl) {
@@ -329,7 +329,7 @@ async function loadImportRoute(fsImpl) {
     },
   }));
   const created = [];
-  vi.doMock("@/models", () => ({
+  vi.doMock("@/lib/localDb", () => ({
     createProviderConnection: vi.fn(async (data) => {
       const connection = { id: "conn-1", ...data };
       created.push(connection);
@@ -357,7 +357,7 @@ describe("POST /api/oauth/kiro/import — native external_idp import (9router #2
     vi.doUnmock("fs/promises");
     vi.doUnmock("os");
     vi.doUnmock("next/server");
-    vi.doUnmock("@/models");
+    vi.doUnmock("@/lib/localDb");
     vi.unstubAllGlobals();
     vi.resetModules(); // drop mocked module graph so later suites import clean modules
   });

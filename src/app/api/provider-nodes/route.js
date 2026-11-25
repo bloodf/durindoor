@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { canManageAccessConfig } from "@/dashboardGuard";
-import { createProviderNode, getProviderNodes } from "@/models";
+import { createProviderNode, getProviderNodes } from "@/lib/localDb";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX, SYSTEMONE_COMPATIBLE_PREFIX } from "@/shared/constants/providers";
 import REGISTRY from "open-sse/providers/registry/index.js";
 

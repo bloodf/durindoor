@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getModelAliases, setModelAlias, deleteModelAlias } from "@/models";
+import { getModelAliases, setModelAlias, deleteModelAlias } from "@/lib/localDb";
 
 export const dynamic = "force-dynamic";
 

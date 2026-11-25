@@ -162,7 +162,7 @@ describe("bulk-add repo guard: requireNewName rejects name collision without ove
 // Route-level: POST /api/providers forwards bulk createOnly -> requireNewName
 // and single dashboard adds -> createOnly, mapping both repo conflict codes
 // (PROVIDER_CONNECTION_NAME_CONFLICT / PROVIDER_CONNECTION_ALREADY_EXISTS) to
-// 409. @/models is mocked (isolated via resetModules + doUnmock) so no broad
+// 409. @/lib/localDb is mocked (isolated via resetModules + doUnmock) so no broad
 // provider setup is needed; the mock records the create options for the
 // forwarding assertion.
 describe("POST /api/providers createOnly plumbing", () => {
@@ -172,7 +172,7 @@ describe("POST /api/providers createOnly plumbing", () => {
 
   async function importRouteWithModels(createImpl, captured) {
     vi.resetModules();
-    vi.doMock("@/models", () => ({
+    vi.doMock("@/lib/localDb", () => ({
       getProviderConnections: async () => [],
       getProviderNodeById: async () => null,
       getProviderNodes: async () => [],
@@ -187,7 +187,7 @@ describe("POST /api/providers createOnly plumbing", () => {
   }
 
   afterEach(() => {
-    vi.doUnmock("@/models");
+    vi.doUnmock("@/lib/localDb");
     vi.resetModules();
   });
 

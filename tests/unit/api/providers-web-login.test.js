@@ -7,7 +7,7 @@ const models = vi.hoisted(() => ({
   getProviderNodes: vi.fn(), getProxyPoolById: vi.fn(),
 }));
 vi.mock("@/dashboardGuard", () => guards);
-vi.mock("@/models", () => models);
+vi.mock("@/lib/localDb", () => models);
 vi.mock("open-sse/providers/registry/index.js", () => ({ default: [
   { id: "cookie-web", alias: "cookie-web", category: "webCookie", authType: "cookie", display: { name: "Cookie Web" }, webLogin: { origin: "https://provider.example", startUrl: "https://provider.example/login", cookieNames: ["session"], cookiePrefixes: ["session."] } },
 ] }));

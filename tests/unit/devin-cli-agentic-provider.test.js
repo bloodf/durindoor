@@ -14,15 +14,12 @@ vi.mock("@/dashboardGuard", async (original) => ({
   ...await original(),
   isOperatorRequest: vi.fn(),
 }));
-vi.mock("@/models", async (original) => ({
-  ...await original(),
-  createProviderConnection: vi.fn(async (data) => ({ ...data, id: "offline" })),
-}));
+
 vi.mock("@/lib/localDb", async (original) => ({
   ...await original(),
   getProviderConnections: vi.fn(async () => []),
   getSettings: vi.fn(async () => ({})),
-}));
+  createProviderConnection: vi.fn(async (data) => ({ ...data, id: "offline" }))}));
 vi.mock("@/lib/usageDb.js", () => ({
   recordTokenSaverEvent: vi.fn(async () => {}),
   trackPendingRequest: vi.fn(),
@@ -36,7 +33,7 @@ import { spawn } from "node:child_process";
 import { POST, canDiscoverModels } from "@/app/api/providers/route.js";
 import { POST as validate } from "@/app/api/providers/validate/route.js";
 import { isOperatorRequest } from "@/dashboardGuard";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 import { fetchConnectionModels } from "@/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";

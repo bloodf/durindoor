@@ -26,7 +26,7 @@ vi.mock("@/dashboardGuard", () => ({
   hasExactRequestOrigin: state.hasExactRequestOrigin,
 }));
 // Only the adapter is a fixture: creation, update, transaction and encryption are the real repository.
-vi.mock("@/models", async () => ({
+vi.mock("@/lib/localDb", async () => ({
   ...(await import("../../../src/lib/db/repos/connectionsRepo.js")),
   getProviderNodeById: vi.fn(), getProviderNodes: vi.fn(), getProxyPoolById: vi.fn(),
 }));

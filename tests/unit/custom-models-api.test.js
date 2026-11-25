@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   deleteCustomModel: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getCustomModels: mocks.getCustomModels,
   addCustomModel: mocks.addCustomModel,
   updateCustomModel: mocks.updateCustomModel,

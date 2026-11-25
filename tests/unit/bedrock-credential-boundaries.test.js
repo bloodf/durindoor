@@ -4,7 +4,7 @@ const operator = vi.hoisted(() => ({ value: false }));
 const proxyAwareFetch = vi.hoisted(() => vi.fn(async () => ({ ok: true, status: 200 })));
 
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: vi.fn(async () => operator.value) }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []),
@@ -25,7 +25,7 @@ const { mergeProviderConnection } = await import("@/lib/db/helpers/mergeProvider
 const { detectBedrockCredentialMode } = await import("open-sse/shared/awsCredentials.js");
 const { BEDROCK_CREDENTIAL_MODE } = await import("open-sse/config/bedrock.js");
 const { probeConnectionHealth } = await import("@/lib/providerHealthProbe.js");
-const models = await import("@/models");
+const models = await import("@/lib/localDb");
 const { SENSITIVE_CONNECTION_FIELDS } = await import("@/lib/db/repos/connectionsRepo.js");
 
 const jsonRequest = (url, body, method = "POST") =>

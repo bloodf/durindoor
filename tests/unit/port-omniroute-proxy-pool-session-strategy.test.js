@@ -9,13 +9,13 @@ const mocks = vi.hoisted(() => ({
     { id: "c", proxyUrl: "http://c.test", isActive: true },
   ]),
 }));
+
 vi.mock("@/lib/localDb", () => ({
-  ...mocks,
-  getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), validateApiKey: vi.fn(),
-}));
-vi.mock("@/models", () => ({
   getProxyPoolById: async (id) => (await mocks.getProxyPools()).find((pool) => pool.id === id),
-}));
+  ...mocks,
+  getProviderConnectionById: vi.fn(),
+  updateProviderConnection: vi.fn(),
+  validateApiKey: vi.fn()}));
 
 import { pickProxyPoolId } from "../../src/lib/network/connectionProxy.js";
 import { getProviderCredentials } from "../../src/sse/services/auth.js";

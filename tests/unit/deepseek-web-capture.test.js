@@ -32,7 +32,7 @@ vi.mock("@/dashboardGuard", () => ({
   isOperatorRequest: state.isOperatorRequest,
   hasExactRequestOrigin: state.hasExactRequestOrigin,
 }));
-vi.mock("@/models", async () => ({
+vi.mock("@/lib/localDb", async () => ({
   ...(await import("../../src/lib/db/repos/connectionsRepo.js")),
   getProviderNodeById: vi.fn(), getProviderNodes: vi.fn(), getProxyPoolById: vi.fn(),
 }));

@@ -158,7 +158,7 @@ beforeAll(async () => {
       json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200, headers: { "Content-Type": "application/json" } }),
     },
   }));
-  const models = await import("@/models/index.js");
+  const models = await import("@/lib/localDb");
   const dbIndex = await import("@/lib/db/index.js");
   await dbIndex.initDb();
   const m365 = await import("../../open-sse/executors/copilot-m365-web.js");

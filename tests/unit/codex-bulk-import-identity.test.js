@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createProviderConnection = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({ createProviderConnection }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection }));
 vi.mock("@/lib/oauth/providers", () => ({ extractCodexAccountInfo: vi.fn(() => null) }));
 
 import { POST } from "../../src/app/api/oauth/codex/bulk-import/route.js";

@@ -3,7 +3,7 @@ import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizePro
 import { GET as getProviders } from "@/app/api/providers/route.js";
 import { GET as getProviderById } from "@/app/api/providers/[id]/route.js";
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []),
@@ -30,7 +30,7 @@ describe("firecrawlHeaders sanitizer", () => {
   });
 
   it("GET /api/providers strips firecrawlHeaders from response", async () => {
-    const { getProviderConnections } = await import("@/models");
+    const { getProviderConnections } = await import("@/lib/localDb");
     getProviderConnections.mockResolvedValue([
       {
         id: "fc-1",
@@ -55,7 +55,7 @@ describe("firecrawlHeaders sanitizer", () => {
   });
 
   it("GET /api/providers/[id] strips firecrawlHeaders from response", async () => {
-    const { getProviderConnectionById } = await import("@/models");
+    const { getProviderConnectionById } = await import("@/lib/localDb");
     getProviderConnectionById.mockResolvedValue({
       id: "fc-1",
       provider: "firecrawl_custom",

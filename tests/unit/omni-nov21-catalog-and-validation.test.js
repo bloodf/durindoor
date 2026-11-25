@@ -5,22 +5,19 @@ const operator = vi.hoisted(() => ({ value: true }));
 vi.mock("@/dashboardGuard", () => ({
   isOperatorRequest: vi.fn(async () => operator.value),
 }));
-vi.mock("@/models", () => ({
-  getProviderConnections: vi.fn(async () => []),
+
+vi.mock("@/lib/localDb", () => ({
+  getProviderConnections: vi.fn(),
+  getCombos: vi.fn(),
+  getCustomModels: vi.fn(),
+  getModelAliases: vi.fn(),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []),
   getProxyPoolById: vi.fn(),
   getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(async (data) => ({ id: "c1", ...data })),
   updateProviderConnection: vi.fn(),
-  deleteProviderConnection: vi.fn(),
-}));
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: vi.fn(),
-  getCombos: vi.fn(),
-  getCustomModels: vi.fn(),
-  getModelAliases: vi.fn(),
-}));
+  deleteProviderConnection: vi.fn()}));
 vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn() }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({
@@ -40,7 +37,7 @@ import { CODEX_CLI_VERSION } from "../../open-sse/config/appConstants.js";
 import { mergeSyncedCatalog } from "../../src/lib/modelAutoSync/catalog.js";
 import * as localDb from "@/lib/localDb";
 import * as disabledModelsDb from "@/lib/disabledModelsDb";
-import * as models from "@/models";
+import * as models from "@/lib/localDb";
 
 const jsonRequest = (url, body) =>
   new Request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

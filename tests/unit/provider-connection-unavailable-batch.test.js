@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ getProviderConnections: vi.fn(), testSingleConnection: vi.fn() }));
-vi.mock("@/models", () => ({ getProviderConnections: mocks.getProviderConnections }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: mocks.getProviderConnections }));
 vi.mock("@/app/api/providers/[id]/test/testUtils.js", () => ({ testSingleConnection: mocks.testSingleConnection }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
 vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network request"); }));

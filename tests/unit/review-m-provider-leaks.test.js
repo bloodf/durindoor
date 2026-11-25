@@ -5,22 +5,21 @@ const mocks = vi.hoisted(() => ({
   connection: null,
 }));
 
-vi.mock("@/models", () => ({
-  getProviderConnections: vi.fn(async () => [mocks.connection]),
+vi.mock("@/lib/localDb", () => ({
+  // The provider routes list without a filter; translator step 3 filters by provider.
+  getProviderConnections: vi.fn(async (filter) => filter?.provider === "openai"
+    ? [{
+      isActive: true,
+      apiKey: "sk-live-upstream-key-1234567890",
+      accessToken: "oauth-access-token-abcdef123456",
+      providerSpecificData: {},
+    }]
+    : [mocks.connection]),
   getProviderConnectionById: vi.fn(async () => mocks.connection),
   getProviderNodes: vi.fn(() => []),
   getProxyPoolById: vi.fn(),
   getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(),
-}));
-
-vi.mock("@/lib/localDb.js", () => ({
-  getProviderConnections: vi.fn(async () => [{
-    isActive: true,
-    apiKey: "sk-live-upstream-key-1234567890",
-    accessToken: "oauth-access-token-abcdef123456",
-    providerSpecificData: {},
-  }]),
 }));
 
 vi.mock("@/sse/services/model.js", () => ({ getModelInfo: vi.fn() }));

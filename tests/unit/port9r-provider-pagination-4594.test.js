@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: async () => [
     { id: "1", provider: "openai", name: "Alpha", apiKey: "secret" },
     { id: "2", provider: "openai", name: "Beta", apiKey: "secret" },

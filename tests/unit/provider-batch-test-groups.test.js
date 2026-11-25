@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ connections: [] }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async ({ isActive }) => state.connections.filter((connection) => connection.isActive === isActive)),
 }));
 vi.mock("@/app/api/providers/[id]/test/testUtils.js", () => ({

@@ -7,7 +7,7 @@ vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({
   getKimchiUserAgent: () => "offline-fixture",
   updateKimchiUserAgent: vi.fn(),
 }));
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn(), getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn(), getProviderNodeById: vi.fn() }));
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}),
   saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}),

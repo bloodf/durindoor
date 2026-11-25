@@ -83,7 +83,8 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
   }
 
   const sourceFormat = detectFormat(body);
-  const stream = body.stream !== false;
+  // Same default as chat core (resolveStreamFlag): an omitted flag means JSON.
+  const stream = body.stream === true;
 
   // For naming bypass, generate title from user message
   if (namingBypass) {

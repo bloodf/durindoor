@@ -97,7 +97,8 @@ describe("omitted stream on compatible chat requests", () => {
     args.body.messages[0].content = "Warmup";
     args.userAgent = "claude-cli";
     const result = await handleChatCore(args);
-    expect(result.response.headers.get("content-type")).toContain("text/event-stream");
+    // 9router #4427: the bypass now shares chat core's omitted-stream default.
+    expect(result.response.headers.get("content-type")).toContain("application/json");
     expect(executeMock).not.toHaveBeenCalled();
   });
 });

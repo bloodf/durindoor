@@ -28,7 +28,7 @@ export function cancelDiscardedResponse(response) {
   } catch {/* body may already be locked or closed */}
 }
 
-function sendThroughProxy(url, options, proxyOptions, observePatchedFetch, unrouted) {
+function sendThroughProxy(url, options, proxyOptions, { observePatchedFetch, unrouted, globalFetch }) {
   let proxyAwareFetch;
   try {
     proxyAwareFetch = proxyFetch.proxyAwareFetch;
@@ -36,7 +36,9 @@ function sendThroughProxy(url, options, proxyOptions, observePatchedFetch, unrou
     // Some executor suites stub the entire proxy module.
   }
   const live = globalThis.fetch;
-  if (!isFunction(proxyAwareFetch)) {
+  // The patched global fetch routes through proxyAwareFetch and records its own dispatch.
+  if (globalFetch && live?.[DURINDOOR_FETCH_PATCH] === true) return live(url, { ...options, proxyOptions });
+  if (globalFetch || !isFunction(proxyAwareFetch)) {
     return runProviderAttemptDispatch(() => live(url, { ...options, proxyOptions }));
   }
   if (observePatchedFetch && !options.directFetch && live?.[DURINDOOR_FETCH_PATCH] === true) {
@@ -101,7 +103,7 @@ export function createRequestSender({
   let deadline;
   const clearHeaderTimer = () => clearTimeout(deadline?.timer);
 
-  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true, transport = null, unrouted = false } = {}) {
+  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true, transport = null, unrouted = false, globalFetch = false } = {}) {
     const signal = init.signal;
     if (signal?.aborted) throw requestAbortError(signal.reason);
     clearHeaderTimer();
@@ -122,7 +124,7 @@ export function createRequestSender({
       const options = { ...(credentialed ? { redirect: "error" } : null), ...init, signal: mergedSignal };
       const send = transport ?
         () => runProviderAttemptDispatch(() => runTransport(transport, options, controller.signal)) :
-        () => sendThroughProxy(url, options, proxyOptions, observePatchedFetch, unrouted);
+        () => sendThroughProxy(url, options, proxyOptions, { observePatchedFetch, unrouted, globalFetch });
       return await (quotaBearing ? runQuotaBearingProviderRequest(send) : send());
     } catch (error) {
       clearTimeout(timer);

@@ -24,6 +24,9 @@ import { BaseExecutor } from "./base.js";
 import { errorResponse, sanitizeErrorMessage, buildErrorBody } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const DEVIN_DESKTOP_BASE_URL = "https://server.codeium.com";
@@ -662,7 +665,10 @@ export class DevinDesktopExecutor extends BaseExecutor {
     return false;
   }
 
-  async execute({ model, body, credentials, signal, log, proxyOptions }) {
+  async execute(input) {
+    const { model, body, credentials, signal, log, proxyOptions } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     if (!isDevinDesktopDispatchEnabled(credentials)) {
       return failure(
         { status: 403, type: "permission_error", code: "devin_desktop_dispatch_disabled", message: `Devin Desktop dispatch is off for this connection. Set providerSpecificData.${DEVIN_DESKTOP_OPT_IN_KEY} to true to opt in.` },
@@ -673,7 +679,7 @@ export class DevinDesktopExecutor extends BaseExecutor {
     const apiKey = String(credentials?.accessToken || credentials?.apiKey || "").trim();
     if (!apiKey) return failure(classifyDevinDesktopError(401), DEVIN_DESKTOP_CHAT_URL, body ?? null);
 
-    const fetcher = (url, init) => credentialFetch((target, request) => proxyAwareFetch(target, request, proxyOptions), url, init);
+    const fetcher = (options) => (url, init) => credentialFetch((target, request) => sender.sendRequest(target, request, proxyOptions, options), url, init);
     const request = isRecord(body) ? body : {};
     const converted = convertMessages(Array.isArray(request.messages) ? request.messages : []);
     if (converted.prompts.length === 0) converted.prompts.push({ messageId: randomUUID(), source: 1, prompt: "" });
@@ -683,7 +689,8 @@ export class DevinDesktopExecutor extends BaseExecutor {
 
     let userJwt;
     try {
-      userJwt = await mintUserJwt(fetcher, apiKey, sessionId, signal);
+      // Minting the user JWT is setup; only the chat send is quota-bearing.
+      userJwt = await mintUserJwt(fetcher({ quotaBearing: false }), apiKey, sessionId, signal);
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       if (error.response) return upstreamFailure(error.response, DEVIN_DESKTOP_AUTH_URL, null);
@@ -707,40 +714,45 @@ export class DevinDesktopExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await fetcher(DEVIN_DESKTOP_CHAT_URL, {
+      upstream = await fetcher()(DEVIN_DESKTOP_CHAT_URL, {
         method: "POST",
         headers: this.buildHeaders(),
         body: bodyBuffer(encodeDevinConnectEnvelope(protobuf)),
         signal,
       });
     } catch (error) {
-      if (error?.name === "AbortError") throw error;
-      return failure({ status: 502, type: "upstream_error", code: "upstream_error", message: "Devin Desktop upstream connection failed" }, DEVIN_DESKTOP_CHAT_URL, null);
+      if (error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
+      return { ...failure({ status: 502, type: "upstream_error", code: "upstream_error", message: "Devin Desktop upstream connection failed" }, DEVIN_DESKTOP_CHAT_URL, null), attemptStartedAt: sender.attemptStartedAt };
     }
-    if (!upstream.ok) return upstreamFailure(upstream, DEVIN_DESKTOP_CHAT_URL, null);
+    // Every result after the chat send carries its quota ticket.
+    const carry = (result) => {
+      transferProviderAttemptDispatch(upstream, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
+    if (!upstream.ok) return carry(await upstreamFailure(upstream, DEVIN_DESKTOP_CHAT_URL, null));
 
     const reader = upstream.body?.getReader();
-    if (!reader) return failure({ status: 502, type: "upstream_error", code: "upstream_error", message: "Devin Desktop response body is empty" }, DEVIN_DESKTOP_CHAT_URL, null);
+    if (!reader) return carry(failure({ status: 502, type: "upstream_error", code: "upstream_error", message: "Devin Desktop response body is empty" }, DEVIN_DESKTOP_CHAT_URL, null));
     let initial;
     try {
       initial = await peekFirstFrame(reader);
     } catch (error) {
       await reader.cancel().catch(() => {});
-      return failure({ status: 502, type: "upstream_error", code: "upstream_error", message: `Devin Desktop stream error: ${sanitizeErrorMessage(error?.message ?? String(error))}` }, DEVIN_DESKTOP_CHAT_URL, null);
+      return carry(failure({ status: 502, type: "upstream_error", code: "upstream_error", message: `Devin Desktop stream error: ${sanitizeErrorMessage(error?.message ?? String(error))}` }, DEVIN_DESKTOP_CHAT_URL, null));
     }
     // An error trailer before any content is a plain failure, so its credential or quota
     // meaning reaches the caller as a status instead of an error event in a 200 stream.
     const early = firstFrameError(initial);
     if (early) {
       await reader.cancel().catch(() => {});
-      return failure(classifyDevinDesktopError(502, early.code), DEVIN_DESKTOP_CHAT_URL, null);
+      return carry(failure(classifyDevinDesktopError(502, early.code), DEVIN_DESKTOP_CHAT_URL, null));
     }
-    return {
+    return carry({
       response: transformToSSE(reader, initial, upstreamModel),
       url: DEVIN_DESKTOP_CHAT_URL,
       headers: { "Content-Type": "application/connect+proto", Authorization: "[REDACTED]" },
       transformedBody: null,
-    };
+    });
   }
 }
 

@@ -467,6 +467,35 @@ describe("CursorExecutor AgentService exec_request handling", () => {
   });
 });
 
+describe("port(upstream) #4550: every ExecServerMessage variant gets an answer", () => {
+  // The ExecClientMessage frame inside the reply: AgentClientMessage.exec_client_message (2).
+  const replyFields = (frame) => [...decodeMessage(decodeMessage(frame.subarray(5)).get(2)[0].value).keys()]
+    .filter((field) => field !== 1 && field !== 15);
+
+  // ExecServerMessage variant → ExecClientMessage result field.
+  const EXPECTED = [
+    ...[2, 3, 4, 5, 7, 8, 9, 16, 17, 18, 20, 21, 22, 23, 27, 28, 29, 30, 31, 36, 37, 38, 40, 41, 42, 43, 53, 54]
+      .map((field) => [field, field]),
+    // pi_* and mini_swe_agent_bash are renumbered on the client side.
+    [45, 46], [46, 47], [47, 48], [48, 49], [49, 50], [50, 51], [51, 52], [52, 55],
+    // shell_stream_args has no result message; 99 stands for protocol drift.
+    [14, 9], [99, 9],
+  ];
+
+  it.each(EXPECTED)("answers variant %i on result field %i and keeps the turn", async (serverField, clientField) => {
+    const { result, written } = await runAgent({
+      frames: [textFrame("answer"), execRequestFrame(serverField)],
+      stream: true,
+    });
+
+    const events = parseSSE(await result.response.text());
+    expect(events.some((event) => event.error)).toBe(false);
+    expect(events.map((event) => event.choices?.[0]?.delta?.content || "").join("")).toBe("answer");
+    expect(written).toHaveLength(2);
+    expect(replyFields(written[1])).toEqual([clientField]);
+  });
+});
+
 describe("port(upstream) #4867: translated history through execute()", () => {
   it.each([false, true])("sends it in UserMessage.text with stream %s", async (stream) => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline test"); }));

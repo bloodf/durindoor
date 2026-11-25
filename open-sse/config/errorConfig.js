@@ -250,6 +250,12 @@ export const ERROR_RULES = [
 { text: "请充值", cooldownMs: COOLDOWN.long, terminal: true },
 { text: "insufficient credit", cooldownMs: COOLDOWN.long, terminal: true },
 { text: "credit balance is too low", cooldownMs: COOLDOWN.long, terminal: true },
+// 9router #4439: pooled keys that run dry answer HTTP 400. new-api style relays
+// send the `insufficient_user_quota` code; Anthropic OAuth reports a depleted
+// extra-usage bucket. "out of funds" also covers "run out of funds".
+{ text: "insufficient_user_quota", cooldownMs: COOLDOWN.long, terminal: true },
+{ text: "out of extra usage", cooldownMs: COOLDOWN.long, terminal: true },
+{ text: "out of funds", cooldownMs: COOLDOWN.long, terminal: true },
 
 { text: "rate limit", backoff: true },
 { text: "too many requests", backoff: true },

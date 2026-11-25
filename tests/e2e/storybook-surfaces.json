@@ -8633,7 +8633,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Streaming",
           "expectedVisibleText": "Console Log"
@@ -8651,7 +8651,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Empty fixture settles to actual no-console-logs message, not a guessed output label.",
           "expectedVisibleText": "No console logs yet."
@@ -8671,7 +8671,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Paused holds actual polling transport updates, shows new-line buffer and ends without resuming. Corrected polling fixture explicitly nulls inherited SSE descriptor; meta beforeEach and returned cleanup reset poll counter. Source reasoning only, runtime pending.",
           "expectedVisibleText": "Paused"
@@ -8692,7 +8692,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Separate resume story invokes real paused buffering, clicks Jump to latest and leaves Streaming visible. Corrected polling fixture explicitly nulls inherited SSE descriptor; meta beforeEach and returned cleanup reset poll counter. Source reasoning only, runtime pending.",
           "expectedVisibleText": "Streaming"
@@ -8717,7 +8717,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Own Filtered narrows HEADROOM/Warn and types skipped, asserting the visible marked result and remaining log count. Corrected Paused/Resume states do not replace this existing filter/search coverage."
         }
@@ -8886,7 +8886,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Filtered parent render",
           "expectedVisibleText": "HEADROOM"
@@ -8967,7 +8967,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Filtered parent interaction",
           "expectedVisibleText": "Error"
@@ -9049,7 +9049,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Streaming parent fixture",
           "expectedVisibleText": "provider timeout"
@@ -9421,7 +9421,7 @@
       "id": "src/app/(dashboard)/dashboard/console-log/transport.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/console-log/transport.js",
       "symbol": "[module]",
-      "sourceSha256": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c",
+      "sourceSha256": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",

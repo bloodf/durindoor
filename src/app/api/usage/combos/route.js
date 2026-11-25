@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdapter } from "@/lib/db/driver.js";
+import { getComboUsageReport } from "@/lib/db/repos/reportQueriesRepo.js";
 import { addLocalCalendarDays, getUsageCalendarCutoff, localDateFromKey, VALID_USAGE_STATS_PERIODS } from "@/lib/usagePeriods.js";
 
 export const dynamic = "force-dynamic";
@@ -49,34 +49,7 @@ export async function GET(request) {
       return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
     }
     const { lower, upper, upperExclusive } = window;
-    const params = [];
-    const bounds = [];
-    if (lower) { bounds.push("timestamp >= ?"); params.push(lower.toISOString()); }
-    bounds.push(`timestamp ${upperExclusive ? "<" : "<="} ?`);
-    params.push(upper.toISOString());
-    const boundsSql = `AND ${bounds.join(" AND ")}`;
-    const db = await getAdapter();
-    // Aggregate totals and model counts from the same statement snapshot.
-    const groups = db.all(
-      `SELECT comboId, comboName, connectionId, provider, model, COUNT(*) AS requests,
-        COALESCE(SUM(promptTokens), 0) AS promptTokens,
-        COALESCE(SUM(completionTokens), 0) AS completionTokens,
-        COALESCE(SUM(cost), 0) AS cost
-       FROM usageHistory
-       WHERE comboId IS NOT NULL AND comboName IS NOT NULL ${boundsSql}
-       GROUP BY comboId, comboName, connectionId, provider, model
-       ORDER BY comboName COLLATE NOCASE, connectionId, provider, model`,
-      params,
-    );
-    const unattributed = db.get(
-      `SELECT COUNT(*) AS requests,
-        COALESCE(SUM(promptTokens), 0) AS promptTokens,
-        COALESCE(SUM(completionTokens), 0) AS completionTokens,
-        COALESCE(SUM(cost), 0) AS cost
-       FROM usageHistory
-       WHERE (comboId IS NULL OR comboName IS NULL) ${boundsSql}`,
-      params,
-    );
+    const { groups, unattributed } = await getComboUsageReport({ lower, upper, upperExclusive });
     const rowTotals = new Map();
     const comboTotals = new Map();
     const models = [];

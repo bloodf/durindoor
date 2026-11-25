@@ -4,8 +4,8 @@ import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint
 import { refreshMediaCredentials, resolveTypedMediaModel, runMediaEndpoint } from "./media/pipeline.js";
 import { randomUUID } from "node:crypto";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
-import { getAdapter } from "@/lib/db/driver.js";
-import { assertBillingEpochSync, retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
+import { assertVideoBillingEpoch } from "@/lib/db/repos/reportQueriesRepo.js";
+import { retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
@@ -442,8 +442,7 @@ async function pollVideoJob(request, requestId, { apiKey, auth: apiKeyAuth }, pi
 
   const { refreshed: refreshedCredentials, persist } = await refreshMediaCredentials(provider, credentials);
   const dispatch = credentialDispatchSnapshot(refreshedCredentials);
-  const db = await getAdapter();
-  db.transaction(() => assertBillingEpochSync(db, job.billingEpoch));
+  await assertVideoBillingEpoch(job.billingEpoch);
 
   const result = await handleVideoProxyCore({
     provider,

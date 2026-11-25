@@ -198,7 +198,7 @@ const ALLOWED = {
   "utils/ollamaTransform.js": "splits lines for the same NDJSON reason and feeds createSseFrameReader",
   "transformer/streamToJsonConverter.js": "reads frames with createSseFrameReader; looks at raw lines only to drop provider keepalive blocks",
   "translator/request/openai-to-cursor.js": "not SSE: matches data: URIs",
-  "handlers/chatCore/antigravityGeminiNative.js": "converts one provider's buffered wire text",
+  "utils/antigravityGeminiNative.js": "converts one provider's buffered wire text",
   "handlers/chatCore/proxyTimelineFrame.js": "diagnostic timeline view of already forwarded bytes",
   "handlers/ttsProviders/minimax.js": "provider-private audio stream parser",
   "handlers/ttsProviders/openrouter.js": "provider-private audio stream parser",

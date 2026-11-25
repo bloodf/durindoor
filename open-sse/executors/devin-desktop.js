@@ -1,4 +1,4 @@
-// Devin Desktop executor (staged; not in open-sse/executors/index.js yet).
+// Devin Desktop executor.
 //
 // Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // open-sse/executors/devin-desktop.ts, open-sse/services/devinDesktopModels.ts and

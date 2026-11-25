@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   buildKiroCreateResponseUrl,
   buildKiroCreateResponseBody,
@@ -6,6 +6,10 @@ import {
   transformCreateResponseStreamToSSE
 } from "open-sse/utils/kiroCreateResponse.js";
 import { KiroExecutor } from "open-sse/executors/kiro.js";
+
+// Exercise the default fallback regardless of the environment running the suite.
+beforeEach(() => vi.stubEnv("DURINDOOR_KIRO_CREATE_RESPONSE", ""));
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Kiro CreateResponse (/v1/responses) adapter", () => {
   it("builds the CreateResponse URL with region support", () => {

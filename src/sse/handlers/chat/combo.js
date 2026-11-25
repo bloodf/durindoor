@@ -4,6 +4,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { mergeComboRouting } from "open-sse/services/comboRoutingPolicy.js";
 import { isProviderConnectionModelLocked, providerAllowsPublicNoAuthFallback } from "../../services/auth.js";
 import { getAutoModelCandidates } from "../../services/autoModel.js";
+import { scopeAutoComboModels } from "../../services/autoComboScope.js";
 import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
 import { getProviderConnections, getQuotaReservationPressure, getComboForModel } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getComboCanonicalName, loadCustomCapabilities, parseModel } from "../../services/model.js";
@@ -225,7 +226,12 @@ export async function dispatchChat({ body, modelStr, settings, request, apiKeyAu
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
   // above intentionally calls getComboModels without the flag so combo
   // existence/ACL still see the real, unfiltered member list.
-  const savedComboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
+  // auto/<family> pools are narrowed to the key's connection allowlist (c40aaac6).
+  const savedComboModels = await scopeAutoComboModels(
+    modelStr,
+    await getComboModels(modelStr, settings.hidePaidModels === true, settings),
+    apiKeyAuth.apiKeyId
+  );
   const selector = savedComboModels ? null : await getAutoModelCandidates(modelStr, "llm", request, apiKeyAuth.apiKeyId);
   const comboModels = savedComboModels || selector?.models;
   if (comboModels) {
@@ -369,7 +375,11 @@ export async function dispatchChat({ body, modelStr, settings, request, apiKeyAu
 export async function dispatchNestedCombo({ body, modelStr, clientRawRequest, request, apiKey, tokenSaverCollector, requestSignal, comboRouting, comboPrompts, comboVisited, planRequest, apiKeyName, apiKeyId, billingEpoch, reportComboPolicyRejections }) {
     const chatSettings = await getSettings();
     // #6495 / F-4: filter paid members when the toggle is on.
-    const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true, chatSettings);
+    const comboModels = await scopeAutoComboModels(
+      modelStr,
+      await getComboModels(modelStr, chatSettings.hidePaidModels === true, chatSettings),
+      apiKeyId
+    );
     if (comboModels) {
       // Resolve the canonical persisted name once so ACL, per-combo strategy
       // lookups, and rotation/scoring keys are stable regardless of the

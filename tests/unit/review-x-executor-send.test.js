@@ -14,7 +14,6 @@ const { parse } = createRequire(new URL("../../package.json", import.meta.url))(
 const executorsDir = new URL("../../open-sse/executors/", import.meta.url);
 
 const overrideAllowlist = {
-  "promptql.js": "Its dispatch test pins redirect manual on the thread-start send, which a quota-bearing send overrides to error.",
   "unsupported-websession.js": "Sends nothing: it returns a local 501 or delegates to another executor's own sender."
 };
 

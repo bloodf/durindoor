@@ -4,6 +4,8 @@ import { abortable, createExecutorSender, requestAbortError } from "./sendReques
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { errorResponse } from "../utils/error.js";
 import { containsMediaKind } from "../utils/mediaParts.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
+import { resolvePlaywrightProxy } from "../services/browserPool.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function makeErrorResult(status, message, body, url) {
@@ -53,18 +55,22 @@ export function parseCloudflareFrame(raw) {
 }
 
 export class PlaywrightCloudflareTransport {
-  constructor(chatId) { this.chatId = chatId; this.framesQueue = []; this.waiters = []; this.closed = false; }
+  constructor(chatId, { chromium = null } = {}) { this.chatId = chatId; this.chromium = chromium; this.framesQueue = []; this.waiters = []; this.closed = false; }
 
   push(frame) {
     const waiter = this.waiters.shift();
     if (waiter) waiter(frame); else this.framesQueue.push(frame);
   }
 
-  async start({ model, messages, temperature = 0.7, signal }) {
+  async start({ model, messages, temperature = 0.7, signal, proxyOptions = null }) {
     try {
-      const { chromium } = await import("playwright");
+      // Resolved before launch: an unusable assigned proxy must not fall back to a direct connection.
+      const { proxyUrl } = resolveConnectProxyForRequest(PLAYGROUND_URL, proxyOptions);
+      const proxy = resolvePlaywrightProxy(proxyUrl);
+      if (proxyUrl && !proxy) throw new Error("Cloudflare Playground proxy is invalid");
+      const chromium = this.chromium ?? (await import("playwright")).chromium;
       this.browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled", "--no-first-run"] });
-      const context = await this.browser.newContext({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36" });
+      const context = await this.browser.newContext({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36", ...(proxy ? { proxy } : null) });
       this.page = await context.newPage();
       await this.page.goto(PLAYGROUND_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
       await this.page.exposeFunction("__durindoorCfPush", (frame) => this.push(String(frame)));
@@ -130,7 +136,7 @@ export class CloudflarePlaygroundExecutor extends BaseExecutor {
     // start() opens the browser and sends the chat frame: it is the physical send.
     // It stands in for response headers; its own timeouts bound the page load.
     const sent = await sender.sendRequest(PLAYGROUND_URL, { signal: input.signal }, input.proxyOptions, {
-      transport: () => ({ reply: transport.start({ model, messages, temperature: body.temperature, signal: input.signal }) })
+      transport: () => ({ reply: transport.start({ model, messages, temperature: body.temperature, signal: input.signal, proxyOptions: input.proxyOptions }) })
     });
     let started;
     try {

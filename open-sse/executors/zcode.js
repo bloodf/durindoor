@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { BaseExecutor } from "./base.js";
-import { abortable, createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { bindsConnectionRoute, abortable, createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildErrorBody } from "../utils/error.js";
@@ -448,6 +448,9 @@ export class ZcodeExecutor extends BaseExecutor {
     if (!isZcodeDispatchEnabled(credentials)) {
       return this.#fail(new ZcodeError(403, "zcode_dispatch_disabled",
         `ZCode session dispatch is disabled for this connection. Set providerSpecificData.${ZCODE_OPT_IN_KEY} to true to opt in.`), model);
+    }
+    if (bindsConnectionRoute(input.proxyOptions)) {
+      return this.#fail(new ZcodeError(400, "zcode_proxy_unsupported", "ZCode cannot use gateway proxy or relay settings."), model);
     }
     const max = this.options.maxConcurrent || DEFAULT_MAX_CONCURRENT;
     if (this.active >= max) return this.#fail(new ZcodeError(429, "zcode_busy", "Too many concurrent ZCode sessions."), model);

@@ -43,8 +43,8 @@ let adapter;
 let database;
 let policy;
 
-// Transforming the DB and policy graph is the slow part. Warm it once so beforeEach
-// keeps the default hook timeout and a real hang still fails on the first test.
+// Load the DB and policy graph once. Each test still opens its own fresh database;
+// module-local pricing is invalidated below before the test uses it.
 beforeAll(async () => {
   const listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
   const env = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"].map((name) => [name, process.env[name]]));
@@ -59,7 +59,7 @@ beforeAll(async () => {
     await import("@/sse/services/apiKeyPolicy.js");
   } finally {
     await global._dbAdapter?.instance?.close?.();
-    delete global._dbAdapter;
+    if (global._dbAdapter) Object.assign(global._dbAdapter, { instance: null, initPromise: null, file: null, cacheKey: null });
     for (const signal of signals) {
       for (const listener of process.listeners(signal)) {
         if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
@@ -80,13 +80,13 @@ beforeEach(async () => {
   process.env.DATA_DIR = directory;
   process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
   delete process.env.DURINDOOR_PG_URL;
-  delete global._dbAdapter;
-  vi.resetModules();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(timestamp));
   database = await import("@/lib/db/index.js");
   const { getAdapter } = await import("@/lib/db/driver.js");
   adapter = await getAdapter();
+  // Pricing is module-cached, so clear it against this test's fresh database.
+  await (await import("@/lib/db/repos/pricingRepo.js")).resetAllPricing();
   adapter.run(
     "INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)",
     [keyId, secret, "Media ledger fixture", timestamp],
@@ -96,7 +96,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();
-  delete global._dbAdapter;
+  Object.assign(global._dbAdapter, { instance: null, initPromise: null, file: null, cacheKey: null });
   vi.useRealTimers();
   for (const signal of signals) {
     for (const listener of process.listeners(signal)) {

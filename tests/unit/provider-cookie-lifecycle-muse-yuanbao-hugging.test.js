@@ -226,10 +226,12 @@ describe("Yuanbao Web saved cookie lifecycle", () => {
     const other = await addConnection("yuanbao-web", "other", "hy_user=user-b; hy_token=token-b", 2);
     expect((await (await usage(mine.id)).json()).message).toBe("Yuanbao Web connected. No requests recorded in the last 30 days.");
     outbound.mockImplementation(yuanbao(new Set(["token-a"]), "hello world"));
+    // The chat response schedules usage persistence without awaiting it.
+    const usageWrite = vi.spyOn(await import("@/lib/usageDb.js"), "saveRequestUsage");
     expect((await chat("ybw/hunyuan")).status).toBe(200);
-    await vi.waitFor(async () => {
-      expect((await (await usage(mine.id)).json()).displayMessage).toBe("Yuanbao Web connected. 1 requests in the last 30 days.");
-    });
+    expect(usageWrite).toHaveBeenCalledOnce();
+    await usageWrite.mock.results[0].value;
+    expect((await (await usage(mine.id)).json()).displayMessage).toBe("Yuanbao Web connected. 1 requests in the last 30 days.");
     expect(Object.keys((await (await usage(mine.id)).json()).quotas)).toEqual(expect.arrayContaining(["Total tokens (30d)"]));
     expect((await (await usage(other.id)).json()).message).toBe("Yuanbao Web connected. No requests recorded in the last 30 days.");
   });

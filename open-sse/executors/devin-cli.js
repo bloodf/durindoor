@@ -1,7 +1,8 @@
 import { StringDecoder } from "node:string_decoder";
 import { extractChunkText, resolveDevinBin, rpc, spawnDevinAcp } from "./devin-acp-stdio.js";
 import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { bindsConnectionRoute, createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { errorResponse } from "../utils/error.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -60,6 +61,10 @@ export class DevinCliExecutor extends BaseExecutor {
   async execute(input) {
     const { model, body, credentials = {}, signal, log } = input;
     if (signal?.aborted) throw requestAbortError(signal.reason);
+    if (bindsConnectionRoute(input.proxyOptions)) {
+      const response = errorResponse(400, "Devin CLI cannot use gateway proxy or relay settings");
+      return { response, url: this.buildUrl(), headers: {}, transformedBody: { model } };
+    }
     const sender = createExecutorSender(this, input);
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     const promptText = buildPromptText(messages);

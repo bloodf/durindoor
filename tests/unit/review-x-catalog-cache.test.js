@@ -6,6 +6,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.pr
 
 import { createCatalogCache } from "../../open-sse/services/catalogCache.js";
 import { clearKiroModelCache, resolveKiroModels } from "../../open-sse/services/kiroModels.js";
+import { clearLiveModelLimitsCache, getCachedLiveLimits, resolveLiveOpenAIModels } from "../../open-sse/services/liveModelLimits.js";
 
 const CATALOG_MODULES = [
   "qoderModels",
@@ -18,6 +19,7 @@ const CATALOG_MODULES = [
   "clineModels",
   "clinepassModels",
   "commandcodeModels",
+  "liveModelLimits",
 ];
 
 function deferred() {
@@ -146,6 +148,59 @@ describe("catalog module dedup", () => {
     ]);
 
     expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("live model limits cache", () => {
+  const options = () => ({ endpoint: "https://catalog.example.test/v1/models", provider: "openai-compatible-x" });
+  let fetchMock;
+
+  beforeEach(() => {
+    clearLiveModelLimitsCache();
+    fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "m1", context_length: 32_000 }] })));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shares one request and records limits for every waiting connection", async () => {
+    const connections = [{ id: "one", apiKey: "k" }, { id: "two", apiKey: "k" }];
+
+    const [first, second] = await Promise.all(connections.map((connection) => resolveLiveOpenAIModels(connection, options())));
+
+    expect(second).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    for (const connection of connections) {
+      expect(getCachedLiveLimits("openai-compatible-x", "m1", connection)).toMatchObject({ contextWindow: 32_000 });
+    }
+  });
+
+  it("records limits on a cache hit with the catalog's own expiry", async () => {
+    await resolveLiveOpenAIModels({ id: "one", apiKey: "k" }, options());
+    vi.setSystemTime(60_000);
+    const late = { id: "late", apiKey: "k" };
+    await resolveLiveOpenAIModels(late, options());
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(299_999);
+    expect(getCachedLiveLimits("openai-compatible-x", "m1", late)).not.toBeNull();
+    vi.setSystemTime(300_000);
+    expect(getCachedLiveLimits("openai-compatible-x", "m1", late)).toBeNull();
+  });
+
+  it("remembers a failed catalog for five minutes", async () => {
+    fetchMock.mockImplementation(async () => new Response("no", { status: 500 }));
+    const connection = { id: "one", apiKey: "k" };
+
+    expect(await resolveLiveOpenAIModels(connection, options())).toBeNull();
+    vi.setSystemTime(299_999);
+    expect(await resolveLiveOpenAIModels(connection, options())).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(300_000);
+    await resolveLiveOpenAIModels(connection, options());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

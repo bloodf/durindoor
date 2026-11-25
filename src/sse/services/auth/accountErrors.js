@@ -423,6 +423,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     webSearch: context?.webSearch === true,
     videoPoll: context?.videoPoll === true
   });
+  // A model-only denial (Kilo PAID_MODEL_AUTH_REQUIRED) with no bounded model
+  // scope would collapse to the account-wide lock and bench the free models on
+  // the same connection. Rotate to the next candidate without writing any lock.
+  if (fallbackResult.modelOnly && !fallbackModel) {
+    log.warn("AUTH", `${connectionId.slice(0, 8)} model-only denial for an unbounded model id; skipping the lock [${status}]`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

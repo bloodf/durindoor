@@ -112,7 +112,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, POST | `/api/models/auto-sync` | GET optional `provider` query returns roster/status and pruned references; POST optional JSON `{ provider }` forces eligible provider sync or all enabled providers | session, CLI, key, loop |
 | GET, PUT | `/api/models` | Dashboard model list with aliases (GET); set one alias (PUT) | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/models/alias` | List, set, or delete model aliases | session, CLI, key, loop |
-| GET, POST | `/api/models/availability` | List model cooldowns (GET); POST clearCooldown | session, CLI, key, loop |
+| GET, POST | `/api/models/availability` | List model cooldowns (GET); POST clearCooldown, which clears one model's lock on every account of the provider and marks an account active only when it has no other running lock | session, CLI, key, loop |
 | GET, POST, PATCH, DELETE | `/api/models/custom` | CRUD custom model rows and capabilities | session, CLI, key, loop |
 | GET, POST, DELETE | `/api/models/disabled` | List, set, or clear disabled model ids per provider | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/models/enabled` | List, set, or clear the visible-model allowlist per provider | session, CLI, key, loop |

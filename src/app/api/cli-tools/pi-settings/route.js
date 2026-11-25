@@ -17,7 +17,7 @@
  * the merge are resolved through scoped cached model metadata (discovered,
  * shared and operator limits), with capability/combo resolution as fallback.
  * The selected list stays authoritative for order and removal; unrelated
- * provider fields (`authHeader`, custom `headers`, ...) are preserved.
+ * provider fields (`api`, `authHeader`, custom `headers`, ...) are preserved.
  */
 
 import { NextResponse } from "next/server";
@@ -83,6 +83,14 @@ const hasDurinDoorConfig = (config) => {
 
 const hasValidLimit = (value) => Number.isFinite(value) && value > 0;
 
+/** Read snake_case limits as Pi's camelCase fields when those are missing (upstream #4287). */
+const withCamelLimits = (entry) => {
+  const next = { ...entry };
+  if (!hasValidLimit(next.contextWindow) && hasValidLimit(next.context_window)) next.contextWindow = next.context_window;
+  if (!hasValidLimit(next.maxTokens) && hasValidLimit(next.max_tokens)) next.maxTokens = next.max_tokens;
+  return next;
+};
+
 /**
  * Resolve missing context/output limits through scoped cached model metadata,
  * including provider/model aliases, shared metadata and operator overrides.
@@ -121,7 +129,7 @@ const mergeModelEntry = async (entry, previousModels, comboLookupRef) => {
   const supplied = isString(entry) ? { id: entry } : entry;
   const id = supplied?.id || "provider/model-id";
   const isNew = !previousModels.has(id);
-  const merged = { ...previousModels.get(id), ...supplied, id };
+  const merged = { ...withCamelLimits(previousModels.get(id)), ...withCamelLimits(supplied), id };
   const needsCaps = isNew || !hasValidLimit(merged.contextWindow) || !hasValidLimit(merged.maxTokens);
   const resolved = needsCaps ? await resolveMissingCapabilities(id, comboLookupRef) : null;
   const caps = resolved?.caps;
@@ -202,7 +210,7 @@ export async function POST(request) {
       apiKey: isPlaceholderKey(apiKey)
         ? (isPlaceholderKey(previousProvider.apiKey) ? "sk_durindoor" : previousProvider.apiKey)
         : apiKey,
-      api: "openai-completions",
+      api: previousProvider.api || "openai-completions",
       models: modelList,
     };
 

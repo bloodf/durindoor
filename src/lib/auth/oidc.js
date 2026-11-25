@@ -72,6 +72,8 @@ export function isPasswordLoginAllowed(settings) {
 
 export async function getOidcRuntimeConfig() {
   const settings = await getSettings();
+  // Generic SSO settings may select a different protocol; only OIDC can use this flow.
+  if (settings.authMode === "sso" && (settings.ssoType || "oidc") !== "oidc") return null;
   if (!isOidcAuthMode(settings.authMode) || !isOidcConfigured(settings)) return null;
 
   const issuerUrl = trimTrailingSlashes(settings.oidcIssuerUrl);

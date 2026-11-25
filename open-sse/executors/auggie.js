@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { buildErrorBody, errorResponse } from "../utils/error.js";
 import auggieRegistry from "../providers/registry/auggie.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -166,7 +168,9 @@ export class AuggieExecutor extends BaseExecutor {
     return null;
   }
 
-  async execute({ model, body, stream, signal, log }) {
+  async execute(input) {
+    const { model, body, stream, signal, log } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     const promptText = buildAuggiePrompt(messages);
     const auggieBin = resolveAuggieBin();
@@ -181,15 +185,29 @@ export class AuggieExecutor extends BaseExecutor {
 
     const safeModel = modelResolution.model;
     log?.info?.("AUGGIE", `auggie --print model=${safeModel} stream=${wantsStream}`);
-    const response = wantsStream ?
-    this.runStreaming(auggieBin, safeModel, promptText, signal, log) :
-    await this.runNonStreaming(auggieBin, safeModel, promptText, signal, log);
+    const sender = createExecutorSender(this, input);
+    // The spawn is the physical send. It stands in for response headers, so a
+    // long non-streaming generation is not cut off by the header deadline.
+    const sent = await sender.sendRequest(AUGGIE_URL, { signal }, null, {
+      transport: ({ signal: sendSignal }) => ({
+        reply: wantsStream ?
+        this.runStreaming(auggieBin, safeModel, promptText, sendSignal, log) :
+        this.runNonStreaming(auggieBin, safeModel, promptText, sendSignal, log)
+      })
+    });
+    const response = await sent.reply;
+    if (signal?.aborted) {
+      await settleProviderAttemptDispatch(sent, { reason: "abort" });
+      throw requestAbortError(signal.reason);
+    }
+    transferProviderAttemptDispatch(sent, response);
 
     return {
       response,
       url: AUGGIE_URL,
       headers: {},
-      transformedBody: { model: safeModel, promptLength: promptText.length }
+      transformedBody: { model: safeModel, promptLength: promptText.length },
+      attemptStartedAt: sender.attemptStartedAt
     };
   }
 

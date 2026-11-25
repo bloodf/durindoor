@@ -6,6 +6,7 @@ import { SSE_DONE } from "../utils/sseConstants.js";
 import { ERROR_TYPES } from "../config/errorConfig.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import {
+  COMMANDCODE_MAX_TOKENS,
   COMMANDCODE_OVERLOAD_PATTERNS,
   COMMANDCODE_PREFLIGHT_MAX_BYTES,
   COMMANDCODE_PREFLIGHT_MAX_FRAMES,
@@ -58,6 +59,8 @@ export class CommandCodeExecutor extends BaseExecutor {
 
     body.stream = true;
     body.params.stream = true;
+    // A body already in CommandCode shape skips the translator clamp.
+    if (body.params.max_tokens > COMMANDCODE_MAX_TOKENS) body.params.max_tokens = COMMANDCODE_MAX_TOKENS;
 
     return body;
   }

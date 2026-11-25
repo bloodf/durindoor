@@ -29,6 +29,15 @@ import { containsMediaKind } from "../utils/mediaParts.js";
 
 const CONTEXT_OVERFLOW_MESSAGE_PREFIX = "Your input exceeds the context window of this model.";
 
+// Chat-route 400 bodies by which Copilot says a model belongs on /responses.
+// The last two are port(upstream): decolua/9router#4621.
+const RESPONSES_ESCALATION_HINTS = [
+  "not accessible via the /chat/completions endpoint",
+  "The requested model is not supported",
+  "unsupported_api_for_model",
+  "/v1/responses",
+];
+
 export class GithubExecutor extends BaseExecutor {
   constructor(provider = "github", config = PROVIDERS[provider]) {
     super(provider, config);
@@ -342,7 +351,7 @@ export class GithubExecutor extends BaseExecutor {
         timeoutMs: 2_000
       });
 
-      if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
+      if (RESPONSES_ESCALATION_HINTS.some((hint) => errorBody.includes(hint))) {
         log?.warn("GITHUB", `Model ${model} requires /responses. Switching...`);
         this.learnedRoutes.learn(cacheKey, model, generation);
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "fallback" });

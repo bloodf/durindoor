@@ -52,7 +52,7 @@ describe("coverage: every model translates without throwing", () => {
         expect(current.images).toEqual([{ format: "png", source: { bytes: "AAAA" } }]);
       } else if (target === FORMATS.CURSOR) {
         expect(out.messages).toEqual([
-          { role: "user", content: "[System Instructions]\nYou are a helper." },
+          { role: "system", content: "You are a helper." },
           { role: "user", content: "Hello" },
         ]);
         expect(out.tools).toEqual(body.tools);

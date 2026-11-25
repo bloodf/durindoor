@@ -268,7 +268,8 @@ async function pingModelByKindImpl(model, kind, baseUrl, connectionId) {
       stream: false,
       messages: [{ role: "user", content: "hi" }]
     }),
-    signal: AbortSignal.timeout(15000)
+    // High-effort reasoning models can take more than 15 s to answer (decolua/9router#4825).
+    signal: AbortSignal.timeout(60000)
   });
   const latencyMs = Date.now() - start;
 

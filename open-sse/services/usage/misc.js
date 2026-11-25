@@ -78,10 +78,14 @@ function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
 /**
  * Ollama Cloud usage.
  *
- * GET https://ollama.com/api/usage — `limits.<window>.usage` is a 0..1 ratio
- *   (1.0 = limit reached). Paid plans report session (5h) + weekly (7d); the
- *   free plan reports a single monthly window. No reset timestamp is exposed;
- *   the free monthly reset is derived from the account's signup date.
+ * GET https://ollama.com/api/usage has two shapes:
+ * - older plans: `limits.<window>.usage` is a 0..1 ratio (1.0 = limit
+ *   reached). Paid plans report session (5h) + weekly (7d); the free plan
+ *   reports a single monthly window. No reset timestamp is exposed; the free
+ *   monthly reset is derived from the account's signup date.
+ * - per-token pricing (decolua/9router#4688): no `limits`, only rolling
+ *   `totals` for `range=7d|30d` with `usage_usd` spent (not a balance) and
+ *   `request_count`. No billing period or plan pool is reported.
  * POST https://ollama.com/api/me — plan label + CreatedAt, fail-open.
  * Auth: `Authorization: Bearer <apiKey>`.
  */
@@ -146,13 +150,66 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     }
 
     if (Object.keys(quotas).length === 0) {
-      return { plan, message: "Ollama Cloud connected. No usage limits reported.", quotas: {} };
+      const spend = await collectOllamaSpend(apiKey, data, proxyOptions);
+      const pool = OLLAMA_PLAN_POOL_USD[planRaw.toLowerCase()];
+      const spent30d = spend["Spent (30d)"]?.total;
+      // An estimate: the pool size is not in the API and 30 days is only a
+      // proxy for a billing month. The "Spent" rows are the reported figures.
+      const estimate = pool && Number.isFinite(spent30d) ?
+      { [`Included usage (${plan} · est.)`]: ollamaPoolEstimate(spent30d, pool) } :
+      {};
+      const spendQuotas = { ...estimate, ...spend };
+      if (Object.keys(spendQuotas).length > 0) return { plan, quotas: spendQuotas };
+
+      return { plan, message: "Ollama Cloud connected. No usage reported for this period.", quotas: {} };
     }
 
     return { plan, quotas };
   } catch (error) {
     return { message: `Ollama Cloud error: ${error.message}` };
   }
+}
+
+// Monthly usage credits per plan, as published on ollama.com/pricing.
+const OLLAMA_PLAN_POOL_USD = { pro: 60, max: 300, team: 1000 };
+const OLLAMA_SPEND_RANGES = ["7d", "30d"];
+
+function ollamaPoolEstimate(spentUsd, poolUsd) {
+  const used = Math.round(spentUsd * 100) / 100;
+  const remainingPercentage = Math.max(0, Math.min(100, Math.round((1 - used / poolUsd) * 100)));
+  return { used, total: poolUsd, remainingPercentage, resetAt: null, unlimited: false, isEstimate: true };
+}
+
+/** One rolling-spend row, or null when the window is malformed or empty. */
+function ollamaSpendQuota(totals) {
+  const usd = Number(totals?.usage_usd);
+  if (!Number.isFinite(usd) || usd < 0) return null;
+  const requestCount = Number(totals?.request_count) || 0;
+  if (usd === 0 && requestCount === 0) return null;
+  // `used` stays numeric for the shared row helpers; `total` is the spend.
+  return { used: 0, total: usd, requestCount, isSpend: true, currency: "USD", resetAt: null };
+}
+
+async function fetchOllamaUsageRange(apiKey, range, proxyOptions) {
+  try {
+    const response = await proxyAwareFetch(`https://ollama.com/api/usage?range=${range}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" }
+    }, proxyOptions);
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fail-open per window; reuses the totals the first usage read already holds. */
+async function collectOllamaSpend(apiKey, firstData, proxyOptions) {
+  const rows = await Promise.all(OLLAMA_SPEND_RANGES.map(async (range) => {
+    const data = firstData?.range === range ?
+    firstData :
+    await fetchOllamaUsageRange(apiKey, range, proxyOptions);
+    return [`Spent (${range})`, ollamaSpendQuota(data?.totals)];
+  }));
+  return Object.fromEntries(rows.filter(([, quota]) => quota !== null));
 }
 
 /**

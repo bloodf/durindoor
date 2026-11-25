@@ -109,7 +109,7 @@ describe("getCapabilitiesForModel", () => {
     // decolua/9router 13b468b8 port below), so it keeps vision/reasoning but
     // reports thinkingFormat "commandcode" instead of the generic "deepseek"
     // family format — reasoning_effort must land in params, not body.thinking.
-    const commandCodeExpected = { ...expected, thinkingFormat: "commandcode" };
+    const commandCodeExpected = { ...expected, thinkingFormat: "commandcode", maxOutput: 200000 };
     expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash-vision-exp")).toMatchObject(commandCodeExpected);
     expect(getCapabilitiesForModel("commandcode", "vendor/deepseek-v4-flash-vision-preview")).toMatchObject(commandCodeExpected);
     expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash").vision).toBe(false);

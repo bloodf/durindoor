@@ -20,7 +20,7 @@ import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/provid
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { credentialFetch } from "open-sse/utils/credentialFetch.js";
-import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { classifyUpstreamError, sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { updateProviderConnection } from "@/lib/localDb";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
@@ -52,6 +52,15 @@ async function fetchKiloCatalog() {
 // Safety cap on paginated list endpoints (1000 models/page for Gemini).
 const MAX_MODEL_LIST_PAGES = 20;
 
+// Discovery is not inference: an upstream that cannot answer in time is down for this connection.
+const MODELS_FETCH_TIMEOUT_MS = 8000;
+
+/** A per-request deadline that still honours the caller's own abort signal. */
+function discoverySignal(signal) {
+  const deadline = AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, deadline]) : deadline;
+}
+
 async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   const baseUrl = connection.providerSpecificData?.baseUrl;
   if (!baseUrl) return { error: "Missing custom base URL", status: 400 };
@@ -62,7 +71,8 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   const res = await guardedProbeFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     method: "GET",
     headers: headersFor(token),
-    cache: "no-store"
+    cache: "no-store",
+    signal: discoverySignal()
   }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions));
   if (!res.ok) {
     const text = await res.text();
@@ -94,7 +104,9 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
     return { provider: connection.provider, connectionId: connection.id, models };
   } catch (error) {
     console.log(`Error fetching models from ${connection.provider}:`, sanitizeErrorMessage(error?.message));
-    return { error: "Failed to fetch models", status: 500 };
+    const failure = classifyUpstreamError(error);
+    if (failure.status === 500) return { error: "Failed to fetch models", status: 500 };
+    return { error: failure.message, code: failure.code, status: failure.status };
   }
 }
 
@@ -300,7 +312,6 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
 
   const fetchOptions = { method: config.method || "GET", headers, cache: "no-store" };
   if (config.redirect) fetchOptions.redirect = config.redirect;
-  if (signal) fetchOptions.signal = signal;
   // A provider whose request body depends on the connection builds it per
   // call: the Antigravity catalog carries the signed-in account's project.
   const requestBody = isFunction(config.buildBody) ? config.buildBody(token, connection) : config.body;
@@ -331,7 +342,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     let pageUrl = url;
     if (config.pageSize) pageUrl += `${pageUrl.includes("?") ? "&" : "?"}pageSize=${config.pageSize}`;
     if (pageToken) pageUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
-    const response = await proxyAwareFetch(pageUrl, fetchOptions, proxyOptions);
+    const response = await proxyAwareFetch(pageUrl, { ...fetchOptions, signal: discoverySignal(signal) }, proxyOptions);
     if (!response.ok) {
       const text = await response.text();
       const result = {

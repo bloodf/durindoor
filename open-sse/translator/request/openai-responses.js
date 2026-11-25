@@ -90,6 +90,35 @@ function stripOrphanedToolOutputs(input) {
 }
 
 /**
+ * A `previous_response_id` continuation sends only tool results: their calls
+ * live in the stored upstream response, which a translated upstream never sees.
+ * Put one placeholder call per unmatched id before each run of outputs, so the
+ * results survive the orphan strip as one valid tool-call turn
+ * (decolua/9router#4711). The upstream checks the pairing, not the name.
+ */
+function restoreContinuationToolCalls(input) {
+  if (!Array.isArray(input)) return input;
+  const knownCallIds = collectKnownCallIds(input);
+  const restored = [];
+  let runStart = null;
+  for (const item of input) {
+    if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+      runStart = null;
+      restored.push(item);
+      continue;
+    }
+    runStart ??= restored.length;
+    if (isString(item.call_id) && item.call_id && !knownCallIds.has(item.call_id)) {
+      knownCallIds.add(item.call_id);
+      restored.splice(runStart, 0, { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: item.call_id, name: "unknown_tool", arguments: "{}" });
+      runStart += 1;
+    }
+    restored.push(item);
+  }
+  return restored;
+}
+
+/**
  * Tool call item type -> the output item type that answers it. Both surfaces
  * the Responses protocol rejects when a call has no output.
  */
@@ -356,6 +385,28 @@ function responsesContentToOpenAI(c) {
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
  */
+/**
+ * Chat Completions has no custom-tool type, so a Responses custom (freeform) tool becomes a
+ * function whose single parameter is the raw `input` string. The response translator
+ * re-emits it as a custom_tool_call by name (OmniRoute #7905).
+ */
+function lowerCustomTool(tool, name, description) {
+  const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
+  return {
+    type: OPENAI_BLOCK.FUNCTION,
+    function: withBooleanStrict({
+      name,
+      description: [String(description || ""), formatHint].filter(Boolean).join("\n\n"),
+      parameters: sanitizeToolSchemaParameters({
+        type: "object",
+        properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
+        required: ["input"],
+        additionalProperties: false
+      }, name)
+    }, tool)
+  };
+}
+
 /** `{ name, namespace }` -> the expanded `{namespace}.{name}` declaration name. */
 function qualifyNamespacedName({ name, namespace }) {
   if (!isString(name) || !isString(namespace) || !namespace || name.startsWith(`${namespace}.`)) return name;
@@ -463,7 +514,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
       return { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content };
     });
   }
-  const inputItems = stripOrphanedToolOutputs(repairedItems);
+  // Only during real translation: direct callers (Headroom) convert back to
+  // Responses, where a placeholder call would duplicate the stored one.
+  // Claude targets already kept these results as user content above.
+  const translatesContinuation = isString(body.previous_response_id) && body.previous_response_id !== "" &&
+    translationContext !== null && translationContext.targetFormat !== FORMATS.CLAUDE;
+  const inputItems = stripOrphanedToolOutputs(translatesContinuation ? restoreContinuationToolCalls(repairedItems) : repairedItems);
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above
@@ -748,34 +804,23 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
         const namespace = isString(tool.name) ? tool.name : "";
         return tool.tools.
         filter((subtool) => isString(subtool?.name) && subtool.name.trim() !== "").
-        map((subtool) => ({
-          type: OPENAI_BLOCK.FUNCTION,
-          function: withBooleanStrict({
-            name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
-            description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(sanitizeToolSchemaParameters(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
-          }, subtool)
-        }));
+        map((subtool) => {
+          const name = namespace ? `${namespace}.${subtool.name}` : subtool.name;
+          const description = String(subtool.description || tool.description || "");
+          if (subtool.type === "custom") return lowerCustomTool(subtool, name, description);
+          return {
+            type: OPENAI_BLOCK.FUNCTION,
+            function: withBooleanStrict({
+              name,
+              description,
+              parameters: normalizeToolParameters(sanitizeToolSchemaParameters(subtool.parameters, name))
+            }, subtool)
+          };
+        });
       }
       // Responses API custom (freeform) tool: { type: "custom", name, description }.
-      // Chat Completions has no custom-tool type, so normalize it to a function
-      // tool whose single parameter is the raw `input` string. The response
-      // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
-        const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
-        return {
-          type: OPENAI_BLOCK.FUNCTION,
-          function: withBooleanStrict({
-            name: tool.name,
-            description: [String(tool.description || ""), formatHint].filter(Boolean).join("\n\n"),
-            parameters: sanitizeToolSchemaParameters({
-              type: "object",
-              properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
-              required: ["input"],
-              additionalProperties: false
-            }, tool.name)
-          }, tool)
-        };
+        return lowerCustomTool(tool, tool.name, tool.description);
       }
       // Responses API function tool: { type: "function", name, description, parameters }
       // Only convert when a non-empty name is present; skip hosted tools without one.

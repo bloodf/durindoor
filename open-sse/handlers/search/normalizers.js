@@ -29,8 +29,14 @@ function makeResult(providerId, item, idx, now) {
       image_url: item.image_url || null
     },
     citation: { provider: providerId, retrieved_at: now, rank: idx + 1 },
-    provider_raw: null
+    provider_raw: item.provider_raw ?? null
   };
+}
+
+/** Provider fields with no slot in the unified result; null when none were sent. */
+function buildProviderRaw(raw) {
+  const entries = Object.entries(raw).filter(([, value]) => value !== undefined);
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 function normalizeSerper(data, _query, searchType) {
@@ -86,7 +92,15 @@ function normalizeExa(data, _query, _searchType) {
     author: item.author,
     image_url: item.image,
     full_text: item.text,
-    text_format: "text"
+    text_format: "text",
+    provider_raw: buildProviderRaw({
+      id: item.id,
+      highlight_scores: item.highlightScores,
+      summary: item.summary,
+      subpages: item.subpages,
+      entities: item.entities,
+      extras: item.extras
+    })
   }, idx, now)
   );
   return { results, totalResults: results.length };
@@ -122,7 +136,8 @@ function normalizeTavily(data, _query, _searchType) {
     score: item.score,
     published_at: item.published_date,
     full_text: item.raw_content,
-    text_format: "text"
+    text_format: "text",
+    provider_raw: buildProviderRaw({ images: item.images, favicon: item.favicon })
   }, idx, now)
   );
   return { results, totalResults: results.length };

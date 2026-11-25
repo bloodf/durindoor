@@ -113,14 +113,14 @@ export function filterToOpenAIFormat(body, opts = {}) {
         };
       }
 
-      // Gemini format: {functionDeclarations: [{name, description, parameters}]}
+      // Gemini format: {functionDeclarations: [{name, description, parameters | parametersJsonSchema}]}
       if (tool.functionDeclarations && Array.isArray(tool.functionDeclarations)) {
         return tool.functionDeclarations.map((fn) => ({
           type: OPENAI_BLOCK.FUNCTION,
           function: {
             name: fn.name,
             description: String(fn.description || ""),
-            parameters: fn.parameters || { type: "object", properties: {} }
+            parameters: fn.parameters || fn.parametersJsonSchema || { type: "object", properties: {} }
           }
         }));
       }

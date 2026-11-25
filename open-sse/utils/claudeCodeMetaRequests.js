@@ -1,3 +1,5 @@
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+
 // Tools whose meaningful prefix is two words (verb + subcommand).
 const TWO_WORD_TOOLS = new Set([
   "git",
@@ -41,7 +43,7 @@ function tokenize(command        )           {
 }
 
 export function extractCommandPrefix(command        )         {
-  if (typeof command !== "string" || !command.trim()) return "";
+  if (!isString(command) || !command.trim()) return "";
   if (INJECTION_RE.test(command) || command.includes("\n")) {
     return "command_injection_detected";
   }
@@ -87,7 +89,7 @@ function extractGrepFilepaths(tokens          )           {
 }
 
 export function extractFilepathsFromCommand(command        , _output = "")           {
-  if (typeof command !== "string" || !command.trim()) return [];
+  if (!isString(command) || !command.trim()) return [];
   const tokens = tokenize(command);
   if (!tokens.length) return [];
   const head = tokens[0];
@@ -141,15 +143,15 @@ const FILEPATHS_UNSAFE_RE = /[;|&`<>\n*?[\]{}$~\\]/;
 const SIMPLE_GREP_FLAGS_RE = /^-[nilHhwvcsoEFx]+$/;
 
 function isRecord(value         )                                   {
-  return typeof value === "object" && value !== null;
+  return isObject(value) && value !== null;
 }
 
 /** Text blocks of a content value (string content counts as one block). */
 function textBlocks(content         )           {
-  if (typeof content === "string") return [content];
+  if (isString(content)) return [content];
   if (!Array.isArray(content)) return [];
   return content
-    .filter((block) => isRecord(block) && block.type === "text" && typeof block.text === "string")
+    .filter((block) => isRecord(block) && block.type === "text" && isString(block.text))
     .map((block) => (block                    ).text);
 }
 
@@ -207,7 +209,7 @@ function singleTurnPrompt(
 }
 
 /** Shape "filepaths": the turn is `Command: <cmd>\nOutput: <out>` and someone asked for <filepaths>. */
-function detectFilepathsShape(prompt                         , enabled         )              {
+function detectFilepathsRequest(prompt                         , enabled         )              {
   if (!prompt) return undefined;
   const trimmed = prompt.turnText.trimStart();
   const outputIdx = trimmed.indexOf("\nOutput:");
@@ -220,7 +222,7 @@ function detectFilepathsShape(prompt                         , enabled         )
 }
 
 /** Shape "command prefix": a <policy_spec> plus a `Command:` line in the turn. */
-function detectPrefixShape(prompt                         , enabled         )              {
+function detectPrefixRequest(prompt                         , enabled         )              {
   if (!prompt) return undefined;
   const { turnText, promptText } = prompt;
   if (!promptText.includes("<policy_spec>") || !turnText.includes("Command:")) return undefined;
@@ -231,7 +233,7 @@ function detectPrefixShape(prompt                         , enabled         )   
 }
 
 /** Shape "suggestion": the last message is the user's and one of its text blocks opens with the marker. */
-function detectSuggestionShape(messages               , enabled         )              {
+function detectSuggestionRequest(messages               , enabled         )              {
   const last = messages[messages.length - 1];
   if (last?.role !== "user") return undefined;
   const marked = textBlocks(last.content).some((t) => t.trimStart().startsWith(SUGGESTION_MARKER));
@@ -248,9 +250,9 @@ export function detectClaudeCodeMetaReply(
   const prompt = singleTurnPrompt(body, messages);
   // Order matters: a filepaths turn also carries `Command:`, so it is checked before the prefix shape.
   const detectors                           = [
-    () => detectFilepathsShape(prompt, toggles.filepaths),
-    () => detectPrefixShape(prompt, toggles.commandPrefix),
-    () => detectSuggestionShape(messages, toggles.suggestion),
+    () => detectFilepathsRequest(prompt, toggles.filepaths),
+    () => detectPrefixRequest(prompt, toggles.commandPrefix),
+    () => detectSuggestionRequest(messages, toggles.suggestion),
   ];
   for (const detect of detectors) {
     const result = detect();

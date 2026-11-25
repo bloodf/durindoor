@@ -476,7 +476,9 @@ export function createTerminalTracker(format) {
         return clientTerminalEncoder.encode('data: {"error":{"type":"stream_error","message":"upstream_stream_incomplete","code":"stream_disconnected"}}\n\ndata: [DONE]\n\n');
       }
       if (format === FORMATS.CLAUDE) {
-        return clientTerminalEncoder.encode('event: error\ndata: {"type":"error","error":{"type":"stream_error","message":"Upstream stream ended before completing"}}\n\n');
+        // Claude clients retry an in-band overloaded_error and end the turn on any
+        // other type; a stalled or dropped upstream is transient.
+        return clientTerminalEncoder.encode('event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Upstream stream ended before completing"}}\n\n');
       }
       return buildAbortedResponsesTerminalBytes();
     }

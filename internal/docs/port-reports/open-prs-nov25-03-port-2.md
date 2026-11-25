@@ -1,0 +1,29 @@
+# Open upstream PR ports, rows 81–120, batch 2
+
+Source: [open-prs-nov25-03.md](open-prs-nov25-03.md), port candidates 9–16 in table order. All rows are `decolua/9router`. Each diff was fetched from the PR's current head on 2026-11-25; all eight PRs were open at the head SHAs listed in the source report.
+
+No earlier port of any of these eight PRs was found with `git log --grep` or `git grep` on the starting commit. "Already present" rows rest on current code and tests. Candidate 17 (`#5135`) is outside this batch.
+
+| Row | PR | Final disposition | Evidence |
+|---:|---|---|---|
+| 101 | #5276 | Ported in this change (gap only) | A silent upstream was already bounded: `pipeWithDisconnect` in [streamHandler.js](../../../open-sse/utils/streamHandler.js) has first-byte and stall watchdogs. The gap was the Claude error that followed: `createTerminalTracker` in [streamTerminal.js](../../../open-sse/utils/streamTerminal.js) sent `stream_error`; it now sends `overloaded_error`, which Claude clients retry. Test: [port-5276-claude-stalled-stream-retryable.test.js](../../../tests/unit/port-5276-claude-stalled-stream-retryable.test.js). |
+| 103 | #5264 | Already present | [custom-server.js](../../../custom-server.js) sets a 72-second idle keep-alive with a 76-second headers timeout, above upstream's 65 seconds. Next's standalone server still applies a non-zero `KEEP_ALIVE_TIMEOUT` after creating the server. Unlike upstream, `0` does not disable the timeout. [port9r-opencode-keepalive-5297.test.js](../../../tests/unit/port9r-opencode-keepalive-5297.test.js) and [review-s-server-entry.test.js](../../../tests/unit/review-s-server-entry.test.js) cover the default. |
+| 104 | #5250 | Ported in this change (gaps only) | `handleNonStreamingResponse` already returned a Claude message for Gemini-family and OpenAI upstreams. Both OpenAI-to-Claude projections counted cached prompt tokens as input: [openai-to-claude-json.js](../../../open-sse/translator/response/openai-to-claude-json.js) reported them a second time as cache reads, and [completionProjector.js](../../../open-sse/translator/response/completionProjector.js) dropped the cache fields. Both now use `toClaudePromptUsage`, and an id that starts with `msg_` is no longer prefixed twice. Test: [port-5250-claude-nonstream-usage.test.js](../../../tests/unit/port-5250-claude-nonstream-usage.test.js). |
+| 106 | #5241 | Not applicable | The upstream `src/lib/modelCatalog/sync.js` and `open-sse/providers/catalogOverride.js` are absent. DurinDoor's separate [sharedMetadata.js](../../../src/lib/modelAutoSync/sharedMetadata.js) already keeps every models.dev model of each provider it maps, with no registry filter. Mapping more providers would be a different change. |
+| 109 | #5238 | Ported in this change | In [cursorLocalStore.js](../../../src/lib/oauth/services/cursorLocalStore.js), the fuzzy fallback took the first row sharing a key prefix, so a refresh token or any `storage.` value could be imported. It now reads at most 25 rows whose key names the requested field. The macOS open error in the [auto-import route](../../../src/app/api/oauth/cursor/auto-import/route.js) reports only the SQLite code. The database handle was already closed in `finally`, and unsupported platforms were already rejected. Tests: [port-5238-cursor-import-fuzzy-keys.test.js](../../../tests/unit/port-5238-cursor-import-fuzzy-keys.test.js) and [port-5238-cursor-import-open-error.test.js](../../../tests/unit/port-5238-cursor-import-open-error.test.js). |
+| 110 | #5237 | Already present | `detectRequiredCapabilities` in [combo.js](../../../open-sse/services/combo.js) requires `search` for any tool whose type or name starts with `web_search`. This is wider than upstream's exact-type match and was left as is. See [combo-autoswitch.test.js](../../../tests/unit/combo-autoswitch.test.js). |
+| 111 | #5222 | Already present | `canonicalSessionId` in [opencode.js](../../../open-sse/executors/opencode.js) mints translated sessions from the current time and memoizes them. [opencodeFingerprint.js](../../../open-sse/utils/opencodeFingerprint.js) adds the `<env>` block to chat, Responses and Claude bodies, and rewrites a compatible caller `shell` definition in place. The client version in the user agent is newer than upstream's. See [opencode-session-canonical-id.test.js](../../../tests/unit/opencode-session-canonical-id.test.js) and [opencode-v2-free-tier.test.js](../../../tests/unit/opencode-v2-free-tier.test.js). |
+| 116 | #5166 | Ported in this change (gap only) | `rewriteHeadroomHtml` in the [Headroom proxy route](../../../src/app/api/headroom/proxy/[...path]/route.js) already rewrote absolute `src`, `href`, `action` and fetch paths. `stats-lifetime` was missing from its allowed prefixes. Test: [headroom-proxy-rewrite.test.js](../../../tests/unit/headroom-proxy-rewrite.test.js). |
+
+## Parts of ported PRs left out
+
+| PR | Upstream behaviour | Reason |
+|---|---|---|
+| #5276 | 45-second first-chunk and 60-second idle limits, with an in-place retry before the first chunk | DurinDoor keeps its longer, configurable limits so slow reasoning models are not cut off. It also avoids replaying a request the upstream already accepted. |
+| #5276 | Claude requests stream only with `stream: true`; non-streaming Antigravity replies use the Claude shape | Already present in `resolveStreamFlag` and `handleNonStreamingResponse`. |
+| #5250 | `request-id` response header that echoes a client-supplied id | DurinDoor already sets its own `x-request-id` and does not trust the client's value. |
+| #5250 | `truncated` status in request details | This adds a new status value. DurinDoor instead closes a truncated translated stream in `finalizeOnFlush`. |
+
+## Behaviour change to an existing test
+
+`non-streaming-forced-client-sse.test.js` now expects `input_tokens: 1`, not `4`, for a four-token prompt with three cached tokens. `#5250` intentionally changes this count.

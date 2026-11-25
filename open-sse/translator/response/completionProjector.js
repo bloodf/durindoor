@@ -6,7 +6,7 @@ import {
   responsesIncompleteDetailsOrOmit,
   responsesTerminalFromChatFinish
 } from "../concerns/finishReason.js";
-import { toResponsesUsage } from "../concerns/usage.js";
+import { toClaudePromptUsage, toResponsesUsage } from "../concerns/usage.js";
 import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -90,7 +90,7 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
       ) || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
     usage: {
-      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+      ...toClaudePromptUsage(usage),
       output_tokens: (usage.completion_tokens || usage.output_tokens || 0) + (usage.completion_tokens_details?.reasoning_tokens || 0)
     }
   };

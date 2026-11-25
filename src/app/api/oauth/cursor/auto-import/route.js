@@ -179,10 +179,11 @@ export async function GET() {
   try {
     tokens = extractTokensViaBetterSqlite(dbPath);
   } catch (err) {
-    const msg = err && err.message ? String(err.message) : String(err);
+    // Driver messages can quote database contents; report only the SQLite code.
+    const code = /\bSQLITE_[A-Z0-9_]{1,40}\b/.exec(`${err?.code} ${err?.message}`)?.[0];
     return NextResponse.json({
       found: false,
-      error: `could not open it: ${msg}`.replace(/^Error:\s*/, "")
+      error: code ? `could not open it (${code})` : "could not open it"
     });
   }
 

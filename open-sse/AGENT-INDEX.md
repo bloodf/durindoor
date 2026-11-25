@@ -192,6 +192,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `coqui` |  | freeTier | `` |
 | `coze` | openai | apikey | `https://api.coze.com/v1/chat/completions` |
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
+| `crowllm` |  | apikey | `https://crowllm.com/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
 | `cursor-api` | cursor | apikey | `https://api2.cursor.sh` |
 | `dahl` |  | apikey | `https://inference.dahl.global/v1/chat/completions` |

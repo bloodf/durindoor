@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOperatorRequest } from "@/dashboardGuard";
 import { getInstanceById } from "@/lib/localDb";
 import { clientFor } from "@/lib/mcp/gateway/client";
 
@@ -19,11 +20,14 @@ export const runtime = "nodejs";
  * - 404 unknown instance id
  * - 502 upstream connect/init failure
  */
-export async function POST(_request, context) {
+export async function POST(request, context) {
   const { id } = await context.params;
   const inst = await getInstanceById(id);
   if (!inst) {
     return NextResponse.json({ error: "instance not found", ok: false }, { status: 404 });
+  }
+  if (inst.transport?.toLowerCase() === "stdio" && !(await isOperatorRequest(request))) {
+    return NextResponse.json({ error: "Operator access required", ok: false }, { status: 403 });
   }
   let mcpClient;
   try {

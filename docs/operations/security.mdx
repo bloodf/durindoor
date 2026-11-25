@@ -118,6 +118,8 @@ The management control endpoint `POST /api/mcp/control` is exempt from the loopb
 
 Creating, updating, or deleting DurinDoor API keys (`POST /api/keys`, `PUT`/`DELETE /api/keys/{id}`) and provider nodes (`POST /api/provider-nodes`, `PUT`/`DELETE /api/provider-nodes/{id}`) requires an operator principal (a dashboard session, the machine-bound CLI token, or a loopback peer with `requireLogin` off) or an API key with the admin scope. The same applies when `PUT`/`PATCH /api/providers/{id}` changes a connection's proxy, base URL, endpoint, or relay fields. More broadly, every management change (unsafe methods, OAuth actions, and mutating MCP control tools) refuses an API key without the admin scope with HTTP 403. Existing keys start without it. Grant it only to automation that must change configuration.
 
+Creating, editing, or testing a stdio MCP instance, and changing the command, arguments, environment, or transport of any MCP instance, requires an operator principal. An admin-scoped application key cannot perform these operations.
+
 API routes outside the management list, public paths, and local-only paths (for example `/api/logs/export`, `/api/key-groups`, `/api/token-saver/stream`, `/api/compression/preview`) accept a dashboard session or CLI token. With `requireLogin` off they also accept a loopback peer; remote callers without credentials get 401.
 
 Covered route families and exclusions: [Management API](../reference/management-api.mdx). Control tools: [MCP control](../features/mcp-control.mdx).

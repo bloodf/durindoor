@@ -23566,7 +23566,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "ea3d13e350bc03f19d4bea8f5bc907ac8246c2d7a6f4a3004af1955ac161cb39",
+      "sourceSha256": "79433940109c09b7d4fa0cd2e683310097bf292d38a7da20d00253a78e4f19b1",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23590,7 +23590,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ea3d13e350bc03f19d4bea8f5bc907ac8246c2d7a6f4a3004af1955ac161cb39",
+            "src/app/(dashboard)/dashboard/profile/page.js": "79433940109c09b7d4fa0cd2e683310097bf292d38a7da20d00253a78e4f19b1",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -23606,7 +23606,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ea3d13e350bc03f19d4bea8f5bc907ac8246c2d7a6f4a3004af1955ac161cb39",
+            "src/app/(dashboard)/dashboard/profile/page.js": "79433940109c09b7d4fa0cd2e683310097bf292d38a7da20d00253a78e4f19b1",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#OidcAndProxy",
@@ -23621,7 +23621,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ea3d13e350bc03f19d4bea8f5bc907ac8246c2d7a6f4a3004af1955ac161cb39",
+            "src/app/(dashboard)/dashboard/profile/page.js": "79433940109c09b7d4fa0cd2e683310097bf292d38a7da20d00253a78e4f19b1",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#ShutdownConfirm",
@@ -23637,7 +23637,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ea3d13e350bc03f19d4bea8f5bc907ac8246c2d7a6f4a3004af1955ac161cb39",
+            "src/app/(dashboard)/dashboard/profile/page.js": "79433940109c09b7d4fa0cd2e683310097bf292d38a7da20d00253a78e4f19b1",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens export prompt."
@@ -23652,7 +23652,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ea3d13e350bc03f19d4bea8f5bc907ac8246c2d7a6f4a3004af1955ac161cb39",
+            "src/app/(dashboard)/dashboard/profile/page.js": "79433940109c09b7d4fa0cd2e683310097bf292d38a7da20d00253a78e4f19b1",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens transfer branch."
@@ -39629,7 +39629,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#ProviderLimits",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "ProviderLimits",
-      "sourceSha256": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+      "sourceSha256": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -39660,7 +39660,7 @@
           ],
           "proposedSourceEvidence": "GroupedAccounts renders ProviderLimits with two Codex connections and activates the real merged-account switch. Static binding approved by UiStandardsReview; runtime proof pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39673,7 +39673,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Default",
@@ -39692,7 +39692,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Loading",
@@ -39710,7 +39710,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Error",
@@ -39734,7 +39734,7 @@
           ],
           "proposedSourceEvidence": "Play opens reset dialog.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39749,7 +39749,7 @@
           ],
           "proposedSourceEvidence": "Play filters groups.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39764,7 +39764,7 @@
           ],
           "proposedSourceEvidence": "Credit fixture.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39779,7 +39779,7 @@
           ],
           "proposedSourceEvidence": "Play opens delete confirmation.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39793,7 +39793,7 @@
           ],
           "proposedSourceEvidence": "ClaudeModelWeeklyNotReported play proves two actual weekly fable (7d) rows and their not-reported state.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "expectedVisibleText": "weekly fable (7d)"
@@ -39991,7 +39991,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#QuotaThresholds",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "QuotaThresholds",
-      "sourceSha256": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+      "sourceSha256": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -40011,7 +40011,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#renderAccountSection",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "renderAccountSection",
-      "sourceSha256": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+      "sourceSha256": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -40034,7 +40034,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "Default loads concrete codex and kiro accounts; the unmerged group branch calls renderAccountSection for each connection. Static source binding approved by UiStandardsReview; runtime proof pending."
@@ -40049,7 +40049,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "bfca0e72cec17ff2d2dfdb3a370ca0a27f64b8a43c187145272d5ae1a02a2200",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "8f5146f9adc9e839bba81ed583ee0d55e80ed90508fae62bc882d9e7086fde1d",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "Private account section rendered by GroupedAccounts",
@@ -45587,7 +45587,7 @@
       "id": "src/app/login/LoginView.js#LoginView",
       "sourcePath": "src/app/login/LoginView.js",
       "symbol": "LoginView",
-      "sourceSha256": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+      "sourceSha256": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45617,7 +45617,7 @@
             "password-login"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "LoginView.jsx renders Durin Door heading; Default play mounts actual LoginPage and finds Password input."
@@ -45631,7 +45631,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Stateful harness renders actual LoginView and types into controlled password input.",
@@ -45646,7 +45646,7 @@
             "oidc-and-password"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual LoginView receives both-mode props.",
@@ -45661,7 +45661,7 @@
             "rate-limit"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual LoginView retryAfter prop.",
@@ -45676,7 +45676,7 @@
             "password-change"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual LoginView proof/mustChange props.",
@@ -45694,7 +45694,7 @@
           ],
           "proposedSourceEvidence": "error/resetHint props.",
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           }
         },
@@ -45707,7 +45707,7 @@
             "oidc-only"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual LoginView configured OIDC-only props.",
@@ -45722,7 +45722,7 @@
             "oidc-recovery"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual LoginView misconfigured OIDC props; play asserts warning and required password.",
@@ -45738,7 +45738,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/LoginView.js": "25ae9f26f5a43092c93a0a8c3059e7b597a9baddb393dbe118bfbfdbcf4a9eb4",
+            "src/app/login/LoginView.js": "5002136c4b173ac5ea2c5505316a5b2f24eca01ac7fa1415fc58b08d3bf13d2e",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual route state machine renders owned LoginView MFA error form.",
@@ -45927,7 +45927,7 @@
       "id": "src/app/login/page.js#LoginPage",
       "sourcePath": "src/app/login/page.js",
       "symbol": "LoginPage",
-      "sourceSha256": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+      "sourceSha256": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -45955,7 +45955,7 @@
             "password"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Direct actual page, auth status fixture resolves; play awaits password.",
@@ -45971,7 +45971,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Real page form submission rejected by fixture; reset hint remains visible.",
@@ -45987,7 +45987,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Real password submit enters second-factor form.",
@@ -46003,7 +46003,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Real MFA verify request rejected; input clears.",
@@ -46019,7 +46019,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual login response proof drives password update form.",
@@ -46034,7 +46034,7 @@
             "remote-default-blocked"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual login response without proof drives remote-access denial.",
@@ -46049,7 +46049,7 @@
             "no-password"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual auth status hasPassword=false.",
@@ -46065,7 +46065,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Actual auth status selects configured OIDC-only mode, password input absent.",
@@ -46082,7 +46082,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/login/page.js": "00b41c3ce18bed29ea51a5f06a50b6dc943de44172732525f81d67833e5ebfce",
+            "src/app/login/page.js": "71bffac6aa0e3d97636d89acbb464143c8582cb72793e14891fc17a6a3396fc6",
             "src/app/login/page.stories.jsx": "db965497b1a6f127c970a1f22b2207540c3c9169af50af44d783c0b55aa27d10"
           },
           "proposedSourceEvidence": "Real change-password submission handles reauthenticate response and clears password.",
@@ -104653,7 +104653,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "fe3f2308d943f4ba173f507c49f74d2ce987f3258cd08bac65536a12a6c4e80c",
+    "sourceCensusSha256": "0c78fc316e76addc1c5dcfc7d9a10adb9cb7a8558f29e54910ee601a6f026997",
     "pendingRows": 450,
     "retainedApprovedRows": 197,
     "pendingReferences": 1496,

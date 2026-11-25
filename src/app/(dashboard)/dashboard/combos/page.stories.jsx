@@ -293,6 +293,8 @@ const spacingParameters = {
     pathname: "/dashboard/combos",
     routes: {
       ...fixtureRoutes("default"),
+      "GET /api/models/custom": { body: { models: [] } },
+      "GET /api/models/disabled": { body: { disabled: {} } },
       "GET /api/models/alias": { body: { aliases: {} } },
     },
   },
@@ -313,8 +315,10 @@ const assertSpacingModal = async () => {
   // Select an existing combo through the real picker: nested combos are valid members.
   await userEvent.click(within(dialog).getByRole("button", { name: "Add Model" }));
   const picker = await canvas.findByRole("dialog", { name: "Add Model to Combo" });
-  await userEvent.click(await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ }));
-  await userEvent.click(within(picker).getByRole("button", { name: "Done" }));
+  const model = await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ });
+  await userEvent.click(model);
+  await expect(model).toHaveAttribute("aria-pressed", "true");
+  await userEvent.click(within(picker).getByRole("button", { name: "Close", exact: true }));
   await waitFor(() => expect(picker).not.toBeInTheDocument());
   const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });
   const row = drag.parentElement;

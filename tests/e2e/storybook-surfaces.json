@@ -6993,6 +6993,160 @@
       ]
     },
     {
+      "id": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx#ComboFormModal",
+      "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx",
+      "symbol": "ComboFormModal",
+      "sourceSha256": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "production-combos-combospage--load-failure-error",
+        "production-combos-combospage--save-failure",
+        "production-combos-combospage--create-combo-spacing",
+        "production-combos-combospage--create-combo-spacing-mobile"
+      ],
+      "storyScenarios": [
+        {
+          "id": "production-combos-combospage--load-failure-error",
+          "storyId": "production-combos-combospage--load-failure-error",
+          "runtimeArtifactId": "production-combos-combospage--load-failure-error",
+          "expectedVisibleText": "Create Combo",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "axes": [
+            "text",
+            "controls",
+            "error",
+            "empty"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6"
+          },
+          "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review."
+        },
+        {
+          "id": "production-combos-combospage--save-failure",
+          "storyId": "production-combos-combospage--save-failure",
+          "runtimeArtifactId": "production-combos-combospage--save-failure",
+          "axes": [
+            "save-error",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6"
+          },
+          "proposedSourceEvidence": "SaveFailure Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
+          "expectedVisibleText": "Failed to save combo",
+          "proposedVisibleTexts": [
+            "Failed to save combo"
+          ]
+        },
+        {
+          "id": "production-combos-combospage--create-combo-spacing",
+          "storyId": "production-combos-combospage--create-combo-spacing",
+          "runtimeArtifactId": "production-combos-combospage--create-combo-spacing",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6"
+          },
+          "expectedVisibleText": "Create Combo"
+        },
+        {
+          "id": "production-combos-combospage--create-combo-spacing-mobile",
+          "storyId": "production-combos-combospage--create-combo-spacing-mobile",
+          "runtimeArtifactId": "production-combos-combospage--create-combo-spacing-mobile",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6"
+          },
+          "expectedVisibleText": "Create Combo"
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [],
+      "sourceReviewFindings": [],
+      "historicalSourceReviewFindings": [],
+      "proposedSourceReviewNotes": "Private modal ownership uses actual retained LoadFailureError, SaveFailure and desktop/mobile CreateComboSpacing scenes. Original cancelled CreateFlow remains owned as a complete page/process transition, not a retained modal or opener alias.",
+      "requiredIntegrationEvidence": [
+        "Preserve actual initial open/native-name-edit/Cancel/dialog-unmount CreateFlow process evidence separately from retained spacing/error/save modal scenes; no closed-final control-absence waiver."
+      ]
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx#ModelItem",
+      "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx",
+      "symbol": "ModelItem",
+      "sourceSha256": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "production-combos-combospage--edit-flow"
+      ],
+      "storyScenarios": [
+        {
+          "id": "production-combos-combospage--edit-flow",
+          "storyId": "production-combos-combospage--edit-flow",
+          "runtimeArtifactId": "production-combos-combospage--edit-flow",
+          "axes": [
+            "edit",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "854d8665f6cc92d5e89f51760017e499c9ae5414c541ab6971d754e371c5a5a6"
+          },
+          "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
+          "expectedVisibleText": "openai/gpt-4o",
+          "proposedVisibleTexts": [
+            "openai/gpt-4o",
+            "anthropic/claude-sonnet-4.5",
+            "google/gemini-2.5-pro"
+          ]
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [],
+      "sourceReviewFindings": [],
+      "historicalSourceReviewFindings": [],
+      "proposedSourceReviewNotes": "Private visual fragment mapped through parent."
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx#ComboUsageReport",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx",
       "symbol": "ComboUsageReport",
@@ -7142,8 +7296,8 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d"
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
           "expectedConsoleErrors": [],
@@ -7413,7 +7567,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+      "sourceSha256": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7433,8 +7587,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Private card rendered by Default",
@@ -7541,291 +7695,10 @@
       "unresolvedHistoricalScenarioIds": []
     },
     {
-      "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
-      "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
-      "symbol": "ComboFormModal",
-      "sourceSha256": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-      "proposedClassification": "visual",
-      "approvedClassification": null,
-      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "requiredScenarioIds": [
-        "production-combos-combospage--load-failure-error",
-        "production-combos-combospage--save-failure",
-        "production-combos-combospage--create-combo-spacing",
-        "production-combos-combospage--create-combo-spacing-mobile"
-      ],
-      "approvedScenarioIds": [],
-      "storyScenarios": [
-        {
-          "id": "production-combos-combospage--load-failure-error",
-          "storyId": "production-combos-combospage--load-failure-error",
-          "runtimeArtifactId": "production-combos-combospage--load-failure-error",
-          "expectedVisibleText": "Create Combo",
-          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-          "axes": [
-            "text",
-            "controls",
-            "error",
-            "empty"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
-            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
-          },
-          "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
-        },
-        {
-          "id": "production-combos-combospage--save-failure",
-          "storyId": "production-combos-combospage--save-failure",
-          "runtimeArtifactId": "production-combos-combospage--save-failure",
-          "axes": [
-            "save-error",
-            "text"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
-            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
-          },
-          "proposedSourceEvidence": "SaveFailure",
-          "expectedVisibleText": "Failed to save combo",
-          "proposedVisibleTexts": [
-            "Failed to save combo"
-          ]
-        },
-        {
-          "id": "production-combos-combospage--create-combo-spacing",
-          "storyId": "production-combos-combospage--create-combo-spacing",
-          "runtimeArtifactId": "production-combos-combospage--create-combo-spacing",
-          "axes": [
-            "text",
-            "controls"
-          ],
-          "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
-            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
-          },
-          "expectedVisibleText": "Create Combo"
-        },
-        {
-          "id": "production-combos-combospage--create-combo-spacing-mobile",
-          "storyId": "production-combos-combospage--create-combo-spacing-mobile",
-          "runtimeArtifactId": "production-combos-combospage--create-combo-spacing-mobile",
-          "axes": [
-            "text",
-            "controls"
-          ],
-          "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
-            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
-          },
-          "expectedVisibleText": "Create Combo"
-        }
-      ],
-      "approvedException": null,
-      "reviewEvidence": null,
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "pending-independent-source-review",
-      "historicalSourceReviewFindings": [
-        "Mapped load-failure-error path rejected."
-      ],
-      "proposedSourceReviewNotes": "Private modal ownership uses actual retained LoadFailureError, SaveFailure and desktop/mobile CreateComboSpacing scenes. Original cancelled CreateFlow remains owned as a complete page/process transition, not a retained modal or opener alias.",
-      "runtimeStatus": "pending",
-      "historicalSourceApprovals": [
-        {
-          "metadataRevision": "17beb68e5dcf148b68f7d051c93044871cda5c6e",
-          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-          "storyScenarios": [
-            {
-              "id": "production-combos-combospage--load-failure-error",
-              "storyId": "production-combos-combospage--load-failure-error",
-              "runtimeArtifactId": "production-combos-combospage--load-failure-error",
-              "expectedVisibleText": "Create Combo",
-              "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-              "axes": [
-                "text",
-                "controls",
-                "error",
-                "empty"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
-              },
-              "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
-            },
-            {
-              "id": "production-combos-combospage--create-flow",
-              "storyId": "production-combos-combospage--create-flow",
-              "runtimeArtifactId": "production-combos-combospage--create-flow",
-              "axes": [
-                "create",
-                "dialog",
-                "text"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
-              },
-              "proposedSourceEvidence": "Private modal rendered by CreateFlow",
-              "expectedVisibleText": "Create Combo",
-              "proposedVisibleTexts": [
-                "Create Combo"
-              ]
-            },
-            {
-              "id": "production-combos-combospage--save-failure",
-              "storyId": "production-combos-combospage--save-failure",
-              "runtimeArtifactId": "production-combos-combospage--save-failure",
-              "axes": [
-                "save-error",
-                "text"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
-              },
-              "proposedSourceEvidence": "SaveFailure",
-              "expectedVisibleText": "Failed to save combo",
-              "proposedVisibleTexts": [
-                "Failed to save combo"
-              ]
-            }
-          ],
-          "reviewStatus": "approved",
-          "approvedClassification": "visual",
-          "approvedScenarioIds": [
-            "production-combos-combospage--load-failure-error",
-            "production-combos-combospage--create-flow",
-            "production-combos-combospage--save-failure"
-          ],
-          "approvedException": null,
-          "reviewedBy": "Independent source review",
-          "reviewEvidence": {
-            "scope": "source-contract-only",
-            "provenance": "catalogReconciliation.sourceContractReview",
-            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-            "runtimeStatus": "pending"
-          },
-          "sourceReviewStatus": "approved-source-contract-runtime-pending"
-        },
-        {
-          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-          "reviewStatus": "approved",
-          "reviewedBy": "Independent source review",
-          "approvedClassification": "visual",
-          "approvedScenarioIds": [
-            "production-combos-combospage--load-failure-error",
-            "production-combos-combospage--save-failure",
-            "production-combos-combospage--create-combo-spacing",
-            "production-combos-combospage--create-combo-spacing-mobile"
-          ],
-          "approvedException": null,
-          "storyScenarios": [
-            {
-              "id": "production-combos-combospage--load-failure-error",
-              "storyId": "production-combos-combospage--load-failure-error",
-              "runtimeArtifactId": "production-combos-combospage--load-failure-error",
-              "expectedVisibleText": "Create Combo",
-              "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-              "axes": [
-                "text",
-                "controls",
-                "error",
-                "empty"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
-                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
-              },
-              "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
-            },
-            {
-              "id": "production-combos-combospage--save-failure",
-              "storyId": "production-combos-combospage--save-failure",
-              "runtimeArtifactId": "production-combos-combospage--save-failure",
-              "axes": [
-                "save-error",
-                "text"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
-                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
-              },
-              "proposedSourceEvidence": "SaveFailure",
-              "expectedVisibleText": "Failed to save combo",
-              "proposedVisibleTexts": [
-                "Failed to save combo"
-              ]
-            },
-            {
-              "id": "production-combos-combospage--create-combo-spacing",
-              "storyId": "production-combos-combospage--create-combo-spacing",
-              "runtimeArtifactId": "production-combos-combospage--create-combo-spacing",
-              "axes": [
-                "text",
-                "controls"
-              ],
-              "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
-                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
-              },
-              "expectedVisibleText": "Create Combo"
-            },
-            {
-              "id": "production-combos-combospage--create-combo-spacing-mobile",
-              "storyId": "production-combos-combospage--create-combo-spacing-mobile",
-              "runtimeArtifactId": "production-combos-combospage--create-combo-spacing-mobile",
-              "axes": [
-                "text",
-                "controls"
-              ],
-              "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
-                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
-              },
-              "expectedVisibleText": "Create Combo"
-            }
-          ],
-          "reviewEvidence": {
-            "scope": "source-contract-only",
-            "sourceHead": "a70a6326d80c30e95f9f6389c9583bbed0b5a717",
-            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-            "changedDependencyPaths": [
-              "src/app/(dashboard)/dashboard/combos/page.stories.jsx"
-            ],
-            "addedDirectImportPaths": [
-              "src/app/(dashboard)/dashboard/combos/error.js"
-            ],
-            "runtimeStatus": "pending",
-            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
-          },
-          "sourceReviewStatus": "approved-source-contract-runtime-pending"
-        }
-      ],
-      "requiredIntegrationEvidence": [
-        "Preserve actual initial open/native-name-edit/Cancel/dialog-unmount CreateFlow process evidence separately from retained spacing/error/save modal scenes; no closed-final control-absence waiver."
-      ],
-      "unresolvedHistoricalScenarioIds": []
-    },
-    {
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+      "sourceSha256": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7854,8 +7727,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "combos/page.stories.jsx Default",
@@ -7872,8 +7745,8 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "CombosPage empty branch renders EmptyState title No combos yet.",
@@ -7890,8 +7763,8 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
@@ -7913,8 +7786,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Play opens deletion path."
@@ -7932,8 +7805,8 @@
             "asserted modal unmount"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Actual CreateFlow opens the production ComboFormModal, edits the native Combo Name, then activates Cancel and explicitly asserts the dialog absent. The retained final page has the real production-fallback card; page opener text is not retained modal ownership. Separate existing spacing/error/edit/save scenes retain the actual form.",
@@ -7951,8 +7824,8 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Play opens edit path."
@@ -7967,8 +7840,8 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "proposedSourceEvidence": "Save failure fixture."
@@ -7983,8 +7856,8 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           }
         },
@@ -7998,8 +7871,8 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacing play opens live Create Combo dialog and proves footer controls plus model row geometry.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "expectedVisibleText": "Create Combo"
@@ -8014,8 +7887,8 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacingMobile executes same live dialog and geometry assertions at mobile viewport.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/page.js": "a184b6e10f62aead3dff01e1f59638e7dab09f9138be3012f76c04edb0158564",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
           "expectedVisibleText": "Create Combo"
@@ -8448,141 +8321,6 @@
       ],
       "requiredIntegrationEvidence": [
         "Actual initial error, retry/navigation, reset/unmount and full-process/manual accessibility remain required in addition to the separate retained CombosError scene. Harness recovery text does not certify production page recovery, renderer disposal, native A/B/A or runtime acceptance."
-      ],
-      "unresolvedHistoricalScenarioIds": []
-    },
-    {
-      "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
-      "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
-      "symbol": "ModelItem",
-      "sourceSha256": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-      "proposedClassification": "visual",
-      "approvedClassification": null,
-      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
-      "reviewStatus": "pending",
-      "reviewedBy": null,
-      "requiredScenarioIds": [
-        "production-combos-combospage--edit-flow"
-      ],
-      "approvedScenarioIds": [],
-      "storyScenarios": [
-        {
-          "id": "production-combos-combospage--edit-flow",
-          "storyId": "production-combos-combospage--edit-flow",
-          "runtimeArtifactId": "production-combos-combospage--edit-flow",
-          "axes": [
-            "edit",
-            "text"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
-            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
-            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
-          },
-          "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content.",
-          "expectedVisibleText": "openai/gpt-4o",
-          "proposedVisibleTexts": [
-            "openai/gpt-4o",
-            "anthropic/claude-sonnet-4.5",
-            "google/gemini-2.5-pro"
-          ]
-        }
-      ],
-      "approvedException": null,
-      "reviewEvidence": null,
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "pending-independent-source-review",
-      "historicalSourceReviewFindings": [
-        "Mapped load-failure-error path has no form model list; ModelItem unreachable."
-      ],
-      "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
-      "runtimeStatus": "pending",
-      "historicalSourceApprovals": [
-        {
-          "metadataRevision": "17beb68e5dcf148b68f7d051c93044871cda5c6e",
-          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-          "storyScenarios": [
-            {
-              "id": "production-combos-combospage--edit-flow",
-              "storyId": "production-combos-combospage--edit-flow",
-              "runtimeArtifactId": "production-combos-combospage--edit-flow",
-              "axes": [
-                "edit",
-                "text"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
-              },
-              "proposedSourceEvidence": "Private model item rendered by EditFlow",
-              "expectedVisibleText": "Edit Combo",
-              "proposedVisibleTexts": [
-                "Edit Combo"
-              ]
-            }
-          ],
-          "reviewStatus": "approved",
-          "approvedClassification": "visual",
-          "approvedScenarioIds": [
-            "production-combos-combospage--edit-flow"
-          ],
-          "approvedException": null,
-          "reviewedBy": "Independent source review",
-          "reviewEvidence": {
-            "scope": "source-contract-only",
-            "provenance": "catalogReconciliation.sourceContractReview",
-            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-            "runtimeStatus": "pending"
-          },
-          "sourceReviewStatus": "approved-source-contract-runtime-pending"
-        },
-        {
-          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-          "reviewStatus": "approved",
-          "reviewedBy": "Independent source review",
-          "approvedClassification": "visual",
-          "approvedScenarioIds": [
-            "production-combos-combospage--edit-flow"
-          ],
-          "approvedException": null,
-          "storyScenarios": [
-            {
-              "id": "production-combos-combospage--edit-flow",
-              "storyId": "production-combos-combospage--edit-flow",
-              "runtimeArtifactId": "production-combos-combospage--edit-flow",
-              "axes": [
-                "edit",
-                "text"
-              ],
-              "sourceHashes": {
-                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
-                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
-                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
-              },
-              "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content.",
-              "expectedVisibleText": "openai/gpt-4o",
-              "proposedVisibleTexts": [
-                "openai/gpt-4o",
-                "anthropic/claude-sonnet-4.5",
-                "google/gemini-2.5-pro"
-              ]
-            }
-          ],
-          "reviewEvidence": {
-            "scope": "source-contract-only",
-            "sourceHead": "a70a6326d80c30e95f9f6389c9583bbed0b5a717",
-            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-            "changedDependencyPaths": [
-              "src/app/(dashboard)/dashboard/combos/page.stories.jsx"
-            ],
-            "addedDirectImportPaths": [
-              "src/app/(dashboard)/dashboard/combos/error.js"
-            ],
-            "runtimeStatus": "pending",
-            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
-          },
-          "sourceReviewStatus": "approved-source-contract-runtime-pending"
-        }
       ],
       "unresolvedHistoricalScenarioIds": []
     },
@@ -91436,7 +91174,7 @@
     {
       "storyId": "production-combos-combospage--retained-error",
       "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-      "sourceSha256": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+      "sourceSha256": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -91445,7 +91183,7 @@
       "historicalReferenceReview": {
         "storyId": "production-combos-combospage--retained-error",
         "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-        "sourceSha256": "69b8bcd61a4fdeab33d821e0fcb3d800efa13740998db0c153813088baaf8a33",
+        "sourceSha256": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -91454,19 +91192,29 @@
         "historicalReferenceReview": {
           "storyId": "production-combos-combospage--retained-error",
           "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-          "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+          "sourceSha256": "69b8bcd61a4fdeab33d821e0fcb3d800efa13740998db0c153813088baaf8a33",
           "reviewStatus": "pending",
           "reviewedBy": null,
           "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
           "runtimeStatus": "pending",
-          "reviewEvidence": null
+          "reviewEvidence": null,
+          "historicalReferenceReview": {
+            "storyId": "production-combos-combospage--retained-error",
+            "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+            "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+            "reviewStatus": "pending",
+            "reviewedBy": null,
+            "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+            "runtimeStatus": "pending",
+            "reviewEvidence": null
+          }
         }
       }
     },
     {
       "storyId": "production-combos-combospage--rejected-clear-and-retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-      "sourceSha256": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+      "sourceSha256": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -91475,7 +91223,7 @@
       "historicalReferenceReview": {
         "storyId": "production-combos-combospage--rejected-clear-and-retry",
         "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-        "sourceSha256": "69b8bcd61a4fdeab33d821e0fcb3d800efa13740998db0c153813088baaf8a33",
+        "sourceSha256": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -91484,19 +91232,29 @@
         "historicalReferenceReview": {
           "storyId": "production-combos-combospage--rejected-clear-and-retry",
           "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-          "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+          "sourceSha256": "69b8bcd61a4fdeab33d821e0fcb3d800efa13740998db0c153813088baaf8a33",
           "reviewStatus": "pending",
           "reviewedBy": null,
           "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
           "runtimeStatus": "pending",
-          "reviewEvidence": null
+          "reviewEvidence": null,
+          "historicalReferenceReview": {
+            "storyId": "production-combos-combospage--rejected-clear-and-retry",
+            "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+            "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+            "reviewStatus": "pending",
+            "reviewedBy": null,
+            "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+            "runtimeStatus": "pending",
+            "reviewEvidence": null
+          }
         }
       }
     },
     {
       "storyId": "production-combos-combospage--retry",
       "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-      "sourceSha256": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+      "sourceSha256": "c6bec621dcd8d10493fff419fd3f691b09526af3d17f1a64a317b7488a444f72",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -91505,7 +91263,7 @@
       "historicalReferenceReview": {
         "storyId": "production-combos-combospage--retry",
         "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-        "sourceSha256": "69b8bcd61a4fdeab33d821e0fcb3d800efa13740998db0c153813088baaf8a33",
+        "sourceSha256": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
         "reviewStatus": "pending",
         "reviewedBy": null,
         "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -91514,12 +91272,22 @@
         "historicalReferenceReview": {
           "storyId": "production-combos-combospage--retry",
           "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
-          "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+          "sourceSha256": "69b8bcd61a4fdeab33d821e0fcb3d800efa13740998db0c153813088baaf8a33",
           "reviewStatus": "pending",
           "reviewedBy": null,
           "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
           "runtimeStatus": "pending",
-          "reviewEvidence": null
+          "reviewEvidence": null,
+          "historicalReferenceReview": {
+            "storyId": "production-combos-combospage--retry",
+            "sourcePath": "./src/app/(dashboard)/dashboard/combos/page.stories.jsx",
+            "sourceSha256": "5c2f20e9b93ef299a81f851ea010fa02b4bd3fff804b674b4a45417ac704a198",
+            "reviewStatus": "pending",
+            "reviewedBy": null,
+            "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+            "runtimeStatus": "pending",
+            "reviewEvidence": null
+          }
         }
       }
     },
@@ -104041,11 +103809,428 @@
     "status": "historical-reference-not-present-in-current-accepted-tree",
     "scope": "Preserved historical planning reference only; not an active census file, current inventory or recreated snapshot."
   },
-  "historicalInventoryRows": [],
+  "historicalInventoryRows": [
+    {
+      "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
+      "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
+      "symbol": "ComboFormModal",
+      "sourceSha256": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-combos-combospage--load-failure-error",
+        "production-combos-combospage--save-failure",
+        "production-combos-combospage--create-combo-spacing",
+        "production-combos-combospage--create-combo-spacing-mobile"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-combos-combospage--load-failure-error",
+          "storyId": "production-combos-combospage--load-failure-error",
+          "runtimeArtifactId": "production-combos-combospage--load-failure-error",
+          "expectedVisibleText": "Create Combo",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "axes": [
+            "text",
+            "controls",
+            "error",
+            "empty"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
+          },
+          "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
+        },
+        {
+          "id": "production-combos-combospage--save-failure",
+          "storyId": "production-combos-combospage--save-failure",
+          "runtimeArtifactId": "production-combos-combospage--save-failure",
+          "axes": [
+            "save-error",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
+          },
+          "proposedSourceEvidence": "SaveFailure",
+          "expectedVisibleText": "Failed to save combo",
+          "proposedVisibleTexts": [
+            "Failed to save combo"
+          ]
+        },
+        {
+          "id": "production-combos-combospage--create-combo-spacing",
+          "storyId": "production-combos-combospage--create-combo-spacing",
+          "runtimeArtifactId": "production-combos-combospage--create-combo-spacing",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
+          },
+          "expectedVisibleText": "Create Combo"
+        },
+        {
+          "id": "production-combos-combospage--create-combo-spacing-mobile",
+          "storyId": "production-combos-combospage--create-combo-spacing-mobile",
+          "runtimeArtifactId": "production-combos-combospage--create-combo-spacing-mobile",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
+          },
+          "expectedVisibleText": "Create Combo"
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null,
+      "sourceReviewFindings": [],
+      "sourceReviewStatus": "pending-independent-source-review",
+      "historicalSourceReviewFindings": [
+        "Mapped load-failure-error path rejected."
+      ],
+      "proposedSourceReviewNotes": "Private modal ownership uses actual retained LoadFailureError, SaveFailure and desktop/mobile CreateComboSpacing scenes. Original cancelled CreateFlow remains owned as a complete page/process transition, not a retained modal or opener alias.",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "metadataRevision": "17beb68e5dcf148b68f7d051c93044871cda5c6e",
+          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "storyScenarios": [
+            {
+              "id": "production-combos-combospage--load-failure-error",
+              "storyId": "production-combos-combospage--load-failure-error",
+              "runtimeArtifactId": "production-combos-combospage--load-failure-error",
+              "expectedVisibleText": "Create Combo",
+              "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+              "axes": [
+                "text",
+                "controls",
+                "error",
+                "empty"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
+              },
+              "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
+            },
+            {
+              "id": "production-combos-combospage--create-flow",
+              "storyId": "production-combos-combospage--create-flow",
+              "runtimeArtifactId": "production-combos-combospage--create-flow",
+              "axes": [
+                "create",
+                "dialog",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
+              },
+              "proposedSourceEvidence": "Private modal rendered by CreateFlow",
+              "expectedVisibleText": "Create Combo",
+              "proposedVisibleTexts": [
+                "Create Combo"
+              ]
+            },
+            {
+              "id": "production-combos-combospage--save-failure",
+              "storyId": "production-combos-combospage--save-failure",
+              "runtimeArtifactId": "production-combos-combospage--save-failure",
+              "axes": [
+                "save-error",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
+              },
+              "proposedSourceEvidence": "SaveFailure",
+              "expectedVisibleText": "Failed to save combo",
+              "proposedVisibleTexts": [
+                "Failed to save combo"
+              ]
+            }
+          ],
+          "reviewStatus": "approved",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-combospage--load-failure-error",
+            "production-combos-combospage--create-flow",
+            "production-combos-combospage--save-failure"
+          ],
+          "approvedException": null,
+          "reviewedBy": "Independent source review",
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        },
+        {
+          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-combospage--load-failure-error",
+            "production-combos-combospage--save-failure",
+            "production-combos-combospage--create-combo-spacing",
+            "production-combos-combospage--create-combo-spacing-mobile"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-combos-combospage--load-failure-error",
+              "storyId": "production-combos-combospage--load-failure-error",
+              "runtimeArtifactId": "production-combos-combospage--load-failure-error",
+              "expectedVisibleText": "Create Combo",
+              "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+              "axes": [
+                "text",
+                "controls",
+                "error",
+                "empty"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
+                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+              },
+              "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet."
+            },
+            {
+              "id": "production-combos-combospage--save-failure",
+              "storyId": "production-combos-combospage--save-failure",
+              "runtimeArtifactId": "production-combos-combospage--save-failure",
+              "axes": [
+                "save-error",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
+                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+              },
+              "proposedSourceEvidence": "SaveFailure",
+              "expectedVisibleText": "Failed to save combo",
+              "proposedVisibleTexts": [
+                "Failed to save combo"
+              ]
+            },
+            {
+              "id": "production-combos-combospage--create-combo-spacing",
+              "storyId": "production-combos-combospage--create-combo-spacing",
+              "runtimeArtifactId": "production-combos-combospage--create-combo-spacing",
+              "axes": [
+                "text",
+                "controls"
+              ],
+              "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
+                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+              },
+              "expectedVisibleText": "Create Combo"
+            },
+            {
+              "id": "production-combos-combospage--create-combo-spacing-mobile",
+              "storyId": "production-combos-combospage--create-combo-spacing-mobile",
+              "runtimeArtifactId": "production-combos-combospage--create-combo-spacing-mobile",
+              "axes": [
+                "text",
+                "controls"
+              ],
+              "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending.",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
+                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+              },
+              "expectedVisibleText": "Create Combo"
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "sourceHead": "a70a6326d80c30e95f9f6389c9583bbed0b5a717",
+            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
+            "changedDependencyPaths": [
+              "src/app/(dashboard)/dashboard/combos/page.stories.jsx"
+            ],
+            "addedDirectImportPaths": [
+              "src/app/(dashboard)/dashboard/combos/error.js"
+            ],
+            "runtimeStatus": "pending",
+            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ],
+      "requiredIntegrationEvidence": [
+        "Preserve actual initial open/native-name-edit/Cancel/dialog-unmount CreateFlow process evidence separately from retained spacing/error/save modal scenes; no closed-final control-absence waiver."
+      ],
+      "unresolvedHistoricalScenarioIds": []
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
+      "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
+      "symbol": "ModelItem",
+      "sourceSha256": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-combos-combospage--edit-flow"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-combos-combospage--edit-flow",
+          "storyId": "production-combos-combospage--edit-flow",
+          "runtimeArtifactId": "production-combos-combospage--edit-flow",
+          "axes": [
+            "edit",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "eade25f3a75b627ccee8796ba6b067f5ee52d436d0f2640d684eec273b796d6d",
+            "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "ea28f6364e5f9a6c3ffb0b6a03eb3e49f04e7063856098df12109038d1b81d17",
+            "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
+          },
+          "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content.",
+          "expectedVisibleText": "openai/gpt-4o",
+          "proposedVisibleTexts": [
+            "openai/gpt-4o",
+            "anthropic/claude-sonnet-4.5",
+            "google/gemini-2.5-pro"
+          ]
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null,
+      "sourceReviewFindings": [],
+      "sourceReviewStatus": "pending-independent-source-review",
+      "historicalSourceReviewFindings": [
+        "Mapped load-failure-error path has no form model list; ModelItem unreachable."
+      ],
+      "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "metadataRevision": "17beb68e5dcf148b68f7d051c93044871cda5c6e",
+          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "storyScenarios": [
+            {
+              "id": "production-combos-combospage--edit-flow",
+              "storyId": "production-combos-combospage--edit-flow",
+              "runtimeArtifactId": "production-combos-combospage--edit-flow",
+              "axes": [
+                "edit",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
+              },
+              "proposedSourceEvidence": "Private model item rendered by EditFlow",
+              "expectedVisibleText": "Edit Combo",
+              "proposedVisibleTexts": [
+                "Edit Combo"
+              ]
+            }
+          ],
+          "reviewStatus": "approved",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-combospage--edit-flow"
+          ],
+          "approvedException": null,
+          "reviewedBy": "Independent source review",
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        },
+        {
+          "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "reviewStatus": "approved",
+          "reviewedBy": "Independent source review",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-combospage--edit-flow"
+          ],
+          "approvedException": null,
+          "storyScenarios": [
+            {
+              "id": "production-combos-combospage--edit-flow",
+              "storyId": "production-combos-combospage--edit-flow",
+              "runtimeArtifactId": "production-combos-combospage--edit-flow",
+              "axes": [
+                "edit",
+                "text"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+                "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "e8bc1aec6ebff07a812568e3b6becec44e1954690ba61b7609586524682eef81",
+                "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b"
+              },
+              "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content.",
+              "expectedVisibleText": "openai/gpt-4o",
+              "proposedVisibleTexts": [
+                "openai/gpt-4o",
+                "anthropic/claude-sonnet-4.5",
+                "google/gemini-2.5-pro"
+              ]
+            }
+          ],
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "sourceHead": "a70a6326d80c30e95f9f6389c9583bbed0b5a717",
+            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
+            "changedDependencyPaths": [
+              "src/app/(dashboard)/dashboard/combos/page.stories.jsx"
+            ],
+            "addedDirectImportPaths": [
+              "src/app/(dashboard)/dashboard/combos/error.js"
+            ],
+            "runtimeStatus": "pending",
+            "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": []
+    }
+  ],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "f363ae49bb0aff3e9ae7d877b2131eea827b1adac4422cbbfc279c736839b859",
+    "sourceCensusSha256": "b529f1fd42831a082f96097c8a88559f1eeee1a5f5a45e16f8ca0b76265b882e",
     "pendingRows": 450,
     "retainedApprovedRows": 197,
     "pendingReferences": 1496,

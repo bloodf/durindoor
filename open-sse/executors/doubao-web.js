@@ -1,7 +1,6 @@
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./web-session-executor.js";
 import { errorResponse } from "../utils/error.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
-import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { requestAbortError } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 const BASE = "https://www.dola.com";
@@ -14,11 +13,9 @@ const textOf = (value) => {
 };
 const promptOf = (messages) => (messages || []).map((m) => `${m.role}: ${textOf(m.content)}`).join("\n\n");
 
-export class DoubaoWebExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("doubao-web", { id: "doubao-web", baseUrl: BASE }); this.fetch = deps.fetch || null; }
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+export class DoubaoWebExecutor extends WebSessionExecutor {
+  constructor(deps = {}) { super("doubao-web", { id: "doubao-web", baseUrl: BASE }, { observePatchedFetch: false }); this.fetch = deps.fetch || null; }
+  async runSession(input, { sendBillable }) {
     const cookie = String(input.credentials?.apiKey || "").replace(/^Cookie:\s*/i, "");
     const model = String(input.body?.model || input.model || "dola-speed").split("/").pop();
     const fingerprint = cookieValue(cookie, "s_v_web_id") || cookieValue(cookie, "fp");
@@ -29,11 +26,8 @@ export class DoubaoWebExecutor extends BaseExecutor {
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Cookie: cookie, Origin: BASE, Referer: `${BASE}/chat/`, "Agw-Js-Conv": "str", "User-Agent": "Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36" };
     let upstream;
     const transport = this.fetch ? { transport: (options) => this.fetch(url, options, input.proxyOptions) } : undefined;
-    const result = (response) => {
-      transferProviderAttemptDispatch(upstream, response);
-      return { response, url, headers, transformedBody: payload, attemptStartedAt: sender.attemptStartedAt };
-    };
-    try { upstream = await sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, input.proxyOptions, transport); }
+    const result = (response) => ({ response, url, headers, transformedBody: payload });
+    try { upstream = await sendBillable(url, { method: "POST", headers, body: JSON.stringify(payload) }, transport); }
     catch (e) {
       if (isQuotaDispatchUnavailable(e)) throw e;
       if (input.signal?.aborted) throw requestAbortError(input.signal.reason);

@@ -1,4 +1,4 @@
-// Freebuff session executor (staged; registered only by the registration batch).
+// Freebuff session executor.
 //
 // Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // MIT, open-sse/executors/freebuff.ts and the validator in

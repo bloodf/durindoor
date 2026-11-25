@@ -14,7 +14,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
-import { resolveInlineThinkingFormat } from "../../handlers/chatCore/inlineThinking.js";
+import { resolveInlineThinkingFormat } from "../../utils/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
 import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";

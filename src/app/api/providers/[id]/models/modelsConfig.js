@@ -43,6 +43,7 @@ import {
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
 import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
+import { discoverCloudflareModels } from "open-sse/services/cloudflareModels.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
@@ -420,6 +421,12 @@ export async function persistCopilotEndpointContract(connection, rows) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  "cloudflare-ai": {
+    customResolver: (connection, proxyOptions = null) => discoverCloudflareModels(connection, {
+      fetchImpl: (url, init) => proxyAwareFetch(url, init, proxyOptions),
+      staticModels: getStaticProviderModels("cloudflare-ai")
+    })
+  },
   // ChatPlayground's catalog is read with the session Cookie header and lists each bot by `botId`.
   chatplayground: {
     url: "https://app.chatplayground.ai/api/models", method: "GET", headers: {},

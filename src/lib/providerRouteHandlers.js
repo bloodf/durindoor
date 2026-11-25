@@ -144,6 +144,9 @@ export function canDiscoverModels(connection) {
     switch (provider) {
       case "opencode-server":
         return !resolveOpenCodeServer(connection).error;
+      case "cloudflare-ai":
+        // cloudflareModels.js: the search URL is account-scoped.
+        return Boolean((connection.apiKey || connection.accessToken) && connection.providerSpecificData?.accountId);
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);

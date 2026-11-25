@@ -65,6 +65,21 @@ export function isOidcAuthMode(authMode) {
   return ["sso", "oidc", "both"].includes(authMode);
 }
 
+/** SSO protocols this build implements (9router #5851). */
+export const SUPPORTED_SSO_TYPES = Object.freeze(["oidc"]);
+export const DEFAULT_SSO_TYPE = "oidc";
+
+/**
+ * Map a stored `ssoType` to a supported protocol. Unknown values fall back to
+ * the default so authMode "sso" always keeps a working login method.
+ *
+ * @param {unknown} ssoType Stored `ssoType` setting.
+ * @returns {string}
+ */
+export function resolveSsoType(ssoType) {
+  return SUPPORTED_SSO_TYPES.includes(ssoType) ? ssoType : DEFAULT_SSO_TYPE;
+}
+
 /** Password remains available unless a configured OIDC-only mode is selected. */
 export function isPasswordLoginAllowed(settings) {
   return !(settings && ["sso", "oidc"].includes(settings.authMode) && isOidcConfigured(settings));
@@ -72,8 +87,10 @@ export function isPasswordLoginAllowed(settings) {
 
 export async function getOidcRuntimeConfig() {
   const settings = await getSettings();
-  // Generic SSO settings may select a different protocol; only OIDC can use this flow.
-  if (settings.authMode === "sso" && (settings.ssoType || "oidc") !== "oidc") return null;
+  // OIDC is the only SSO protocol implemented. An unknown stored `ssoType`
+  // (e.g. "saml" from a hand-edited db) falls back to OIDC instead of leaving
+  // an SSO-only install with no login method; see resolveSsoType.
+  if (settings.authMode === "sso" && resolveSsoType(settings.ssoType) !== "oidc") return null;
   if (!isOidcAuthMode(settings.authMode) || !isOidcConfigured(settings)) return null;
 
   const issuerUrl = trimTrailingSlashes(settings.oidcIssuerUrl);

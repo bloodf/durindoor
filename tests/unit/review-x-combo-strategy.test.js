@@ -56,7 +56,8 @@ it("deletes a media combo strategy when round robin is disabled", async () => {
   expect(server.comboStrategies).toEqual({ other: { fallbackStrategy: "fusion" } });
 });
 
-it("preserves an explicit zero timeout when inheriting the strategy", () => {
+it("removes the entry when a zero timeout clears it and the strategy is inherited", () => {
   const next = updateComboStrategy(server.comboStrategies, "primary", { fallbackStrategy: "inherit", timeoutMs: 0 });
-  expect(mergeSettingsPatch(server, { comboStrategies: next }).comboStrategies).toEqual({ primary: { timeoutMs: 0 }, other: { fallbackStrategy: "fusion" } });
+  expect(mergeSettingsPatch(server, { comboStrategies: next }).comboStrategies).toEqual({ other: { fallbackStrategy: "fusion" } });
+  expect(next.primary).toBeNull();
 });

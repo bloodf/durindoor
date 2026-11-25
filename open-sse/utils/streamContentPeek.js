@@ -16,6 +16,12 @@ import { createNoticeGate } from "./unavailableNotice.js";
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
+/**
+ * With releaseOnProgress, the longest the peek holds a stream after the first
+ * lifecycle event while waiting for a content verdict. Empty turns that end
+ * inside this window are still reported as empty (OmniRoute #21207).
+ */
+export const PEEK_PROGRESS_GRACE_MS = 1000;
 
 // Preserve raw terminal evidence across response wrappers and prefix replay.
 const tokenLimitEvidence = new WeakMap();
@@ -79,6 +85,16 @@ export function frameCarriesContent(line) {
   return nonEmptyString(parsed.message?.content) ||
   nonEmptyString(parsed.response) ||
   parsed.message?.tool_calls?.length > 0;
+}
+
+const LIFECYCLE_EVENT_TYPES = new Set(["message_start", "content_block_start", "response.created", "response.in_progress"]);
+const SILENT_DELTA_TYPES = new Set(["thinking_delta", "signature_delta", "input_json_delta"]);
+
+/** True for an event that shows the upstream started a turn, even with no output yet. */
+function isLifecycleProgress(parsed) {
+  if (LIFECYCLE_EVENT_TYPES.has(parsed?.type)) return true;
+  if (parsed?.type === "content_block_delta") return SILENT_DELTA_TYPES.has(parsed.delta?.type);
+  return nonEmptyString(parsed?.choices?.[0]?.delta?.role);
 }
 
 function parseDataLine(line) {
@@ -160,15 +176,19 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  *   Text that could still become one is held until it diverges or the stream
  *   stops, and then counts as content.
  *
+ * With releaseOnProgress, "progress" means a lifecycle event arrived and no
+ * verdict followed within PEEK_PROGRESS_GRACE_MS (long silent thinking or tool
+ * planning). It counts as content; body continues the live stream.
+ *
  * streamError is the first in-stream error envelope seen before content.
  *
  * @param {Response} response
  * @param {number} [timeoutMs]
- * @param {{detectUnavailableNotice?: boolean}} [options]
+ * @param {{detectUnavailableNotice?: boolean, releaseOnProgress?: boolean}} [options]
  * @returns {Promise<{hasContent:boolean, outcome:string, body:ReadableStream|null,
  *   streamError: {type?: string, code?: string, message?: string}|null}>}
  */
-export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, { detectUnavailableNotice = false } = {}) {
+export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, { detectUnavailableNotice = false, releaseOnProgress = false } = {}) {
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   if (!contentType.includes(SSE_CONTENT_TYPE) || !response.body) {
     return { hasContent: true, outcome: "content", body: null, streamError: null };
@@ -195,7 +215,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
     const body = replayStream(reader, chunks, replay);
     if (hasTokenLimitTerminal) trackStreamTokenLimit(body, hasTokenLimitTerminal);
     return {
-      hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop",
+      hasContent: outcome === "content" || outcome === "limit" || outcome === "safety_stop" || outcome === "progress",
       outcome,
       body,
       streamError,
@@ -203,6 +223,9 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
     };
   };
   let safetyStop = false;
+  let sawProgress = false;
+  let graceTimer;
+  let grace = null;
   // True when the line carries output or an explicit safety stop; records the
   // first error envelope otherwise.
   const inspect = (line) => {
@@ -219,14 +242,24 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       return true;
     }
     if (!streamError) streamError = extractStreamErrorPayload(parsed);
+    if (releaseOnProgress && !sawProgress) sawProgress = isLifecycleProgress(parsed);
     return false;
   };
 
   try {
+    // Kept across iterations: a read that outlives the grace window stays pending.
+    let read = null;
     while (bytes < STREAM_PEEK_MAX_BYTES) {
-      const read = reader.read();
-      const next = await Promise.race([read, timeout]);
+      read ||= reader.read();
+      const next = await Promise.race(grace ? [read, timeout, grace] : [read, timeout]);
       if (next?.timedOut) return result("timeout", { pendingRead: read });
+      if (next?.graceElapsed) {
+        // An error or a possible unavailable notice keeps the peek in charge.
+        if (!streamError && !gate?.holding) return result("progress", { pendingRead: read });
+        grace = null;
+        continue;
+      }
+      read = null;
       if (next.done) {
         pending += decoder.decode();
         const tail = pending.trim();
@@ -244,11 +277,17 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
         if (inspect(line)) return result(safetyStop ? "safety_stop" : "content");
       }
       if (!streamError && hasTokenLimitTerminal?.()) return result("content");
+      if (sawProgress && !graceTimer) {
+        grace = new Promise((resolve) => {
+          graceTimer = setTimeout(() => resolve({ graceElapsed: true }), PEEK_PROGRESS_GRACE_MS);
+        });
+      }
     }
     return result("limit");
   } catch (error) {
     return result("error", { error });
   } finally {
     clearTimeout(timer);
+    clearTimeout(graceTimer);
   }
 }

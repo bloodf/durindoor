@@ -1814,7 +1814,7 @@ export async function handleComboChat({
         let successfulResult = result;
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
-          const { hasContent, body: replayBody, streamError, notice } = await peekStreamForContent(result, undefined, { detectUnavailableNotice: true });
+          const { hasContent, body: replayBody, streamError, notice } = await peekStreamForContent(result, undefined, { detectUnavailableNotice: true, releaseOnProgress: true });
           if (notice) {
             replayBody?.cancel("combo member reported itself unavailable").catch(() => {});
             failOverNotice(notice);

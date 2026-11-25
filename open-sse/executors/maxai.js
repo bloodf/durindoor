@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -93,12 +95,22 @@ export class MaxaiExecutor extends BaseExecutor {
   constructor(config = {}) { super("maxai", { baseUrl: BASE + PATH, ...config }); }
   buildUrl() { return BASE + PATH; }
   async execute(input) {
-    const { model, body, stream, credentials, signal } = input;
-    const auth = cookieValues(credentials); const headers = await signedHeaders(PATH, credentials);
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
+    const { model, body, stream, credentials, signal, proxyOptions = null } = input;
+    // Loading the signing constants is not charged; only the chat send is quota-bearing.
+    const setup = (url, init) => sender.sendRequest(url, { ...init, signal: signal ? AbortSignal.any([signal, init.signal]) : init.signal }, proxyOptions, { quotaBearing: false });
+    const auth = cookieValues(credentials); const headers = await signedHeaders(PATH, credentials, setup);
+    // The constants loader swallows errors, an abort included.
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     if (!auth.token || !headers) return { response: fail(401, "MaxAI session is missing or expired"), url: this.buildUrl(), headers: {}, transformedBody: null };
     let upstream;
-    try { upstream = await proxyAwareFetch(this.buildUrl(), { method: "POST", headers, body: JSON.stringify(openaiRequest(body || {}, model)), redirect: "manual", signal }); }
-    catch (error) { return { response: fail(502, error?.message || "MaxAI request failed"), url: this.buildUrl(), headers, transformedBody: body }; }
+    try { upstream = billed(await sender.sendRequest(this.buildUrl(), { method: "POST", headers, body: JSON.stringify(openaiRequest(body || {}, model)), redirect: "manual", signal }, proxyOptions)); }
+    catch (error) { if (isQuotaDispatchUnavailable(error)) throw error; return { response: fail(502, error?.message || "MaxAI request failed"), url: this.buildUrl(), headers, transformedBody: body }; }
     if (upstream.status === 418 || (upstream.status >= 300 && upstream.status < 400)) return { response: fail(401, "MaxAI session expired"), url: this.buildUrl(), headers, transformedBody: body };
     if (upstream.status === 401 || upstream.status === 403) return { response: fail(upstream.status, "MaxAI session expired or rejected"), url: this.buildUrl(), headers, transformedBody: body };
     if (!upstream.ok) return { response: upstream, url: this.buildUrl(), headers, transformedBody: body };

@@ -6,6 +6,7 @@ const read = (file) => fs.readFileSync(path.resolve(`../${file}`), "utf8");
 
 describe("dashboard review regressions (#2283)", () => {
   const combos = read("src/app/(dashboard)/dashboard/combos/page.js");
+  const comboFormModal = read("src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx");
   const providers = read("src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js");
   const providerDetail = read("src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx");
   const keys = read("src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx");
@@ -27,7 +28,7 @@ describe("dashboard review regressions (#2283)", () => {
 
   it("labels token import and inline model editing controls", () => {
     expect(providerDetail).toMatch(/<textarea\s+aria-label="Import provider token"/);
-    expect(combos).toMatch(/<input\s+aria-label=\{`Model \$\{index \+ 1\}`\}/);
+    expect(comboFormModal).toMatch(/<input\s+aria-label=\{`Model \$\{index \+ 1\}`\}/);
   });
 
   it("checks response status before parsing dashboard loaders", () => {

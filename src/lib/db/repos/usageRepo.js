@@ -5,6 +5,7 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { addCostSplit, addLatency, addToCounter } from "../helpers/usageCounters.js";
+import { incrementUsageDailyRollup, insertUsageDailyRollup, readUsageDailyRollups } from "../helpers/usageDailyRollups.js";
 import { getMetaSync } from "../helpers/metaStore.js";
 import {
   EMPTY_ALL_TIME_CHART_DAYS,
@@ -29,6 +30,11 @@ import { deriveLatencyRates } from "../../../shared/utils/usageFormat.js";
 import { USAGE_COST_FIELDS } from "../../../shared/utils/usageCostAllocation.js";
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
 import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
+
+// Exception messages may contain credentials; keep fallback diagnostics safe.
+function logFallback(context, error) {
+  console.warn(`[usageRepo] ${context}`, error instanceof Error ? "Error" : "non-Error thrown");
+}
 
 function maskApiKey(key) {
   if (!key || !isString(key)) return null;
@@ -108,8 +114,8 @@ async function loadPublicApiKeyIdentity(db) {
   const [{ getApiKeys }, { getGatewayKeys }] = await Promise.all([import("./apiKeysRepo.js"), import("./mcpGatewayRepo.js")]);
   let keys = [];
   let gatewayKeys = [];
-  try { keys = await getApiKeys(); } catch {}
-  try { gatewayKeys = await getGatewayKeys(); } catch {}
+  try { keys = await getApiKeys(); } catch (error) { logFallback("API key identity lookup failed", error); }
+  try { gatewayKeys = await getGatewayKeys(); } catch (error) { logFallback("gateway key identity lookup failed", error); }
   const apiKeyMap = Object.create(null);
   const gatewayKeyMap = Object.create(null);
   for (const key of keys) { apiKeyMap[key.key] = key; apiKeyMap[key.id] = key; }
@@ -270,7 +276,7 @@ async function getConnectionMapCached() {
     for (const c of all) map[c.id] = c.name || c.email || c.id;
     connCache.map = map;
     connCache.ts = Date.now();
-  } catch {}
+  } catch (error) { logFallback("cached connection lookup failed", error); }
   return connCache.map;
 }
 
@@ -286,7 +292,7 @@ async function ensureRingInitialized() {
       tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId,
       completedAt: parseJson(r.meta, {})?.completedAt
     }));
-  } catch {}
+  } catch (error) { logFallback("recent usage initialization failed", error); }
 }
 
 /**
@@ -471,7 +477,7 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
   const call = { requestId, modelKey, provider, connectionId, keyName: safeKeyName, timer: null };
   changePendingCount(call, 1);
   if (session) {
-    try { startActiveSession({ ...session, requestId, model, provider, connectionId }); } catch {/* telemetry must not block requests */}
+    try { startActiveSession({ ...session, requestId, model, provider, connectionId }); } catch (error) { logFallback("active session telemetry failed", error); }
   }
   call.timer = setTimeout(() => finishPendingRequest(requestId), PENDING_TIMEOUT_MS);
   call.timer.unref?.();
@@ -712,13 +718,12 @@ function refreshLastSeenSync(db, row) {
 // Apply a counter delta to the day that already holds an accepted row.
 function addDayDeltaSync(db, row, delta) {
   const dateKey = toLocalDateKey(row.timestamp);
-  const stored = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
-  const day = stored ? parseJson(stored.data, {}) : {};
+  const day = {};
   aggregateEntryToDay(day, {
     provider: row.provider, model: row.model, connectionId: row.connectionId, apiKey: row.apiKey, endpoint: row.endpoint,
     apiKeyId: row.apiKeyId || apiKeyIdForSync(db, row.apiKey), latencySamples: 0, ttftSamples: 0, timedCompletionTokens: 0, ...delta,
   });
-  db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
+  incrementUsageDailyRollup(db, dateKey, day);
 }
 
 // The stable key id of one usage row. The id carried from admission wins,
@@ -998,13 +1003,9 @@ export async function saveRequestUsage(entry) {
       upsertLastSeen(db, entry, apiKeyId);
 
       const dateKey = toLocalDateKey(entry.timestamp);
-      const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
-      const day = row ? parseJson(row.data, {}) : {
-        requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
-        byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {}
-      };
+      const day = {};
       aggregateEntryToDay(day, { ...entry, apiKeyId, latencyMs, ttftMs, ...costSplit });
-      db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
+      incrementUsageDailyRollup(db, dateKey, day);
 
       // Atomic counter increment in same transaction
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '1')
@@ -1206,24 +1207,7 @@ export async function listUsageHistoryPage({ limit = 50, offset = 0, filters = {
   return { rows: rows.map(mapUsageHistoryRow), total };
 }
 
-function* readDailyPages(adapter, where, params) {
-  // The PostgreSQL sync bridge caps each result at 8 MiB. Eight days leaves
-  // ample headroom for ~0.5 MiB heavy daily blobs; never fetch a year's JSON
-  // in one message (365-day benchmarks already exceeded 10 MiB).
-  const pageSize = 8;
-  let after = null;
-  for (;;) {
-    const rows = adapter.all(
-      `SELECT dateKey, data FROM usageDaily WHERE ${where}${after == null ? "" : " AND dateKey > ?"} ORDER BY dateKey ASC LIMIT ?`,
-      [...params, ...(after == null ? [] : [after]), pageSize]
-    );
-    yield* rows;
-    if (rows.length < pageSize) return;
-    after = rows[rows.length - 1].dateKey;
-  }
-}
-
-function* loadDaysInRange(adapter, maxDays, now = new Date()) {
+function* loadDaysInRange(adapter, maxDays, now = new Date(), totalsOnly = false) {
   const todayKey = toLocalDateKey(now);
   const params = [];
   let lowerBound = "";
@@ -1235,7 +1219,7 @@ function* loadDaysInRange(adapter, maxDays, now = new Date()) {
     params.push(toLocalDateKey(cutoff));
   }
   params.push(todayKey);
-  yield* readDailyPages(adapter, `${lowerBound}dateKey < ?`, params);
+  yield* readUsageDailyRollups(adapter, `${lowerBound}dateKey < ?`, params, totalsOnly);
 
   // The current day is reconstructed from bounded history so a future-dated
   // imported row cannot contaminate any calendar-period aggregate.
@@ -1244,24 +1228,24 @@ function* loadDaysInRange(adapter, maxDays, now = new Date()) {
   const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
   if (todayRows.length > 0) {
     const day = aggregateRowsToDay(todayRows);
-    yield { dateKey: todayKey, data: stringifyJson(day) };
+    yield { dateKey: todayKey, day };
   }
 }
 
 // Like loadDaysInRange but bounded by explicit inclusive local date keys
 // (YYYY-MM-DD) instead of a rolling day count. Used by the usage page's custom
 // calendar range. `endKey` >= today reconstructs the current day from live
-// history (usageDaily has no row for today yet), matching loadDaysInRange.
+// history, matching loadDaysInRange.
 function* loadDaysInDateRange(adapter, startKey, endKey, now = new Date()) {
   const todayKey = toLocalDateKey(now);
-  yield* readDailyPages(adapter, "dateKey >= ? AND dateKey <= ? AND dateKey < ?", [startKey, endKey, todayKey]);
+  yield* readUsageDailyRollups(adapter, "dateKey >= ? AND dateKey <= ? AND dateKey < ?", [startKey, endKey, todayKey]);
   if (endKey >= todayKey && startKey <= todayKey) {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
     const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
     if (todayRows.length > 0) {
       const day = aggregateRowsToDay(todayRows);
-      yield { dateKey: todayKey, data: stringifyJson(day) };
+      yield { dateKey: todayKey, day };
     }
   }
 }
@@ -1279,7 +1263,7 @@ export async function getUsageStats(period = "all", opts = {}) {
   );
 
   let allConnections = [];
-  try {allConnections = await getProviderConnections();} catch {}
+  try {allConnections = await getProviderConnections();} catch (error) { logFallback("stats connection lookup failed", error); }
   const connectionMap = Object.create(null);
   for (const c of allConnections) connectionMap[c.id] = c.name || c.email || c.id;
 
@@ -1287,14 +1271,14 @@ export async function getUsageStats(period = "all", opts = {}) {
   try {
     const nodes = await getProviderNodes();
     for (const n of nodes) if (n.id && n.name) providerNodeNameMap[n.id] = n.name;
-  } catch {}
+  } catch (error) { logFallback("stats node lookup failed", error); }
 
   let allApiKeys = [];
-  try {allApiKeys = await getApiKeys();} catch {}
+  try {allApiKeys = await getApiKeys();} catch (error) { logFallback("stats API key lookup failed", error); }
   const apiKeyBySecret = new Map(allApiKeys.map((key) => [key.key, key]));
   const apiKeyById = new Map(allApiKeys.map((key) => [key.id, key]));
   let gatewayKeys = [];
-  try {gatewayKeys = await getGatewayKeys();} catch {}
+  try {gatewayKeys = await getGatewayKeys();} catch (error) { logFallback("stats gateway key lookup failed", error); }
   const gatewayKeyByDigest = new Map(gatewayKeys.map((key) => [usageKeyIdentity(null, key.key, "mcp-gateway"), key]));
 
   // Resolve current labels for stable IDs without placing credentials in reports.
@@ -1430,8 +1414,7 @@ export async function getUsageStats(period = "all", opts = {}) {
     loadDaysInRange(db, maxDays, now);
 
     for (const dr of dayRows) {
-      const dateKey = dr.dateKey;
-      const day = parseJson(dr.data, {});
+      const { dateKey, day } = dr;
       stats.totalRequests += Number(day.requests) || 0;
       stats.totalPromptTokens += day.promptTokens || 0;
       stats.totalCompletionTokens += day.completionTokens || 0;
@@ -1828,10 +1811,10 @@ export async function applyCostBreakdowns(stats, lookupPricing) {
 function isValidTimeZone(timeZone) {
   if (!timeZone || !isString(timeZone)) return false;
   try {
-    // eslint-disable-next-line no-new
     new Intl.DateTimeFormat("en-US", { timeZone });
     return true;
-  } catch {
+  } catch (error) {
+    logFallback("time zone validation failed", error);
     return false;
   }
 }
@@ -1934,12 +1917,11 @@ export async function getChartData(period = "7d", timeZone) {
   }
 
   const fixedDays = getChartDayBucketCount(period);
-  // Keep only chart scalars after each paged blob is decoded, not every
-  // model/account/key dimension retained in the daily JSON.
+  // Historical charts need only each day’s total row.
   const dayRows = [];
-  for (const row of loadDaysInRange(db, fixedDays, nowDate)) {
-    try { localDateFromKey(row.dateKey); } catch { continue; }
-    const day = parseJson(row.data, {});
+  for (const row of loadDaysInRange(db, fixedDays, nowDate, true)) {
+    try { localDateFromKey(row.dateKey); } catch (error) { logFallback("chart date validation failed", error); continue; }
+    const { day } = row;
     dayRows.push({ dateKey: row.dateKey, day: {
       promptTokens: day.promptTokens, completionTokens: day.completionTokens,
       cachedTokens: day.cachedTokens, reasoningTokens: day.reasoningTokens,
@@ -2036,10 +2018,10 @@ function rebuildDailyKeyInTx(db, dateKey) {
   const start = localDateFromKey(dateKey);
   const end = addLocalCalendarDays(start, 1);
   const rows = aggregateUsageWindow(db, start.toISOString(), new Date(Math.min(end.getTime() - 1, Date.now())).toISOString());
-  db.run(`DELETE FROM usageDaily WHERE dateKey = ?`, [dateKey]);
+  db.run(`DELETE FROM usageDailyRollups WHERE dateKey = ?`, [dateKey]);
   if (rows.length === 0) return;
   const day = aggregateRowsToDay(rows);
-  db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
+  insertUsageDailyRollup(db, dateKey, day);
 }
 
 /**
@@ -2059,7 +2041,7 @@ function pruneUsageBeforeInTx(db, cutoffMs) {
   db.run(`DELETE FROM usageLastSeen WHERE lastUsed < ?`, [cutoffIso]);
 
   // Delete usageDaily entries older than the cutoff
-  db.run(`DELETE FROM usageDaily WHERE dateKey < ?`, [cutoffKey]);
+  db.run(`DELETE FROM usageDailyRollups WHERE dateKey < ?`, [cutoffKey]);
   // Keep token-saver telemetry consistent with the usage windows it is
   // reported alongside (Codex P2 on #306).
   db.run(`DELETE FROM tokenSaverEvents WHERE timestamp < ?`, [cutoffIso]);
@@ -2101,7 +2083,7 @@ function deleteUsageSinceInTx(db, cutoffMs) {
   })));
 
   // Delete usageDaily entries after the cutoff day and rebuild the boundary day
-  db.run(`DELETE FROM usageDaily WHERE dateKey > ?`, [cutoffKey]);
+  db.run(`DELETE FROM usageDailyRollups WHERE dateKey > ?`, [cutoffKey]);
   db.run(`DELETE FROM tokenSaverEvents WHERE timestamp >= ?`, [cutoffIso]);
   db.run("DELETE FROM tokenSaverDaily WHERE dateKey >= ?", [utcCutoffDay]);
   db.run("DELETE FROM tokenSaverDailyReasons WHERE dateKey >= ?", [utcCutoffDay]);
@@ -2142,7 +2124,7 @@ export async function resetUsageHistory(period) {
       // Delete everything
       db.run(`DELETE FROM usageHistory`);
       db.run(`DELETE FROM usageLastSeen`);
-      db.run(`DELETE FROM usageDaily`);
+      db.run(`DELETE FROM usageDailyRollups`);
       db.run(`DELETE FROM tokenSaverEvents`);
       db.run("DELETE FROM tokenSaverDaily");
       db.run("DELETE FROM tokenSaverDailyReasons");
@@ -2173,7 +2155,7 @@ export async function getRecentLogs(limit = 200) {
       const { getProviderConnections } = await import("./connectionsRepo.js");
       const connections = await getProviderConnections();
       for (const c of connections) connMap[c.id] = c.name || c.email || "";
-    } catch {}
+    } catch (error) { logFallback("recent logs connection lookup failed", error); }
 
     return rows.map((r) => {
       const ts = formatLogDate(new Date(r.timestamp));

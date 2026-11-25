@@ -8,6 +8,12 @@
  */
 import { isObject, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
+/** Shorter generation windows are too sensitive to buffering and timer jitter. */
+export const MIN_GENERATION_WINDOW_MS = 250;
+
+/** Rates above this are buffered-response artifacts, not decode throughput. */
+export const MAX_PLAUSIBLE_TOKENS_PER_SECOND = 5000;
+
 /**
  * @param {number} totalMs - Total request latency in ms.
  * @param {number|null|undefined} ttftMs - Time to first token in ms, or null/undefined when unknown.
@@ -27,8 +33,10 @@ export function generationDurationMs(totalMs, ttftMs) {
  */
 export function tokensPerSecond(outputTokens, generationMs) {
   if (generationMs == null || !Number.isFinite(generationMs) || generationMs <= 0) return null;
+  if (generationMs < MIN_GENERATION_WINDOW_MS) return null;
   if (!Number.isFinite(outputTokens) || outputTokens <= 0) return null;
-  return outputTokens / (generationMs / 1000);
+  const rate = outputTokens / (generationMs / 1000);
+  return rate > MAX_PLAUSIBLE_TOKENS_PER_SECOND ? null : rate;
 }
 
 function outputTokenCount(usage) {

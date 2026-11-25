@@ -82,7 +82,7 @@ function reply(fixture, id, status, cost = 0.5) {
 function snapshot() {
   return {
     history: rows(), receipts: receipts(),
-    daily: adapter.all("SELECT * FROM usageDaily"), lastSeen: adapter.all("SELECT * FROM usageLastSeen"),
+    daily: adapter.all("SELECT * FROM usageDailyRollups ORDER BY id"), lastSeen: adapter.all("SELECT * FROM usageLastSeen"),
     totals: adapter.all("SELECT * FROM apiKeyUsageTotals"),
     lifetime: adapter.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'"),
     jobs: adapter.all("SELECT * FROM kv WHERE scope = 'mediaJobs'"),

@@ -17,6 +17,7 @@ const RUNNER_META_KEYS = ["schemaVersion", "appliedMigrations"];
 const SKIP_TABLES = new Set(["requestDetails"]);
 const SERIAL_TABLES = new Map([
   ["usageHistory", "id"],
+  ["usageDailyRollups", "id"],
   ["tokenSaverEvents", "id"],
   ["pgCutoverLog", "id"],
 ]);
@@ -40,9 +41,8 @@ async function countRows(adapter, tableName) {
 
 async function resetSerial(pg, tableName, col) {
   const sql =
-    `SELECT setval(pg_get_serial_sequence('${tableName.replace(/'/g, "''")}', '${col}'), ` +
-    `COALESCE((SELECT MAX(${quoteIdent(col)}) FROM ${quoteIdent(tableName)}), 1), ` +
-    `MAX(${quoteIdent(col)}) IS NOT NULL)`;
+    `SELECT setval(pg_get_serial_sequence('${quoteIdent(tableName)}', '${col}'), ` +
+    `COALESCE(MAX(${quoteIdent(col)}), 1), MAX(${quoteIdent(col)}) IS NOT NULL) FROM ${quoteIdent(tableName)}`;
   try {
     await Promise.resolve(pg.get(sql));
   } catch {

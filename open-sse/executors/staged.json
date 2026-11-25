@@ -1,0 +1,16 @@
+{
+  "modules": [
+    {
+      "module": "open-sse/executors/gigachat.js",
+      "staged": true,
+      "catalogProvider": "gigachat",
+      "reason": "GigaChatExecutor is not in the executor map; the listed gigachat provider dispatches through DefaultExecutor."
+    },
+    {
+      "module": "open-sse/executors/cliproxyapi.js",
+      "staged": true,
+      "catalogProvider": "cliproxyapi",
+      "reason": "Only handlers/chatCore/executorProxy.js imports it, and no production module imports executorProxy.js."
+    }
+  ]
+}

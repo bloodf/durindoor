@@ -13,7 +13,9 @@
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"]);
 
-export const DEFAULT_SERVER_HOST = "127.0.0.1";
+import listenConfig from "./listenConfig.cjs";
+
+export const { DEFAULT_SERVER_HOST } = listenConfig;
 
 function isLoopbackHost(host) {
   return LOOPBACK_HOSTS.has(String(host).trim().toLowerCase());
@@ -25,7 +27,7 @@ function isLoopbackHost(host) {
  * never names an interface the server is not actually on.
  */
 export function resolveServerHost() {
-  return process.env.HOSTNAME || DEFAULT_SERVER_HOST;
+  return listenConfig.resolveListenConfig().host;
 }
 
 /**

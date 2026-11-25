@@ -1,4 +1,6 @@
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { CodexAppServerClient, resolveAppServerConfig, resolveTurnPolicy } from "./codex-app-server/client.js";
 
@@ -77,7 +79,8 @@ export class CodexAppServerExecutor extends BaseExecutor {
     return null;
   }
 
-  async execute({ model, body, signal, log }) {
+  async execute(input) {
+    const { model, body, signal, log } = input;
     const config = resolveAppServerConfig();
     if (!config) {
       return {
@@ -103,7 +106,7 @@ export class CodexAppServerExecutor extends BaseExecutor {
     const created = Math.floor(Date.now() / 1000);
 
     let cancelHook = () => client.close();
-    const stream = new ReadableStream({
+    const openTurn = () => new ReadableStream({
       start: (controller) => {
         const enc = new TextEncoder();
         // sealed: the stream is closed or cancelled, so nothing may be enqueued any more.
@@ -258,6 +261,17 @@ export class CodexAppServerExecutor extends BaseExecutor {
       cancel: () => cancelHook(),
     });
 
-    return { response: new Response(stream, { status: 200, headers: SSE_HEADERS }), url: config.url, headers: {}, transformedBody: { model: baseModel } };
+    const result = (stream) => ({ response: new Response(stream, { status: 200, headers: SSE_HEADERS }), url: config.url, headers: {}, transformedBody: { model: baseModel } });
+    // An already-aborted turn never connects, so there is nothing to send or charge.
+    if (signal?.aborted) return result(openTurn());
+    const sender = createExecutorSender(this, input);
+    // Opening the turn is the physical send. It stands in for response headers,
+    // so a long turn is not cut off by the header deadline.
+    const sent = await sender.sendRequest(this.buildUrl(), { signal }, null, {
+      transport: () => ({ stream: openTurn() })
+    });
+    const turn = result(sent.stream);
+    transferProviderAttemptDispatch(sent, turn.response);
+    return { ...turn, attemptStartedAt: sender.attemptStartedAt };
   }
 }

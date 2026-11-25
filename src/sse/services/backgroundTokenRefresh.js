@@ -4,13 +4,13 @@
 import * as log from "../utils/logger.js";
 import { getRefreshLeadMs } from "open-sse/services/tokenRefresh.js";
 import { getCredentialExpiryMs } from "open-sse/services/oauthCredentialManager.js";
+import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
 
 /** Refresh when expiry is within 30 minutes (or the provider on-request lead, whichever larger). */
 import { isBrowser } from "../../shared/utils/typeChecks.js";
 export const BACKGROUND_REFRESH_LEAD_MS = 30 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
-const SENSITIVE_PROVIDERS = new Set(["antigravity", "gemini-cli", "agy"]);
 
 let started = false;
 let intervalHandle = null;
@@ -177,7 +177,7 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
 
       // Sequential delay between accounts to prevent bursting upstream providers (especially Google Cloud)
       if (i < due.length - 1) {
-        const isSensitive = SENSITIVE_PROVIDERS.has(snapshot.provider);
+        const isSensitive = refreshCapabilities(snapshot.provider).googleAntiBurst === true;
         const baseDelay = isSensitive ? baseSensitiveDelay : baseNormalDelay;
         const jitter = isSensitive ? Math.floor(Math.random() * 4000) : 200;
         await sleep(baseDelay + jitter);

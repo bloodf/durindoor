@@ -653,7 +653,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (!response.ok) {
       const status = response.status;
       let errMsg = `Perplexity returned HTTP ${status}`;
-      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your current Perplexity session cookies or legacy __Secure-next-auth.session-token.";else
+      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token (legacy), or your current Perplexity session cookies.";else
       if (status === 429) errMsg = "Perplexity rate limited. Wait a moment and retry.";
       log?.warn?.("PPLX-WEB", errMsg);
       const errResp = new Response(JSON.stringify({

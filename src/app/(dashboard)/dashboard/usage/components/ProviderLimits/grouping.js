@@ -64,6 +64,9 @@ export function groupConnectionsByProvider(connections = []) {
   return groups;
 }
 
+/** Whether a provider id is a generated custom-node id. */
+export const isCustomNodeId = (provider) => /^(openai|anthropic)-compatible-/.test(provider);
+
 /**
  * Headings for custom provider nodes: their generated id is not a readable name,
  * so use the node's name, then prefix. A node with neither is left out and keeps its id.

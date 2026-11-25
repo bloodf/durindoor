@@ -22,6 +22,7 @@ import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import QuotaTable from "./QuotaTable";
 import {
   groupConnectionsByProvider,
+  isCustomNodeId,
   mergeAccountQuotas,
   providerNodeLabels,
   readMergedViewMap,
@@ -66,7 +67,7 @@ import {
 "./utils";
 import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import { EditConnectionModal } from "@/shared/components";
-import { USAGE_SUPPORTED_PROVIDERS, isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { getClaudeWeeklyWindowNames, withClaudeWeeklyPlaceholders } from "./claudeQuotaRows";
@@ -532,7 +533,7 @@ export default function ProviderLimits() {
   );
   const [providerOptions, setProviderOptions] = useState([]);
   const [nodeLabels, setNodeLabels] = useState({});
-  const hasCustomProvider = providerOptions.some((provider) => isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider));
+  const hasCustomProvider = providerOptions.some(isCustomNodeId);
   useEffect(() => {
     if (!hasCustomProvider) return;
     let alive = true;

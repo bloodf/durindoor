@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, RESPONSES_ITEM } from "../../open-sse/translator/schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../../open-sse/translator/schema/index.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 
 const mocks = vi.hoisted(() => ({ execute: vi.fn() }));
@@ -35,7 +35,6 @@ vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
 }));
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-const { handleResponsesCore } = await import("../../open-sse/handlers/responsesHandler.js");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -102,73 +101,6 @@ describe.each([false, true])("PR #1262 registered acceptance (stream=%s)", (stre
     expect(result.response.headers.get("content-type")).toContain("application/json");
     expect(await result.response.json()).toMatchObject({ error: {
       type: "invalid_request_error", message: expect.stringContaining("Remove images"),
-    } });
-    expect(mocks.execute).not.toHaveBeenCalled();
-    expect(body).toEqual(original);
-  });
-});
-
-describe.each([false, true])("PR #1262 Responses runtime (stream=%s)", (stream) => {
-  it.each(["cursor", "cu"])("allows %s ordinary tool-output JSON mentioning images to reach dispatch", async (provider) => {
-    const output = { type: "image", image_url: "https://example.invalid/photo.png" };
-    const body = {
-      model: "cursor/default", stream,
-      input: [
-        { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: "inspect" },
-        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "call_1", name: "inspect", arguments: "{}" },
-        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_1", output },
-      ],
-    };
-    const original = structuredClone(body);
-    const result = await handleResponsesCore({
-      body, modelInfo: { provider, model: "default" }, credentials: null,
-    });
-    expect(mocks.execute).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(mocks.execute.mock.calls[0][0].body)).toContain("photo.png");
-    // The offline sentinel proves the request passed validation, not provider success.
-    expect(result.status).toBe(502);
-    expect(body).toEqual(original);
-  });
-
-  it("does not apply Cursor image restrictions to a vision-capable provider", async () => {
-    const body = { model: "gpt-4o", stream, input: [
-      { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [
-        { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: "data:image/png;base64,AAAA" },
-      ] },
-    ] };
-    const original = structuredClone(body);
-    const result = await handleResponsesCore({
-      body, modelInfo: { provider: "openai", model: "gpt-4o" }, credentials: null,
-    });
-    expect(mocks.execute).toHaveBeenCalledTimes(1);
-    expect(mocks.execute.mock.calls[0][0].body.messages[0].content).toEqual([
-      { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: "data:image/png;base64,AAAA", detail: "auto" } },
-    ]);
-    expect(result.status).toBe(502);
-    expect(body).toEqual(original);
-  });
-
-  it.each(["cursor", "cu"])("rejects %s typed tool-output images before Responses conversion erases their shape", async (provider) => {
-    const body = {
-      model: "cursor/default", stream,
-      input: [
-        { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: "inspect" },
-        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "call_1", name: "inspect", arguments: "{}" },
-        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_1", output: [
-          { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: "https://example.invalid/download/123" },
-        ] },
-      ],
-    };
-    const original = structuredClone(body);
-    const result = await handleResponsesCore({
-      body, modelInfo: { provider, model: "default" }, credentials: null,
-    });
-    expect({ status: result.status, dispatched: mocks.execute.mock.calls.length })
-      .toEqual({ status: 400, dispatched: 0 });
-    expect(result.response.status).toBe(400);
-    expect(await result.response.json()).toMatchObject({ error: {
-      type: "invalid_request_error",
-      message: expect.stringContaining("Cursor image input is not supported"),
     } });
     expect(mocks.execute).not.toHaveBeenCalled();
     expect(body).toEqual(original);

@@ -1,4 +1,4 @@
-import { antigravityGeminiResponse } from "../handlers/chatCore/antigravityGeminiNative.js";
+import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
@@ -13,7 +13,7 @@ import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatInco
 import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
-import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
+import { resolveInlineThinkingFormat } from "./inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
 import { decloakToolName } from "./claudeCloaking.js";

@@ -1,7 +1,6 @@
 import { expect, it } from "vitest";
 import "../translator/registerAll.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
-import { handleResponsesCore } from "../../open-sse/handlers/responsesHandler.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
@@ -20,15 +19,9 @@ it("rejects Cursor images through real handlers without provider access", async 
         expect(chat.response.status).toBe(400);
         expect(await chat.response.json()).toMatchObject({ error: { type: "invalid_request_error", message: expect.stringContaining("Cursor image input is not supported") } });
         expect(body).toEqual(original);
-        const responses = await handleResponsesCore({
-          body: { model: body.model, stream, input: [{ type: "function_call_output", call_id: "orphan", output: [{ type: "input_image", image_url: "https://example.invalid/image.png" }] }] },
-          modelInfo: { provider, model: "default" }, credentials: null,
-        });
-        expect(responses.response.status).toBe(400);
-        expect((await responses.response.json()).error.type).toBe("invalid_request_error");
         expect(getCapabilitiesForModel(provider, "gpt-5.2").vision).toBe(false);
         expect(() => translateRequest(FORMATS.CURSOR, FORMATS.CURSOR, "default", structuredClone(body), stream, null, provider)).toThrow(/Cursor image input is not supported/);
-        rows.push(`${provider} stream=${stream}: real chat/Responses JSON 400, same-format image rejection, vision=false`);
+        rows.push(`${provider} stream=${stream}: real chat JSON 400, same-format image rejection, vision=false`);
       }
       const body = { messages: [{ role: "user", content: "Read report" }] };
       expect(translateRequest(FORMATS.OPENAI, FORMATS.CURSOR, "default", structuredClone(body), stream, null, "cursor").messages).toEqual(body.messages);

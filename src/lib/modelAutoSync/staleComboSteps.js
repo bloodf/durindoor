@@ -4,7 +4,7 @@ import { getProviderAlias } from "@/shared/constants/providers";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
-import { effectiveSyncedModels } from "./catalog.js";
+import { catalogModelId, effectiveSyncedModels } from "./catalog.js";
 
 /** Every prefix a request or combo can use to name this provider's models. */
 export function providerModelPrefixes(providerId) {
@@ -44,7 +44,7 @@ export function findStaleSteps(combo, providers) {
     const slash = model.indexOf("/");
     if (slash <= 0) return;
     const prefix = model.slice(0, slash);
-    const modelId = model.slice(slash + 1);
+    const modelId = catalogModelId(model.slice(slash + 1));
     const owner = providers.find((p) => p.aliases.includes(prefix) && !p.ids.has(modelId) && !p.customIds.has(modelId));
     if (owner) stale.push({ step, model, provider: owner.providerId });
   });

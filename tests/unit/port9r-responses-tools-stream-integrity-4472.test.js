@@ -55,6 +55,7 @@ describe("9router #4472 - Claude tool schemas with a root union", () => {
       },
       required: ["mode"],
       additionalProperties: false,
+      description: 'Argument combinations (oneOf, match exactly one): [1] requires mode, name where mode={"const":"create"}; [2] requires mode, id where mode={"const":"update"};',
     });
     expect(union).toEqual(original);
   });

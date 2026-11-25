@@ -36,6 +36,25 @@ function normalizeCallId(id) {
   return clampResponsesCallId(`${safe}_${createHash("sha256").update(base).digest("hex").slice(0, 8)}`);
 }
 
+// Every id path (Responses `call_id`, chat `tool_calls[].id`, chat
+// `tool_call_id`) goes through the same normalization so a call and its result
+// still match when the two use different item shapes.
+function normalizeItemIds(item) {
+  if (OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)) {
+    return { ...item, call_id: normalizeCallId(item.call_id) };
+  }
+  let next = item;
+  if (Array.isArray(item?.tool_calls)) {
+    next = { ...next, tool_calls: item.tool_calls.map((toolCall) => isString(toolCall?.id)
+      ? { ...toolCall, id: normalizeCallId(toolCall.id) }
+      : toolCall) };
+  }
+  if (item?.role === ROLE.TOOL && isString(item.tool_call_id)) {
+    next = { ...next, tool_call_id: normalizeCallId(item.tool_call_id) };
+  }
+  return next;
+}
+
 /**
  * Normalize call ids, drop results with no call of the same kind, and add a
  * placeholder result after each function or custom call that has none. An
@@ -45,9 +64,7 @@ function normalizeCallId(id) {
  * @returns {Array} repaired items; the caller's items are not mutated.
  */
 export function repairCodexToolHistory(input) {
-  const items = input.map((item) => OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)
-    ? { ...item, call_id: normalizeCallId(item.call_id) }
-    : item);
+  const items = input.map(normalizeItemIds);
 
   const calls = new Set();
   const answered = new Set();

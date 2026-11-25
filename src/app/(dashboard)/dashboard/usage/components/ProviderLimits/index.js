@@ -431,6 +431,7 @@ function formatTimeRemaining(value) {
   return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 }
 
+/** Quota buffer controls identify both the provider and quota window to assistive technology. */
 function QuotaThresholds({ connection, onSaved }) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -457,8 +458,8 @@ function QuotaThresholds({ connection, onSaved }) {
     <p className="text-xs text-dd-muted">Pause when remaining quota reaches the buffer. Clear or set to 0 to use the inherited setting.</p>
     {connection.quotaWindows.map((window) => <form key={window.key} onSubmit={(event) => void save(event, window.key)} className="flex flex-wrap items-center gap-2">
       <label className="min-w-0 flex-1 text-xs text-dd-muted" htmlFor={`quota-${connection.id}-${window.key}`}>{window.key}{window.effectivePercent !== null ? ` (effective ${window.effectivePercent}%)` : ""}</label>
-      <input key={String(window.percent)} id={`quota-${connection.id}-${window.key}`} name="percent" type="number" min="0" max="100" step="any" defaultValue={window.percent ?? ""} className="w-20 rounded border border-dd-border-subtle bg-transparent px-2 py-1 text-sm" />
-      <Button type="submit" variant="secondary" size="sm" disabled={pending}>Save</Button>
+      <input key={String(window.percent)} id={`quota-${connection.id}-${window.key}`} aria-label={`${connection.provider} ${window.key} quota buffer`} name="percent" type="number" min="0" max="100" step="any" defaultValue={window.percent ?? ""} className="w-20 rounded border border-dd-border-subtle bg-transparent px-2 py-1 text-sm" />
+      <Button type="submit" variant="secondary" size="sm" disabled={pending} aria-label={`Save ${connection.provider} ${window.key} quota buffer`}>Save</Button>
     </form>)}
     {error ? <p role="alert" className="text-xs text-dd-danger">{error}</p> : null}
   </div>;

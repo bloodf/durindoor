@@ -14,6 +14,30 @@ const API_BASE = "https://api.commandcode.ai/alpha";
 const PLAN_NAME = "Command Code";
 const TIMEOUT_MS = 10000;
 
+/** Short plan ids the billing API can report. */
+const PLAN_ID_ALIASES = new Map([
+["go", "individual-go"],
+["go-v1", "individual-go-v1"],
+["goat", "individual-goat"],
+["pro", "individual-pro"],
+["pro-v1", "individual-pro-v1"],
+["provider", "individual-provider"],
+["max", "individual-max"],
+["ultra", "individual-ultra"],
+["teams-pro", "team-pro"]]);
+
+
+/** Fixed monthly credit allowance per canonical plan id. */
+const PLAN_CREDIT_CAPS = new Map([
+["individual-go", 10],
+["individual-goat", 70],
+["individual-pro", 30],
+["individual-pro-v1", 80],
+["individual-provider", 15],
+["individual-max", 150],
+["individual-ultra", 300],
+["team-pro", 40]]);
+
 /** GET one JSON object. Never throws and never returns the upstream error body. */
 async function getJson(path, apiKey, proxyOptions) {
   try {
@@ -61,14 +85,19 @@ function windowQuota(window) {
   return creditQuota(Math.max(0, toFiniteNumber(window.used, 0)), cap, window.resetAt);
 }
 
-/** `monthlyCredits` is what is LEFT of the plan allowance, so allowance = left + period spend. */
-function monthlyQuota(credits, summary, resetAt) {
-  const left = toFiniteNumber(credits?.monthlyCredits, null);
+/**
+ * `monthlyCredits` is what is LEFT of the plan allowance. A known plan cap sizes
+ * the row (period spend can lag the balance); otherwise allowance = left + spend.
+ */
+function monthlyQuota(credits, cap, summary, resetAt) {
+  const balance = toFiniteNumber(credits?.monthlyCredits, null);
+  if (balance === null) return null;
+  const left = Math.max(0, balance);
+  if (cap) return creditQuota(Math.max(0, cap - left), Math.max(cap, left), resetAt);
   const spent = toFiniteNumber(summary?.totalCost, null);
-  if (left === null || spent === null) return null;
+  if (spent === null) return null;
   const used = Math.max(0, spent);
-  const allowance = Math.max(0, left) + used;
-  return allowance > 0 ? creditQuota(used, allowance, resetAt) : null;
+  return left + used > 0 ? creditQuota(used, left + used, resetAt) : null;
 }
 
 const message = (text) => ({ plan: PLAN_NAME, message: text });
@@ -100,18 +129,19 @@ export async function getCommandCodeUsage(apiKey = null, proxyOptions = null) {
   // Plan and billing period are best-effort and must not hide the windows.
   const subscription = await getJson(`/billing/subscriptions${scope}`, key, proxyOptions);
   if (subscription.status === 401) return message(AUTH_FAILED);
-  const summary = await getJson(`/usage/summary${scope}`, key, proxyOptions);
-
   const period = subscription.data?.data ?? subscription.data;
+  const planId = PLAN_ID_ALIASES.get(period?.planId) ?? period?.planId;
+  const cap = PLAN_CREDIT_CAPS.get(planId);
+  const summary = cap ? null : await getJson(`/usage/summary${scope}`, key, proxyOptions);
   const windowLimits = credits.data.windowLimits;
   const quotas = Object.fromEntries([
     ["5-hour", windowQuota(windowLimits?.fiveHour)],
     ["Weekly", windowQuota(windowLimits?.weekly)],
-    ["Monthly credits", monthlyQuota(credits.data.credits, summary.data, period?.currentPeriodEnd)]
+    ["Monthly credits", monthlyQuota(credits.data.credits, cap, summary?.data, period?.currentPeriodEnd)]
   ].filter(([, quota]) => quota));
   if (Object.keys(quotas).length === 0) return message("Command Code connected. No credit or window data returned.");
 
-  const planLabel = period?.planId ? `${PLAN_NAME} (${period.planId})` : PLAN_NAME;
+  const planLabel = planId ? `${PLAN_NAME} (${planId})` : PLAN_NAME;
   return {
     plan: windowLimits?.limited === true && windowLimits.exceeded ? `${planLabel} — limit exceeded` : planLabel,
     quotas

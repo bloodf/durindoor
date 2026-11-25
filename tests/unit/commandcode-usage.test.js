@@ -153,3 +153,72 @@ describe("upstream PR #4025 - Command Code quota", () => {
     expect(proxyAwareFetch).not.toHaveBeenCalled();
   });
 });
+
+describe("OmniRoute PR #20347 - Command Code plan ids and credit caps", () => {
+  beforeEach(() => {
+    proxyAwareFetch.mockReset();
+  });
+
+  const monthlyFor = async (planId, monthlyCredits) => {
+    upstream({
+      credits: { body: { credits: { monthlyCredits, purchasedCredits: 10 }, windowLimits: {} } },
+      subscriptions: { body: subscription(planId) },
+      // Spend lags the credit pool and must not size a capped plan.
+      summary: { body: { totalCost: 0.5 } }
+    });
+    const out = await getCommandCodeUsage("user_fixture");
+    return { plan: out.plan, monthly: out.quotas["Monthly credits"] };
+  };
+
+  it.each([
+    ["go", "individual-go", 10],
+    ["goat", "individual-goat", 70],
+    ["pro", "individual-pro", 30],
+    ["pro-v1", "individual-pro-v1", 80],
+    ["provider", "individual-provider", 15],
+    ["max", "individual-max", 150],
+    ["ultra", "individual-ultra", 300],
+    ["teams-pro", "team-pro", 40]
+  ])("sizes %s and %s by the %i credit cap", async (alias, canonical, cap) => {
+    for (const planId of [alias, canonical]) {
+      const { plan, monthly } = await monthlyFor(planId, 4);
+
+      expect(plan).toBe(`Command Code (${canonical})`);
+      expect(monthly).toMatchObject({ used: cap - 4, total: cap, remainingPercentage: Math.round(400 / cap) });
+    }
+  });
+
+  it("names go-v1, which has no published cap, and sizes it from spend", async () => {
+    const { plan, monthly } = await monthlyFor("go-v1", 4);
+
+    expect(plan).toBe("Command Code (individual-go-v1)");
+    expect(monthly).toMatchObject({ used: 0.5, total: 4.5 });
+  });
+
+  it.each(["individual-max-10x", "constructor"])("keeps the spend-derived total for the unlisted plan %s", async (planId) => {
+    const { plan, monthly } = await monthlyFor(planId, 4);
+
+    expect(plan).toBe(`Command Code (${planId})`);
+    expect(monthly).toMatchObject({ used: 0.5, total: 4.5 });
+  });
+
+  it("clamps a negative remaining balance to a fully used cap", async () => {
+    const { monthly } = await monthlyFor("go", -3);
+
+    expect(monthly).toMatchObject({ used: 10, total: 10, remainingPercentage: 0 });
+  });
+
+  it("never reports negative usage when the balance exceeds the cap", async () => {
+    const { monthly } = await monthlyFor("go", 12);
+
+    expect(monthly).toMatchObject({ used: 0, total: 12, remainingPercentage: 100 });
+  });
+
+  it("does not need period spend for a capped plan", async () => {
+    upstream({ subscriptions: { body: subscription("pro-v1") }, summary: { status: 500 } });
+    const out = await getCommandCodeUsage("user_fixture");
+
+    expect(out.quotas["Monthly credits"]).toMatchObject({ used: 12.35, total: 80, remainingPercentage: 85 });
+    expect(requestedPaths()).not.toContain("/alpha/usage/summary");
+  });
+});

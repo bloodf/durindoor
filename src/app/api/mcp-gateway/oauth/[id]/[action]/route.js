@@ -43,6 +43,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const CALLBACK_TIMEOUT_MS = 300_000;
+// Route headers override the baseline headers applied before Next handles the request.
+const RESULT_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"
+};
 
 // Compute OAuth redirect/CIMD origin. Explicit env wins, then an active public
 // tunnel, then reverse-proxy headers and finally the request origin.
@@ -302,14 +307,14 @@ export async function GET(request, context) {
     const state = url.searchParams.get("state");
     const errParam = url.searchParams.get("error");
     if (errParam) {
-      return new Response(renderResultPage(false, `OAuth error: ${errParam}`), {
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+      return new Response(renderResultPage(false, "OAuth authorization failed."), {
+        headers: RESULT_HEADERS
       });
     }
     if (!code || !state) {
       return new Response(renderResultPage(false, "missing code or state"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     }
     const raw = await getInstanceById(id);
@@ -319,7 +324,7 @@ export async function GET(request, context) {
     if (!session) {
       return new Response(renderResultPage(false, "CSRF check failed (no session)"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     }
     const rawAs2 = instance.oauthTokens?.as;
@@ -334,7 +339,7 @@ export async function GET(request, context) {
       completeMcpSession(id, state, { status: "error", error: "no token_endpoint stored" });
       return new Response(renderResultPage(false, "no token_endpoint on instance"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     }
     // Exchange code → tokens
@@ -357,7 +362,7 @@ export async function GET(request, context) {
         completeMcpSession(id, state, { status: "error", error: `token ${tokenRes.status}: ${text?.slice(0, 200)}` });
         return new Response(renderResultPage(false, `token exchange failed: ${tokenRes.status}`), {
           status: 500,
-          headers: { "Content-Type": "text/html; charset=utf-8" }
+          headers: RESULT_HEADERS
         });
       }
       const doc = JSON.parse(text);
@@ -365,7 +370,7 @@ export async function GET(request, context) {
         completeMcpSession(id, state, { status: "error", error: "no access_token in response" });
         return new Response(renderResultPage(false, "no access_token in response"), {
           status: 500,
-          headers: { "Content-Type": "text/html; charset=utf-8" }
+          headers: RESULT_HEADERS
         });
       }
       await storeTokens(id, {
@@ -384,14 +389,14 @@ export async function GET(request, context) {
       });
       completeMcpSession(id, state, { status: "complete", tokens: { hasAccess: true } });
       return new Response(renderResultPage(true, "Connected. You can close this tab."), {
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       completeMcpSession(id, state, { status: "error", error: msg });
       return new Response(renderResultPage(false, `exchange error: ${msg}`), {
         status: 500,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     } finally {
       // Keep the session around briefly so the dashboard can poll status.
@@ -413,13 +418,17 @@ export async function GET(request, context) {
   return NextResponse.json({ error: `unknown action: ${action}` }, { status: 404 });
 }
 
+// Messages can contain upstream error text; encode it before inserting into HTML.
 function renderResultPage(success, message) {
+  const escapedMessage = message.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[character]);
   const color = success ? "#22c55e" : "#ef4444";
   const icon = success ? "&#10003;" : "&#10007;";
   const title = success ? "Authentication Successful" : "Authentication Failed";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5}.c{text-align:center;padding:2rem;background:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1)}.i{color:${color};font-size:3rem}h1{margin:1rem 0}p{color:#666}</style>
-</head><body><div class="c"><div class="i">${icon}</div><h1>${title}</h1><p>${message}</p><p>You can close this tab and return to DurinDoor.</p>
+</head><body><div class="c"><div class="i">${icon}</div><h1>${title}</h1><p>${escapedMessage}</p><p>You can close this tab and return to DurinDoor.</p>
 </div></body></html>`;
 }

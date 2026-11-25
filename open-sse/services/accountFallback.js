@@ -1,4 +1,4 @@
-import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES, ACCOUNT_SCOPED_4XX_STATUSES, CODEBUDDY_PROVIDERS } from "../config/errorConfig.js";
+import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES, ACCOUNT_SCOPED_4XX_STATUSES, CODEBUDDY_PROVIDERS, CODEX_ACCOUNT_MODEL_REJECTION_TEXT } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
@@ -378,6 +378,13 @@ function classifyFallbackError({
   }
 
   const generic = checkFallbackErrorByRules(status, ruleMatchText, backoffLevel, provider);
+  // OmniRoute #20266: this Codex refusal names one account's entitlement, so
+  // another account may serve any id, catalogued or not. `modelOnly` rotates
+  // without a lock when the id has no bounded scope (#2315).
+  if (Number(status) === 400 && provider === "codex" &&
+      CODEX_ACCOUNT_MODEL_REJECTION_TEXT.some((text) => ruleMatchText.includes(text))) {
+    return { ...generic, scope: null, modelOnly: true };
+  }
   // #2315: after echo-stripping, a 400 with no provider rule that would only
   // lock account-wide because the requested id is unknown/passthrough stays
   // request-scoped. Terminal billing matches (real credit exhaustion) keep

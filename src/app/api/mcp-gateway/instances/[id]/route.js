@@ -1,6 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { NextResponse } from "next/server";
+import { isOperatorRequest } from "@/dashboardGuard";
 import { getInstanceById, updateInstance, deleteInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
@@ -78,6 +79,13 @@ export async function PUT(request, context) {
     const body = await request.json();
     const errs = validatePatch(body);
     if (errs.length) return NextResponse.json({ error: errs.join("; ") }, { status: 400 });
+    const existing = await getInstanceById(id);
+    if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ((existing.transport?.toLowerCase() === "stdio" ||
+      ["command", "args", "env", "transport"].some((field) => body[field] !== undefined)) &&
+      !(await isOperatorRequest(request))) {
+      return NextResponse.json({ error: "Operator access required" }, { status: 403 });
+    }
 
     // SSRF guard on URL update — see the matching block on POST.
     if (body.url !== undefined && body.url !== null && body.url !== "") {
@@ -99,7 +107,6 @@ export async function PUT(request, context) {
 
     // Fold any manually-entered OAuth client credentials into oauthTokens,
     // merging with (not clobbering) whatever token material is already stored.
-    const existing = await getInstanceById(id);
     const oauthTokens = mergeOauthClientConfig(existing?.oauthTokens, body);
     if (oauthTokens) body.oauthTokens = oauthTokens;
     const inst = await updateInstance(id, body);

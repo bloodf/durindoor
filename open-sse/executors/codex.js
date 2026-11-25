@@ -8,7 +8,8 @@ import {
 "../services/oauthCredentialManager.js";
 import { normalizeResponsesInput, normalizeStatelessResponseInput } from "../translator/formats/responsesApi.js";
 import { RESPONSES_ITEM, RESPONSES_INCLUDE, ROLE } from "../translator/schema/index.js";
-import { fetchImageAsBase64 } from "../translator/concerns/image.js";
+import { createBudgetedImageFetcher } from "../translator/concerns/prefetch.js";
+import { proxyAwareFetch, resolveProxyForRequest } from "../utils/proxyFetch.js";
 import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import {
@@ -485,6 +486,17 @@ function cloneRequestBody(body) {
   return structuredClone(body);
 }
 
+// Image fetches follow the connection's egress route; strictProxy fails closed.
+function createProxiedImageFetcher(proxyOptions) {
+  return (url, init) => {
+    // GET is explicit: the DNS-bypass transport defaults to POST.
+    const options = { ...init, method: "GET" };
+    // A relay dials its own host, so the dispatcher pinned to the image host must not apply.
+    if (resolveProxyForRequest(url, proxyOptions).source === "relay") delete options.dispatcher;
+    return proxyAwareFetch(url, options, proxyOptions);
+  };
+}
+
 function abortReason(signal) {
   if (signal?.reason instanceof Error) return signal.reason;
   return new DOMException("The operation was aborted", "AbortError");
@@ -733,24 +745,40 @@ export class CodexExecutor extends BaseExecutor {
   /**
    * Prefetch remote image URLs and inline them as base64 data URIs.
    * Runs before execute() because Codex backend cannot fetch remote images.
+   * Fetches sequentially within the shared per-request image count and byte caps;
+   * images beyond them, or after the signal aborts, keep their URL.
    * Mutates body.input in place.
    */
-  async prefetchImages(body) {
+  async prefetchImages(body, { signal, proxyOptions } = {}) {
     if (!Array.isArray(body?.input)) return;
     body.input = body.input.map((item) => item?.role === "assistant" ? normalizeResponsesImageReplay([item])[0] : item);
+    const fetchImage = createBudgetedImageFetcher({
+      timeoutMs: 15000,
+      signal,
+      ...(proxyOptions && { fetcher: createProxiedImageFetcher(proxyOptions) })
+    });
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
-      const pending = item.content.map(async (c) => {
+      const content = [];
+      for (const c of item.content) {
         const isNative = c.type === RESPONSES_ITEM.INPUT_IMAGE;
-        if (!isNative && c.type !== "image_url") return c;
+        if (!isNative && c.type !== "image_url") {
+          content.push(c);
+          continue;
+        }
         const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
-        if (!url || isNative && url.startsWith("data:")) return c;
-        const fetched = url.startsWith("data:") ? null : await fetchImageAsBase64(url, { timeoutMs: 15000 });
+        if (!url || isNative && url.startsWith("data:")) {
+          content.push(c);
+          continue;
+        }
+        // Non-HTTP values are never fetched and must not use up the allowance.
+        const fetched = /^https?:\/\//i.test(url) ? await fetchImage(url) : null;
         const imageUrl = fetched?.url || url;
-        if (isNative) return { ...c, image_url: imageUrl };
-        return { type: "input_image", image_url: imageUrl, detail: c.image_url?.detail || "auto" };
-      });
-      item.content = await Promise.all(pending);
+        content.push(isNative ?
+          { ...c, image_url: imageUrl } :
+          { type: "input_image", image_url: imageUrl, detail: c.image_url?.detail || "auto" });
+      }
+      item.content = content;
     }
   }
 
@@ -779,10 +807,10 @@ export class CodexExecutor extends BaseExecutor {
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount}`);
     if (imgCount > 0) {
       const t0 = Date.now();
-      await this.prefetchImages(requestBody);
+      await this.prefetchImages(requestBody, { signal: args.signal, proxyOptions: args.proxyOptions });
       dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
     } else {
-      await this.prefetchImages(requestBody);
+      await this.prefetchImages(requestBody, { signal: args.signal, proxyOptions: args.proxyOptions });
     }
 
     // Reuses 503 retry config — same semantic: upstream temporarily unavailable.

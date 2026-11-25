@@ -6,7 +6,7 @@ import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { SSE_KEEPALIVE_MS } from "open-sse/config/runtimeConfig.js";
 import { ANTHROPIC_PING_FRAME, withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
 import { withEarlyJsonKeepalive, resolveJsonKeepaliveThresholdMs } from "open-sse/utils/earlyJsonKeepalive.js";
-import { decodeAnthropicRequest } from "../../utils/inboundGzip.js";
+import { decodeAnthropicRequest, peekRequestJson } from "../../utils/inboundGzip.js";
 import { handleChat } from "../chat.js";
 
 function chatWithKeepalive(request, streaming, keepalive) {
@@ -55,7 +55,8 @@ export async function handleResponses(request) {
   if (decoded.response) return decoded.response;
   request = decoded.request;
 
-  const body = await request.clone().json().catch(() => null);
+  // handleChat reuses this parse.
+  const body = await peekRequestJson(request).catch(() => null);
 
   // Codex CLI and other Responses API consumers may drop the connection if no
   // bytes arrive within a few seconds. Explicit stream intent is authoritative;

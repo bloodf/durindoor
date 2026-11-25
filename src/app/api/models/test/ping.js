@@ -14,9 +14,29 @@ class ModelTestTransportError extends Error {
   }
 }
 
-async function fetchModelTest(...args) {
+// Connect-stage codes: the loopback request never reached a listener, so
+// replaying it in process cannot run or bill the completion twice.
+const LOOPBACK_UNREACHABLE_CODES = new Set([
+  "ECONNREFUSED", "EADDRNOTAVAIL", "EAFNOSUPPORT", "ENETUNREACH", "EHOSTUNREACH", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"
+]);
+
+/**
+ * Managed hosts may not serve the app on 127.0.0.1:PORT (decolua/9router#3852).
+ * The chat probe then runs the chat handler directly, with the same headers.
+ */
+async function fetchChatProbe(url, init) {
   try {
-    return await fetch(...args);
+    return await fetch(url, init);
+  } catch (error) {
+    if (!LOOPBACK_UNREACHABLE_CODES.has(error?.cause?.code)) throw error;
+    const { handleChat } = await import("@/sse/handlers/chat.js");
+    return handleChat(new Request(url, init));
+  }
+}
+
+async function fetchModelTest(url, init, send = fetch) {
+  try {
+    return await send(url, init);
   } catch (error) {
     if (error?.name === "TimeoutError") {
       throw new ModelTestTransportError(408, "Request timed out");
@@ -270,7 +290,7 @@ async function pingModelByKindImpl(model, kind, baseUrl, connectionId) {
     }),
     // High-effort reasoning models can take more than 15 s to answer (decolua/9router#4825).
     signal: AbortSignal.timeout(60000)
-  });
+  }, fetchChatProbe);
   const latencyMs = Date.now() - start;
 
   const rawText = await res.text().catch(() => "");
